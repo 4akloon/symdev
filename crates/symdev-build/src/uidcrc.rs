@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub struct UidCrc {
     pub uid1: u32,
@@ -42,14 +42,28 @@ impl UidCrc {
             self.uid1, self.uid2, self.uid3, checked
         )
     }
+}
 
-    pub fn wine_args(&self, wine: &Path, uidcrc: &Path, outfile: Option<&str>) -> Vec<String> {
+pub struct UidCrcTool {
+    pub wine: PathBuf,
+    pub uidcrc: PathBuf,
+}
+
+impl UidCrcTool {
+    pub fn new(wine: &Path, uidcrc: &Path) -> Self {
+        Self {
+            wine: wine.to_path_buf(),
+            uidcrc: uidcrc.to_path_buf(),
+        }
+    }
+
+    pub fn args(&self, crc: &UidCrc, outfile: Option<&str>) -> Vec<String> {
         let mut args = vec![
-            wine.display().to_string(),
-            uidcrc.display().to_string(),
-            format!("0x{:08x}", self.uid1),
-            format!("0x{:08x}", self.uid2),
-            format!("0x{:08x}", self.uid3),
+            self.wine.display().to_string(),
+            self.uidcrc.display().to_string(),
+            format!("0x{:08x}", crc.uid1),
+            format!("0x{:08x}", crc.uid2),
+            format!("0x{:08x}", crc.uid3),
         ];
         if let Some(out) = outfile {
             args.push(out.to_string());
@@ -63,8 +77,8 @@ impl UidCrc {
             .to_string()
     }
 
-    pub fn matches_wine(&self, wine_stdout: &[u8]) -> bool {
-        Self::normalize_stdout(wine_stdout) == self.line()
+    pub fn output_matches(crc: &UidCrc, stdout: &[u8]) -> bool {
+        Self::normalize_stdout(stdout) == crc.line()
     }
 }
 
@@ -86,6 +100,13 @@ mod tests {
 
     fn hello() -> UidCrc {
         UidCrc::new(0x1000_007a, 0x1000_39ce, 0xe79e_4cf9)
+    }
+
+    fn recorded_tool() -> UidCrcTool {
+        UidCrcTool::new(
+            Path::new("/usr/bin/wine"),
+            Path::new("/sdk/epoc32/tools/uidcrc.exe"),
+        )
     }
 
     #[test]
@@ -126,10 +147,10 @@ mod tests {
 
     #[test]
     fn uidcrc_args_match_recorded_usage() {
-        let wine = Path::new("/usr/bin/wine");
-        let exe = Path::new("/sdk/epoc32/tools/uidcrc.exe");
+        let tool = recorded_tool();
+        let crc = hello();
         assert_eq!(
-            hello().wine_args(wine, exe, None),
+            tool.args(&crc, None),
             [
                 "/usr/bin/wine",
                 "/sdk/epoc32/tools/uidcrc.exe",
@@ -139,7 +160,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            hello().wine_args(wine, exe, Some("out.uid")),
+            tool.args(&crc, Some("out.uid")),
             [
                 "/usr/bin/wine",
                 "/sdk/epoc32/tools/uidcrc.exe",
@@ -154,25 +175,28 @@ mod tests {
     #[test]
     fn normalize_strips_crlf() {
         assert_eq!(
-            UidCrc::normalize_stdout(b"0x1000007a 0x100039ce 0xe79e4cf9 0x5dcf194e\r\n"),
+            UidCrcTool::normalize_stdout(b"0x1000007a 0x100039ce 0xe79e4cf9 0x5dcf194e\r\n"),
             "0x1000007a 0x100039ce 0xe79e4cf9 0x5dcf194e"
         );
     }
 
     #[test]
-    fn uidcrc_matches_wine_hello_crlf() {
+    fn uidcrc_output_matches_hello_crlf() {
         let out = b"0x1000007a 0x100039ce 0xe79e4cf9 0x5dcf194e\r\n";
-        assert!(hello().matches_wine(out));
+        assert!(UidCrcTool::output_matches(&hello(), out));
     }
 
     #[test]
-    fn uidcrc_matches_wine_hello_lf() {
-        assert!(hello().matches_wine(b"0x1000007a 0x100039ce 0xe79e4cf9 0x5dcf194e\n"));
+    fn uidcrc_output_matches_hello_lf() {
+        assert!(UidCrcTool::output_matches(
+            &hello(),
+            b"0x1000007a 0x100039ce 0xe79e4cf9 0x5dcf194e\n"
+        ));
     }
 
     #[test]
-    fn uidcrc_matches_wine_rejects_wrong_checked() {
+    fn uidcrc_output_rejects_wrong_checked() {
         let out = b"0x1000007a 0x100039ce 0xe79e4cf9 0x00000000\n";
-        assert!(!hello().matches_wine(out));
+        assert!(!UidCrcTool::output_matches(&hello(), out));
     }
 }
