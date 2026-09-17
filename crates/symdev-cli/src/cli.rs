@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Parser)]
-#[command(name = "symdev")]
+#[command(name = "symdev", disable_help_subcommand = true)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -10,6 +10,7 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     New {
+        #[arg(value_parser = package_name)]
         name: String,
         #[arg(long)]
         target: Target,
@@ -30,4 +31,17 @@ pub enum Target {
 #[derive(Clone, ValueEnum)]
 pub enum Lang {
     Cpp,
+}
+
+fn package_name(s: &str) -> Result<String, String> {
+    let mut chars = s.chars();
+    let valid = match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() => chars.all(|c| c.is_ascii_alphanumeric() || c == '_'),
+        _ => false,
+    };
+    if valid {
+        Ok(s.to_owned())
+    } else {
+        Err(format!("invalid name `{s}`"))
+    }
 }

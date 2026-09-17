@@ -47,6 +47,12 @@ fn help_lists_only_four_commands() {
     ] {
         assert!(!stdout.contains(cmd), "help must not list {cmd}: {stdout}");
     }
+    assert!(
+        !stdout
+            .lines()
+            .any(|line| line.trim_start() == "help" || line.trim_start().starts_with("help ")),
+        "help must not be listed as a subcommand: {stdout}"
+    );
 }
 
 #[test]
@@ -76,6 +82,16 @@ fn new_not_implemented_creates_no_files() {
             "error: not implemented: 'symdev new' (unlocks at M4)",
         ));
     assert!(dir.path().read_dir().unwrap().next().is_none());
+}
+
+#[test]
+fn new_rejects_invalid_name() {
+    bin()
+        .args(["new", "1bad", "--target", "nokia-e52"])
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("not implemented").not());
 }
 
 #[test]
