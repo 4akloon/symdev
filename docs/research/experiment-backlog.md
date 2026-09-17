@@ -285,3 +285,20 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
   - `0x12345678 0x9abcdef0 0x11111111` → `0x3a5febb7`
 
   Clean-room match (derived from those files, not from uidcrc.c): 12-byte LE concatenation of uid1/uid2/uid3; EPOC CRC16 on odd bytes (high 16) and even bytes (low 16). CRC16 byte step: `crc = rotl8(crc) ^ b; crc ^= (crc & 0xff) >> 4; crc ^= crc << 12; crc ^= (crc & 0xff) << 5` (16-bit).
+
+## 14. SIS UID header on experiment-7 `hello.sis` (T2)
+
+- **Requires:** experiment 7 (`hello.sis`) and experiment 13 (`UidCrc`).
+- **Skip if:** no `hello.sis` from experiment 7
+- **Procedure:** Inspect the frozen experiment-7 SIS (do not re-run `makesis`; creation time would change). Read the first 16 bytes as four little-endian `u32`. Check that `UidCrc::new(uid1, uid2, uid3).checked()` equals the fourth word. Repeat the first 16 bytes of experiment-8 `hello.sisx`. Do not copy MakeSIS C sources. Do not commit `.sis` / `.sisx`.
+- **Expected result:** Pinned SIS UID1/UID2/UID3/checked for hello, and the 16 raw bytes.
+- **Decision unblocked:** T2 first slice — native SIS UID header via `UidCrc` (full native `makesis` still later).
+- **Outcome:** pass
+- **Evidence:** 2026-09-17, Ubuntu 26.04.1 LTS x86_64. Files outside git: `$HOME/src/symdev-experiment-5/hello.sis` (4000 bytes; experiment 7) and `hello.sisx` (5172 bytes; experiment 8). First 16 bytes of both files are identical. Little-endian words:
+
+  - uid1 `0x10201a7a` (SIS file UID)
+  - uid2 `0x00000000` (this SDK `makesis` output; not a wiki default)
+  - uid3 `0xe79e4cf9` (hello package UID)
+  - checked `0x5db40004` — matches `UidCrc` on those three UIDs
+
+  Raw 16 bytes: `7a 1a 20 10 00 00 00 00 f9 4c 9e e7 04 00 b4 5d`. After the UID block, both files continue with a field whose type word is `0x0000000c` and whose length word is `0x00000f88` (SIS, 3976) or `0x0000141c` (SISX, 5148); `16 + 8 + length` equals file size. Native SIS body / signatures are **out of this experiment**.
