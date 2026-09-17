@@ -67,4 +67,4 @@ Native makekeys; shadow subprocess in default tests; clap `uidcrc`; rcomp; `_reg
 
 ## 7. Testing
 
-Goldens from experiment 13 (all six stdout triples). `uidcrc_bytes` for the hello triple matches the 16 recorded bytes. `uidcrc_args` pins `/usr/bin/wine` + `/sdk/epoc32/tools/uidcrc.exe` + `0x1000007a` `0x100039ce` `0xe79e4cf9` `out.uid`.
+Goldens from experiment 13 (all six stdout triples). `UidCrc::bytes` for the hello triple matches the 16 recorded bytes. `UidCrc::wine_args` pins `/usr/bin/wine` + `/sdk/epoc32/tools/uidcrc.exe` + `0x1000007a` `0x100039ce` `0xe79e4cf9` `out.uid`.

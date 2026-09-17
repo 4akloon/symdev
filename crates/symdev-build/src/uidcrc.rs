@@ -166,6 +166,11 @@ mod tests {
     }
 
     #[test]
+    fn uidcrc_matches_wine_hello_lf() {
+        assert!(hello().matches_wine(b"0x1000007a 0x100039ce 0xe79e4cf9 0x5dcf194e\n"));
+    }
+
+    #[test]
     fn uidcrc_matches_wine_rejects_wrong_checked() {
         let out = b"0x1000007a 0x100039ce 0xe79e4cf9 0x00000000\n";
         assert!(!hello().matches_wine(out));
