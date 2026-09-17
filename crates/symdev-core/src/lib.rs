@@ -1,8 +1,10 @@
 mod error;
+mod local_env;
 mod traits;
 mod types;
 
 pub use error::*;
+pub use local_env::*;
 pub use traits::*;
 pub use types::*;
 
@@ -159,4 +161,24 @@ impl symdev_core::DebuggerBackend for NoopDebugger {
     fn backtrace(&self) -> symdev_core::Result<String> {
         Ok(String::new())
     }
+}
+
+#[test]
+fn local_env_run_true_status_zero() {
+    let out = LocalEnv
+        .run_blocking(std::process::Command::new("true"), &RemotePath::new("/"))
+        .unwrap();
+    assert_eq!(out.status, 0);
+}
+
+#[test]
+fn local_env_push_copies_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("a.txt");
+    let dst = dir.path().join("b.txt");
+    std::fs::write(&src, b"hi").unwrap();
+    LocalEnv
+        .push_blocking(&src, &RemotePath::new(dst.to_str().unwrap()))
+        .unwrap();
+    assert_eq!(std::fs::read(dst).unwrap(), b"hi");
 }
