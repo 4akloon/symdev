@@ -1,4 +1,5 @@
 mod cli;
+mod scaffold;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
