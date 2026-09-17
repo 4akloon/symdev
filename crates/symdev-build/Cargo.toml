@@ -1,0 +1,9 @@
+[package]
+name = "symdev-build"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+symdev-core = { path = "../symdev-core" }
+thiserror = "2"
