@@ -4,7 +4,7 @@ use crate::model::BldInf;
 
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
-pub struct ParseError(String);
+pub struct ParseError(pub(crate) String);
 
 enum Section {
     None,
