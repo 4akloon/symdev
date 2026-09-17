@@ -46,7 +46,7 @@ Pinned: `(0x1000007a, 0x100039ce, 0xe79e4cf9)` → `0x5dcf194e`.
 
 ## 5. Interfaces
 
-Superseded by [2026-09-17-symdev-t1-shadow-design.md](2026-09-17-symdev-t1-shadow-design.md): public API is `UidCrc` methods (`checked`, `bytes`, `line`, `wine_args`). Goldens and argv below are unchanged.
+Superseded by [2026-09-17-symdev-t1-shadow-design.md](2026-09-17-symdev-t1-shadow-design.md): `UidCrc` is the value (`checked`, `bytes`, `line`); Wine argv lives on `UidCrcTool`. Goldens and argv below are unchanged.
 
 ```rust
 pub struct UidCrc { pub uid1: u32, pub uid2: u32, pub uid3: u32 }
@@ -55,11 +55,15 @@ impl UidCrc {
     pub fn checked(&self) -> u32;
     pub fn bytes(&self) -> [u8; 16]; // four LE u32
     pub fn line(&self) -> String; // "0x%08x 0x%08x 0x%08x 0x%08x" lowercase
-    pub fn wine_args(&self, wine: &Path, uidcrc: &Path, outfile: Option<&str>) -> Vec<String>;
+}
+
+pub struct UidCrcTool { pub wine: PathBuf, pub uidcrc: PathBuf }
+impl UidCrcTool {
+    pub fn args(&self, crc: &UidCrc, outfile: Option<&str>) -> Vec<String>;
 }
 ```
 
-`wine_args` without outfile is the stdout form; with outfile appends that filename (relative, like SIS argv).
+`UidCrcTool::args` without outfile is the stdout form; with outfile appends that filename (relative, like SIS argv).
 
 ## 6. Non-goals
 
@@ -67,4 +71,4 @@ Native makekeys; shadow subprocess in default tests; clap `uidcrc`; rcomp; `_reg
 
 ## 7. Testing
 
-Goldens from experiment 13 (all six stdout triples). `UidCrc::bytes` for the hello triple matches the 16 recorded bytes. `UidCrc::wine_args` pins `/usr/bin/wine` + `/sdk/epoc32/tools/uidcrc.exe` + `0x1000007a` `0x100039ce` `0xe79e4cf9` `out.uid`.
+Goldens from experiment 13 (all six stdout triples). `UidCrc::bytes` for the hello triple matches the 16 recorded bytes. `UidCrcTool::args` pins `/usr/bin/wine` + `/sdk/epoc32/tools/uidcrc.exe` + `0x1000007a` `0x100039ce` `0xe79e4cf9` `out.uid`.
