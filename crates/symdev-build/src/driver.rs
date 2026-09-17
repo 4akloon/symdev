@@ -216,6 +216,9 @@ impl BuildBackend for GcceBuild {
         };
         let bld = parse_bld_inf(&std::fs::read_to_string(&bld_path).map_err(io)?)
             .map_err(|e| Error::Other(e.to_string()))?;
+        if bld.mmp_files.is_empty() {
+            return Err(Error::Other("no MMP to build".into()));
+        }
         let bld_dir = bld_path.parent().unwrap_or(&project.root);
         let build_dir = project.root.join("build");
         std::fs::create_dir_all(&build_dir).map_err(io)?;
@@ -446,6 +449,63 @@ mod tests {
             ])
         );
         assert!(!args.iter().any(|a| a.contains("--capability")));
+    }
+
+    #[test]
+    fn resolve_source_prefers_mmp_dir_then_project_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let mmp_dir = dir.path().join("group");
+        std::fs::create_dir(&mmp_dir).unwrap();
+        std::fs::write(mmp_dir.join("hello.cpp"), b"//").unwrap();
+        let found = resolve_source(&[], &mmp_dir, dir.path(), "hello.cpp").unwrap();
+        assert_eq!(found, mmp_dir.join("hello.cpp"));
+    }
+
+    #[test]
+    fn resolve_source_uses_sourcepath() {
+        let dir = tempfile::tempdir().unwrap();
+        let mmp_dir = dir.path().join("group");
+        let src_dir = mmp_dir.join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(src_dir.join("hello.cpp"), b"//").unwrap();
+        let found = resolve_source(
+            &["src".into()],
+            &mmp_dir,
+            dir.path(),
+            "hello.cpp",
+        )
+        .unwrap();
+        assert_eq!(found, src_dir.join("hello.cpp"));
+    }
+
+    #[test]
+    fn resolve_source_missing_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = resolve_source(&[], dir.path(), dir.path(), "nope.cpp").unwrap_err();
+        assert!(err.to_string().contains("source not found: nope.cpp"));
+    }
+
+    #[test]
+    fn build_errors_without_bld_inf() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = fake()
+            .build(&Project {
+                root: dir.path().to_path_buf(),
+            })
+            .unwrap_err();
+        assert_eq!(err.to_string(), "no bld.inf");
+    }
+
+    #[test]
+    fn build_errors_when_mmp_list_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("bld.inf"), "PRJ_TESTMMPFILES\ntest.mmp\n").unwrap();
+        let err = fake()
+            .build(&Project {
+                root: dir.path().to_path_buf(),
+            })
+            .unwrap_err();
+        assert_eq!(err.to_string(), "no MMP to build");
     }
 
     #[test]
