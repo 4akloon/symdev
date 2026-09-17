@@ -1,7 +1,7 @@
 # M4 `symdev new` (and print-path `deploy`)
 
 Date: 2026-09-17
-Status: draft (awaiting human review). Source of truth for the M4 implementation plan. Does not itself add crates or templates.
+Status: approved design. Source of truth for the M4 implementation plan. Does not itself add crates or templates.
 
 Cites (do not contradict):
 
