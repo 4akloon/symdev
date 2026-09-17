@@ -14,4 +14,4 @@ pub use model::{BldInf, Mmp};
 pub use pkg::render_pkg;
 pub use sis::{dname, SisPackage, SisTools};
 pub use toolchain::Toolchain;
-pub use uidcrc::{uid_checked, uidcrc_args, uidcrc_bytes, uidcrc_line};
+pub use uidcrc::UidCrc;
