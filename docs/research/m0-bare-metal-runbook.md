@@ -224,23 +224,9 @@ Verified tokens (not a complete validated file):
 - optional reg rsc → `!:\private\10003a3f\import\apps\`
 - host-side source path in the template: `$(EPOCROOT)Epoc32\release\armv5\urel\...` (Windows-style)
 
-Linux translation of that host path: **Needs experiment**. SDK tools may still want Windows-style paths inside `.pkg` (spec §6).
+Host-path translation (Linux vs Windows-style `$(EPOCROOT)Epoc32\release\armv5\urel\...` inside `.pkg`): **UNKNOWN — requires experiment**. SDK tools may still want Windows-style paths inside `.pkg` (spec §6).
 
-Illustrative skeleton assembled **only** from those fragments (not empirically packaged):
-
-```
-&EN
-#{"MyApp"},(<UID3>),<major>,<minor>,<patch>,TYPE=SA
-; vendor lines — exact syntax UNKNOWN — requires experiment
-; platform UID 0x102752AE — exact dependency-line syntax UNKNOWN — requires experiment
-"$(EPOCROOT)Epoc32\release\armv5\urel\MyApp.exe"-"!:\sys\bin\MyApp.exe"
-; optional:
-; "<host>_reg.rsc"-"!:\private\10003a3f\import\apps\<name>_reg.rsc"
-```
-
-```
-UNKNOWN — requires experiment
-```
+Exact `.pkg` line syntax (header, vendor, platform dependency, file-mapping lines): **UNKNOWN — requires experiment**. Do not invent argv or skeleton syntax beyond the Verified tokens above.
 
 Do not invent extra `.pkg` keys. `makesis` accepting a `.pkg` whose host paths exist on Linux is experiment 7 in spec §17.
 
