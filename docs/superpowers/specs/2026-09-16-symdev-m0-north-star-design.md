@@ -170,7 +170,7 @@ Shadow mode and native reimplementations are later: run both, diff, log, **do no
 
 ### 5.1 Created in §17
 
-Workspace root `Cargo.toml` (resolver `"2"`), edition **2021**, `rust-version = "1.75"` (native `async fn` in traits, no `async-trait` crate).
+Workspace root `Cargo.toml` (resolver `"3"`), edition **2024**, `rust-version = "1.98.1"` (current stable as of 2026-09-03; native `async fn` in traits, no `async-trait` crate).
 
 | Crate | Path | Role in §17 |
 |---|---|---|
