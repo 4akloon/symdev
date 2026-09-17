@@ -131,11 +131,17 @@ impl GcceBuild {
     }
 
     pub fn elf2e32_args(&self, name: &str, elf: &Path, exe: &Path) -> Vec<String> {
-        vec![
+        let mut args = vec![
             arg(&self.tools.elf2e32),
             "--uid1=0x1000007a".into(),
             format!("--uid3=0x{:08x}", self.uid3),
-            format!("--capability={}", self.capabilities.join("+")),
+        ];
+        // Empty `--capability=` is rejected: "Option capability has missed argument"
+        // (elf2e32_next 3.0 Build 2). Omit the flag when the manifest list is empty.
+        if !self.capabilities.is_empty() {
+            args.push(format!("--capability={}", self.capabilities.join("+")));
+        }
+        args.extend([
             "--fpu=softvfp".into(),
             "--targettype=EXE".into(),
             format!("--output={}", exe.display()),
@@ -148,7 +154,8 @@ impl GcceBuild {
                     .join("epoc32/release/armv5/lib")
                     .display()
             ),
-        ]
+        ]);
+        args
     }
 
     fn run_tool(&self, args: &[String], cwd: &RemotePath) -> Result<()> {
@@ -417,7 +424,7 @@ mod tests {
     }
 
     #[test]
-    fn elf2e32_args_empty_capabilities_are_empty_value() {
+    fn elf2e32_args_empty_capabilities_omit_flag() {
         let d = fake();
         let args = d.elf2e32_args(
             "hello",
@@ -430,7 +437,6 @@ mod tests {
                 "/gcc/elf2e32",
                 "--uid1=0x1000007a",
                 "--uid3=0xe79e4cf9",
-                "--capability=",
                 "--fpu=softvfp",
                 "--targettype=EXE",
                 "--output=/proj/build/hello.exe",
@@ -439,8 +445,7 @@ mod tests {
                 "--libpath=/sdk/epoc32/release/armv5/lib",
             ])
         );
-        assert!(!args.iter().any(|a| a.contains("LocalServices")));
-        assert!(!args.iter().any(|a| a.contains("NetworkServices")));
+        assert!(!args.iter().any(|a| a.contains("--capability")));
     }
 
     #[test]
