@@ -429,6 +429,7 @@ dependencies = [
 name = "symdev-core"
 version = "0.1.0"
 dependencies = [
+ "tempfile",
  "thiserror",
 ]
 
