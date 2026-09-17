@@ -11,5 +11,5 @@ pub use driver::GcceBuild;
 pub use mmp::parse_mmp;
 pub use model::{BldInf, Mmp};
 pub use pkg::render_pkg;
-pub use sis::{dname, SisTools};
+pub use sis::{dname, SisPackage, SisTools};
 pub use toolchain::Toolchain;
