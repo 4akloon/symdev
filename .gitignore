@@ -1,0 +1,9 @@
+/target
+*.sis
+*.sisx
+*.cer
+*.key
+/sdk/
+/rom/
+/third_party/sdk/
+/third_party/rom/
