@@ -4,6 +4,7 @@ mod mmp;
 mod model;
 mod pkg;
 mod sis;
+mod sis_uid;
 mod toolchain;
 mod uidcrc;
 
@@ -13,5 +14,6 @@ pub use mmp::parse_mmp;
 pub use model::{BldInf, Mmp};
 pub use pkg::render_pkg;
 pub use sis::{dname, SisPackage, SisTools};
+pub use sis_uid::SisUid;
 pub use toolchain::Toolchain;
 pub use uidcrc::{UidCrc, UidCrcTool};
