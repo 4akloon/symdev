@@ -34,7 +34,7 @@ These names only:
 |---|---|
 | `TARGET` | Output basename |
 | `TARGETTYPE` | Must be `EXE`. Any other value is a reject (below) |
-| `UID` | Two or three UIDs, as in existing MMP practice |
+| `UID` | Optional. If present: two or three UIDs, as in existing MMP practice |
 | `TARGETPATH` | Install/target path string, retained |
 | `SOURCE` | Source file names, retained |
 | `SOURCEPATH` | Source directory strings, retained |
@@ -46,11 +46,11 @@ These names only:
 | `EPOCSTACKSIZE` | Stack size, retained |
 | `EPOCHEAPSIZE` | Heap size, retained |
 | `EPOCALLOWDLLDATA` | Flag, retained |
-| `START RESOURCE` … `END` | One resource block. Inner lines of the block are part of the block, not top-level directives |
+| `START RESOURCE` … `END` | Zero or more resource blocks. Inner lines of each block are part of that block, not top-level directives |
 
 `TARGETTYPE`: only `EXE` accepted.
 
-`UID`: two or three UIDs as in existing MMP practice. Mapping to `elf2e32 --uid1` / `--uid3` is M1. uid1 for EXE is `0x1000007a` (Verified, pipeline fragment). uid3 from the manifest is Verified as the product identity. **Needs experiment** for uid2 (and for how MMP `UID` fields map onto `--uid1`/`--uid3` beyond those facts).
+`UID` is optional. If present: two or three UIDs, as in existing MMP practice. Mapping to `elf2e32 --uid1` / `--uid3` is M1. uid1 for EXE is `0x1000007a` (Verified, pipeline fragment). uid3 from the manifest is Verified as the product identity. **Needs experiment** for uid2 (and for how MMP `UID` fields map onto `--uid1`/`--uid3` beyond those facts).
 
 `START RESOURCE` is parsed as a block. Resource compile/emit is not specified here.
 
@@ -123,7 +123,7 @@ Output is data, not generated build files.
 
 From a `bld.inf`: platform interpretation (ARMV5 UREL GCCE or error), export entries, MMP paths from `PRJ_MMPFILES`, MMP paths from `PRJ_TESTMMPFILES` (present, marked not-built-by-default), with `#if` branches resolved or a parse error.
 
-From each built `.mmp`: the support-list fields above. `TARGETTYPE` is `EXE`. UID list has two or three values.
+From each built `.mmp`: the support-list fields above. `TARGETTYPE` is `EXE`. `UID` is optional; if present, two or three values.
 
 The M1 driver (not this spec, not §17) will feed that model to `arm-none-symbianelf-g++` / `ld` / `elf2e32`. Parser scope stops at the model.
 

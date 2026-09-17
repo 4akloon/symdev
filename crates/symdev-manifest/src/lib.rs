@@ -106,6 +106,16 @@ mode = "self-signed"
 }
 
 #[test]
+fn parse_explicit_uid3_test_range() {
+    let m = symdev_manifest::parse(&HELLO.replace(
+        "capabilities = []",
+        "uid3 = \"0xE0000001\"\ncapabilities = []",
+    ))
+    .unwrap();
+    assert_eq!(m.symbian.uid3, Some(0xE000_0001));
+}
+
+#[test]
 fn omitted_platform_infers_s60_3rd_fp2() {
     assert!(
         !HELLO.contains("[platform]"),
