@@ -4,6 +4,8 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser};
+use symdev_build::{GcceBuild, Toolchain};
+use symdev_core::{BuildBackend, Error, LocalEnv, Project};
 
 use cli::{Cli, Commands};
 
@@ -14,10 +16,45 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some(Commands::New { .. }) => not_implemented("symdev new", "M4"),
-        Some(Commands::Build) => require_manifest("symdev build", "M1"),
+        Some(Commands::Build) => match symdev_manifest::load(Path::new("symdev.toml")) {
+            Ok(m) => match build_project(m) {
+                Ok(code) => code,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    ExitCode::from(1)
+                }
+            },
+            Err(e) => {
+                eprintln!("error: invalid manifest: {e}");
+                ExitCode::from(1)
+            }
+        },
         Some(Commands::Package) => require_manifest("symdev package", "M2"),
         Some(Commands::Deploy) => require_manifest("symdev deploy", "M4"),
     }
+}
+
+fn build_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
+    let uid3 = m
+        .symbian
+        .uid3
+        .ok_or_else(|| Error::Other("uid3 required for build (set symbian.uid3)".into()))?;
+    let tools = Toolchain::from_env()?;
+    let artifacts = pollster::block_on(async {
+        GcceBuild {
+            env: LocalEnv,
+            tools,
+            uid3,
+            capabilities: m.symbian.capabilities,
+        }
+        .build(&Project {
+            root: std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?,
+        })
+    })?;
+    for artifact in artifacts {
+        println!("{}", artifact.path.display());
+    }
+    Ok(ExitCode::SUCCESS)
 }
 
 fn require_manifest(feature: &'static str, milestone: &'static str) -> ExitCode {
@@ -31,7 +68,7 @@ fn require_manifest(feature: &'static str, milestone: &'static str) -> ExitCode 
 }
 
 fn not_implemented(feature: &'static str, milestone: &'static str) -> ExitCode {
-    let err = symdev_core::Error::NotImplemented { feature, milestone };
+    let err = Error::NotImplemented { feature, milestone };
     eprintln!("error: {err}");
     ExitCode::from(1)
 }

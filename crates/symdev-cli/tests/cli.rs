@@ -134,18 +134,51 @@ fn build_missing_manifest() {
 }
 
 #[test]
-fn build_valid_manifest_not_implemented() {
+fn build_valid_manifest_missing_toolchain() {
+    let dir = tempfile::tempdir().unwrap();
+    write_toml(
+        &dir,
+        &HELLO.replace(
+            "capabilities = []",
+            "uid3 = \"0xE0000001\"\ncapabilities = []",
+        ),
+    );
+    bin()
+        .current_dir(&dir)
+        .env_remove("SYMDEV_EPOCROOT")
+        .env_remove("SYMDEV_GXX")
+        .env_remove("SYMDEV_LD")
+        .env_remove("SYMDEV_ELF2E32")
+        .env_remove("SYMDEV_GCC_LIB")
+        .env_remove("SYMDEV_GCC_TARGET_LIB")
+        .arg("build")
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("missing toolchain"))
+        .stderr(predicate::str::contains("not implemented").not());
+}
+
+#[test]
+fn build_omitted_uid3_errors() {
     let dir = tempfile::tempdir().unwrap();
     write_toml(&dir, HELLO);
     bin()
         .current_dir(&dir)
+        .env_remove("SYMDEV_EPOCROOT")
+        .env_remove("SYMDEV_GXX")
+        .env_remove("SYMDEV_LD")
+        .env_remove("SYMDEV_ELF2E32")
+        .env_remove("SYMDEV_GCC_LIB")
+        .env_remove("SYMDEV_GCC_TARGET_LIB")
         .arg("build")
         .assert()
         .failure()
         .code(1)
         .stderr(predicate::str::contains(
-            "error: not implemented: 'symdev build' (unlocks at M1)",
-        ));
+            "uid3 required for build (set symbian.uid3)",
+        ))
+        .stderr(predicate::str::contains("not implemented").not());
 }
 
 #[test]
