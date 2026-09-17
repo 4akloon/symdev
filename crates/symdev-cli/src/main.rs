@@ -16,7 +16,21 @@ fn main() -> ExitCode {
             let _ = Cli::command().print_help();
             ExitCode::SUCCESS
         }
-        Some(Commands::New { .. }) => not_implemented("symdev new", "M4"),
+        Some(Commands::New { name, .. }) => {
+            match std::env::current_dir()
+                .map_err(|e| Error::Other(e.to_string()))
+                .and_then(|cwd| scaffold::create_project(&cwd, &name))
+            {
+                Ok(root) => {
+                    println!("{}", root.display());
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    ExitCode::from(1)
+                }
+            }
+        }
         Some(Commands::Build) => match symdev_manifest::load(Path::new("symdev.toml")) {
             Ok(m) => match build_project(m) {
                 Ok(code) => code,
