@@ -57,7 +57,19 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
-        Some(Commands::Deploy) => require_manifest("symdev deploy", "M4"),
+        Some(Commands::Deploy) => match symdev_manifest::load(Path::new("symdev.toml")) {
+            Ok(m) => match deploy_project(m) {
+                Ok(code) => code,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    ExitCode::from(1)
+                }
+            },
+            Err(e) => {
+                eprintln!("error: invalid manifest: {e}");
+                ExitCode::from(1)
+            }
+        },
     }
 }
 
@@ -123,18 +135,15 @@ fn package_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn require_manifest(feature: &'static str, milestone: &'static str) -> ExitCode {
-    match symdev_manifest::load(Path::new("symdev.toml")) {
-        Ok(_) => not_implemented(feature, milestone),
-        Err(e) => {
-            eprintln!("error: invalid manifest: {e}");
-            ExitCode::from(1)
-        }
+fn deploy_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
+    let sisx = PathBuf::from("build").join(format!("{}.sisx", m.package.name));
+    if !sisx.is_file() {
+        return Err(Error::Other(format!(
+            "SISX not found: build/{}.sisx (run symdev package)",
+            m.package.name
+        )));
     }
-}
-
-fn not_implemented(feature: &'static str, milestone: &'static str) -> ExitCode {
-    let err = Error::NotImplemented { feature, milestone };
-    eprintln!("error: {err}");
-    ExitCode::from(1)
+    let cwd = std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?;
+    println!("{}", cwd.join(&sisx).display());
+    Ok(ExitCode::SUCCESS)
 }
