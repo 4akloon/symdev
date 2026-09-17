@@ -83,6 +83,7 @@ Do not fill these with guessed commands. Label in the runbook as `UNKNOWN — re
 | Exact GCC4Symbian clone commit | **Unknown** |
 | Source tree (`build-toolchain.sh`) vs SourceForge GCC 14.2.0 + binutils 2.29.1 tarball | **Unknown** / **Needs experiment** |
 | Wine vs native `makesis` / `signsis` / `makekeys` | **Needs experiment** |
-| Full compile/link argv (crt, `-L`, `-soname` matching `--linkas`) | **Needs experiment** |
+| Full compile/link argv (crt, `-L`, `-soname` matching `--linkas`) | Experiment 5 recorded compile + link argv ([experiment-backlog.md](experiment-backlog.md)). Object + ELF produced with GNU ld **2.29.1** (same argv; experiment-2 **ld 2.35** fails on SDK `euser.dso`). |
+| soname / `--linkas` → E32 | Experiment 6 recorded Verified `elf2e32` argv ([experiment-backlog.md](experiment-backlog.md)). E32 `/home/genius/src/symdev-experiment-5/hello.exe`. |
 
 Never curl SDK or ROM URLs.

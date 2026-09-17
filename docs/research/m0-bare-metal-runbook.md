@@ -80,18 +80,14 @@ Do not invent `git clone` / `wget` argv. Copy commands from that project’s doc
 
 ## 3. elf2e32
 
-**Status:** not executed on this host.
+**Status:** experiment 6 executed on this host (`pass`). Linux `elf2e32_next` binary produced `hello.exe`. Recorded argv: [experiment-backlog.md](experiment-backlog.md) experiment 6.
 
 C++ port (fedor4ever). Plan-time sources ([pipeline-and-tools.md](pipeline-and-tools.md)):
 
 - [https://github.com/fedor4ever/elf2e32_next](https://github.com/fedor4ever/elf2e32_next) (tested S60_3rd_FP2_SDK_v1.1)
 - Older C++14 port: [https://github.com/fedor4ever/elf2e32](https://github.com/fedor4ever/elf2e32)
 
-How to obtain/build on Linux: **Unknown**. Original `elf2e32` is EPL-1.0 ([licensing.md](licensing.md)). Do not vendor it into this tree in §17.
-
-```
-UNKNOWN — requires experiment
-```
+How to obtain/build on Linux: recorded in experiment 3 (`elf2e32_next` master `6a1d311`; binary `$HOME/src/elf2e32_next/bin/Release/elf2e32`). Original `elf2e32` is EPL-1.0 ([licensing.md](licensing.md)). Do not vendor it into this tree in §17.
 
 Invocation fragment (Verified, spec §4.2) — used in chapter 7, not invented here:
 
@@ -155,15 +151,15 @@ UID / caps constraints while writing sources ([uids-capabilities-signing.md](uid
 - Protected **< 0x80000000** is a hard error under self-sign
 - Self-signable capabilities, exactly six: `LocalServices`, `NetworkServices`, `ReadUserData`, `WriteUserData`, `UserEnvironment`, `Location`. Anything else is refused in this product phase.
 
-Whether a `_reg.rsc` / `rcomp` step is required for the app to appear and launch: **Needs experiment**. Optional `.pkg` dest if a reg resource exists: `!:\private\10003a3f\import\apps\` (Verified template). `rcomp` / `epocrc` availability on Linux: **Unknown** (spec §20).
+Whether a `_reg.rsc` / `rcomp` step is required for the app to appear and launch: **unknown until experiments 10/11** (experiment 9: `rcomp` runs via Wine; a `_reg.rsc` can be produced from a copied SDK example `.rss`; launch not proven). Optional `.pkg` dest if a reg resource exists: `!:\private\10003a3f\import\apps\` (Verified template). `rcomp` on Linux via Wine: **recorded** (experiment 9). Host `epocrc.pl` did not run (FindBin `\` rewrite).
 
 ---
 
 ## 7. Compile / link / elf2e32
 
-**Status:** not executed on this host.
+**Status:** experiments 5–6 executed on this host (`pass`). Compile produced `hello.o`. Link with GNU ld 2.29.1 produced `hello.elf` (same argv; experiment-2 ld 2.35 fails on SDK `euser.dso`). `elf2e32` accepted that ELF (`--linkas` matched linker `-soname`) and wrote `hello.exe`. Recorded argv: [experiment-backlog.md](experiment-backlog.md) experiments 5 and 6.
 
-Assemble argv from Verified fragments plus experimentally recorded paths only. Full argv (include/lib search paths, C runtime objects, flag order, `-soname` matching `--linkas`): **Needs experiment**.
+Assemble argv from Verified fragments plus experimentally recorded paths only. Full argv (include/lib search paths, C runtime objects, flag order, `-soname` matching `--linkas`): compile + link argv recorded; ELF produced with GNU ld 2.29.1; E32 produced with the Verified `elf2e32` fragment.
 
 Never pass `-fPIC` or `-fPIE` (Verified: causes “Import relocation does not refer to code segment”).
 
@@ -198,11 +194,7 @@ elf2e32 --uid1=0x1000007a --uid3=<UID3> --capability=<caps> --fpu=softvfp
         --linkas=hello{000a0000}[<UID3>].exe --libpath=<SDK>/armv5/LIB
 ```
 
-Replace `<SDK>`, `<UID3>`, and `<caps>` from the user SDK and chapter 6. How empty capabilities are spelled for `--capability=`: **Unknown**.
-
-```
-UNKNOWN — requires experiment
-```
+Replace `<SDK>`, `<UID3>`, and `<caps>` from the user SDK and chapter 6. Non-empty `--capability=` for the Verified user-grantable six was recorded in experiment 6. How empty capabilities are spelled for `--capability=`: **Unknown**.
 
 Fail the step on non-zero exit; record argv + stderr in an experiment note (spec §15).
 
@@ -210,7 +202,7 @@ Fail the step on non-zero exit; record argv + stderr in an experiment note (spec
 
 ## 8. `.pkg`
 
-**Status:** not executed on this host.
+**Status:** experiment 7 executed on this host (`pass`). `makesis` (Wine) accepted a `.pkg` whose host path exists here and wrote `hello.sis`. Recorded syntax: [experiment-backlog.md](experiment-backlog.md) experiment 7.
 
 Structure from the Verified template (spec §10.2). `.pkg` **must** include platform dependency **0x102752AE**. Omitting it produces “App is incompatible with phone” (Verified). EXE dest **must** include `!:\sys\bin\`.
 
@@ -224,9 +216,18 @@ Verified tokens (not a complete validated file):
 - optional reg rsc → `!:\private\10003a3f\import\apps\`
 - host-side source path in the template: `$(EPOCROOT)Epoc32\release\armv5\urel\...` (Windows-style)
 
-Host-path translation (Linux vs Windows-style `$(EPOCROOT)Epoc32\release\armv5\urel\...` inside `.pkg`): **UNKNOWN — requires experiment**. SDK tools may still want Windows-style paths inside `.pkg` (spec §6).
+Host-path translation, **recorded from experiment 7** (copied from SDK `locationsatviewrefapp_armv5.pkg`; only name / UID3 / host path substituted): **relative filename** next to the `.pkg` (`"hello.exe"`), not Unix absolute and not Wine `Z:\…` (those dialects were not tried). Optional `_reg.rsc` mapping was omitted from the experiment-8 SISX (no such host file then). Experiment 9 later produced example `_reg.rsc` files via Wine `cpp.exe`+`rcomp.exe`; they were **not** packed into `hello.sisx`. Launch with vs without remains experiments 10/11.
 
-Exact `.pkg` line syntax (header, vendor, platform dependency, file-mapping lines): **UNKNOWN — requires experiment**. Do not invent argv or skeleton syntax beyond the Verified tokens above.
+Exact `.pkg` line syntax, **recorded from experiment 7** (CRLF; comments omitted here):
+
+```
+&EN
+#{"hello"},(0xe79e4cf9),1,0,24,TYPE=SA
+%{"Vendor-EN"}
+:"Vendor"
+[0x102752AE], 0, 0, 0, {"S60ProductID"}
+"hello.exe"		-"!:\sys\bin\hello.exe"
+```
 
 Do not invent extra `.pkg` keys. `makesis` accepting a `.pkg` whose host paths exist on Linux is experiment 7 in spec §17.
 
@@ -234,9 +235,9 @@ Do not invent extra `.pkg` keys. `makesis` accepting a `.pkg` whose host paths e
 
 ## 9. `makekeys` / `makesis` / `signsis`
 
-**Status:** not executed on this host.
+**Status:** experiment 8 executed on this host (`pass`). Wine `makekeys` then `signsis` wrote `hello.sisx`. Recorded argv: [experiment-backlog.md](experiment-backlog.md) experiment 8. `makesis` recorded in chapter 8 / experiment 7.
 
-Self-sign only (Verified). `makekeys -expdays 3650` requires Symbian 9.2+ tools (Verified). Without `-expdays` a certificate lasts about one year. Password handling: local files, never committed. Exact `-dname` field requirements: **Unknown** ([uids-capabilities-signing.md](uids-capabilities-signing.md)). Do not invent a Distinguished Name.
+Self-sign only (Verified). `makekeys -expdays 3650` requires Symbian 9.2+ tools (Verified). Without `-expdays` a certificate lasts about one year. Password handling: local files, never committed.
 
 Verified block (spec §4.2 / §10.2):
 
@@ -247,17 +248,21 @@ makesis MyApp.pkg
 signsis MyApp.sis MyApp.sisx mycert.cer mykey.key
 ```
 
-```
-UNKNOWN — requires experiment
-```
+**Observed `-dname` fields** (copied from this SDK `makekeys` no-arg usage, not from the spec placeholders `OR`/`CO`):
 
-Wine vs native: still **Needs experiment** (chapter 4). Never commit `mycert.cer` / `mykey.key`.
+- `CN` Common Name, e.g. `CN=Joe Bloggs`
+- `C` Country, e.g. `C=GB`
+- `O` Organisation, e.g. `O=Acme Ltd`
+- `OU` Organisational Unit, e.g. `OU=Development`
+- `EM` E-Mail address, e.g. `EM=noone@nowhere.com`
+
+Usage: `-dname` is required on `-cert`/`-req`; “A distinguished name strings needs at least two attributes.” Experiment 8 used the tool’s own Example Usage string (`CN=Joe Bloggs OU=Development O=Acme Ltd C=GB EM=noone@nowhere.com`); a two-attribute minimum was not separately trialed. Local password (`-password`, ≥4 characters) was used and passed as the `signsis` passphrase. Wine (same PE tools as experiment 4). Never commit `*.cer` / `*.key`.
 
 ---
 
 ## 10. Print the `.sisx` path
 
-**Status:** not executed on this host.
+**Status:** experiment 8 executed on this host (`pass`). Absolute path produced: `/home/genius/src/symdev-experiment-5/hello.sisx`.
 
 North-star first deploy step. After `signsis` succeeds, print the artifact path (Verified fragment name `MyApp.sisx`):
 
@@ -271,13 +276,13 @@ If the working directory is not where `signsis` wrote the file, print the absolu
 
 ## 11. EKA2L1
 
-**Status:** not executed on this host.
+**Status:** experiment 10 skipped on this host (`SYMDEV_EKA2L1` and `SYMDEV_ROM` unset; no EKA2L1 binary or ROM on common paths). Evidence: [experiment-backlog.md](experiment-backlog.md) experiment 10.
 
 See [eka2l1.md](eka2l1.md) (Task 3). EKA2L1 is GPL-3.0: invoke as a **separate process** only; do not copy its source into this tree ([licensing.md](licensing.md)).
 
 **Skip** if `SYMDEV_ROM` or `SYMDEV_EKA2L1` is unset, or if those paths are missing. Skipping is valid; it does not fail §17 accept; it does not authorize claiming emulator or E52 support (spec §12).
 
-Expected on-disk layout and exact CLI flags to install a SISX and launch: **Unknown**. Do not invent them here.
+Expected on-disk layout and exact CLI flags to install a SISX and launch: still **Unknown** (not observed).
 
 ```
 UNKNOWN — requires experiment
@@ -289,7 +294,7 @@ An emulator success, if it ever happens, still does **not** mean “E52 supporte
 
 ## 12. Physical E52
 
-**Status:** informational until hardware exists. Not executed.
+**Status:** experiment 11 skipped. No Nokia E52 provided. Evidence: [experiment-backlog.md](experiment-backlog.md) experiment 11. Not executed.
 
 Intended first device: Nokia E52 (RM-469, “Stella”), Symbian OS 9.3 / EKA2, S60 3rd Edition Feature Pack 2 (Verified). Hardware M0 = the hand-built `.sisx` installs and the app launches on a **stock** E52. Nobody may claim E52 support before that.
 

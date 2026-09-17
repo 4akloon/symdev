@@ -30,4 +30,4 @@ Never commit certificates or private keys.
 
 ## Unknown
 
-`makekeys -dname` fields: **Unknown**. Do not invent a Distinguished Name. Record the mandatory fields after experiment; until then label `UNKNOWN — requires experiment`.
+`makekeys -dname` fields: **recorded in experiment 8** ([experiment-backlog.md](experiment-backlog.md); runbook chapter 9). This SDK `makekeys` usage lists `CN`, `C`, `O`, `OU`, `EM` (not spec placeholders `OR`/`CO`) and requires at least two of those attributes. A two-attribute minimum was not separately trialed.
