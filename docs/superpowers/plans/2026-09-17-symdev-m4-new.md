@@ -114,11 +114,24 @@ SOURCE hello.cpp
 - [ ] **Step 1: Failing tests**
 
 ```rust
+fn scratch() -> PathBuf {
+    let p = std::env::temp_dir().join(format!(
+        "symdev-scaffold-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&p).unwrap();
+    p
+}
+
 #[test]
 fn create_project_writes_hello_tree() {
-    let dir = tempfile::tempdir().unwrap();
-    let root = create_project(dir.path(), "hello").unwrap();
-    assert_eq!(root, dir.path().join("hello"));
+    let dir = scratch();
+    let root = create_project(&dir, "hello").unwrap();
+    assert_eq!(root, dir.join("hello"));
     let toml = std::fs::read_to_string(root.join("symdev.toml")).unwrap();
     assert!(toml.contains("name = \"hello\""));
     assert!(toml.contains("uid3 = \"0xef9f2cab\""));
@@ -142,29 +155,14 @@ fn create_project_writes_hello_tree() {
 
 #[test]
 fn create_project_existing_dir_errors() {
-    let dir = tempfile::tempdir().unwrap();
-    std::fs::create_dir(dir.path().join("hello")).unwrap();
-    let err = create_project(dir.path(), "hello").unwrap_err();
+    let dir = scratch();
+    std::fs::create_dir(dir.join("hello")).unwrap();
+    let err = create_project(&dir, "hello").unwrap_err();
     assert_eq!(err.to_string(), "directory `hello` already exists");
 }
 ```
 
-Unit tests in `src/scaffold.rs` cannot use the CLI crate’s `tempfile` dev-dependency. Keep them as `#[cfg(test)]` with `std::env::temp_dir` + a unique subdirectory (no extra dep):
-
-```rust
-fn scratch() -> PathBuf {
-    let p = std::env::temp_dir().join(format!(
-        "symdev-scaffold-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&p).unwrap();
-    p
-}
-```
+Unit tests in `src/scaffold.rs` cannot use the CLI crate’s `tempfile` dev-dependency. The `scratch()` helper above is required.
 
 - [ ] **Step 2–4:** TDD. `cargo test -p symdev-cli --offline`
 - [ ] **Step 5: Commit** `Scaffold a hello project tree from recorded sources.`
