@@ -46,14 +46,20 @@ Pinned: `(0x1000007a, 0x100039ce, 0xe79e4cf9)` → `0x5dcf194e`.
 
 ## 5. Interfaces
 
+Superseded by [2026-09-17-symdev-t1-shadow-design.md](2026-09-17-symdev-t1-shadow-design.md): public API is `UidCrc` methods (`checked`, `bytes`, `line`, `wine_args`). Goldens and argv below are unchanged.
+
 ```rust
-pub fn uid_checked(uid1: u32, uid2: u32, uid3: u32) -> u32;
-pub fn uidcrc_bytes(uid1: u32, uid2: u32, uid3: u32) -> [u8; 16]; // four LE u32
-pub fn uidcrc_line(uid1: u32, uid2: u32, uid3: u32) -> String; // "0x%08x 0x%08x 0x%08x 0x%08x" lowercase
-pub fn uidcrc_args(wine: &Path, uidcrc: &Path, uid1: u32, uid2: u32, uid3: u32, outfile: Option<&str>) -> Vec<String>;
+pub struct UidCrc { pub uid1: u32, pub uid2: u32, pub uid3: u32 }
+impl UidCrc {
+    pub fn new(uid1: u32, uid2: u32, uid3: u32) -> Self;
+    pub fn checked(&self) -> u32;
+    pub fn bytes(&self) -> [u8; 16]; // four LE u32
+    pub fn line(&self) -> String; // "0x%08x 0x%08x 0x%08x 0x%08x" lowercase
+    pub fn wine_args(&self, wine: &Path, uidcrc: &Path, outfile: Option<&str>) -> Vec<String>;
+}
 ```
 
-`uidcrc_args` without outfile is the stdout form; with outfile appends that filename (relative, like SIS argv).
+`wine_args` without outfile is the stdout form; with outfile appends that filename (relative, like SIS argv).
 
 ## 6. Non-goals
 
