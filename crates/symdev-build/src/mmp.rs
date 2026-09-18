@@ -60,20 +60,25 @@ pub fn parse_mmp(text: &str) -> Result<Mmp, ParseError> {
         }
 
         if line.starts_with('#') {
-            let tok = line.split_whitespace().next().unwrap();
+            let Some(tok) = line.split_whitespace().next() else {
+                continue;
+            };
             if preprocessor(tok) {
                 return Err(ParseError(format!("unsupported preprocessor: {tok}")));
             }
             continue;
         }
 
-        let tok = line.split_whitespace().next().unwrap();
+        let Some(tok) = line.split_whitespace().next() else {
+            continue;
+        };
 
-        if let Some(block) = &mut resource_block {
+        if let Some(mut block) = resource_block.take() {
             if tok.eq_ignore_ascii_case("END") {
-                resource.push(resource_block.take().unwrap());
+                resource.push(block);
             } else {
                 block.push(line.to_string());
+                resource_block = Some(block);
             }
             continue;
         }
