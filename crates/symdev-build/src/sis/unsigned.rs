@@ -170,7 +170,7 @@ mod tests {
     fn hello_unsigned() -> SisUnsigned {
         SisUnsigned::new(
             SisUid::new(0xe79e_4cf9),
-            SisCompressed::zlib(&hello_controller().field().bytes()),
+            SisCompressed::zlib(&hello_controller().field().bytes()).unwrap(),
             hello_data(),
         )
     }
@@ -211,7 +211,8 @@ mod tests {
                     .with_signatures(hello_signatures())
                     .field()
                     .bytes(),
-            ),
+            )
+            .unwrap(),
             hello_data(),
         )
     }

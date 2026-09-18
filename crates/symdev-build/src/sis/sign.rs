@@ -18,30 +18,32 @@ pub fn verify_dsa_sha1(signed_bytes: &[u8], signature_blob: &[u8], cert_der: &[u
         .map_err(|_| Error::Other("DSA-SHA1 signature verify failed".into()))
 }
 
-pub fn signatures39_from_key_and_cert(
-    controller: &SisController,
-    key_pem: &[u8],
-    cert_pem_or_der: &[u8],
-    password: &str,
-) -> Result<SisSignatures39> {
-    let cert_der = cert_to_der(cert_pem_or_der)?;
-    let key = signing_key_from_pem(key_pem, password)?;
-    let signed = controller.signed_bytes();
-    let sig: Signature = key
-        .try_sign_digest(Sha1::new_with_prefix(&signed))
-        .map_err(|_| Error::Other("DSA-SHA1 sign failed".into()))?;
-    let mut blob = sig.to_bytes().to_vec();
-    let pad = (4 - (blob.len() % 4)) % 4;
-    blob.resize(blob.len() + pad, 0);
-    verify_dsa_sha1(&signed, &blob, &cert_der)?;
-    Ok(SisSignatures39::new(
-        SisArray::new(vec![SisSignature36::new(
-            SisAlgorithm38::new(SisString::new(DSA_WITH_SHA1)),
-            SisBlob37::new(blob),
-        )
-        .field()]),
-        SisChain22::new(SisBlob37::new(cert_der)),
-    ))
+impl SisController {
+    pub fn signatures_from_key_and_cert(
+        &self,
+        key_pem: &[u8],
+        cert_pem_or_der: &[u8],
+        password: &str,
+    ) -> Result<SisSignatures39> {
+        let cert_der = cert_to_der(cert_pem_or_der)?;
+        let key = signing_key_from_pem(key_pem, password)?;
+        let signed = self.signed_bytes();
+        let sig: Signature = key
+            .try_sign_digest(Sha1::new_with_prefix(&signed))
+            .map_err(|_| Error::Other("DSA-SHA1 sign failed".into()))?;
+        let mut blob = sig.to_bytes().to_vec();
+        let pad = (4 - (blob.len() % 4)) % 4;
+        blob.resize(blob.len() + pad, 0);
+        verify_dsa_sha1(&signed, &blob, &cert_der)?;
+        Ok(SisSignatures39::new(
+            SisArray::new(vec![SisSignature36::new(
+                SisAlgorithm38::new(SisString::new(DSA_WITH_SHA1)),
+                SisBlob37::new(blob),
+            )
+            .field()]),
+            SisChain22::new(SisBlob37::new(cert_der)),
+        ))
+    }
 }
 
 fn parse_signature(blob: &[u8]) -> Result<Signature> {
@@ -360,7 +362,9 @@ mod tests {
         let controller = hello_controller();
         let key = parse_hex(include_str!("testdata/test_dsa_key.hex"));
         let cert = test_cert_der();
-        let signed = signatures39_from_key_and_cert(&controller, &key, &cert, "").unwrap();
+        let signed = controller
+            .signatures_from_key_and_cert(&key, &cert, "")
+            .unwrap();
         assert_eq!(signed.chain.cert.data, cert);
         verify_dsa_sha1(&controller.signed_bytes(), &type37_blob(&signed), &cert).unwrap();
     }
@@ -370,7 +374,9 @@ mod tests {
         let controller = hello_controller();
         let key = parse_hex(include_str!("testdata/test_dsa_key_3des.hex"));
         let cert = test_cert_der();
-        let signed = signatures39_from_key_and_cert(&controller, &key, &cert, "test").unwrap();
+        let signed = controller
+            .signatures_from_key_and_cert(&key, &cert, "test")
+            .unwrap();
         verify_dsa_sha1(&controller.signed_bytes(), &type37_blob(&signed), &cert).unwrap();
     }
 
@@ -379,7 +385,9 @@ mod tests {
         let controller = hello_controller();
         let key = parse_hex(include_str!("testdata/test_dsa_key_pkcs8.hex"));
         let cert = test_cert_der();
-        let signed = signatures39_from_key_and_cert(&controller, &key, &cert, "").unwrap();
+        let signed = controller
+            .signatures_from_key_and_cert(&key, &cert, "")
+            .unwrap();
         verify_dsa_sha1(&controller.signed_bytes(), &type37_blob(&signed), &cert).unwrap();
     }
 }
