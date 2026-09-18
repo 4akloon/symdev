@@ -843,16 +843,13 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 name = "symdev-build"
 version = "0.1.0"
 dependencies = [
- "cbc",
  "der",
- "des",
- "dsa",
- "flate2",
- "md-5",
- "pkcs8",
- "rand",
- "sha1",
  "symdev-core",
+ "symdev-elf2e32",
+ "symdev-makekeys",
+ "symdev-rcomp",
+ "symdev-sis",
+ "symdev-uidcrc",
  "tempfile",
  "thiserror",
  "x509-cert",
@@ -881,12 +878,65 @@ dependencies = [
 ]
 
 [[package]]
+name = "symdev-elf2e32"
+version = "0.1.0"
+dependencies = [
+ "symdev-core",
+]
+
+[[package]]
+name = "symdev-makekeys"
+version = "0.1.0"
+dependencies = [
+ "der",
+ "dsa",
+ "pkcs8",
+ "rand",
+ "sha1",
+ "symdev-core",
+ "x509-cert",
+]
+
+[[package]]
 name = "symdev-manifest"
 version = "0.1.0"
 dependencies = [
  "serde",
  "thiserror",
  "toml",
+]
+
+[[package]]
+name = "symdev-rcomp"
+version = "0.1.0"
+dependencies = [
+ "symdev-core",
+ "symdev-uidcrc",
+]
+
+[[package]]
+name = "symdev-sis"
+version = "0.1.0"
+dependencies = [
+ "cbc",
+ "der",
+ "des",
+ "dsa",
+ "flate2",
+ "md-5",
+ "pkcs8",
+ "sha1",
+ "symdev-core",
+ "symdev-uidcrc",
+ "tempfile",
+ "x509-cert",
+]
+
+[[package]]
+name = "symdev-uidcrc"
+version = "0.1.0"
+dependencies = [
+ "symdev-core",
 ]
 
 [[package]]

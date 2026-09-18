@@ -1,0 +1,29 @@
+[package]
+name = "symdev-sis"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "makesis"
+path = "src/bin/makesis.rs"
+
+[[bin]]
+name = "signsis"
+path = "src/bin/signsis.rs"
+
+[dependencies]
+symdev-core = { path = "../symdev-core" }
+symdev-uidcrc = { path = "../symdev-uidcrc" }
+flate2 = { version = "1", default-features = false, features = ["zlib"] }
+sha1 = "0.10"
+dsa = "0.6"
+pkcs8 = { version = "0.10", default-features = false, features = ["alloc", "pem"] }
+x509-cert = "0.2"
+der = { version = "0.7", features = ["derive", "alloc", "pem"] }
+des = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+md-5 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"
