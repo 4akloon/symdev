@@ -1,0 +1,12 @@
+[package]
+name = "symdev-elf2e32"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "elf2e32"
+path = "src/bin/elf2e32.rs"
+
+[dependencies]
+symdev-core = { path = "../symdev-core" }

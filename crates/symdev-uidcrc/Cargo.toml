@@ -1,0 +1,9 @@
+[package]
+name = "symdev-uidcrc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "uidcrc"
+path = "src/bin/uidcrc.rs"

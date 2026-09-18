@@ -1,0 +1,13 @@
+[package]
+name = "symdev-rcomp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "rcomp"
+path = "src/bin/rcomp.rs"
+
+[dependencies]
+symdev-core = { path = "../symdev-core" }
+symdev-uidcrc = { path = "../symdev-uidcrc" }
