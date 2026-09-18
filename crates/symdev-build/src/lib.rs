@@ -4,16 +4,6 @@ mod mmp;
 mod model;
 mod pkg;
 mod sis;
-mod sis_array;
-mod sis_compressed;
-mod sis_datetime;
-mod sis_field;
-mod sis_info;
-mod sis_language;
-mod sis_pkg_uid;
-mod sis_string;
-mod sis_uid;
-mod sis_version;
 mod toolchain;
 mod uidcrc;
 
@@ -22,16 +12,9 @@ pub use driver::GcceBuild;
 pub use mmp::parse_mmp;
 pub use model::{BldInf, Mmp};
 pub use pkg::render_pkg;
-pub use sis::{dname, SisPackage, SisTools};
-pub use sis_array::SisArray;
-pub use sis_compressed::SisCompressed;
-pub use sis_datetime::{SisDate, SisDateTime, SisTime};
-pub use sis_field::SisField;
-pub use sis_info::SisInfo;
-pub use sis_language::{SisLanguage, SisLanguages};
-pub use sis_pkg_uid::SisPkgUid;
-pub use sis_string::SisString;
-pub use sis_uid::SisUid;
-pub use sis_version::SisVersion;
+pub use sis::{
+    SisArray, SisCompressed, SisDate, SisDateTime, SisField, SisInfo, SisLanguage, SisLanguages,
+    SisPackage, SisPkgUid, SisString, SisTime, SisTools, SisUid, SisVersion, dname,
+};
 pub use toolchain::Toolchain;
 pub use uidcrc::{UidCrc, UidCrcTool};
