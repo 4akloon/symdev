@@ -27,6 +27,14 @@ impl SisField {
     }
 }
 
+pub trait SisEncode {
+    const KIND: u32;
+    fn payload(&self) -> Vec<u8>;
+    fn field(&self) -> SisField {
+        SisField::new(Self::KIND, self.payload())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -47,5 +55,17 @@ mod tests {
     fn two_byte_field_pads_to_four() {
         let f = SisField::new(34, vec![0x5c, 0x9e]);
         assert_eq!(f.bytes(), [0x22, 0, 0, 0, 2, 0, 0, 0, 0x5c, 0x9e, 0, 0]);
+    }
+
+    #[test]
+    fn sis_string_encode_kind_matches_field() {
+        let s = crate::sis::SisString::new("hello");
+        let f = SisEncode::field(&s);
+        assert_eq!(
+            <crate::sis::SisString as SisEncode>::KIND,
+            crate::sis::SisString::KIND
+        );
+        assert_eq!(f.kind, crate::sis::SisString::KIND);
+        assert_eq!(f.payload, SisEncode::payload(&s));
     }
 }

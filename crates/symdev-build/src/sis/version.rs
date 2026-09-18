@@ -1,4 +1,4 @@
-use super::field::SisField;
+use super::field::SisEncode;
 
 pub struct SisVersion {
     pub major: u32,
@@ -24,14 +24,19 @@ impl SisVersion {
         out[8..].copy_from_slice(&self.build.to_le_bytes());
         out
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload().to_vec())
+impl SisEncode for SisVersion {
+    const KIND: u32 = SisVersion::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisVersion::payload(self).to_vec()
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::SisEncode;
     use super::*;
 
     #[test]

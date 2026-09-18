@@ -1,4 +1,4 @@
-use super::field::SisField;
+use super::field::SisEncode;
 
 pub struct SisCompressed {
     pub algorithm: u32,
@@ -34,14 +34,19 @@ impl SisCompressed {
         out.extend_from_slice(&self.data);
         out
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.bytes())
+impl SisEncode for SisCompressed {
+    const KIND: u32 = SisCompressed::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        self.bytes()
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::SisEncode;
     use super::*;
 
     #[test]

@@ -1,4 +1,4 @@
-use super::field::SisField;
+use super::field::SisEncode;
 
 pub struct SisString {
     pub text: String,
@@ -17,14 +17,19 @@ impl SisString {
             .flat_map(u16::to_le_bytes)
             .collect()
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload())
+impl SisEncode for SisString {
+    const KIND: u32 = SisString::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisString::payload(self)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::SisEncode;
     use super::*;
 
     #[test]
