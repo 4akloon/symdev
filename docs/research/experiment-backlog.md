@@ -566,3 +566,31 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 
   Sum 540. Type 28 is the experiment-30 field, not a byte stub. Native inflate, type-3 compress, checksums 34/35, type 30 data, and `package` wiring stay **out of this experiment**.
 
+## 33. SIS type 30 data (T2)
+
+- **Requires:** experiment 15 (type 30 after type 3 in the outer type-12 field) and experiment 6 (`hello.exe`). Experiment **32** is reserved for type 34/35 checksums on another branch — do not record 32 here.
+- **Skip if:** experiment-7 `hello.sis` is gone
+- **Procedure:** On frozen `$HOME/src/symdev-experiment-5/hello.sis`, walk type 30 after the compressed type-3 controller (do not re-run `makesis`). Walk nested TLVs. Compare the innermost data bytes to frozen `hello.exe`. Do not copy MakeSIS C. Do not invent C names. Do not commit `.sis` / `.exe`. Do not add a zlib crate. Do not encode types 34/35.
+- **Expected result:** Pinned type-30 field 3648 bytes, payload `n=3640`: type-2 array of one type-31, type-2 array of one type-32, type-3 with algorithm `0` / uncompressed `3588` / reserved `0` then raw `hello.exe`.
+- **Decision unblocked:** T2 `SisData` / `SisData31` / `SisData32` encode.
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Frozen `$HOME/src/symdev-experiment-5/hello.sis` (4000 bytes) and `hello.exe` (3588 bytes). After UID, type 12 `n=3976`. Children: type 34 `n=2`, type 35 `n=2`, type 3 `n=295` at offset 24, type 30 `n=3640` at offset 328 occupying 3648 (`3640 % 4 == 0`). Nothing after type 30 (`328 + 3648 = 3976`). Nested walk of the type-30 **field** (header plus payload):
+
+  | off | type | n | occupied |
+  |-----|------|---|----------|
+  | 0 | 30 | 3640 (`0x0e38`) | 3648 |
+  | 8 | 2 | 3632 (`0x0e30`) | 3640 |
+  | 16 | 31 | 3624 (`0x0e28`) | 3632 |
+  | 24 | 2 | 3616 (`0x0e20`) | 3624 |
+  | 32 | 32 | 3608 (`0x0e18`) | 3616 |
+  | 40 | 3 | 3600 (`0x0e10`) | 3608 |
+
+  Type-3 payload is the `SisCompressed` 12-byte prefix then 3588 data bytes: algorithm `0`, uncompressed size `3588` (`0x0e04`), reserved `0`, prefix `00 00 00 00 04 0e 00 00 00 00 00 00`. Data starts at field offset 60. Those 3588 bytes **equal** frozen `hello.exe` (E32 head `7a 00 00 10 00 00 00 00 f9 4c 9e e7 b0 08 32 c1`, tail `dc 95 8a 46 a2 45 c4 8c 39 38 35 bb 91 10 7f ff`). Host `hashlib.sha1` of that payload / `hello.exe`: `3a23e7e7e60ed97354534b2a77e565cd64ea3970` (same 20 bytes as experiment 29 type-25 digest). Not zlib (`78 9c` is absent; algorithm is 0, not 1). Inner type-2 payloads start with TLV headers `1f` / `20` (arrays of fields, not raw u32 `SisWords`). Headers:
+
+  - type 30: `1e 00 00 00 38 0e 00 00`
+  - type 31: `1f 00 00 00 28 0e 00 00`
+  - type 32: `20 00 00 00 18 0e 00 00`
+  - type 3: `03 00 00 00 10 0e 00 00`
+
+  Checksums 34/35, outer type 12 compose, native inflate, and `package` wiring stay **out of this experiment**.
+
