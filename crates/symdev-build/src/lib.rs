@@ -8,6 +8,7 @@ mod sis_compressed;
 mod sis_field;
 mod sis_string;
 mod sis_uid;
+mod sis_version;
 mod toolchain;
 mod uidcrc;
 
@@ -21,5 +22,6 @@ pub use sis_compressed::SisCompressed;
 pub use sis_field::SisField;
 pub use sis_string::SisString;
 pub use sis_uid::SisUid;
+pub use sis_version::SisVersion;
 pub use toolchain::Toolchain;
 pub use uidcrc::{UidCrc, UidCrcTool};
