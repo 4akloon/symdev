@@ -29,7 +29,7 @@ pub use field::{SisEncode, SisField};
 pub use files::{SisFile, SisFiles, SisHash, SisWord41};
 pub use info::SisInfo;
 pub use language::{SisLanguage, SisLanguages};
-pub use package::{SisPackage, SisTools, dname};
+pub use package::{SisPackage, SisTools, SisUnsignedSpec, dname, encode_unsigned_sis};
 pub use pkg_uid::SisPkgUid;
 pub use product::{SisProduct, SisProductVersion};
 pub use products::SisProducts;

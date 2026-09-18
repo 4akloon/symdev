@@ -18,7 +18,7 @@ pub use sis::{
     SisInfo, SisLanguage, SisLanguages, SisPackage, SisPkgUid, SisProduct, SisProductVersion,
     SisProducts, SisString, SisTime, SisTools, SisU32, SisUid, SisVersion, SisWord41, SisWords,
     SisWords16, SisWords19, SisUnsigned, SisAlgorithm38, SisBlob37, SisChain22, SisSignature36,
-    SisSignatures39,
+    SisSignatures39, SisUnsignedSpec, encode_unsigned_sis,
 };
 pub use toolchain::Toolchain;
 pub use uidcrc::{UidCrc, UidCrcTool};
