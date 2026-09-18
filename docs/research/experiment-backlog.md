@@ -692,3 +692,14 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 - **Outcome:** pass
 - **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Frozen `$HOME/src/symdev-experiment-5/hello.sisx` (5172 bytes). SHA-256 `fe6bdd338c7a7803a031a6f45e34d838f04843b9d3eac2bb3f475bf4098ba1ea`. `SisController::with_signatures` inserts the experiment-36 type-39 field (`n=1312`, occupied 1320) before type 40. Inflated type 13 is 1868 bytes (`n=1860`). Same `SisUnsigned` wrap as experiment 34: UID + type 12 (`n=5148`, header `0c 00 00 00 1c 14 00 00`) of live checksum 34 `01 c4`, checksum 35 `64 03` (unchanged type 30), type 3 (`n=1467`, occupied 1476), type 30 (identical 3648-byte field). `flate2` 1.1.10 `ZlibEncoder` + `Compression::new(6)` + `features = ["zlib"]` (system libz) byte-equals the frozen 5172-byte file. Unsigned `hello.sis` (4000 bytes) still matches with `signatures: None`. Native DSA, `package` wiring, and clap stay **out of this experiment**.
 
+## 38. native unsigned SIS vs Wine makesis (T2 package)
+
+- **Requires:** experiments 7 (Wine `makesis` frozen `hello.sis`) and 34 (`SisUnsigned` encode). Frozen experiment-7 `hello.sis` / `hello.pkg` / `hello.exe`.
+- **Skip if:** those files are gone
+- **Procedure:** Encode an unsigned SIS from the experiment-7 pkg fields (name `hello`, UID `0xe79e4cf9`, version `1,0,24`, vendor `Vendor` / `Vendor-EN`, platform `0x102752AE`, dest `!:\sys\bin\hello.exe`) plus live SHA-1 and bytes of frozen `hello.exe`, using existing `SisUnsigned` constructors. Compare to frozen Wine `makesis` `hello.sis`. Do not spawn Wine in this experiment. Do not commit `.sis` / `.sisx` / `.cer` / `.key`. Experiment 37 is owned elsewhere (SISX).
+- **Expected result:** Native bytes equal the frozen 4000-byte Wine file, or a recorded diff of which derived fields still disagree.
+- **Decision unblocked:** `symdev package` can write unsigned `.sis` without Wine `makesis`; Wine `signsis` / `makekeys` stay.
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Frozen `$HOME/src/symdev-experiment-5/hello.sis` (4000 bytes, SHA-256 `06f39722f5f911d59c119d126c223eabd7b3ec4c81b3175bbebc3f3eb7855232`) equals in-crate `testdata/hello_sis.hex`. `encode_unsigned_sis` with the experiment-7 pkg fields, experiment-6 capability set (`LocalServices+NetworkServices+ReadUserData+WriteUserData+UserEnvironment+Location` → type 41 `0x000be000`), recorded TYPE=SA words (`0x21` / `0x14` / `0x0d` / `0x1a`), stamp `2026-08-17 15:18:24`, and live SHA-1 of `hello.exe` (`3a23e7e7e60ed97354534b2a77e565cd64ea3970`) **byte-equals** that Wine file. Re-running Wine `makesis` was not done (datetime would move). A different name/UID/vendor does **not** emit the hello golden (UID prefix follows the project). Wine `signsis` / `makekeys` stay on `SisPackage`.
+
+
