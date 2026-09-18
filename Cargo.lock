@@ -849,6 +849,7 @@ dependencies = [
  "dsa",
  "flate2",
  "md-5",
+ "pkcs8",
  "rand",
  "sha1",
  "symdev-core",
