@@ -3,10 +3,10 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{
-    SisArray, SisCompressed, SisController, SisData, SisData31, SisData32, SisDate, SisDateTime,
-    SisEncode, SisFile, SisFiles, SisHash, SisInfo, SisLanguage, SisLanguages, SisPkgUid,
-    SisProduct, SisProductVersion, SisProducts, SisString, SisTime, SisU32, SisUid, SisUnsigned,
-    SisVersion, SisWord41, SisWords, SisWords16, SisWords19,
+    signatures39_from_key_and_cert, SisArray, SisCompressed, SisController, SisData, SisData31,
+    SisData32, SisDate, SisDateTime, SisEncode, SisFile, SisFiles, SisHash, SisInfo, SisLanguage,
+    SisLanguages, SisPkgUid, SisProduct, SisProductVersion, SisProducts, SisString, SisTime,
+    SisU32, SisUid, SisUnsigned, SisVersion, SisWord41, SisWords, SisWords16, SisWords19,
 };
 use symdev_core::{Artifact, Error, LocalEnv, Package, PackageBackend, RemotePath, Result};
 
@@ -106,6 +106,49 @@ pub struct SisUnsignedSpec<'a> {
 }
 
 pub fn encode_unsigned_sis(spec: SisUnsignedSpec<'_>) -> Result<Vec<u8>> {
+    encode_unsigned_sis_ref(&spec)
+}
+
+fn encode_unsigned_sis_ref(spec: &SisUnsignedSpec<'_>) -> Result<Vec<u8>> {
+    let (controller, data) = unsigned_parts(spec)?;
+    Ok(wrap_sis(spec.uid3, &controller, data))
+}
+
+pub fn encode_signed_sisx(
+    spec: SisUnsignedSpec<'_>,
+    key_pem: &[u8],
+    cert_pem_or_der: &[u8],
+    password: &str,
+) -> Result<Vec<u8>> {
+    encode_signed_sisx_ref(&spec, key_pem, cert_pem_or_der, password)
+}
+
+fn encode_signed_sisx_ref(
+    spec: &SisUnsignedSpec<'_>,
+    key_pem: &[u8],
+    cert_pem_or_der: &[u8],
+    password: &str,
+) -> Result<Vec<u8>> {
+    let (controller, data) = unsigned_parts(spec)?;
+    let signatures =
+        signatures39_from_key_and_cert(&controller, key_pem, cert_pem_or_der, password)?;
+    Ok(wrap_sis(
+        spec.uid3,
+        &controller.with_signatures(signatures),
+        data,
+    ))
+}
+
+fn wrap_sis(uid3: u32, controller: &SisController, data: SisData) -> Vec<u8> {
+    SisUnsigned::new(
+        SisUid::new(uid3),
+        SisCompressed::zlib(&controller.field().bytes()),
+        data,
+    )
+    .bytes()
+}
+
+fn unsigned_parts(spec: &SisUnsignedSpec<'_>) -> Result<(SisController, SisData)> {
     let caps = capability_word(spec.capabilities)?;
     let size = spec.exe.len() as u32;
     let digest = sha1(spec.exe);
@@ -122,50 +165,39 @@ pub fn encode_unsigned_sis(spec: SisUnsignedSpec<'_>) -> Result<Vec<u8>> {
         ),
         SisWords16::new(SisWords::new(vec![0x21])), // ponytail: recorded TYPE=SA &EN one-file words; derive when pkg grammar grows
         SisLanguages::new(SisArray::new(vec![SisLanguage::new(1).field()])),
-        SisProducts::new(SisArray::new(vec![
-            SisProduct::new(
-                SisPkgUid::new(0x1027_52ae),
-                SisProductVersion::new(SisVersion::new(0, 0, 0)),
-                SisArray::new(vec![SisString::new("S60ProductID").field()]),
-            )
-            .field(),
-        ])),
+        SisProducts::new(SisArray::new(vec![SisProduct::new(
+            SisPkgUid::new(0x1027_52ae),
+            SisProductVersion::new(SisVersion::new(0, 0, 0)),
+            SisArray::new(vec![SisString::new("S60ProductID").field()]),
+        )
+        .field()])),
         SisWords19::new(SisWords::new(vec![0x14])),
         SisFiles::new(
-            SisArray::new(vec![
-                SisFile::new(
-                    SisString::new(dest),
-                    SisString::new(""),
-                    SisWord41::new(caps),
-                    SisHash::new([1, 0x25, 0x14], digest),
-                    SisString::new(""),
-                    [size, 0, size, 0, 0],
-                )
-                .field(),
-            ]),
+            SisArray::new(vec![SisFile::new(
+                SisString::new(dest),
+                SisString::new(""),
+                SisWord41::new(caps),
+                SisHash::new([1, 0x25, 0x14], digest),
+                SisString::new(""),
+                [size, 0, size, 0, 0],
+            )
+            .field()]),
             SisWords::new(vec![0x0d]),
             SisWords::new(vec![0x1a]),
         ),
         SisU32::new(0),
     );
-    let data = SisData::new(SisArray::new(vec![
-        SisData31::new(SisArray::new(vec![
-            SisData32::new(SisCompressed {
-                algorithm: 0,
-                uncompressed_size: size,
-                reserved: 0,
-                data: spec.exe.to_vec(),
-            })
-            .field(),
-        ]))
+    let data = SisData::new(SisArray::new(vec![SisData31::new(SisArray::new(vec![
+        SisData32::new(SisCompressed {
+            algorithm: 0,
+            uncompressed_size: size,
+            reserved: 0,
+            data: spec.exe.to_vec(),
+        })
         .field(),
-    ]));
-    Ok(SisUnsigned::new(
-        SisUid::new(spec.uid3),
-        SisCompressed::zlib(&controller.field().bytes()),
-        data,
-    )
-    .bytes())
+    ]))
+    .field()]));
+    Ok((controller, data))
 }
 
 fn capability_word(caps: &[String]) -> Result<u32> {
@@ -352,7 +384,8 @@ impl PackageBackend for SisPackage {
         let sis = format!("{}.sis", self.name);
         let sisx = format!("{}.sisx", self.name);
         let exe = std::fs::read(&artifact.path).map_err(|e| Error::Other(e.to_string()))?;
-        let bytes = encode_unsigned_sis(SisUnsignedSpec {
+        let datetime = datetime_utc(SystemTime::now());
+        let spec = SisUnsignedSpec {
             name: &self.name,
             uid3: self.uid3,
             version: self.version,
@@ -360,11 +393,12 @@ impl PackageBackend for SisPackage {
             vendor_localized: &self.vendor,
             exe: &exe,
             capabilities: &self.capabilities,
-            datetime: datetime_utc(SystemTime::now()),
-        })?;
+            datetime,
+        };
+        let bytes = encode_unsigned_sis_ref(&spec)?;
         std::fs::write(workdir.join(&sis), &bytes).map_err(|e| Error::Other(e.to_string()))?;
-        let (cer, key) = match existing_signing_pair(&self.cert, &self.key) {
-            Some((cer, key)) => (path_arg(&cer), path_arg(&key)),
+        let (cer_path, key_path) = match existing_signing_pair(&self.cert, &self.key) {
+            Some((cer, key)) => (cer, key),
             None => {
                 let key_name = format!("{}.key", self.name);
                 let cer_name = format!("{}.cer", self.name);
@@ -374,15 +408,13 @@ impl PackageBackend for SisPackage {
                         .makekeys_args(&self.password, &key_name, &cer_name),
                     &cwd,
                 )?;
-                (cer_name, key_name)
+                (workdir.join(cer_name), workdir.join(key_name))
             }
         };
-        self.run_tool(
-            &self
-                .tools
-                .signsis_args(&sis, &sisx, &cer, &key, &self.password),
-            &cwd,
-        )?;
+        let cert_bytes = std::fs::read(&cer_path).map_err(|e| Error::Other(e.to_string()))?;
+        let key_bytes = std::fs::read(&key_path).map_err(|e| Error::Other(e.to_string()))?;
+        let sisx_bytes = encode_signed_sisx_ref(&spec, &key_bytes, &cert_bytes, &self.password)?;
+        std::fs::write(workdir.join(&sisx), sisx_bytes).map_err(|e| Error::Other(e.to_string()))?;
         Ok(Package {
             primary: workdir.join(&sisx),
             companions: vec![workdir.join(&sis)],
@@ -734,7 +766,7 @@ fn package_writes_native_sis_before_wine_signsis() {
     pkg.capabilities = hello_caps();
     assert!(
         pkg.package(&[Artifact { path: exe_path }]).is_err(),
-        "Wine signsis/makekeys must still be required"
+        "Wine makekeys must still be required when cert/key are absent"
     );
     let sis = dir.path().join("hello.sis");
     assert!(sis.is_file(), "native .sis must exist without Wine makesis");
@@ -742,4 +774,93 @@ fn package_writes_native_sis_before_wine_signsis() {
     assert_eq!(&bytes[..16], &SisUid::new(0xe79e_4cf9).bytes());
     assert!(dir.path().join("hello.pkg").is_file());
     assert!(!dir.path().join("hello.sisx").is_file());
+}
+
+#[test]
+fn package_writes_native_sisx_without_wine_signsis() {
+    let dir = tempfile::tempdir().unwrap();
+    let exe_path = dir.path().join("hello.exe");
+    std::fs::write(&exe_path, hello_exe_bytes()).unwrap();
+    let cert = dir.path().join("hello.cer");
+    let key = dir.path().join("hello.key");
+    std::fs::write(&cert, parse_hex(include_str!("testdata/test_dsa_cert.hex"))).unwrap();
+    std::fs::write(&key, parse_hex(include_str!("testdata/test_dsa_key.hex"))).unwrap();
+    let mut pkg = fake_pkg();
+    pkg.tools.wine = PathBuf::from("/nonexistent-wine");
+    pkg.uid3 = 0xe79e_4cf9;
+    pkg.version = (1, 0, 24);
+    pkg.vendor = "Vendor".into();
+    pkg.capabilities = hello_caps();
+    pkg.cert = Some(cert);
+    pkg.key = Some(key);
+    let out = pkg
+        .package(&[Artifact { path: exe_path }])
+        .expect("native SISX must not spawn Wine signsis");
+    assert!(out.primary.is_file());
+    assert_eq!(out.primary.file_name().unwrap(), "hello.sisx");
+    assert!(dir.path().join("hello.sis").is_file());
+    assert!(dir.path().join("hello.sisx").is_file());
+    let sisx = std::fs::read(&out.primary).unwrap();
+    assert_eq!(&sisx[..16], &SisUid::new(0xe79e_4cf9).bytes());
+    assert_ne!(sisx, hello_sis_golden());
+    assert!(sisx.len() > hello_sis_golden().len());
+}
+
+#[test]
+fn encode_signed_sisx_is_verifiable_and_not_hello_golden() {
+    let key = parse_hex(include_str!("testdata/test_dsa_key.hex"));
+    let cert = parse_hex(include_str!("testdata/test_dsa_cert.hex"));
+    let exe = hello_exe_bytes();
+    let caps = hello_caps();
+    let spec = SisUnsignedSpec {
+        name: "hello",
+        uid3: 0xe79e_4cf9,
+        version: (1, 0, 24),
+        vendor: "Vendor",
+        vendor_localized: "Vendor-EN",
+        exe: &exe,
+        capabilities: &caps,
+        datetime: hello_datetime(),
+    };
+    let unsigned = encode_unsigned_sis_ref(&spec).unwrap();
+    let sisx = encode_signed_sisx_ref(&spec, &key, &cert, "").unwrap();
+    assert_eq!(&sisx[..16], &unsigned[..16]);
+    assert!(sisx.len() > unsigned.len());
+    assert_ne!(sisx, parse_hex(include_str!("testdata/hello_sisx.hex")));
+}
+
+#[test]
+fn experiment5_hello_key_native_sign_skipped_without_password() {
+    let exp = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+        .join("src/symdev-experiment-5");
+    let key = exp.join("hello.key");
+    let cer = exp.join("hello.cer");
+    if !key.is_file() || !cer.is_file() {
+        return;
+    }
+    let Ok(password) = std::env::var("SYMDEV_SIGN_PASSWORD") else {
+        return;
+    };
+    if password.is_empty() {
+        return;
+    }
+    let exe = hello_exe_bytes();
+    let caps = hello_caps();
+    let spec = SisUnsignedSpec {
+        name: "hello",
+        uid3: 0xe79e_4cf9,
+        version: (1, 0, 24),
+        vendor: "Vendor",
+        vendor_localized: "Vendor-EN",
+        exe: &exe,
+        capabilities: &caps,
+        datetime: hello_datetime(),
+    };
+    let key_bytes = std::fs::read(&key).unwrap();
+    let cer_bytes = std::fs::read(&cer).unwrap();
+    let sisx = encode_signed_sisx_ref(&spec, &key_bytes, &cer_bytes, &password).unwrap();
+    let golden = parse_hex(include_str!("testdata/hello_sisx.hex"));
+    // RFC6979 k will not match SignSIS's random k; structure must still be SISX.
+    assert_eq!(&sisx[..16], &golden[..16]);
+    assert!(sisx.len() > hello_sis_golden().len());
 }

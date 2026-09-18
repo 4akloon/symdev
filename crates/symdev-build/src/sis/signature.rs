@@ -2,7 +2,7 @@ use super::array::SisArray;
 use super::field::SisEncode;
 use super::string::SisString;
 
-// ponytail: opaque recorded DSA/DER; native signsis needs the signed-bytes rule and makekeys dates
+// type 37 is opaque DSA DER (+ 4-byte pad) or cert DER; live sign fills DSA from signed_bytes
 pub struct SisBlob37 {
     pub data: Vec<u8>,
 }

@@ -700,6 +700,23 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 - **Expected result:** Native bytes equal the frozen 4000-byte Wine file, or a recorded diff of which derived fields still disagree.
 - **Decision unblocked:** `symdev package` can write unsigned `.sis` without Wine `makesis`; Wine `signsis` / `makekeys` stay.
 - **Outcome:** pass
-- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Frozen `$HOME/src/symdev-experiment-5/hello.sis` (4000 bytes, SHA-256 `06f39722f5f911d59c119d126c223eabd7b3ec4c81b3175bbebc3f3eb7855232`) equals in-crate `testdata/hello_sis.hex`. `encode_unsigned_sis` with the experiment-7 pkg fields, experiment-6 capability set (`LocalServices+NetworkServices+ReadUserData+WriteUserData+UserEnvironment+Location` → type 41 `0x000be000`), recorded TYPE=SA words (`0x21` / `0x14` / `0x0d` / `0x1a`), stamp `2026-08-17 15:18:24`, and live SHA-1 of `hello.exe` (`3a23e7e7e60ed97354534b2a77e565cd64ea3970`) **byte-equals** that Wine file. Re-running Wine `makesis` was not done (datetime would move). A different name/UID/vendor does **not** emit the hello golden (UID prefix follows the project). Wine `signsis` / `makekeys` stay on `SisPackage`.
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Frozen `$HOME/src/symdev-experiment-5/hello.sis` (4000 bytes, SHA-256 `06f39722f5f911d59c119d126c223eabd7b3ec4c81b3175bbebc3f3eb7855232`) equals in-crate `testdata/hello_sis.hex`. `encode_unsigned_sis` with the experiment-7 pkg fields, experiment-6 capability set (`LocalServices+NetworkServices+ReadUserData+WriteUserData+UserEnvironment+Location` → type 41 `0x000be000`), recorded TYPE=SA words (`0x21` / `0x14` / `0x0d` / `0x1a`), stamp `2026-08-17 15:18:24`, and live SHA-1 of `hello.exe` (`3a23e7e7e60ed97354534b2a77e565cd64ea3970`) **byte-equals** that Wine file. Re-running Wine `makesis` was not done (datetime would move).   A different name/UID/vendor does **not** emit the hello golden (UID prefix follows the project). Wine `signsis` / `makekeys` stay on `SisPackage`.
+
+## 39. SignSIS signed-bytes (T2 native signsis)
+
+- **Requires:** experiments 36–37 (type 39 / SISX compose) and frozen experiment-8 `hello.sis` / `hello.sisx` / `hello.cer` (public cert only; `.key` password stays local).
+- **Skip if:** those files are gone
+- **Procedure:** Extract the frozen type-36 DSA blob (48 bytes, DER `30 2c` + two zeros) and cert DER from `hello.sisx`. DSA-SHA1-verify candidate hashes against the cert public key. Do not copy SignSIS C. Do not spawn Wine. Do not commit `.sis` / `.sisx` / `.cer` / `.key`.
+- **Expected result:** Which bytes SignSIS signs, recorded failures, and whether a live SHA-1 + DSA signature can replace Wine `signsis` on `SisPackage`.
+- **Decision unblocked:** native SISX sign in `package` (Wine `makekeys` may remain).
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Frozen `hello.sisx` SHA-256 `fe6bdd338c7a7803a031a6f45e34d838f04843b9d3eac2bb3f475bf4098ba1ea`. Type-36 blob 48 bytes DSA (`r=0x4de0…aea0`, `s=0x5020…a8c0`). Cert self-signature verifies (pubkey works).
+
+  **Hit:** SHA-1 of uncompressed type-13 **payload without type 39 and without type 40** (hello: 528 bytes = types 14+16+15+17+19+28 field concat). Digest `f3fca5ab077413d247c256bb81824a053b221caa`. Standard DSA-SHA1 (hash integer big-endian). Type 37 payload is DER SEQUENCE of two INTEGERs, padded to 4 bytes.
+
+  **Failed (did not verify):** unsigned type-13 field (548, includes header + type 40); unsigned type-13 payload (540, includes type 40); SISX type-13 field/payload; SISX header+unsigned payload; SISX with type 39 or sig blob zeroed; compressed type 3 field/payload/zlib (unsigned and SISX); type 12 field/payload ± checksums; file after UID; whole `.sis`/`.sisx`; UID; exe; type 30; SHA-1-of-those as the DSA message (double-hash); SHA-256 left-160; little-endian hash integer; every prefix/suffix of those buffers other than the 528-byte payload prefix.
+
+  Live sign: SHA-1 + DSA via RustCrypto (`sha1` 0.10, `dsa` 0.6 RFC 6979 k) over `SisController::signed_bytes()`, cert DER in type 22, OID `1.2.840.10040.4.3`. Frozen type-39 blob still pins `hello.sisx` (recorded). Live sign of the same controller does **not** byte-equal frozen `hello.sisx` (SignSIS random k ≠ RFC 6979). Dates in new makekeys certs also block equality. `SisPackage` writes SISX with `with_signatures` + live key; Wine `signsis` is not spawned. Wine `makekeys` remains when cert/key are absent.
+
 
 

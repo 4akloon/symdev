@@ -1,5 +1,6 @@
 use super::field::SisEncode;
 
+#[derive(Clone, Copy)]
 pub struct SisDate {
     pub year: u16,
     pub month: u8,
@@ -30,6 +31,7 @@ impl SisEncode for SisDate {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct SisTime {
     pub hour: u8,
     pub minute: u8,
@@ -60,6 +62,7 @@ impl SisEncode for SisTime {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct SisDateTime {
     pub date: SisDate,
     pub time: SisTime,

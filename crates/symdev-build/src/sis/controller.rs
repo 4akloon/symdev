@@ -47,7 +47,16 @@ impl SisController {
     }
 
     pub fn payload(&self) -> Vec<u8> {
-        let mut out = [
+        let mut out = self.signed_bytes();
+        if let Some(signatures) = &self.signatures {
+            out.extend_from_slice(&signatures.field().bytes());
+        }
+        out.extend_from_slice(&self.trailer.field().bytes());
+        out
+    }
+
+    pub fn signed_bytes(&self) -> Vec<u8> {
+        [
             self.info.field().bytes(),
             self.words16.field().bytes(),
             self.languages.field().bytes(),
@@ -55,12 +64,7 @@ impl SisController {
             self.words19.field().bytes(),
             self.files.field().bytes(),
         ]
-        .concat();
-        if let Some(signatures) = &self.signatures {
-            out.extend_from_slice(&signatures.field().bytes());
-        }
-        out.extend_from_slice(&self.trailer.field().bytes());
-        out
+        .concat()
     }
 }
 
@@ -97,21 +101,19 @@ mod tests {
 
     fn hello_signatures() -> SisSignatures39 {
         SisSignatures39::new(
-            SisArray::new(vec![
-                SisSignature36::new(
-                    SisAlgorithm38::new(SisString::new("1.2.840.10040.4.3")),
-                    SisBlob37::new(
-                        [
-                            0x30, 0x2c, 0x02, 0x14, 0x4d, 0xe0, 0xcf, 0xec, 0x52, 0x8a, 0x05, 0x95,
-                            0x13, 0x7d, 0xfc, 0x0c, 0x66, 0x34, 0xe4, 0x00, 0x75, 0x28, 0xae, 0xa0,
-                            0x02, 0x14, 0x50, 0x20, 0x97, 0x21, 0xc3, 0x8a, 0xb4, 0xdd, 0xb9, 0xc0,
-                            0x1d, 0x71, 0x53, 0xd3, 0x3d, 0xe7, 0x10, 0x62, 0xa8, 0xc0, 0x00, 0x00,
-                        ]
-                        .to_vec(),
-                    ),
-                )
-                .field(),
-            ]),
+            SisArray::new(vec![SisSignature36::new(
+                SisAlgorithm38::new(SisString::new("1.2.840.10040.4.3")),
+                SisBlob37::new(
+                    [
+                        0x30, 0x2c, 0x02, 0x14, 0x4d, 0xe0, 0xcf, 0xec, 0x52, 0x8a, 0x05, 0x95,
+                        0x13, 0x7d, 0xfc, 0x0c, 0x66, 0x34, 0xe4, 0x00, 0x75, 0x28, 0xae, 0xa0,
+                        0x02, 0x14, 0x50, 0x20, 0x97, 0x21, 0xc3, 0x8a, 0xb4, 0xdd, 0xb9, 0xc0,
+                        0x1d, 0x71, 0x53, 0xd3, 0x3d, 0xe7, 0x10, 0x62, 0xa8, 0xc0, 0x00, 0x00,
+                    ]
+                    .to_vec(),
+                ),
+            )
+            .field()]),
             SisChain22::new(SisBlob37::new(
                 hello_type39_golden()[148..148 + 1171].to_vec(),
             )),
@@ -130,33 +132,29 @@ mod tests {
             ),
             SisWords16::new(SisWords::new(vec![0x21])),
             SisLanguages::new(SisArray::new(vec![SisLanguage::new(1).field()])),
-            SisProducts::new(SisArray::new(vec![
-                SisProduct::new(
-                    SisPkgUid::new(0x1027_52ae),
-                    SisProductVersion::new(SisVersion::new(0, 0, 0)),
-                    SisArray::new(vec![SisString::new("S60ProductID").field()]),
-                )
-                .field(),
-            ])),
+            SisProducts::new(SisArray::new(vec![SisProduct::new(
+                SisPkgUid::new(0x1027_52ae),
+                SisProductVersion::new(SisVersion::new(0, 0, 0)),
+                SisArray::new(vec![SisString::new("S60ProductID").field()]),
+            )
+            .field()])),
             SisWords19::new(SisWords::new(vec![0x14])),
             SisFiles::new(
-                SisArray::new(vec![
-                    SisFile::new(
-                        SisString::new("!:\\sys\\bin\\hello.exe"),
-                        SisString::new(""),
-                        SisWord41::new(0x000b_e000),
-                        SisHash::new(
-                            [1, 0x25, 0x14],
-                            [
-                                0x3a, 0x23, 0xe7, 0xe7, 0xe6, 0x0e, 0xd9, 0x73, 0x54, 0x53, 0x4b,
-                                0x2a, 0x77, 0xe5, 0x65, 0xcd, 0x64, 0xea, 0x39, 0x70,
-                            ],
-                        ),
-                        SisString::new(""),
-                        [3588, 0, 3588, 0, 0],
-                    )
-                    .field(),
-                ]),
+                SisArray::new(vec![SisFile::new(
+                    SisString::new("!:\\sys\\bin\\hello.exe"),
+                    SisString::new(""),
+                    SisWord41::new(0x000b_e000),
+                    SisHash::new(
+                        [1, 0x25, 0x14],
+                        [
+                            0x3a, 0x23, 0xe7, 0xe7, 0xe6, 0x0e, 0xd9, 0x73, 0x54, 0x53, 0x4b, 0x2a,
+                            0x77, 0xe5, 0x65, 0xcd, 0x64, 0xea, 0x39, 0x70,
+                        ],
+                    ),
+                    SisString::new(""),
+                    [3588, 0, 3588, 0, 0],
+                )
+                .field()]),
                 SisWords::new(vec![0x0d]),
                 SisWords::new(vec![0x1a]),
             ),
@@ -231,5 +229,16 @@ mod tests {
         assert_eq!(&s[8..536], &u[8..536]);
         assert_eq!(&s[536..1856], type39.as_slice());
         assert_eq!(&s[1856..], &u[536..]);
+    }
+
+    #[test]
+    fn hello_signed_bytes_are_type13_payload_without_type39_or_type40() {
+        let unsigned = hello_controller();
+        let signed = hello_controller().with_signatures(hello_signatures());
+        let bytes = unsigned.signed_bytes();
+        assert_eq!(bytes.len(), 528);
+        assert_eq!(bytes, signed.signed_bytes());
+        assert_eq!(bytes, unsigned.field().bytes()[8..536]);
+        assert_eq!(bytes, signed.field().bytes()[8..536]);
     }
 }
