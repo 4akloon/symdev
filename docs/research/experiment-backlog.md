@@ -302,3 +302,18 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
   - checked `0x5db40004` — matches `UidCrc` on those three UIDs
 
   Raw 16 bytes: `7a 1a 20 10 00 00 00 00 f9 4c 9e e7 04 00 b4 5d`. After the UID block, both files continue with a field whose type word is `0x0000000c` and whose length word is `0x00000f88` (SIS, 3976) or `0x0000141c` (SISX, 5148); `16 + 8 + length` equals file size. Native SIS body / signatures are **out of this experiment**.
+
+## 15. SIS field TLV + 4-byte padding (T2)
+
+- **Requires:** experiment 14 (same frozen `hello.sis` / `hello.sisx`).
+- **Skip if:** those files are gone
+- **Procedure:** After the 16-byte UID, walk type+length fields (two little-endian `u32`, then `length` payload bytes). Record how the next field is aligned. Do not copy MakeSIS C. Do not commit `.sis` / `.sisx`. Do not re-run `makesis`.
+- **Expected result:** Pinned outer-field headers, nested first-field bytes, and the padding rule.
+- **Decision unblocked:** T2 `SisField` encode (still not a full native `makesis`).
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Same files as experiment 14. Outer field immediately after UID: type `12` (`0x0c`), length `3976` (`0x00000f88`) on SIS and `5148` (`0x0000141c`) on SISX. Outer headers:
+
+  - SIS: `0c 00 00 00 88 0f 00 00`
+  - SISX: `0c 00 00 00 1c 14 00 00`
+
+  Nested walk of the SIS controller payload (offsets from start of that payload): type `34` length `2` payload `5c 9e` at 0; type `35` length `2` payload `64 03` at 12; type `3` length `295` at 24; type `30` length `3640` at 328. Next field starts at `8 + ((length + 3) & ~3)` from the current field start (2-byte payloads occupy 12 bytes: 8 header + 2 data + 2 zero pad). Type `3` length `295` occupies `8 + 296` (one pad byte) so the following field is at 328. Native compressed controller / file data / signatures remain **out of this experiment**.
