@@ -3,10 +3,10 @@ mod driver;
 mod mmp;
 mod model;
 mod pkg;
+mod rcomp;
 mod sis;
 mod toolchain;
 mod uidcrc;
-mod rcomp;
 
 pub use bld::{parse_bld_inf, ParseError};
 pub use driver::GcceBuild;
