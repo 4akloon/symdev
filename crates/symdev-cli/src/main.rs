@@ -118,6 +118,7 @@ fn package_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
         uid3,
         version: m.package.version,
         vendor: m.symbian.vendor,
+        capabilities: m.symbian.capabilities,
         password,
         cert: m
             .signing

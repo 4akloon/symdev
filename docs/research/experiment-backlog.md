@@ -682,3 +682,13 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 
   Type 13 compose with type 39, outer type 12, native DSA, and `package` wiring stay **out of this experiment**.
 
+## 38. native unsigned SIS vs Wine makesis (T2 package)
+
+- **Requires:** experiments 7 (Wine `makesis` frozen `hello.sis`) and 34 (`SisUnsigned` encode). Frozen experiment-7 `hello.sis` / `hello.pkg` / `hello.exe`.
+- **Skip if:** those files are gone
+- **Procedure:** Encode an unsigned SIS from the experiment-7 pkg fields (name `hello`, UID `0xe79e4cf9`, version `1,0,24`, vendor `Vendor` / `Vendor-EN`, platform `0x102752AE`, dest `!:\sys\bin\hello.exe`) plus live SHA-1 and bytes of frozen `hello.exe`, using existing `SisUnsigned` constructors. Compare to frozen Wine `makesis` `hello.sis`. Do not spawn Wine in this experiment. Do not commit `.sis` / `.sisx` / `.cer` / `.key`. Experiment 37 is owned elsewhere (SISX).
+- **Expected result:** Native bytes equal the frozen 4000-byte Wine file, or a recorded diff of which derived fields still disagree.
+- **Decision unblocked:** `symdev package` can write unsigned `.sis` without Wine `makesis`; Wine `signsis` / `makekeys` stay.
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Frozen `$HOME/src/symdev-experiment-5/hello.sis` (4000 bytes, SHA-256 `06f39722f5f911d59c119d126c223eabd7b3ec4c81b3175bbebc3f3eb7855232`) equals in-crate `testdata/hello_sis.hex`. `encode_unsigned_sis` with the experiment-7 pkg fields, experiment-6 capability set (`LocalServices+NetworkServices+ReadUserData+WriteUserData+UserEnvironment+Location` → type 41 `0x000be000`), recorded TYPE=SA words (`0x21` / `0x14` / `0x0d` / `0x1a`), stamp `2026-08-17 15:18:24`, and live SHA-1 of `hello.exe` (`3a23e7e7e60ed97354534b2a77e565cd64ea3970`) **byte-equals** that Wine file. Re-running Wine `makesis` was not done (datetime would move). A different name/UID/vendor does **not** emit the hello golden (UID prefix follows the project). Wine `signsis` / `makekeys` stay on `SisPackage`.
+
