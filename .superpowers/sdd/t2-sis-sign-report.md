@@ -72,3 +72,11 @@ No Wine. Tests do not read `.sis` / `.sisx` / `.cer` / `.key` from disk. No `.ce
 
 - Experiment 36 (append-only): `docs/research/experiment-backlog.md`
 - This report: `.superpowers/sdd/t2-sis-sign-report.md`
+
+## Review
+
+**Verdict: Approved** (after alphabetical `sis/mod.rs` exports; crate-root `lib.rs` list stays append-only).
+
+Named check: `testdata/hello_type39.hex` equals type-39 field extracted from frozen `$HOME/src/symdev-experiment-5/hello.sisx` (5172 bytes, SHA-256 `fe6bdd338c7a7803a031a6f45e34d838f04843b9d3eac2bb3f475bf4098ba1ea`). Type-37 cert blob equals `hello.cer` DER (SHA-1 `6698f484c9c64d0ddf44240520f0e6bd629acfd9`). SISX extra is type 39 inserted before type 40 in inflated type 13, not a sibling after type 12.
+
+Critical: none. Important: `mod signature` / `pub use signature` had been appended after `words`; rustfmt and the unsigned worktree keep `sis/mod.rs` alphabetical. Crate-root brace list already appended `SisAlgorithm38`…`SisSignatures39` after `SisWords19`.
