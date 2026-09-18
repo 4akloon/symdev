@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser};
-use symdev_build::{GcceBuild, SisPackage, SisTools, Toolchain};
+use symdev_build::{GcceBuild, SisPackage, Toolchain};
 use symdev_core::{Artifact, BuildBackend, Error, LocalEnv, PackageBackend, Project};
 
 use cli::{Cli, Commands};
@@ -108,12 +108,9 @@ fn package_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
             m.package.name
         )));
     }
-    let tools = SisTools::from_env()?;
     let password = std::env::var("SYMDEV_SIGN_PASSWORD").unwrap_or_default();
     let cwd = std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?;
     let package = SisPackage {
-        env: LocalEnv,
-        tools,
         name: m.package.name,
         uid3,
         version: m.package.version,

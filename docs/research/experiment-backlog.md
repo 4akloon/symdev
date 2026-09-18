@@ -718,6 +718,38 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 
   Live sign: SHA-1 + DSA via RustCrypto (`sha1` 0.10, `dsa` 0.6 RFC 6979 k) over `SisController::signed_bytes()`, cert DER in type 22, OID `1.2.840.10040.4.3`. Frozen type-39 blob still pins `hello.sisx` (recorded). Live sign of the same controller does **not** byte-equal frozen `hello.sisx` (SignSIS random k ≠ RFC 6979). Dates in new makekeys certs also block equality. `SisPackage` writes SISX with `with_signatures` + live key; Wine `signsis` is not spawned. Wine `makekeys` remains when cert/key are absent.
 
+## 40. native makekeys vs frozen hello.cer (T2)
+
+- **Requires:** experiment 8 (Wine `makekeys` frozen `hello.cer` / `hello.key`) and experiment 39 (native `encode_signed_sisx` already reads PEM/DER cert + PKCS#8 / traditional / encrypted-traditional DSA keys). Frozen `$HOME/src/symdev-experiment-5/hello.cer` / `hello.key`.
+- **Skip if:** those files are gone
+- **Procedure:** Dump hello.cer SPKI, DSA params, subject, validity (openssl; do not assume RSA). Record Wine `makekeys` argv already in tree (`SisTools::makekeys_args` / experiment 8). Generate a self-signed cert+key in Rust (RustCrypto) with injected Not Before `2026-09-17 15:21:21 GMT` and `-expdays 3650`. Compare to frozen hello.cer. Confirm native sign of the hello controller hash verifies with the generated key. Do not copy makekeys C. Do not invent argv. Do not spawn Wine in default tests. Do not commit `.cer` / `.key` / `.sis` / `.sisx`.
+- **Expected result:** Byte-match hello.cer if possible; otherwise a verifiable self-signed DSA-SHA1 cert whose subject matches the recorded makekeys DN, plus a key format `encode_signed_sisx` already reads.
+- **Decision unblocked:** `SisPackage` can write cert/key without Wine `makekeys`; `package` does not need Wine/`SYMDEV_EPOCROOT`.
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Frozen `$HOME/src/symdev-experiment-5/hello.cer` (PEM 1643 bytes, DER 1171, SHA-256 `08818e08330d77a3e53dc7814082a9906ab7711c737d21aa09126f6b319c6f5e`, SHA-1 fingerprint `6698f484c9c64d0ddf44240520f0e6bd629acfd9` matching experiment 36). **Algorithm is DSA, not RSA.** `openssl x509 -text` / `asn1parse`:
+
+  | Field | Frozen hello.cer |
+  |-------|------------------|
+  | Version | 3 (`INTEGER` 2), **no extensions** |
+  | Serial | 1 |
+  | Signature | `dsaWithSHA1` (`1.2.840.10040.4.3`), OID only (no NULL parameters) |
+  | Issuer = Subject | `CN=Joe Bloggs, OU=Development, O=Acme Ltd, C=GB, emailAddress=noone@nowhere.com` (CN/OU/O/C `PRINTABLESTRING`; email `IA5STRING`) |
+  | Validity | UTCTime `260917152121Z` → `360914152121Z` (Not Before 2026-09-17 15:21:21 GMT, Not After 2036-09-14 15:21:21 GMT = `+ 3650` days) |
+  | SPKI | `dsaEncryption`; **p 2048-bit**, **q 160-bit** (`INTEGER` 21 bytes `FD5AFC…BD15`), g 2048-bit |
+
+  Frozen `hello.key` (1264 bytes): `BEGIN DSA PRIVATE KEY` / `Proc-Type: 4,ENCRYPTED` / `DEK-Info: DES-EDE3-CBC,0A4E5E4AEE811DAD`. Password stays local.
+
+  Wine argv already in tree (`makekeys_args_match_experiment_8`; same as experiment 8, password redacted):
+
+  ```
+  /usr/bin/wine /sdk/epoc32/tools/makekeys.exe \
+    -cert -expdays 3650 -password <pw> -len 2048 \
+    -dname "CN=Joe Bloggs OU=Development O=Acme Ltd C=GB EM=noone@nowhere.com" \
+    hello.key hello.cer
+  ```
+
+  Native generate (injected Not Before 2026-09-17 15:21:21 GMT, serial 1, recorded DN, `dsaWithSHA1`): **does not byte-equal** frozen `hello.cer` (new DSA params, RFC 6979 cert `k`, and `dsa` 0.6 has no 2048/160 `KeySize`; debug `DSA_2048_256` keygen ~192s so production uses `DSA_1024_160`). Self-signature verifies. Native `encode_signed_sisx` of the hello controller with the generated PKCS#8 key verifies. Subject is the recorded makekeys Example Usage DN (not the SIS pkg vendor string `Vendor`). Key file is unencrypted PKCS#8 `BEGIN PRIVATE KEY` — Wine `.key` encrypted traditional PEM is **not** re-emitted; native sign already loads both. `SisPackage::package` writes `<name>.cer`/`<name>.key` this way when `signing.cert`/`signing.key` are absent (same overwrite as `std::fs::write` / Wine makekeys). CLI `package` no longer calls `SisTools::from_env`. Default `cargo test` does not spawn Wine.
+
 ## 41. Wine `rcomp` goldens + native RSC UID header (T3)
 
 - **Requires:** experiment 9 (Wine `rcomp` usage + `cpp.exe`/`rcomp.exe` argv) and a legal-access FP2 SDK. Experiment **40** is reserved for makekeys (independent branch).
