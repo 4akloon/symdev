@@ -451,3 +451,45 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
   - type `2` wrapping type-1 `S60ProductID`
 
   Type `17` (array of this product plus a type-2 word `0x12`) stays **out of this experiment**. Native inflate, type 16/19/28/40, and `package` wiring stay out.
+
+## 25. SIS type-2 raw u32 words inside type 16 (T2)
+
+- **Requires:** experiments 16 and 23 (host inflate of type-3; type 11/15 already pinned as the EN language list).
+- **Skip if:** experiment-7 `hello.sis` is gone
+- **Procedure:** Same host inflate of frozen `hello.sis` as experiments 17–24 (Python `zlib`, not a repo crate). In the type-`13` block, record type `16` and its nested type `2`. Confirm the type-2 payload is concatenated little-endian `u32` words, not concatenated `SisField::bytes()` (`SisArray`). Compare the word to experiment-23 language id `1`. Do not copy MakeSIS C. Do not invent a C / Options / Languages name. Do not commit `.sis`.
+- **Expected result:** Pinned type `16` wrapping a type-2 whose payload is one LE u32 `0x21`. That word is not the EN language id.
+- **Decision unblocked:** T2 `SisWords` / `SisWords16` encode.
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Frozen `$HOME/src/symdev-experiment-5/hello.sis` (4000 bytes). Host `zlib.decompress` of type-3 bytes from offset 12 → 548 bytes, one type `13` length `540`. Inside that, type `16` length `12` at offset 160. Field bytes (20):
+
+  `10 00 00 00 0c 00 00 00 02 00 00 00 04 00 00 00 21 00 00 00`
+
+  Nested type `2` length `4` payload `21 00 00 00` = `0x21`. Not a nested TLV field (a `SisArray` of one child would be longer than 4 bytes). Experiment 23 type-11 word is `1`; `0x21` is not that id. Native inflate, type 17/19/28/40, and `package` wiring stay **out of this experiment**.
+
+## 26. SIS type-2 raw u32 words inside type 19 (T2)
+
+- **Requires:** experiment 25 (same inflated type-13 block; same raw-u32 type-2 rule).
+- **Skip if:** experiment-7 `hello.sis` is gone
+- **Procedure:** Record type `19` from the same inflated controller. Confirm it wraps type 2 the same way as type 16 (raw u32 concat, not `SisArray`). Do not copy MakeSIS C. Do not invent a C / Wine name. Do not commit `.sis`.
+- **Expected result:** Pinned type `19` wrapping a type-2 whose payload is one LE u32 `0x14`.
+- **Decision unblocked:** T2 `SisWords19` encode.
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Same inflate. Type `19` length `12` at type-13 offset 324. Field bytes (20):
+
+  `13 00 00 00 0c 00 00 00 02 00 00 00 04 00 00 00 14 00 00 00`
+
+  Nested type `2` length `4` payload `14 00 00 00` = `0x14`. Same encoding as experiment 25’s inner type 2. Type 28 and type 17 stay **out of this experiment**. Native inflate and `package` wiring stay out.
+
+## 27. SIS type 40 u32 (T2)
+
+- **Requires:** experiment 25 (same inflated type-13 block).
+- **Skip if:** experiment-7 `hello.sis` is gone
+- **Procedure:** Record type `40` from the same inflated controller. Confirm it is one little-endian `u32` and is **not** nested in a type-2 wrapper. Do not copy MakeSIS C. Do not invent a C name. Do not commit `.sis`.
+- **Expected result:** Pinned type `40` length `4` payload `00 00 00 00`.
+- **Decision unblocked:** T2 `SisU32` encode.
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Same inflate. Type `40` length `4` at type-13 offset 528. Field bytes (12):
+
+  `28 00 00 00 04 00 00 00 00 00 00 00`
+
+  Payload is one LE u32 `0`. No inner type-2 header. Type 28 stays **out of this experiment**. Native inflate, type-13 compose, and `package` wiring stay out.
