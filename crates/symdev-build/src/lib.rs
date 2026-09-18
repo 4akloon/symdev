@@ -6,6 +6,7 @@ mod pkg;
 mod sis;
 mod toolchain;
 mod uidcrc;
+mod rcomp;
 
 pub use bld::{parse_bld_inf, ParseError};
 pub use driver::GcceBuild;
@@ -23,3 +24,4 @@ pub use sis::{
 };
 pub use toolchain::Toolchain;
 pub use uidcrc::{UidCrc, UidCrcTool};
+pub use rcomp::{RcompTool, RscUid};
