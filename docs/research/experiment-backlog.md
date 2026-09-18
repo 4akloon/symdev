@@ -18,6 +18,19 @@ Preferred proof was **experiment 11**. The spec’s fallback interim was experim
 
 **Design decision (user, 2026-09-17):** proceed to M1 (`symdev build`) without hardware or emulator proof. This does **not** authorize claiming E52 support. Experiment 11 stays skip until a stock E52 is available.
 
+## Parked (user 2026-09-18): not this host’s priority
+
+This host is Linux. Do **not** pull these ahead of T2 (native SIS on recorded goldens) or later Linux T-track (T3 `rcomp`/`mifconv`/`bmconv` when unblocked, T4 `elf2e32` Rust). They stay in the backlog, not the next slice.
+
+| Item | Why parked |
+|---|---|
+| **T5** native macOS GCC | This host is Linux. North-star T5 waits for a macOS edit host. |
+| **M3** SSH `ExecutionEnvironment` | Needs macOS as the edit host (already skipped on M4). |
+| **M5** EKA2L1 in CI | Experiment 10 `skip` (`SYMDEV_EKA2L1` / `SYMDEV_ROM` unset). Do not invent emulator flags. |
+| **E52 / Hardware M0** | Experiment 11 `skip` (no stock phone). Skip does not authorize claiming E52 support. |
+
+Experiments 10–11 remain `skip`. Re-open only when the missing host, ROM, or phone is actually present.
+
 ## How to record
 
 After a run, set **Outcome** to exactly `pass`, `fail`, or `skip`. Add date, host, and a short evidence note (paths observed, argv actually used, stderr). Do not invent argv here before the run: copy Verified fragments from [pipeline-and-tools.md](pipeline-and-tools.md) / the runbook, or copy commands from the cited project’s own docs during the run, then record what ran.
