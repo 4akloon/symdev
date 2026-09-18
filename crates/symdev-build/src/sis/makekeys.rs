@@ -39,6 +39,9 @@ pub struct SelfSignedDsa {
 }
 
 impl SelfSignedDsa {
+    pub const DNAME: &'static str =
+        "CN=Joe Bloggs OU=Development O=Acme Ltd C=GB EM=noone@nowhere.com";
+
     pub fn generate(not_before: SystemTime) -> Result<Self> {
         let not_after = not_before
             .checked_add(Duration::from_secs(EXPDAYS * 86_400))
@@ -65,8 +68,8 @@ impl SelfSignedDsa {
             signature: alg.clone(),
             issuer: subject.clone(),
             validity: Validity {
-                not_before: utc(not_before)?,
-                not_after: utc(not_after)?,
+                not_before: Self::utc(not_before)?,
+                not_after: Self::utc(not_after)?,
             },
             subject,
             subject_public_key_info: spki,
@@ -105,13 +108,13 @@ impl SelfSignedDsa {
     pub fn key_pem(&self) -> &[u8] {
         &self.key_pem
     }
-}
 
-fn utc(t: SystemTime) -> Result<Time> {
-    let secs = t
-        .duration_since(UNIX_EPOCH)
-        .map_err(|_| Error::Other("certificate date before Unix epoch".into()))?;
-    UtcTime::from_unix_duration(secs)
-        .map(Time::UtcTime)
-        .map_err(|e| Error::Other(format!("UTCTime: {e}")))
+    fn utc(t: SystemTime) -> Result<Time> {
+        let secs = t
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| Error::Other("certificate date before Unix epoch".into()))?;
+        UtcTime::from_unix_duration(secs)
+            .map(Time::UtcTime)
+            .map_err(|e| Error::Other(format!("UTCTime: {e}")))
+    }
 }

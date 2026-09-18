@@ -4,7 +4,7 @@ use std::process::Command;
 use symdev_core::{Artifact, BuildBackend, Error, LocalEnv, Project, RemotePath, Result};
 
 use crate::toolchain::Toolchain;
-use crate::{parse_bld_inf, parse_mmp};
+use crate::{BldInf, Mmp};
 
 pub struct GcceBuild {
     pub env: LocalEnv,
@@ -214,7 +214,7 @@ impl BuildBackend for GcceBuild {
         } else {
             return Err(Error::Other("no bld.inf".into()));
         };
-        let bld = parse_bld_inf(&std::fs::read_to_string(&bld_path).map_err(io)?)
+        let bld = BldInf::parse(&std::fs::read_to_string(&bld_path).map_err(io)?)
             .map_err(|e| Error::Other(e.to_string()))?;
         if bld.mmp_files.is_empty() {
             return Err(Error::Other("no MMP to build".into()));
@@ -227,7 +227,7 @@ impl BuildBackend for GcceBuild {
         let mut artifacts = Vec::new();
         for mmp_rel in &bld.mmp_files {
             let mmp_path = bld_dir.join(mmp_rel);
-            let mmp = parse_mmp(&std::fs::read_to_string(&mmp_path).map_err(io)?)
+            let mmp = Mmp::parse(&std::fs::read_to_string(&mmp_path).map_err(io)?)
                 .map_err(|e| Error::Other(e.to_string()))?;
             let mmp_dir = mmp_path.parent().unwrap_or(bld_dir);
             let name = Path::new(&mmp.target)
@@ -468,13 +468,7 @@ mod tests {
         let src_dir = mmp_dir.join("src");
         std::fs::create_dir_all(&src_dir).unwrap();
         std::fs::write(src_dir.join("hello.cpp"), b"//").unwrap();
-        let found = resolve_source(
-            &["src".into()],
-            &mmp_dir,
-            dir.path(),
-            "hello.cpp",
-        )
-        .unwrap();
+        let found = resolve_source(&["src".into()], &mmp_dir, dir.path(), "hello.cpp").unwrap();
         assert_eq!(found, src_dir.join("hello.cpp"));
     }
 
