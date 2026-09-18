@@ -16,6 +16,7 @@ mod string;
 mod uid;
 mod version;
 mod words;
+mod signature;
 
 pub use array::SisArray;
 pub use checksum::{SisChecksum34, SisChecksum35};
@@ -35,3 +36,4 @@ pub use string::SisString;
 pub use uid::SisUid;
 pub use version::SisVersion;
 pub use words::{SisU32, SisWords, SisWords16, SisWords19};
+pub use signature::{SisAlgorithm38, SisBlob37, SisChain22, SisSignature36, SisSignatures39};
