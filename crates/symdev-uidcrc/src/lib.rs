@@ -11,14 +11,6 @@ impl UidCrc {
         Self { uid1, uid2, uid3 }
     }
 
-    pub fn parse_token(s: &str) -> Result<u32> {
-        let t = s
-            .strip_prefix("0x")
-            .or_else(|| s.strip_prefix("0X"))
-            .unwrap_or(s);
-        u32::from_str_radix(t, 16).map_err(|e| Error::Other(format!("uid {s}: {e}")))
-    }
-
     pub fn checked(&self) -> u32 {
         let mut buf = [0u8; 12];
         buf[0..4].copy_from_slice(&self.uid1.to_le_bytes());
