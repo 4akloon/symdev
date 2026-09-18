@@ -13,10 +13,10 @@ pub use mmp::parse_mmp;
 pub use model::{BldInf, Mmp};
 pub use pkg::render_pkg;
 pub use sis::{
-    dname, SisArray, SisCompressed, SisDate, SisDateTime, SisField, SisFile, SisFiles, SisHash,
-    SisInfo, SisLanguage, SisLanguages, SisPackage, SisPkgUid, SisProduct, SisProductVersion,
-    SisProducts, SisString, SisTime, SisTools, SisU32, SisUid, SisVersion, SisWord41, SisWords,
-    SisWords16, SisWords19,
+    dname, SisArray, SisCompressed, SisController, SisDate, SisDateTime, SisField, SisFile,
+    SisFiles, SisHash, SisInfo, SisLanguage, SisLanguages, SisPackage, SisPkgUid, SisProduct,
+    SisProductVersion, SisProducts, SisString, SisTime, SisTools, SisU32, SisUid, SisVersion,
+    SisWord41, SisWords, SisWords16, SisWords19,
 };
 pub use toolchain::Toolchain;
 pub use uidcrc::{UidCrc, UidCrcTool};

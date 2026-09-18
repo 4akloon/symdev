@@ -1,5 +1,6 @@
 mod array;
 mod compressed;
+mod controller;
 mod datetime;
 mod field;
 mod files;
@@ -16,6 +17,7 @@ mod words;
 
 pub use array::SisArray;
 pub use compressed::SisCompressed;
+pub use controller::SisController;
 pub use datetime::{SisDate, SisDateTime, SisTime};
 pub use field::SisField;
 pub use files::{SisFile, SisFiles, SisHash, SisWord41};
