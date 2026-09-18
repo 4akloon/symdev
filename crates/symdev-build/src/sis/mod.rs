@@ -8,6 +8,7 @@ mod field;
 mod files;
 mod info;
 mod language;
+mod makekeys;
 mod package;
 mod pkg_uid;
 mod product;

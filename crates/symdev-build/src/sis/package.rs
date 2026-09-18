@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use super::makekeys::generate_self_signed_dsa;
 use super::{
     SisArray, SisCompressed, SisController, SisData, SisData31, SisData32, SisDate, SisDateTime,
     SisEncode, SisFile, SisFiles, SisHash, SisInfo, SisLanguage, SisLanguages, SisPkgUid,
@@ -9,7 +9,7 @@ use super::{
     SisVersion, SisWord41, SisWords, SisWords16, SisWords19,
 };
 use sha1::{Digest, Sha1};
-use symdev_core::{Artifact, Error, LocalEnv, Package, PackageBackend, RemotePath, Result};
+use symdev_core::{Artifact, Error, Package, PackageBackend, Result};
 
 pub struct SisTools {
     pub wine: PathBuf,
@@ -245,8 +245,6 @@ pub fn existing_signing_pair(
 }
 
 pub struct SisPackage {
-    pub env: LocalEnv,
-    pub tools: SisTools,
     pub name: String,
     pub uid3: u32,
     pub version: (u32, u32, u32),
@@ -255,20 +253,6 @@ pub struct SisPackage {
     pub password: String,
     pub cert: Option<PathBuf>,
     pub key: Option<PathBuf>,
-}
-
-impl SisPackage {
-    fn run_tool(&self, args: &[String], cwd: &RemotePath) -> Result<()> {
-        let mut cmd = Command::new(&args[0]);
-        cmd.args(&args[1..]);
-        let out = self.env.run_blocking(cmd, cwd)?;
-        if out.status != 0 {
-            return Err(Error::Other(
-                String::from_utf8_lossy(&out.stderr).into_owned(),
-            ));
-        }
-        Ok(())
-    }
 }
 
 impl PackageBackend for SisPackage {
@@ -291,11 +275,11 @@ impl PackageBackend for SisPackage {
             .parent()
             .ok_or_else(|| Error::Other("E32 not found".into()))?;
         write_pkg_file(workdir, &self.name, self.uid3, self.version, &self.vendor)?;
-        let cwd = RemotePath::new(workdir.display().to_string());
         let sis = format!("{}.sis", self.name);
         let sisx = format!("{}.sisx", self.name);
         let exe = std::fs::read(&artifact.path).map_err(|e| Error::Other(e.to_string()))?;
-        let datetime = datetime_utc(SystemTime::now());
+        let now = SystemTime::now();
+        let datetime = datetime_utc(now);
         let spec = SisUnsignedSpec {
             name: &self.name,
             uid3: self.uid3,
@@ -313,13 +297,12 @@ impl PackageBackend for SisPackage {
             None => {
                 let key_name = format!("{}.key", self.name);
                 let cer_name = format!("{}.cer", self.name);
-                self.run_tool(
-                    &self
-                        .tools
-                        .makekeys_args(&self.password, &key_name, &cer_name),
-                    &cwd,
-                )?;
-                (workdir.join(cer_name), workdir.join(key_name))
+                let (cert_pem, key_pem) = generate_self_signed_dsa(now)?;
+                let cer_path = workdir.join(&cer_name);
+                let key_path = workdir.join(&key_name);
+                std::fs::write(&cer_path, cert_pem).map_err(|e| Error::Other(e.to_string()))?;
+                std::fs::write(&key_path, key_pem).map_err(|e| Error::Other(e.to_string()))?;
+                (cer_path, key_path)
             }
         };
         let cert_bytes = std::fs::read(&cer_path).map_err(|e| Error::Other(e.to_string()))?;
@@ -470,8 +453,6 @@ fn write_pkg_file_writes_recorded_pkg_next_to_exe() {
 #[cfg(test)]
 fn fake_pkg() -> SisPackage {
     SisPackage {
-        env: LocalEnv,
-        tools: sdk_tools(),
         name: "hello".into(),
         uid3: 0xe79e4cf9,
         version: (0, 1, 0),
@@ -644,26 +625,34 @@ fn encode_unsigned_sis_rejects_capability_bits_not_derived() {
 }
 
 #[test]
-fn package_writes_native_sis_before_wine_signsis() {
+fn package_writes_native_sis_and_keys_without_wine() {
     let dir = tempfile::tempdir().unwrap();
     let exe_path = dir.path().join("hello.exe");
     std::fs::write(&exe_path, hello_exe_bytes()).unwrap();
+    let stale_cer = dir.path().join("hello.cer");
+    let stale_key = dir.path().join("hello.key");
+    std::fs::write(&stale_cer, b"stale-cer").unwrap();
+    std::fs::write(&stale_key, b"stale-key").unwrap();
     let mut pkg = fake_pkg();
-    pkg.tools.wine = PathBuf::from("/nonexistent-wine");
     pkg.uid3 = 0xe79e_4cf9;
     pkg.version = (1, 0, 24);
     pkg.vendor = "Vendor".into();
     pkg.capabilities = hello_caps();
-    assert!(
-        pkg.package(&[Artifact { path: exe_path }]).is_err(),
-        "Wine makekeys must still be required when cert/key are absent"
-    );
-    let sis = dir.path().join("hello.sis");
-    assert!(sis.is_file(), "native .sis must exist without Wine makesis");
-    let bytes = std::fs::read(&sis).unwrap();
-    assert_eq!(&bytes[..16], &SisUid::new(0xe79e_4cf9).bytes());
+    let out = pkg
+        .package(&[Artifact { path: exe_path }])
+        .expect("native makekeys must not spawn Wine when cert/key are absent");
+    assert_eq!(out.primary.file_name().unwrap(), "hello.sisx");
+    assert!(dir.path().join("hello.sis").is_file());
+    assert!(dir.path().join("hello.sisx").is_file());
     assert!(dir.path().join("hello.pkg").is_file());
-    assert!(!dir.path().join("hello.sisx").is_file());
+    let cer = std::fs::read(&stale_cer).unwrap();
+    let key = std::fs::read(&stale_key).unwrap();
+    assert_ne!(cer, b"stale-cer");
+    assert_ne!(key, b"stale-key");
+    let cer_text = String::from_utf8_lossy(&cer);
+    let key_text = String::from_utf8_lossy(&key);
+    assert!(cer_text.contains("BEGIN CERTIFICATE"), "{cer_text}");
+    assert!(key_text.contains("BEGIN PRIVATE KEY"), "{key_text}");
 }
 
 #[test]
@@ -676,7 +665,6 @@ fn package_writes_native_sisx_without_wine_signsis() {
     std::fs::write(&cert, parse_hex(include_str!("testdata/test_dsa_cert.hex"))).unwrap();
     std::fs::write(&key, parse_hex(include_str!("testdata/test_dsa_key.hex"))).unwrap();
     let mut pkg = fake_pkg();
-    pkg.tools.wine = PathBuf::from("/nonexistent-wine");
     pkg.uid3 = 0xe79e_4cf9;
     pkg.version = (1, 0, 24);
     pkg.vendor = "Vendor".into();
@@ -753,4 +741,69 @@ fn experiment5_hello_key_native_sign_skipped_without_password() {
     // RFC6979 k will not match SignSIS's random k; structure must still be SISX.
     assert_eq!(&sisx[..16], &golden[..16]);
     assert!(sisx.len() > hello_sis_golden().len());
+}
+
+#[cfg(test)]
+fn hello_makekeys_not_before() -> SystemTime {
+    // Frozen experiment-8 hello.cer Not Before: 2026-09-17 15:21:21 GMT
+    UNIX_EPOCH + std::time::Duration::from_secs(1_789_654_881)
+}
+
+#[test]
+fn generated_self_signed_dsa_verifies_with_injected_dates() {
+    use der::{Decode, DecodePem, Encode};
+    let not_before = hello_makekeys_not_before();
+    let (cert_pem, key_pem) = generate_self_signed_dsa(not_before).unwrap();
+    let cert = x509_cert::Certificate::from_pem(&cert_pem).unwrap();
+    assert_eq!(cert.tbs_certificate.serial_number, x509_cert::serial_number::SerialNumber::from(1u32));
+    assert_eq!(
+        cert.tbs_certificate.signature.oid.to_string(),
+        "1.2.840.10040.4.3"
+    );
+    let subject = cert.tbs_certificate.subject.to_string();
+    assert!(subject.contains("Joe Bloggs"), "{subject}");
+    assert!(subject.contains("Development"), "{subject}");
+    assert!(subject.contains("Acme Ltd"), "{subject}");
+    assert!(subject.contains("GB"), "{subject}");
+    assert!(subject.contains("noone@nowhere.com"), "{subject}");
+    assert_eq!(
+        cert.tbs_certificate.validity.not_before.to_unix_duration(),
+        std::time::Duration::from_secs(1_789_654_881)
+    );
+    assert_eq!(
+        cert.tbs_certificate.validity.not_after.to_unix_duration(),
+        std::time::Duration::from_secs(1_789_654_881 + 3650 * 86400)
+    );
+    let der = x509_cert::Certificate::from_pem(&cert_pem)
+        .unwrap()
+        .to_der()
+        .unwrap();
+    let parsed = x509_cert::Certificate::from_der(&der).unwrap();
+    crate::sis::verify_dsa_sha1(
+        &parsed.tbs_certificate.to_der().unwrap(),
+        parsed.signature.raw_bytes(),
+        &der,
+    )
+    .unwrap();
+    let spec = SisUnsignedSpec {
+        name: "hello",
+        uid3: 0xe79e_4cf9,
+        version: (1, 0, 24),
+        vendor: "Vendor",
+        vendor_localized: "Vendor-EN",
+        exe: &hello_exe_bytes(),
+        capabilities: &hello_caps(),
+        datetime: hello_datetime(),
+    };
+    let sisx = SisUnsigned::encode_signed(&spec, &key_pem, &cert_pem, "").unwrap();
+    assert!(sisx.len() > hello_sis_golden().len());
+    let exp = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+        .join("src/symdev-experiment-5/hello.cer");
+    if exp.is_file() {
+        let frozen = std::fs::read(&exp).unwrap();
+        assert_ne!(
+            cert_pem, frozen,
+            "dates/serial/k/key material block a hello.cer byte-match"
+        );
+    }
 }
