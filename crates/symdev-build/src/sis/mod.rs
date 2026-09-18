@@ -12,6 +12,7 @@ mod package;
 mod pkg_uid;
 mod product;
 mod products;
+mod sign;
 mod signature;
 mod string;
 mod uid;
@@ -29,10 +30,13 @@ pub use field::{SisEncode, SisField};
 pub use files::{SisFile, SisFiles, SisHash, SisWord41};
 pub use info::SisInfo;
 pub use language::{SisLanguage, SisLanguages};
-pub use package::{SisPackage, SisTools, SisUnsignedSpec, dname, encode_unsigned_sis};
+pub use package::{
+    dname, encode_signed_sisx, encode_unsigned_sis, SisPackage, SisTools, SisUnsignedSpec,
+};
 pub use pkg_uid::SisPkgUid;
 pub use product::{SisProduct, SisProductVersion};
 pub use products::SisProducts;
+pub use sign::{signatures39_from_key_and_cert, verify_dsa_sha1};
 pub use signature::{SisAlgorithm38, SisBlob37, SisChain22, SisSignature36, SisSignatures39};
 pub use string::SisString;
 pub use uid::SisUid;

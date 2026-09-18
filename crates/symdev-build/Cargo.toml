@@ -8,6 +8,13 @@ rust-version.workspace = true
 symdev-core = { path = "../symdev-core" }
 thiserror = "2"
 flate2 = { version = "1", default-features = false, features = ["zlib"] }
+sha1 = "0.10"
+dsa = "0.6"
+x509-cert = "0.2"
+der = { version = "0.7", features = ["derive", "alloc"] }
+des = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+md-5 = "0.10"
 
 [dev-dependencies]
 tempfile = "3"
