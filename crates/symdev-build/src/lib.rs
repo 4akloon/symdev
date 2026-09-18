@@ -16,8 +16,8 @@ pub use sis::{
     dname, SisArray, SisChecksum34, SisChecksum35, SisCompressed, SisController, SisData,
     SisData31, SisData32, SisDate, SisDateTime, SisEncode, SisField, SisFile, SisFiles, SisHash,
     SisInfo, SisLanguage, SisLanguages, SisPackage, SisPkgUid, SisProduct, SisProductVersion,
-    SisProducts, SisString, SisTime, SisTools, SisU32, SisUid, SisUnsigned, SisVersion, SisWord41,
-    SisWords, SisWords16, SisWords19,
+    SisProducts, SisString, SisTime, SisTools, SisU32, SisUid, SisVersion, SisWord41, SisWords,
+    SisWords16, SisWords19, SisUnsigned,
 };
 pub use toolchain::Toolchain;
 pub use uidcrc::{UidCrc, UidCrcTool};
