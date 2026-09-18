@@ -15,7 +15,7 @@ pub use pkg::render_pkg;
 pub use sis::{
     SisArray, SisCompressed, SisDate, SisDateTime, SisField, SisInfo, SisLanguage, SisLanguages,
     SisPackage, SisPkgUid, SisProduct, SisProductVersion, SisString, SisTime, SisTools, SisUid,
-    SisVersion, dname,
+    SisVersion, dname, SisProducts,
 };
 pub use toolchain::Toolchain;
 pub use uidcrc::{UidCrc, UidCrcTool};
