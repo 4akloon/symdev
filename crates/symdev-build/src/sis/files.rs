@@ -1,5 +1,5 @@
 use super::array::SisArray;
-use super::field::SisField;
+use super::field::SisEncode;
 use super::string::SisString;
 use super::words::SisWords;
 
@@ -17,9 +17,13 @@ impl SisWord41 {
     pub fn payload(&self) -> [u8; 4] {
         self.value.to_le_bytes()
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload().to_vec())
+impl SisEncode for SisWord41 {
+    const KIND: u32 = SisWord41::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisWord41::payload(self).to_vec()
     }
 }
 
@@ -43,9 +47,13 @@ impl SisHash {
         out.extend_from_slice(&self.digest);
         out
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload())
+impl SisEncode for SisHash {
+    const KIND: u32 = SisHash::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisHash::payload(self)
     }
 }
 
@@ -91,9 +99,13 @@ impl SisFile {
         out.extend(self.tail.iter().flat_map(|v| v.to_le_bytes()));
         out
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload())
+impl SisEncode for SisFile {
+    const KIND: u32 = SisFile::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisFile::payload(self)
     }
 }
 
@@ -120,14 +132,19 @@ impl SisFiles {
         out.extend(self.word_1a.field().bytes());
         out
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload())
+impl SisEncode for SisFiles {
+    const KIND: u32 = SisFiles::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisFiles::payload(self)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::SisEncode;
     use super::*;
     use crate::sis::{SisArray, SisString, SisWords};
 
@@ -156,7 +173,9 @@ mod tests {
     fn hello_word41_field_matches_experiment_29() {
         assert_eq!(
             SisWord41::new(0x000b_e000).field().bytes(),
-            [0x29, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0xe0, 0x0b, 0x00]
+            [
+                0x29, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0xe0, 0x0b, 0x00
+            ]
         );
         assert_eq!(SisWord41::KIND, 41);
     }

@@ -1,6 +1,6 @@
 use super::array::SisArray;
 use super::datetime::SisDateTime;
-use super::field::SisField;
+use super::field::SisEncode;
 use super::pkg_uid::SisPkgUid;
 use super::string::SisString;
 use super::version::SisVersion;
@@ -48,14 +48,19 @@ impl SisInfo {
         out.extend_from_slice(&[0, 0]);
         out
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload())
+impl SisEncode for SisInfo {
+    const KIND: u32 = SisInfo::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisInfo::payload(self)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::SisEncode;
     use super::*;
     use crate::sis::{SisDate, SisTime};
 

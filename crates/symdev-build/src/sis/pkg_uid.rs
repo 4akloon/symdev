@@ -1,4 +1,4 @@
-use super::field::SisField;
+use super::field::SisEncode;
 
 pub struct SisPkgUid {
     pub uid: u32,
@@ -14,14 +14,19 @@ impl SisPkgUid {
     pub fn payload(&self) -> [u8; 4] {
         self.uid.to_le_bytes()
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload().to_vec())
+impl SisEncode for SisPkgUid {
+    const KIND: u32 = SisPkgUid::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisPkgUid::payload(self).to_vec()
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::SisEncode;
     use super::*;
 
     #[test]
