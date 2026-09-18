@@ -51,11 +51,11 @@ mod tests {
     use super::SisEncode;
     use super::*;
     use crate::sis::{
-        SisArray, SisChecksum34, SisChecksum35, SisCompressed, SisController, SisData, SisData31,
-        SisData32, SisDate, SisDateTime, SisField, SisFile, SisFiles, SisHash, SisInfo,
-        SisLanguage, SisLanguages, SisPkgUid, SisProduct, SisProductVersion, SisProducts,
-        SisString, SisTime, SisU32, SisUid, SisVersion, SisWord41, SisWords, SisWords16,
-        SisWords19,
+        SisAlgorithm38, SisArray, SisBlob37, SisChain22, SisChecksum34, SisChecksum35,
+        SisCompressed, SisController, SisData, SisData31, SisData32, SisDate, SisDateTime,
+        SisField, SisFile, SisFiles, SisHash, SisInfo, SisLanguage, SisLanguages, SisPkgUid,
+        SisProduct, SisProductVersion, SisProducts, SisSignature36, SisSignatures39, SisString,
+        SisTime, SisU32, SisUid, SisVersion, SisWord41, SisWords, SisWords16, SisWords19,
     };
 
     fn parse_hex(s: &str) -> Vec<u8> {
@@ -68,6 +68,37 @@ mod tests {
 
     fn hello_sis_golden() -> Vec<u8> {
         parse_hex(include_str!("testdata/hello_sis.hex"))
+    }
+
+    fn hello_sisx_golden() -> Vec<u8> {
+        parse_hex(include_str!("testdata/hello_sisx.hex"))
+    }
+
+    fn hello_type39_golden() -> Vec<u8> {
+        parse_hex(include_str!("testdata/hello_type39.hex"))
+    }
+
+    fn hello_signatures() -> SisSignatures39 {
+        SisSignatures39::new(
+            SisArray::new(vec![
+                SisSignature36::new(
+                    SisAlgorithm38::new(SisString::new("1.2.840.10040.4.3")),
+                    SisBlob37::new(
+                        [
+                            0x30, 0x2c, 0x02, 0x14, 0x4d, 0xe0, 0xcf, 0xec, 0x52, 0x8a, 0x05, 0x95,
+                            0x13, 0x7d, 0xfc, 0x0c, 0x66, 0x34, 0xe4, 0x00, 0x75, 0x28, 0xae, 0xa0,
+                            0x02, 0x14, 0x50, 0x20, 0x97, 0x21, 0xc3, 0x8a, 0xb4, 0xdd, 0xb9, 0xc0,
+                            0x1d, 0x71, 0x53, 0xd3, 0x3d, 0xe7, 0x10, 0x62, 0xa8, 0xc0, 0x00, 0x00,
+                        ]
+                        .to_vec(),
+                    ),
+                )
+                .field(),
+            ]),
+            SisChain22::new(SisBlob37::new(
+                hello_type39_golden()[148..148 + 1171].to_vec(),
+            )),
+        )
     }
 
     fn hello_type30_golden() -> Vec<u8> {
@@ -169,6 +200,44 @@ mod tests {
             &SisChecksum35::of(&u.data.field()).field().bytes()
         );
         assert_eq!(SisChecksum34::of(&u.compressed.field()).value, [0x5c, 0x9e]);
+        assert_eq!(SisChecksum35::of(&u.data.field()).value, [0x64, 0x03]);
+    }
+
+    fn hello_signed() -> SisUnsigned {
+        SisUnsigned::new(
+            SisUid::new(0xe79e_4cf9),
+            SisCompressed::zlib(
+                &hello_controller()
+                    .with_signatures(hello_signatures())
+                    .field()
+                    .bytes(),
+            ),
+            hello_data(),
+        )
+    }
+
+    #[test]
+    fn hello_sisx_bytes_match_experiment_37() {
+        let golden = hello_sisx_golden();
+        assert_eq!(golden.len(), 5172);
+        assert_eq!(&golden[..16], &SisUid::new(0xe79e_4cf9).bytes());
+        assert_eq!(&golden[16..24], &[0x0c, 0, 0, 0, 0x1c, 0x14, 0, 0]);
+        assert_eq!(hello_signed().bytes(), golden);
+    }
+
+    #[test]
+    fn hello_sisx_checksums_are_live_of_children() {
+        let u = hello_signed();
+        let p = u.payload();
+        assert_eq!(
+            &p[..12],
+            &SisChecksum34::of(&u.compressed.field()).field().bytes()
+        );
+        assert_eq!(
+            &p[12..24],
+            &SisChecksum35::of(&u.data.field()).field().bytes()
+        );
+        assert_eq!(SisChecksum34::of(&u.compressed.field()).value, [0x01, 0xc4]);
         assert_eq!(SisChecksum35::of(&u.data.field()).value, [0x64, 0x03]);
     }
 }

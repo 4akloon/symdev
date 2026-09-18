@@ -3,6 +3,7 @@ use super::files::SisFiles;
 use super::info::SisInfo;
 use super::language::SisLanguages;
 use super::products::SisProducts;
+use super::signature::SisSignatures39;
 use super::words::{SisU32, SisWords16, SisWords19};
 
 pub struct SisController {
@@ -12,6 +13,7 @@ pub struct SisController {
     pub products: SisProducts,
     pub words19: SisWords19,
     pub files: SisFiles,
+    pub signatures: Option<SisSignatures39>,
     pub trailer: SisU32,
 }
 
@@ -34,21 +36,31 @@ impl SisController {
             products,
             words19,
             files,
+            signatures: None,
             trailer,
         }
     }
 
+    pub fn with_signatures(mut self, signatures: SisSignatures39) -> Self {
+        self.signatures = Some(signatures);
+        self
+    }
+
     pub fn payload(&self) -> Vec<u8> {
-        [
+        let mut out = [
             self.info.field().bytes(),
             self.words16.field().bytes(),
             self.languages.field().bytes(),
             self.products.field().bytes(),
             self.words19.field().bytes(),
             self.files.field().bytes(),
-            self.trailer.field().bytes(),
         ]
-        .concat()
+        .concat();
+        if let Some(signatures) = &self.signatures {
+            out.extend_from_slice(&signatures.field().bytes());
+        }
+        out.extend_from_slice(&self.trailer.field().bytes());
+        out
     }
 }
 
@@ -65,10 +77,46 @@ mod tests {
     use super::SisEncode;
     use super::*;
     use crate::sis::{
-        SisArray, SisDate, SisDateTime, SisFile, SisFiles, SisHash, SisInfo, SisLanguage,
-        SisLanguages, SisPkgUid, SisProduct, SisProductVersion, SisProducts, SisString, SisTime,
-        SisU32, SisVersion, SisWord41, SisWords, SisWords16, SisWords19,
+        SisAlgorithm38, SisArray, SisBlob37, SisChain22, SisDate, SisDateTime, SisFile, SisFiles,
+        SisHash, SisInfo, SisLanguage, SisLanguages, SisPkgUid, SisProduct, SisProductVersion,
+        SisProducts, SisSignature36, SisSignatures39, SisString, SisTime, SisU32, SisVersion,
+        SisWord41, SisWords, SisWords16, SisWords19,
     };
+
+    fn parse_hex(s: &str) -> Vec<u8> {
+        let hex: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+        (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    fn hello_type39_golden() -> Vec<u8> {
+        parse_hex(include_str!("testdata/hello_type39.hex"))
+    }
+
+    fn hello_signatures() -> SisSignatures39 {
+        SisSignatures39::new(
+            SisArray::new(vec![
+                SisSignature36::new(
+                    SisAlgorithm38::new(SisString::new("1.2.840.10040.4.3")),
+                    SisBlob37::new(
+                        [
+                            0x30, 0x2c, 0x02, 0x14, 0x4d, 0xe0, 0xcf, 0xec, 0x52, 0x8a, 0x05, 0x95,
+                            0x13, 0x7d, 0xfc, 0x0c, 0x66, 0x34, 0xe4, 0x00, 0x75, 0x28, 0xae, 0xa0,
+                            0x02, 0x14, 0x50, 0x20, 0x97, 0x21, 0xc3, 0x8a, 0xb4, 0xdd, 0xb9, 0xc0,
+                            0x1d, 0x71, 0x53, 0xd3, 0x3d, 0xe7, 0x10, 0x62, 0xa8, 0xc0, 0x00, 0x00,
+                        ]
+                        .to_vec(),
+                    ),
+                )
+                .field(),
+            ]),
+            SisChain22::new(SisBlob37::new(
+                hello_type39_golden()[148..148 + 1171].to_vec(),
+            )),
+        )
+    }
 
     fn hello_controller() -> SisController {
         SisController::new(
@@ -166,5 +214,22 @@ mod tests {
             ]
         );
         assert_eq!(SisController::KIND, 13);
+    }
+
+    #[test]
+    fn hello_signed_controller_inserts_type39_before_type40() {
+        let unsigned = hello_controller();
+        let signed = hello_controller().with_signatures(hello_signatures());
+        let u = unsigned.field().bytes();
+        let s = signed.field().bytes();
+        let type39 = hello_type39_golden();
+        assert_eq!(unsigned.payload().len(), 540);
+        assert_eq!(signed.payload().len(), 1860);
+        assert_eq!(u.len(), 548);
+        assert_eq!(s.len(), 1868);
+        assert_eq!(&s[..8], &[0x0d, 0, 0, 0, 0x44, 0x07, 0, 0]);
+        assert_eq!(&s[8..536], &u[8..536]);
+        assert_eq!(&s[536..1856], type39.as_slice());
+        assert_eq!(&s[1856..], &u[536..]);
     }
 }
