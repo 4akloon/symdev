@@ -400,3 +400,22 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
   - type `7` length `3` payload `0f 12 18` = `15`, `18`, `24`, then one zero pad. Host local mtime 17:18 CEST is 15:18 UTC; seconds `24` as in the file.
 
   Type `8` is those two child `SisField::bytes()` concatenated (no extra prefix). Do not generate “now” in this slice. Native inflate and type-14 compose stay **out of this experiment**.
+
+## 22. SIS info (type 14) from existing leaves (T2)
+
+- **Requires:** experiments 17–21 (string, array, version, pkg UID, datetime).
+- **Skip if:** experiment-7 `hello.sis` is gone
+- **Procedure:** Record the inflated type-`14` block as concatenated child fields already encoded in T2, plus any leftover bytes inside the unpadded length. Do not copy MakeSIS C. Do not commit `.sis`. Do not generate a clock stamp. Do not inflate in-crate.
+- **Expected result:** Pinned type `14` wrapping pkg UID, vendor string, names array, vendor-names array, version, datetime.
+- **Decision unblocked:** T2 `SisInfo` encode.
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Same host inflate of frozen `hello.sis` as experiments 17–21. Type `14` length `150` (`0x96`), field 160 bytes including SisField pad. Children in order (each already a padded `SisField::bytes()`):
+
+  1. type `9` `SisPkgUid::new(0xe79e4cf9)` (12 bytes)
+  2. type `1` `SisString::new("Vendor")` (20 bytes)
+  3. type `2` `SisArray` of `hello` (28 bytes)
+  4. type `2` `SisArray` of `Vendor-EN` (36 bytes)
+  5. type `4` `SisVersion::new(1, 0, 24)` (20 bytes)
+  6. type `8` `SisDateTime` of the experiment-21 stamp (32 bytes)
+
+  Those six fields are **148** bytes. Two extra `00` bytes sit inside the unpadded length `150` after the datetime field. `SisField` then pads length `150` with two more zeros (`150 % 4 == 2`). Do not treat the inner two zeros as `SisField` padding. Native inflate, type-13 siblings (16/15/17/19/28/40), and `package` wiring stay **out of this experiment**.
