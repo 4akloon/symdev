@@ -544,3 +544,25 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 
   Header `1c 00 00 00 b0 00 00 00`. Type 13 compose, type 30 data, checksums 34/35, and `package` wiring stay **out of this experiment**.
 
+## 31. SIS type 13 controller body (T2)
+
+- **Requires:** experiments 22–30 (info, words16, languages, products, words19, files, u32) and the same inflated blob as experiment 16.
+- **Skip if:** experiment-7 `hello.sis` is gone
+- **Procedure:** Same host inflate of frozen `hello.sis` type-3 zlib (Python `zlib`, not a repo crate). Confirm the inflated 548 bytes are one type-13 field, unpadded length 540, whose payload is the concatenation of the already-pinned child fields in order, including the experiment-30 type-28 field (not opaque bytes). Do not copy MakeSIS C. Do not commit `.sis`. Do not inflate in-crate. Do not encode type 3 / 30 / 34 / 35 here.
+- **Expected result:** Pinned type-13 field 548 bytes, header `0d 00 00 00 1c 02 00 00`, payload `n=540` = `SisInfo` + `SisWords16` + `SisLanguages` + `SisProducts` + `SisWords19` + `SisFiles` + `SisU32(0)`.
+- **Decision unblocked:** T2 `SisController` encode.
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Inflated type-3 payload is 548 bytes: type `13` length `540` (`0x0000021c`). No leftover after the field (`540 % 4 == 0`). Children occupied sizes at type-13 payload offsets:
+
+  | off | type | n | occupied |
+  |-----|------|---|----------|
+  | 0 | 14 `SisInfo` | 150 | 160 |
+  | 160 | 16 `SisWords16` | 12 | 20 |
+  | 180 | 15 `SisLanguages` | 20 | 28 |
+  | 208 | 17 `SisProducts` | 108 | 116 |
+  | 324 | 19 `SisWords19` | 12 | 20 |
+  | 344 | 28 `SisFiles` | 176 | 184 |
+  | 528 | 40 `SisU32` | 4 | 12 |
+
+  Sum 540. Type 28 is the experiment-30 field, not a byte stub. Native inflate, type-3 compress, checksums 34/35, type 30 data, and `package` wiring stay **out of this experiment**.
+
