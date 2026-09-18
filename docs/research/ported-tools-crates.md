@@ -16,7 +16,7 @@ Workspace members, one version (`0.1.0`), resolver `"3"`, edition 2024, rust-ver
 | makesis.exe | `symdev-sis` | `makesis` | SIS encode types + `Makesis` (`-v pkg sis`); Wave 0 one-file `TYPE=SA` `.pkg` |
 | signsis.exe | `symdev-sis` | `signsis` | `SisUnsigned::encode_signed` on the library; bin parses recorded positionals then `todo!` inflate |
 | makekeys.exe | `symdev-makekeys` | `makekeys` | `SelfSignedDsa` + `MakekeysTool` (Wine argv) + `Makekeys` (`-cert` recorded tokens) |
-| rcomp.exe | `symdev-rcomp` | `rcomp` | `Rsc::bytes()` matches Wine goldens (`Rsc`, `RscAppRegistration`, `RscLtext16`, `RscPacked`); bin parses `-u -o -s -i [-h]` then `todo!` RSS source / `.rsg` |
+| rcomp.exe | `symdev-rcomp` | `rcomp` | `Rsc::bytes()` matches Wine goldens (`Rsc`, `RscAppRegistration`, `RscLtext16`, `RscResource`); bin parses `-u -o -s -i [-h]` then `todo!` RSS source / `.rsg` |
 | elf2e32.exe | `symdev-elf2e32` | `elf2e32` | thin `Elf2E32` from recorded `--key=value`; `todo!` encode, no fake E32 |
 | mifconv.exe / bmconv.exe | — | — | **TODO only** — no crate, no fake impl |
 
