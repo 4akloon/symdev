@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::makekeys::generate_self_signed_dsa;
+use super::makekeys::SelfSignedDsa;
 use super::{
     SisArray, SisCompressed, SisController, SisData, SisData31, SisData32, SisDate, SisDateTime,
     SisEncode, SisFile, SisFiles, SisHash, SisInfo, SisLanguage, SisLanguages, SisPkgUid,
@@ -292,21 +292,26 @@ impl PackageBackend for SisPackage {
         };
         let bytes = SisUnsigned::encode(&spec)?;
         std::fs::write(workdir.join(&sis), &bytes).map_err(|e| Error::Other(e.to_string()))?;
-        let (cer_path, key_path) = match existing_signing_pair(&self.cert, &self.key) {
-            Some((cer, key)) => (cer, key),
+        let (cert_bytes, key_bytes) = match existing_signing_pair(&self.cert, &self.key) {
+            Some((cer, key)) => (
+                std::fs::read(&cer).map_err(|e| Error::Other(e.to_string()))?,
+                std::fs::read(&key).map_err(|e| Error::Other(e.to_string()))?,
+            ),
             None => {
-                let key_name = format!("{}.key", self.name);
-                let cer_name = format!("{}.cer", self.name);
-                let (cert_pem, key_pem) = generate_self_signed_dsa(now)?;
-                let cer_path = workdir.join(&cer_name);
-                let key_path = workdir.join(&key_name);
-                std::fs::write(&cer_path, cert_pem).map_err(|e| Error::Other(e.to_string()))?;
-                std::fs::write(&key_path, key_pem).map_err(|e| Error::Other(e.to_string()))?;
-                (cer_path, key_path)
+                let generated = SelfSignedDsa::generate(now)?;
+                std::fs::write(
+                    workdir.join(format!("{}.cer", self.name)),
+                    generated.cert_pem(),
+                )
+                .map_err(|e| Error::Other(e.to_string()))?;
+                std::fs::write(
+                    workdir.join(format!("{}.key", self.name)),
+                    generated.key_pem(),
+                )
+                .map_err(|e| Error::Other(e.to_string()))?;
+                (generated.cert_pem().to_vec(), generated.key_pem().to_vec())
             }
         };
-        let cert_bytes = std::fs::read(&cer_path).map_err(|e| Error::Other(e.to_string()))?;
-        let key_bytes = std::fs::read(&key_path).map_err(|e| Error::Other(e.to_string()))?;
         let sisx_bytes =
             SisUnsigned::encode_signed(&spec, &key_bytes, &cert_bytes, &self.password)?;
         std::fs::write(workdir.join(&sisx), sisx_bytes).map_err(|e| Error::Other(e.to_string()))?;
@@ -753,9 +758,14 @@ fn hello_makekeys_not_before() -> SystemTime {
 fn generated_self_signed_dsa_verifies_with_injected_dates() {
     use der::{Decode, DecodePem, Encode};
     let not_before = hello_makekeys_not_before();
-    let (cert_pem, key_pem) = generate_self_signed_dsa(not_before).unwrap();
+    let generated = SelfSignedDsa::generate(not_before).unwrap();
+    let cert_pem = generated.cert_pem();
+    let key_pem = generated.key_pem();
     let cert = x509_cert::Certificate::from_pem(&cert_pem).unwrap();
-    assert_eq!(cert.tbs_certificate.serial_number, x509_cert::serial_number::SerialNumber::from(1u32));
+    assert_eq!(
+        cert.tbs_certificate.serial_number,
+        x509_cert::serial_number::SerialNumber::from(1u32)
+    );
     assert_eq!(
         cert.tbs_certificate.signature.oid.to_string(),
         "1.2.840.10040.4.3"
