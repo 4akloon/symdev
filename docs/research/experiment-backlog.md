@@ -622,3 +622,24 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 
   Checksums 34/35, outer type 12 compose, native inflate, and `package` wiring stay **out of this experiment**.
 
+## 34. unsigned SIS file = UID + type 12 (T2)
+
+- **Requires:** experiments 14–16 (UID, type-12 walk, type-3 zlib), 31 (type 13), 32 (checksums 34/35), 33 (type 30). Frozen experiment-7 `hello.sis`.
+- **Skip if:** experiment-7 `hello.sis` is gone
+- **Procedure:** Re-dump frozen `$HOME/src/symdev-experiment-5/hello.sis`. Confirm file = 16-byte UID + type-12 field whose payload is concatenated padded fields type 34, 35, 3, 30 in that order and nothing else. Inflate type-3 zlib and confirm it is the 548-byte type-13 field. Try host `zlib.compress` settings against the frozen 283-byte zlib stream. Do not copy MakeSIS C. Do not commit `.sis` / `.sisx`. Do not spawn Wine.
+- **Expected result:** Pinned unsigned layout and whether a stock zlib setting byte-matches the type-3 stream.
+- **Decision unblocked:** T2 `SisUnsigned` encode (native `signsis` still later).
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Frozen `$HOME/src/symdev-experiment-5/hello.sis` (4000 bytes). SHA-256 `06f39722f5f911d59c119d126c223eabd7b3ec4c81b3175bbebc3f3eb7855232`. Layout:
+
+  | off | what | n | occupied |
+  |-----|------|---|----------|
+  | 0 | `SisUid` | 16 | 16 |
+  | 16 | type 12 | 3976 (`0x0f88`) | 3984 |
+  | 24 | type 34 | 2 | 12 |
+  | 36 | type 35 | 2 | 12 |
+  | 48 | type 3 | 295 | 304 |
+  | 352 | type 30 | 3640 | 3648 |
+
+  Type-12 children occupied 12+12+304+3648 = 3976; `16 + 8 + 3976 = 4000`; nothing after type 30. Type-3 zlib (283 bytes, `78 9c` … `c4 37 2b 01`) inflates to the 548-byte type-13 field. Host Python `zlib.compress(inflated)` (default, level 6, wbits 15, `Z_DEFAULT_STRATEGY`) **equals** that 283-byte stream. Other levels did not: 0–5 and 7–9 differed (level 0/1 header `78 01`, 2–5 `78 5e`, 7–9 `78 da`). wbits `-15` / `31` did not match. Strategies other than default at level 6 were not a match in the sweep; default strategy + memlevel 8 or 9 at level 6 matched. Native `signsis`, SISX, and `package` wiring stay **out of this experiment**.
+
