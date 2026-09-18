@@ -10,6 +10,7 @@ mod product;
 mod string;
 mod uid;
 mod version;
+mod words;
 
 pub use array::SisArray;
 pub use compressed::SisCompressed;
@@ -23,3 +24,4 @@ pub use product::{SisProduct, SisProductVersion};
 pub use string::SisString;
 pub use uid::SisUid;
 pub use version::SisVersion;
+pub use words::{SisU32, SisWords, SisWords16, SisWords19};
