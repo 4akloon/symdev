@@ -1,4 +1,4 @@
-use crate::sis_field::SisField;
+use super::field::SisField;
 
 pub struct SisString {
     pub text: String,
@@ -39,7 +39,9 @@ mod tests {
     fn hello_field_pads_odd_utf16_length() {
         assert_eq!(
             SisString::new("hello").field().bytes(),
-            [1, 0, 0, 0, 0x0a, 0, 0, 0, 0x68, 0, 0x65, 0, 0x6c, 0, 0x6c, 0, 0x6f, 0, 0, 0]
+            [
+                1, 0, 0, 0, 0x0a, 0, 0, 0, 0x68, 0, 0x65, 0, 0x6c, 0, 0x6c, 0, 0x6f, 0, 0, 0
+            ]
         );
         assert_eq!(SisString::KIND, 1);
     }

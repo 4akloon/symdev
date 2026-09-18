@@ -1,4 +1,4 @@
-use crate::sis_field::SisField;
+use super::field::SisField;
 
 pub struct SisPkgUid {
     pub uid: u32,

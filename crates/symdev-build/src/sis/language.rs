@@ -1,5 +1,5 @@
-use crate::sis_array::SisArray;
-use crate::sis_field::SisField;
+use super::array::SisArray;
+use super::field::SisField;
 
 pub struct SisLanguage {
     pub id: u32,
@@ -40,7 +40,7 @@ impl SisLanguages {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sis_array::SisArray;
+    use crate::sis::SisArray;
 
     #[test]
     fn hello_language_payload_matches_experiment_23() {

@@ -4,7 +4,7 @@
 
 **Goal:** `SisProductVersion` / `SisProduct` encode the frozen hello type-18 S60 product.
 
-**Architecture:** New types in `crates/symdev-build/src/sis_product.rs`. Reuse `SisField`, `SisVersion`, `SisPkgUid`, `SisArray`, `SisString`. No Wine. Export both from `lib.rs`.
+**Architecture:** New types in `crates/symdev-build/src/sis/product.rs`. Reuse `SisField`, `SisVersion`, `SisPkgUid`, `SisArray`, `SisString`. No Wine. Export both from `sis/mod.rs` and crate root.
 
 **Tech Stack:** Rust 1.98.1, edition 2024, resolver `"3"`. No new crates.
 
@@ -20,14 +20,15 @@
 
 ## File structure
 
-- Create: `crates/symdev-build/src/sis_product.rs`
-- Modify: `crates/symdev-build/src/lib.rs` — `mod sis_product; pub use sis_product::{SisProduct, SisProductVersion}`
+- Create: `crates/symdev-build/src/sis/product.rs`
+- Modify: `crates/symdev-build/src/sis/mod.rs` — `mod product; pub use product::{SisProduct, SisProductVersion}`
+- Modify: `crates/symdev-build/src/lib.rs` — re-export `SisProduct`, `SisProductVersion` from `sis`
 
 ---
 
 ### Task 1: `SisProductVersion` / `SisProduct`
 
-**Files:** `sis_product.rs`, `lib.rs` exports.
+**Files:** `sis/product.rs`, `sis/mod.rs` exports, `lib.rs` re-exports.
 
 **Interfaces:** as in the spec.
 
@@ -73,9 +74,9 @@ fn hello_product_field_matches_experiment_24() {
 }
 ```
 
-- [ ] **Step 2:** `cargo test -p symdev-build sis_product --offline` FAIL (types missing)
+- [ ] **Step 2:** `cargo test -p symdev-build sis::product --offline` FAIL (types missing)
 - [ ] **Step 3:** Implement as specified. Type 5 wraps `version.field().bytes()`. Type 18 concatenates uid, version wrap, and names `field().bytes()`. Reuse `SisPkgUid`. No second version. No Wine.
-- [ ] **Step 4:** PASS `cargo test -p symdev-build sis_product --offline` then `cargo test --workspace --offline`
+- [ ] **Step 4:** PASS `cargo test -p symdev-build sis::product --offline` then `cargo test --workspace --offline`
 - [ ] **Step 5: Commit** `Encode SIS type-18 product from the hello S60 line.`
 
 ---

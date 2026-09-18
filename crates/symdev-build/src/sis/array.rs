@@ -1,4 +1,4 @@
-use crate::sis_field::SisField;
+use super::field::SisField;
 
 pub struct SisArray {
     pub items: Vec<SisField>,
@@ -23,7 +23,7 @@ impl SisArray {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sis_string::SisString;
+    use crate::sis::SisString;
 
     #[test]
     fn hello_name_array_matches_experiment_20() {

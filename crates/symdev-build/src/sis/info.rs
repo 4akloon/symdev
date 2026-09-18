@@ -1,9 +1,9 @@
-use crate::sis_array::SisArray;
-use crate::sis_datetime::SisDateTime;
-use crate::sis_field::SisField;
-use crate::sis_pkg_uid::SisPkgUid;
-use crate::sis_string::SisString;
-use crate::sis_version::SisVersion;
+use super::array::SisArray;
+use super::datetime::SisDateTime;
+use super::field::SisField;
+use super::pkg_uid::SisPkgUid;
+use super::string::SisString;
+use super::version::SisVersion;
 
 pub struct SisInfo {
     pub uid: SisPkgUid,
@@ -57,7 +57,7 @@ impl SisInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sis_datetime::{SisDate, SisTime};
+    use crate::sis::{SisDate, SisTime};
 
     fn hello_info() -> SisInfo {
         SisInfo::new(
