@@ -2,6 +2,10 @@ use std::path::{Path, PathBuf};
 
 use symdev_core::{Error, Result};
 
+mod e32;
+
+pub use e32::E32Uid;
+
 pub struct Elf2E32 {
     pub uid1: u32,
     pub uid3: u32,
@@ -60,6 +64,10 @@ impl Elf2E32 {
         })
     }
 
+    pub fn uid(&self) -> E32Uid {
+        E32Uid::for_exe(self.uid1, self.uid3)
+    }
+
     pub fn encode(&self) -> Result<Vec<u8>> {
         let _ = self;
         Err(Error::Other("TODO: native ELF→E32 encode".into()))
@@ -114,9 +122,20 @@ mod tests {
         tokens.iter().map(|t| (*t).to_string()).collect()
     }
 
-    #[test]
-    fn from_args_match_experiment_6() {
-        let job = Elf2E32::from_args(&args(&[
+    fn parse_hex(s: &str) -> Vec<u8> {
+        let hex: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+        (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    fn hello_exe() -> Vec<u8> {
+        parse_hex(include_str!("testdata/hello.exe.hex"))
+    }
+
+    fn experiment_6() -> Elf2E32 {
+        Elf2E32::from_args(&args(&[
             "elf2e32",
             "--uid1=0x1000007a",
             "--uid3=0xe79e4cf9",
@@ -128,7 +147,38 @@ mod tests {
             "--linkas=hello{000a0000}[e79e4cf9].exe",
             "--libpath=/sdk/epoc32/release/armv5/lib",
         ]))
-        .unwrap();
+        .unwrap()
+    }
+
+    #[test]
+    fn hello_exe_uid_bytes_match_experiment_6() {
+        let golden = hello_exe();
+        assert_eq!(golden.len(), 3588);
+        let want = [
+            0x7a, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0xf9, 0x4c, 0x9e, 0xe7, 0xb0, 0x08,
+            0x32, 0xc1,
+        ];
+        assert_eq!(E32Uid::for_exe(0x1000_007a, 0xe79e_4cf9).bytes(), want);
+        assert_eq!(&golden[..16], &want);
+    }
+
+    #[test]
+    fn hello_exe_uid_checked_matches_experiment_6() {
+        assert_eq!(
+            E32Uid::for_exe(0x1000_007a, 0xe79e_4cf9).crc().checked(),
+            0xc132_08b0
+        );
+    }
+
+    #[test]
+    fn experiment_6_job_uid_matches_hello_exe_prefix() {
+        let golden = hello_exe();
+        assert_eq!(experiment_6().uid().bytes(), golden[..16]);
+    }
+
+    #[test]
+    fn from_args_match_experiment_6() {
+        let job = experiment_6();
         assert_eq!(job.uid1, 0x1000_007a);
         assert_eq!(job.uid3, 0xe79e_4cf9);
         assert_eq!(
