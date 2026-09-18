@@ -1,6 +1,6 @@
 use super::array::SisArray;
 use super::compressed::SisCompressed;
-use super::field::SisField;
+use super::field::SisEncode;
 
 pub struct SisData32 {
     pub compressed: SisCompressed,
@@ -16,9 +16,13 @@ impl SisData32 {
     pub fn payload(&self) -> Vec<u8> {
         self.compressed.field().bytes()
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload())
+impl SisEncode for SisData32 {
+    const KIND: u32 = Self::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisData32::payload(self)
     }
 }
 
@@ -36,9 +40,13 @@ impl SisData31 {
     pub fn payload(&self) -> Vec<u8> {
         self.items.field().bytes()
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload())
+impl SisEncode for SisData31 {
+    const KIND: u32 = Self::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisData31::payload(self)
     }
 }
 
@@ -56,14 +64,19 @@ impl SisData {
     pub fn payload(&self) -> Vec<u8> {
         self.items.field().bytes()
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload())
+impl SisEncode for SisData {
+    const KIND: u32 = Self::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisData::payload(self)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::SisEncode;
     use super::*;
     use crate::sis::{SisArray, SisCompressed};
 
