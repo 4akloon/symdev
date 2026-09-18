@@ -14,7 +14,8 @@ pub use model::{BldInf, Mmp};
 pub use pkg::render_pkg;
 pub use sis::{
     SisArray, SisCompressed, SisDate, SisDateTime, SisField, SisInfo, SisLanguage, SisLanguages,
-    SisPackage, SisPkgUid, SisString, SisTime, SisTools, SisUid, SisVersion, dname,
+    SisPackage, SisPkgUid, SisProduct, SisProductVersion, SisString, SisTime, SisTools, SisUid,
+    SisVersion, dname,
 };
 pub use toolchain::Toolchain;
 pub use uidcrc::{UidCrc, UidCrcTool};
