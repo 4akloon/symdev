@@ -682,3 +682,13 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 
   Type 13 compose with type 39, outer type 12, native DSA, and `package` wiring stay **out of this experiment**.
 
+## 37. SISX file = signed type 13 inside `SisUnsigned` (T2)
+
+- **Requires:** experiments 34 (`SisUnsigned` zlib type-12 wrap) and 36 (`SisSignatures39` / recorded type-39 blobs). Frozen experiment-8 `hello.sisx`.
+- **Skip if:** experiment-8 `hello.sisx` is gone
+- **Procedure:** Insert recorded type 39 into `SisController` immediately before type 40. Compress that type-13 field with the same `flate2`/`libz` level 6 as experiment 34. Wrap with existing `SisUnsigned` (live checksums 34/35 + type 3 + type 30). Compare `bytes()` to frozen `$HOME/src/symdev-experiment-5/hello.sisx`. Do not copy SignSIS C. Do not invent DSA. Do not spawn Wine. Do not commit `.sis` / `.sisx` / `.cer` / `.key`. Do not wire `package` / clap.
+- **Expected result:** Whether zlib level 6 plus live checksums byte-match the 5172-byte SISX, and that unsigned `hello.sis` still matches when signatures are absent.
+- **Decision unblocked:** T2 native SISX compose (native DSA / `package` wiring still later).
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Frozen `$HOME/src/symdev-experiment-5/hello.sisx` (5172 bytes). SHA-256 `fe6bdd338c7a7803a031a6f45e34d838f04843b9d3eac2bb3f475bf4098ba1ea`. `SisController::with_signatures` inserts the experiment-36 type-39 field (`n=1312`, occupied 1320) before type 40. Inflated type 13 is 1868 bytes (`n=1860`). Same `SisUnsigned` wrap as experiment 34: UID + type 12 (`n=5148`, header `0c 00 00 00 1c 14 00 00`) of live checksum 34 `01 c4`, checksum 35 `64 03` (unchanged type 30), type 3 (`n=1467`, occupied 1476), type 30 (identical 3648-byte field). `flate2` 1.1.10 `ZlibEncoder` + `Compression::new(6)` + `features = ["zlib"]` (system libz) byte-equals the frozen 5172-byte file. Unsigned `hello.sis` (4000 bytes) still matches with `signatures: None`. Native DSA, `package` wiring, and clap stay **out of this experiment**.
+
