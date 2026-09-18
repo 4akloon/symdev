@@ -2,6 +2,10 @@ use std::path::{Path, PathBuf};
 
 use crate::uidcrc::UidCrc;
 
+mod resource;
+
+pub use resource::{Rsc, RscAppRegistration, RscLtext16, RscResource};
+
 pub struct RscUid {
     pub uid2: u32,
     pub uid3: u32,
@@ -169,5 +173,83 @@ mod tests {
                 "-idriveinfo_reg.rss",
             ]
         );
+    }
+
+    fn driveinfo_reg() -> RscAppRegistration {
+        RscAppRegistration::new(
+            RscLtext16::new("DriveInfoApp").unwrap(),
+            RscLtext16::new("").unwrap(),
+            1,
+        )
+    }
+
+    fn filebrowse_reg() -> RscAppRegistration {
+        RscAppRegistration::new(
+            RscLtext16::new("filebrowseapp").unwrap(),
+            RscLtext16::new("\\resource\\apps\\filebrowseapp_loc").unwrap(),
+            1,
+        )
+    }
+
+    #[test]
+    fn driveinfo_rsc_bytes_match_experiment_41() {
+        let rsc = Rsc::new(
+            RscUid::new(0x101f_8021, 0xa000_01f4),
+            vec![driveinfo_reg().resource().unwrap()],
+        );
+        assert_eq!(rsc.bytes().unwrap(), driveinfo_rsc());
+    }
+
+    #[test]
+    fn filebrowse_rsc_bytes_match_experiment_41() {
+        let rsc = Rsc::new(
+            RscUid::new(0x101f_8021, 0xe800_00a6),
+            vec![filebrowse_reg().resource().unwrap()],
+        );
+        assert_eq!(rsc.bytes().unwrap(), filebrowse_rsc());
+    }
+
+    #[test]
+    fn rsc_ltext16_empty_is_a_zero_length_byte() {
+        assert_eq!(RscLtext16::empty().bytes(), [0]);
+    }
+
+    #[test]
+    fn rsc_ltext16_driveinfo_is_length_pad_and_utf16le() {
+        let bytes = RscLtext16::new("DriveInfoApp").unwrap().bytes();
+        assert_eq!(bytes[0], 12);
+        assert_eq!(bytes[1], 0);
+        assert_eq!(
+            &bytes[2..],
+            "DriveInfoApp"
+                .encode_utf16()
+                .flat_map(u16::to_le_bytes)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn driveinfo_uncompressed_is_59_bytes_experiment_42() {
+        let resource = driveinfo_reg().resource().unwrap();
+        assert_eq!(resource.uncompressed().len(), 59);
+        assert_eq!(resource.uncompressed_len().unwrap(), 59);
+        assert_eq!(&driveinfo_rsc()[16..20], [0, 59, 0, 1]);
+        assert_eq!(&driveinfo_rsc()[70..], [0x14, 0, 0x46, 0]);
+    }
+
+    #[test]
+    fn filebrowse_uncompressed_is_126_bytes_experiment_42() {
+        let resource = filebrowse_reg().resource().unwrap();
+        assert_eq!(resource.uncompressed().len(), 126);
+        assert_eq!(&filebrowse_rsc()[16..20], [0, 126, 0, 1]);
+        assert_eq!(&filebrowse_rsc()[105..], [0x14, 0, 0x69, 0]);
+    }
+
+    #[test]
+    fn rsc_ltext16_rejects_more_than_255_utf16_units() {
+        match RscLtext16::new("a".repeat(256)) {
+            Err(err) => assert!(err.to_string().contains("LText16 longer than 255")),
+            Ok(_) => panic!("expected LText16 longer than 255"),
+        }
     }
 }

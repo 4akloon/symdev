@@ -21,3 +21,4 @@ pub use sis::{
 pub use toolchain::Toolchain;
 pub use uidcrc::{UidCrc, UidCrcTool};
 pub use rcomp::{RcompTool, RscUid};
+pub use rcomp::{Rsc, RscAppRegistration, RscLtext16, RscResource};

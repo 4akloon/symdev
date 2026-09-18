@@ -804,5 +804,31 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 
   `symdev` still does **not** spawn `rcomp`: MMP keeps `START RESOURCE` inner lines only (rss filename dropped); `GcceBuild` / CLI have no rcomp verb or path. Native body/index after the 16-byte UID, RSS tokens, and `package`/`build` wiring stay **out of this experiment**.
 
+## 42. Unicode RSC body + index after the UID header (T3)
+
+- **Requires:** experiment 41 (frozen `_reg.rsc` goldens + `RscUid`) and a legal-access FP2 SDK.
+- **Skip if:** experiment-41 `.rsc` files are gone
+- **Procedure:** Hex-dump the bytes after the 16-byte UID on frozen `driveinfo_reg.rsc` (74) and `filebrowseapp_reg.rsc` (109). Run recorded experiment-9/41 Wine `rcomp.exe -u -v` on the existing `.rpp` (verbose is in the usage string). From SDK `epoccnf.pl` / `epocaif.pl`, the observed `:-dump_prefix` token dumps each resource uncompressed and unpadded; use that only to record layout, do not add it to `RcompTool`. Reconstruct `APP_REGISTRATION_INFO` (`LONG`/`LLINK`/`LText16`/`BYTE`/`LEN WORD STRUCT[]`) and the packed form that byte-equals the goldens. Do not copy rcomp C. Do not spawn Wine in `cargo test`. Do not commit `.rsc` / `.rss` / `.rpp` binaries.
+- **Expected result:** Pinned body layout after the UID: 4-byte size/flags header, packed resource, trailing `u16` index. Native encode of both goldens.
+- **Decision unblocked:** T3 native RSC body+index encode (`Rsc` / `RscAppRegistration` / `RscLtext16`). RSS parse, non-empty `.rsg`, and `START RESOURCE` wiring stay later.
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Workdir `$HOME/src/symdev-experiment-42/` (outside git). Same Wine `rcomp.exe` 8.1 as experiment 41. Frozen `.rsc` SHA-256 unchanged from experiment 41.
+
+  **Verbose** (`-v` from usage) prints `LText16` (not `LTEXT`) and `IndexTable` / `IndexTableItem 14` then `IndexTable 46` for driveinfo (file offsets 20 and 70). Filebrowse index end is 105 (`0x69`).
+
+  **Uncompressed dump** (`:-_dump_of_resource_` from SDK perl, not `RcompTool`): driveinfo 46 bytes 8-bit `LText16` (`0c` + `DriveInfoApp`); filebrowse 79 bytes. Unicode `-u` pads each non-empty `LText16` to `len`, `0x00`, UTF-16LE (`DriveInfoApp` → 59 bytes uncompressed; filebrowse loc path → 126). Those sizes are byte 17 of the `.rsc` (`0x3b` / `0x7e`). Empty `LText16` stays one `0x00`. `LLINK` is 4 bytes. `LEN WORD STRUCT[]` omitted members are `u16` 0.
+
+  **File layout** (little-endian index; first resource always at offset 20):
+
+  | Region | Driveinfo | Filebrowse |
+  |---|---|---|
+  | UID (`RscUid`) | 16 bytes | 16 bytes |
+  | Header | `00 3b 00 01` | `00 7e 00 01` |
+  | Packed resource | offset 20..70 (50 bytes) | 20..105 (85 bytes) |
+  | Index (`u16` start, end) | `14 00 46 00` | `14 00 69 00` |
+
+  Header byte 1 is the largest uncompressed resource size as `u8` (59 / 126). Bytes `00 01` are a constant on these two single-resource Unicode files (could be flags `0x0100` LE or count 1; not distinguished here). Packed form starts with `0x00`, then runs of `(u8 count, literal bytes)` with `LText16` Latin-1 stored as duplicate length plus 8-bit chars (`0c 0c DriveInfoApp`). Length byte sits in the preceding literal run; the UTF-16 pad `0x00` is omitted in the packed form.
+
+  Native `Rsc::bytes()` of `RscAppRegistration` **byte-equals** both goldens. `.rsg` / RSS parse / `START RESOURCE` stay **out of this experiment**. `:-` is not on `RcompTool`.
 
 
