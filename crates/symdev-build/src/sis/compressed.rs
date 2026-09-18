@@ -20,6 +20,17 @@ impl SisCompressed {
         }
     }
 
+    pub fn zlib(uncompressed: &[u8]) -> Self {
+        use std::io::Write;
+
+        let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::new(6));
+        encoder.write_all(uncompressed).expect("zlib encode");
+        Self::new(
+            uncompressed.len() as u32,
+            encoder.finish().expect("zlib finish"),
+        )
+    }
+
     pub fn header_bytes(&self) -> [u8; 12] {
         let mut header = [0u8; 12];
         header[..4].copy_from_slice(&self.algorithm.to_le_bytes());

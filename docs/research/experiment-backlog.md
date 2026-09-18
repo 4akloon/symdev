@@ -641,5 +641,7 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
   | 48 | type 3 | 295 | 304 |
   | 352 | type 30 | 3640 | 3648 |
 
-  Type-12 children occupied 12+12+304+3648 = 3976; `16 + 8 + 3976 = 4000`; nothing after type 30. Type-3 zlib (283 bytes, `78 9c` … `c4 37 2b 01`) inflates to the 548-byte type-13 field. Host Python `zlib.compress(inflated)` (default, level 6, wbits 15, `Z_DEFAULT_STRATEGY`) **equals** that 283-byte stream. Other levels did not: 0–5 and 7–9 differed (level 0/1 header `78 01`, 2–5 `78 5e`, 7–9 `78 da`). wbits `-15` / `31` did not match. Strategies other than default at level 6 were not a match in the sweep; default strategy + memlevel 8 or 9 at level 6 matched. Native `signsis`, SISX, and `package` wiring stay **out of this experiment**.
+  Type-12 children occupied 12+12+304+3648 = 3976; `16 + 8 + 3976 = 4000`; nothing after type 30. Type-3 zlib (283 bytes, `78 9c` … `c4 37 2b 01`) inflates to the 548-byte type-13 field. Host Python `zlib.compress(inflated)` (default, level 6, wbits 15, `Z_DEFAULT_STRATEGY`) **equals** that 283-byte stream. Other levels did not: 0–5 and 7–9 differed (level 0/1 header `78 01`, 2–5 `78 5e`, 7–9 `78 da`). wbits `-15` / `31` did not match. Strategies other than default at level 6 were not a match in the sweep; default strategy + memlevel 8 or 9 at level 6 matched.
+
+  In-crate `flate2` 1.1.10 `ZlibEncoder` + `Compression::new(6)`: default `rust_backend` (miniz_oxide) and `features = ["zlib-rs"]` produced different streams (type-34 became `3a 02` / `9b 1f`). `features = ["zlib"]` (system libz / `libz-sys`) byte-equals the frozen 283-byte stream and the 4000-byte file. Native `signsis`, SISX, and `package` wiring stay **out of this experiment**.
 
