@@ -435,3 +435,19 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
   - type `15` wraps that type-2 field (`0f 00 00 00 14 00 00 00` + 20-byte array field)
 
   Type `16` (payload word `0x21`) is **not** this language id and stays out of this experiment. Native inflate and remaining type-13 siblings stay **out of this experiment**.
+
+## 24. SIS product (types 5 and 18) (T2)
+
+- **Requires:** experiments 18–20 (version, pkg UID, string, array) and the same inflated type-13 block as 22–23.
+- **Skip if:** experiment-7 `hello.sis` is gone
+- **Procedure:** Record type `18` and nested type `5` from the inflated controller. Compare to the frozen `hello.pkg` line `[0x102752AE], 0, 0, 0, {"S60ProductID"}`. Do not copy MakeSIS C. Do not commit `.sis` / `.pkg`. Do not invent a from/to second version: the golden has one nested type-4 `0,0,0`.
+- **Expected result:** Pinned type-5 wrapping `SisVersion::new(0, 0, 0)`, and type 18 as pkg UID + that wrap + names array `S60ProductID`.
+- **Decision unblocked:** T2 `SisProductVersion` / `SisProduct` encode.
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Frozen `hello.pkg` has `[0x102752AE], 0, 0, 0, {"S60ProductID"}`. Inflated type `18` length `80`:
+
+  - type `9` `SisPkgUid::new(0x102752AE)` payload `ae 52 27 10`
+  - type `5` length `20` payload is exactly `SisVersion::new(0, 0, 0).field().bytes()`
+  - type `2` wrapping type-1 `S60ProductID`
+
+  Type `17` (array of this product plus a type-2 word `0x12`) stays **out of this experiment**. Native inflate, type 16/19/28/40, and `package` wiring stay out.
