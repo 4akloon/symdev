@@ -645,3 +645,40 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 
   In-crate `flate2` 1.1.10 `ZlibEncoder` + `Compression::new(6)`: default `rust_backend` (miniz_oxide) and `features = ["zlib-rs"]` produced different streams (type-34 became `3a 02` / `9b 1f`). `features = ["zlib"]` (system libz / `libz-sys`) byte-equals the frozen 283-byte stream and the 4000-byte file. Native `signsis`, SISX, and `package` wiring stay **out of this experiment**.
 
+## 36. SISX signatures inside type 13 (T2)
+
+- **Requires:** experiments 15–16 (type-12 children; type-3 prefix) and 31 (unsigned type-13 children). Frozen experiment-7 `hello.sis` and experiment-8 `hello.sisx`. Cert/key stay in the experiment dir; never committed.
+- **Skip if:** those files are gone
+- **Procedure:** Re-dump frozen `$HOME/src/symdev-experiment-5/hello.sis` (4000) and `hello.sisx` (5172). Walk type-12 children. Inflate type-3 zlib with host Python `zlib` (not a repo crate). Walk inflated type-13 children. Compare extra SISX fields to `hello.cer` PEM-decoded DER. Do not copy SignSIS C. Do not invent argv. Do not spawn Wine. Do not commit `.sis` / `.sisx` / `.cer` / `.key`.
+- **Expected result:** Where SISX gains bytes relative to SIS, and whether those bytes are TLVs that pin as `SisEncode` value types. If RSA/DSA or cert dates block a regenerating byte-match, record the signature/cert as opaque payloads.
+- **Decision unblocked:** T2 `SisSignatures39` encode (type 13 insert / type 12 compose / native DSA still later).
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Frozen `$HOME/src/symdev-experiment-5/hello.sis` (4000 bytes, SHA-256 `06f39722f5f911d59c119d126c223eabd7b3ec4c81b3175bbebc3f3eb7855232`) and `hello.sisx` (5172 bytes, SHA-256 `fe6bdd338c7a7803a031a6f45e34d838f04843b9d3eac2bb3f475bf4098ba1ea`). UID 16 bytes identical. After UID, both files are one type-12 field (SIS `n=3976`; SISX `n=5148`). Type-12 children on **both**:
+
+  | off SIS | off SISX | type | n SIS / SISX | occupied SIS / SISX |
+  |---------|----------|------|--------------|---------------------|
+  | 0 | 0 | 34 | 2 / 2 | 12 / 12 |
+  | 12 | 12 | 35 | 2 / 2 | 12 / 12 |
+  | 24 | 24 | 3 | 295 / 1467 | 304 / 1476 |
+  | 328 | 1500 | 30 | 3640 / 3640 | 3648 / 3648 |
+
+  Nothing after type 30. Type 30 field bytes **equal**. Type 34 payload SIS `5c 9e`, SISX `01 c4` (type-3 field changed). Type 35 stays `64 03`. Type-3 prefix SISX `01 00 00 00 4c 07 00 00 00 00 00 00` (alg 1, uncompressed 1868). Extra 1172 bytes of the SISX file are entirely the larger type-3 field (`1476 - 304`).
+
+  Inflated type 3 is one type-13 field: SIS `n=540` (548 bytes), SISX `n=1860` (1868 bytes). Type-13 **payload** prefix 528 bytes is identical (types 14, 16, 15, 17, 19, 28). SIS then has type 40 `n=4` payload `0`. SISX inserts type 39 `n=1312` occupied 1320 at payload off 528, then the same type 40. Extra uncompressed bytes: 1320.
+
+  Nested walk of type 39 (header `27 00 00 00 20 05 00 00`):
+
+  | off | type | n | occupied | notes |
+  |-----|------|---|----------|-------|
+  | 0 | 39 | 1312 | 1320 | |
+  | 8 | 2 | 116 | 124 | array of one type 36 |
+  | 16 | 36 | 108 | 116 | |
+  | 24 | 38 | 44 | 52 | wraps type 1 UTF-16-LE `1.2.840.10040.4.3` (`n=34`) |
+  | 76 | 37 | 48 | 56 | opaque DSA value; DER `30 2c` SEQUENCE of two 20-byte INTEGERs then two payload zeros |
+  | 132 | 22 | 1180 | 1188 | wraps one type 37 |
+  | 140 | 37 | 1171 | 1180 | one pad `00`; payload **equals** `hello.cer` PEM-decoded DER (1171 bytes; SHA-1 `6698f484c9c64d0ddf44240520f0e6bd629acfd9`) |
+
+  Host `openssl x509 -inform DER` on that extracted type-37 payload (not SignSIS argv): `dsaWithSHA1`; issuer/subject `CN=Joe Bloggs, OU=Development, O=Acme Ltd, C=GB, emailAddress=noone@nowhere.com` (experiment-8 makekeys Example Usage); Not Before `Sep 17 15:21:21 2026 GMT`; Not After `Sep 14 15:21:21 2036 GMT`. Re-running makekeys would change those dates and the DER. `openssl dgst -sha1 -verify` of the DER signature against the unsigned type-13 field / type-13 payload did **not** verify. The signed-bytes rule is not derived here (do not copy SignSIS C). Encode type 37 as an opaque recorded blob.
+
+  Type 13 compose with type 39, outer type 12, native DSA, and `package` wiring stay **out of this experiment**.
+
