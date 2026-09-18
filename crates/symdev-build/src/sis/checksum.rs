@@ -1,4 +1,4 @@
-use super::field::SisField;
+use super::field::{SisEncode, SisField};
 use crate::uidcrc::epoc_crc16;
 
 pub struct SisChecksum34 {
@@ -19,9 +19,13 @@ impl SisChecksum34 {
     pub fn payload(&self) -> [u8; 2] {
         self.value
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload().to_vec())
+impl SisEncode for SisChecksum34 {
+    const KIND: u32 = Self::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisChecksum34::payload(self).to_vec()
     }
 }
 
@@ -43,14 +47,19 @@ impl SisChecksum35 {
     pub fn payload(&self) -> [u8; 2] {
         self.value
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload().to_vec())
+impl SisEncode for SisChecksum35 {
+    const KIND: u32 = Self::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisChecksum35::payload(self).to_vec()
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::SisEncode;
     use super::*;
     use crate::sis::SisCompressed;
 
