@@ -22,14 +22,16 @@ The user’s 2026-09-16 **Master Development Prompt** (discussed in brainstormin
 - **§39 Ultimate architecture:** language split “C++ | Rust” under S60.
 - **Phase 9 — Native replacements:** clean-room Rust ports of `rcomp` / `makesis` / UID tools / packaging (tooling, not app language).
 
-North-star §1: that prompt “is **not** an authority for this document.” Returning to Phase 7 is a **new** decision, not restoring a locked Wave 0 path.
+User correction for **B**: they envisioned a custom **rustc target + libstd**, not that no_std-first Phase 7 spike. This note records that product. It is still **later**; Wave 0 stays C++. **Do not implement B.**
+
+North-star §1: that prompt “is **not** an authority for this document.” Returning to Phase 7 (or to B-as-libstd) is a **new** decision, not restoring a locked Wave 0 path.
 
 ## Which SDK?
 
 | | What | In-tree name | Feasible for stock E52 |
 |---|---|---|---|
 | **A. Tooling SDK** | Host CLI + format codecs in Rust so Wine PE is not required | “Rust orchestration around Wave 0 legacy binaries”; T-track ports | **Now** (mostly done). Still not a compiler. |
-| **B. App SDK in Rust** | Write the *app* in Rust (`no_std` / custom rustc target), `extern "C"` / bindgen against **existing** EPOCROOT headers and import `.dso` | Master Phase 7; north-star **non-goal** “Rust as an application language” | **Later**, after C++ hello is proven on device. Research, not Wave 0. |
+| **B. App SDK in Rust** | Write the *app* in Rust with a custom **rustc target** and **libstd** (not a no_std-only Phase 7 spike), FFI against **existing** EPOCROOT headers and import `.dso` | User correction vs Master Phase 7; north-star **non-goal** “Rust as an application language” | **Later**, after C++ hello on device. Research, not Wave 0. **Do not implement.** |
 | **C. Replace Nokia SDK** | Reimplement S60 / Avkon / E32 *APIs* in Rust so EPOCROOT goes away | Not specified. Closest: leftover note “Replacing those is not a tool-port slice.” | **Never for stock E52.** That is a new userspace / ROM. |
 
 A, B, and C are different products. Mixing them is how “full-fledged Rust SDK” sounds cheaper than it is.
@@ -48,21 +50,23 @@ A does **not** remove `SYMDEV_EPOCROOT`. Headers, `eexe.lib` / `usrt2_2.lib`, th
 
 ## B — write E52 apps in Rust
 
-**Later.** Honest cost: a second compiler ABI on top of Wave 0, not a rename of `language.name`.
+**Later. Do not implement.** The product here is a custom **rustc target + libstd**, not the Master Prompt’s no_std-first Phase 7 spike. Honest cost: a second compiler ABI plus a **std for EKA2**, not a rename of `language.name`.
 
-Wave 0 hello is **C++** `E32Main` + `e32cons` (`Console::NewL` / `Write`), not Avkon GUI. Recorded link is `-nostdlib -shared`, `--entry _E32Startup`, `eexe.lib`, `usrt2_2.lib`, `euser.dso`, `dfpaeabi.dso`, `dfprvct2_2.dso`, `drtaeabi.dso`, `scppnwdl.dso`, `drtrvct2_2.dso`, `-lsupc++ -lgcc`. Never `-fPIC`. GNU ld **2.29.1** is required; 2.35 dies on `euser.dso` `.gnu.version_d`.
+Wave 0 stays **C++**. Hello is `E32Main` + `e32cons` (`Console::NewL` / `Write`), not Avkon GUI. Recorded link is `-nostdlib -shared`, `--entry _E32Startup`, `eexe.lib`, `usrt2_2.lib`, `euser.dso`, `dfpaeabi.dso`, `dfprvct2_2.dso`, `drtaeabi.dso`, `scppnwdl.dso`, `drtrvct2_2.dso`, `-lsupc++ -lgcc`. Never `-fPIC`. GNU ld **2.29.1** is required; 2.35 dies on `euser.dso` `.gnu.version_d`.
 
-What B would actually do (after C++ `.exe` installs on a stock E52 — Hardware M0 — so failures are not “maybe the SIS is wrong”):
+**libstd on EKA2** is not a rustc flag. `std` needs threads, TLS, files, alloc, panic, and unwind — or a **custom std** that maps those onto EKA2 (`RThread`, `User::Alloc`, `RFs`, …). Stock `arm-unknown-linux-*` is the wrong OS. `os: none` + `#![no_std]` is the cheaper Phase 7 spike; it is **not** B.
 
-1. Hand-written rustc **target spec** (Hypothesis: `armv5te-unknown-none-eabi` / a custom `arm-unknown-symbian` JSON). `os: none`, soft-float, **relocation-model static**, panic=abort. Not `arm-unknown-linux-*` (glibc syscalls). Not in-tree; **Needs experiment**.
-2. `#![no_std]` crate, `#[no_mangle] extern "C" fn E32Main()` or a tiny C++ trampoline still compiled by `g++`. rustc does not magically provide `_E32Startup`; that symbol lives in `eexe.lib`.
+What B would wait for: C++ `.exe` installs on a stock E52 — Hardware M0 — so failures are not “maybe the SIS is wrong”. Then (research only):
+
+1. Hand-written rustc **target spec** (Hypothesis: custom `arm-unknown-symbian*` JSON, EKA2 ABI, soft-float, **relocation-model static**). Not `arm-unknown-linux-*` (glibc syscalls). Not in-tree; **Needs experiment**.
+2. **libstd** (or a custom std) for that target: threads/TLS/files/alloc/panic/unwind as above. `extern "C"` `E32Main` (or a C++ trampoline still compiled by `g++`) still needs `_E32Startup` from `eexe.lib`; rustc does not provide it.
 3. Same **ld 2.29.1** argv and DSO set, then the same `elf2e32` → native SIS. rustc/LLVM **does not** replace that pipeline. LLD is untested; Hypothesis: same version-script pain as ld 2.35.
 4. FFI to **C**, not to Symbian C++ as-is. EPOC headers are C++ with leaves, `TDesC`, `CleanupStack`. bindgen-on-EPOCROOT is not a week of work. Console hello needs a C shim around `Console::NewL` / `Write`, or keep a `.cpp` stub. Avkon (`CAknAppUi`, CONE, resources, `_reg.rss`) is a different mountain; experiment 9 still **Unknown** whether hello even needs `_reg.rsc` to launch (10/11 parked).
-5. **panic / alloc / CRT:** `usrt2_2` + `scppnwdl` are the Symbian C++ new/delete / compiler-support DSOs Wave 0 already links. Rust `alloc` would wrap `User::Alloc` / `User::Free` (euser), not jemalloc. `panic=unwind` vs `-fexceptions` is a mixing hazard — start abort-only. Do not pull libstd.
+5. Mixing `panic=unwind` with `-fexceptions` / `usrt2_2` / `scppnwdl` is an ABI hazard even after std exists. `usrt2_2` + `scppnwdl` are the Symbian C++ new/delete / compiler-support DSOs Wave 0 already links; a Rust alloc would wrap `User::Alloc` / `User::Free` (euser), not jemalloc.
 
-Cost vs Wave 0 C++ hello: C++ hello already compiles and packages. A Rust console “Hello” is a research spike measured in ABI experiments, not a scaffold flag. A GUI/app-framework SDK is closer to a new language product (the thing the north-star explicitly is not).
+Cost vs Wave 0 C++ hello: C++ hello already compiles and packages. A Rust console “Hello” with libstd is a target+std bring-up, not a scaffold flag. A GUI/app-framework SDK is closer to a new language product (the thing the north-star explicitly is not).
 
-If they pick B, **do not** set `language.name = "rust"` until an experiment produces an E32 that installs. Do not abandon `g++`.
+If they pick B, **do not** set `language.name = "rust"` until an experiment produces an E32 that installs. Do not abandon `g++`. Do not start B until Hardware M0 exists.
 
 ## C — replace Nokia / EPOCROOT
 
@@ -80,7 +84,7 @@ Return to the idea as a **later track**, not by abandoning Wave 0.
 
 - Finish Hardware M0: C++ `hello.exe` SIS installs and launches on stock E52 (experiment 11; not claimed).
 - Keep A as the current job (optional T4 encode is still A).
-- Park B until that install exists; then a `no_std` + C shim + same `ld`/DSO/`elf2e32` spike, still no Avkon.
+- Park B until that install exists. B is rustc target + **libstd** (threads/TLS/files/alloc/panic/unwind or a custom std), still no Avkon, still not Wave 0. **Do not implement B.**
 - Do not schedule C for this phone.
 
 `LanguageBackend` staying empty is enough of a seam. Empty traits are not a rustc target.
