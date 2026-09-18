@@ -14,6 +14,7 @@ mod product;
 mod products;
 mod string;
 mod uid;
+mod unsigned;
 mod version;
 mod words;
 
@@ -33,5 +34,6 @@ pub use product::{SisProduct, SisProductVersion};
 pub use products::SisProducts;
 pub use string::SisString;
 pub use uid::SisUid;
+pub use unsigned::SisUnsigned;
 pub use version::SisVersion;
 pub use words::{SisU32, SisWords, SisWords16, SisWords19};

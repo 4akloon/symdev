@@ -22,7 +22,7 @@ A value type whose `bytes()` is a complete unsigned SIS: 16-byte `SisUid` plus a
 | `bytes()` | `uid.bytes()` then `field().bytes()`. |
 | Payload | `[checksum34.field(), checksum35.field(), compressed.field(), data.field()].concat()`. Checksums from `SisChecksum34::of(&compressed.field())` and `SisChecksum35::of(&data.field())` — always live, not pinned literals in `payload()`. |
 | Type 3 | Reuse `SisCompressed` (alg=1 zlib). Compress the type-13 `SisController::field().bytes()` (548 bytes). |
-| Compressor | One zlib crate (`flate2` or `miniz_oxide`). Prefer a setting that byte-matches the frozen 283-byte zlib (Python `zlib.compress` default / level 6 / wbits 15 matches). If crate bytes differ, document settings tried and keep the compressed payload opaque while checksums/`of` stay live. |
+| Compressor | `flate2` with `default-features = false`, `features = ["zlib"]` (system `libz` via `libz-sys`), `Compression::new(6)`. That matches the frozen 283-byte zlib and Python `zlib.compress` default. `flate2` default `rust_backend` (miniz_oxide) and `zlib-rs` at level 6 did **not** match; do not pin opaque zlib. |
 | Type 30 | Reuse `SisData` as already encoded. |
 | Tests | Pinned experiment 34: `bytes()` equals dumped hello.sis hex testdata. No Wine. Do not commit or read `.sis` / `.sisx`. |
 | Package | Do not call `SisUnsigned` from `SisPackage` in this slice. |
