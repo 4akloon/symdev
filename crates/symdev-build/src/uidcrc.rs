@@ -82,7 +82,7 @@ impl UidCrcTool {
     }
 }
 
-fn epoc_crc16(data: &[u8]) -> u16 {
+pub(crate) fn epoc_crc16(data: &[u8]) -> u16 {
     let mut crc: u16 = 0;
     for &b in data {
         crc = crc.rotate_left(8) ^ u16::from(b);

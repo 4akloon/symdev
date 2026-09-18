@@ -1,4 +1,5 @@
 use super::field::SisField;
+use crate::uidcrc::epoc_crc16;
 
 pub struct SisChecksum34 {
     pub value: [u8; 2],
@@ -12,7 +13,7 @@ impl SisChecksum34 {
     }
 
     pub fn of(inner: &SisField) -> Self {
-        Self::new(crc16(&inner.bytes()).to_le_bytes())
+        Self::new(epoc_crc16(&inner.bytes()).to_le_bytes())
     }
 
     pub fn payload(&self) -> [u8; 2] {
@@ -36,7 +37,7 @@ impl SisChecksum35 {
     }
 
     pub fn of(inner: &SisField) -> Self {
-        Self::new(crc16(&inner.bytes()).to_le_bytes())
+        Self::new(epoc_crc16(&inner.bytes()).to_le_bytes())
     }
 
     pub fn payload(&self) -> [u8; 2] {
@@ -46,17 +47,6 @@ impl SisChecksum35 {
     pub fn field(&self) -> SisField {
         SisField::new(Self::KIND, self.payload().to_vec())
     }
-}
-
-fn crc16(data: &[u8]) -> u16 {
-    let mut crc: u16 = 0;
-    for &b in data {
-        crc = crc.rotate_left(8) ^ u16::from(b);
-        crc ^= (crc & 0xff) >> 4;
-        crc ^= crc << 12;
-        crc ^= (crc & 0xff) << 5;
-    }
-    crc
 }
 
 #[cfg(test)]
