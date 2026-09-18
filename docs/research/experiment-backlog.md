@@ -419,3 +419,19 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
   6. type `8` `SisDateTime` of the experiment-21 stamp (32 bytes)
 
   Those six fields are **148** bytes. Two extra `00` bytes sit inside the unpadded length `150` after the datetime field. `SisField` then pads length `150` with two more zeros (`150 % 4 == 2`). Do not treat the inner two zeros as `SisField` padding. Native inflate, type-13 siblings (16/15/17/19/28/40), and `package` wiring stay **out of this experiment**.
+
+## 23. SIS language (types 11 and 15) (T2)
+
+- **Requires:** experiments 20 and 22 (type-2 array encode; same inflated type-13 block).
+- **Skip if:** experiment-7 `hello.sis` is gone
+- **Procedure:** Record type `15` and its nested type `11` from the inflated controller. Compare the type-11 word to the frozen `hello.pkg` `&EN` line (English only). Do not copy MakeSIS C. Do not commit `.sis` / `.pkg`. Do not invent other language IDs.
+- **Expected result:** Pinned type-11 payload `01 00 00 00` and type 15 as a type-2 array of that field.
+- **Decision unblocked:** T2 `SisLanguage` / `SisLanguages` encode.
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Frozen `hello.pkg` has `&EN` and one name `hello`. Inflated type `15` length `20` payload is exactly `SisArray::new(vec![type-11 field]).field().bytes()`:
+
+  - type `11` length `4` payload `01 00 00 00` = `1`
+  - type `2` length `12` wraps that type-11 field
+  - type `15` wraps that type-2 field (`0f 00 00 00 14 00 00 00` + 20-byte array field)
+
+  Type `16` (payload word `0x21`) is **not** this language id and stays out of this experiment. Native inflate and remaining type-13 siblings stay **out of this experiment**.
