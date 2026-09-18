@@ -879,6 +879,7 @@ name = "symdev-elf2e32"
 version = "0.1.0"
 dependencies = [
  "symdev-core",
+ "symdev-uidcrc",
 ]
 
 [[package]]
