@@ -1,5 +1,5 @@
 use super::array::SisArray;
-use super::field::SisField;
+use super::field::SisEncode;
 
 pub struct SisLanguage {
     pub id: u32,
@@ -15,9 +15,13 @@ impl SisLanguage {
     pub fn payload(&self) -> [u8; 4] {
         self.id.to_le_bytes()
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload().to_vec())
+impl SisEncode for SisLanguage {
+    const KIND: u32 = SisLanguage::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisLanguage::payload(self).to_vec()
     }
 }
 
@@ -31,14 +35,19 @@ impl SisLanguages {
     pub fn new(languages: SisArray) -> Self {
         Self { languages }
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.languages.field().bytes())
+impl SisEncode for SisLanguages {
+    const KIND: u32 = SisLanguages::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        self.languages.field().bytes()
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::SisEncode;
     use super::*;
     use crate::sis::SisArray;
 

@@ -1,4 +1,4 @@
-use super::field::SisField;
+use super::field::{SisEncode, SisField};
 
 pub struct SisArray {
     pub items: Vec<SisField>,
@@ -14,14 +14,19 @@ impl SisArray {
     pub fn payload(&self) -> Vec<u8> {
         self.items.iter().flat_map(|f| f.bytes()).collect()
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload())
+impl SisEncode for SisArray {
+    const KIND: u32 = SisArray::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisArray::payload(self)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::SisEncode;
     use super::*;
     use crate::sis::SisString;
 
