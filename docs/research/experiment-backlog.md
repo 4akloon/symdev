@@ -566,3 +566,31 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 
   Sum 540. Type 28 is the experiment-30 field, not a byte stub. Native inflate, type-3 compress, checksums 34/35, type 30 data, and `package` wiring stay **out of this experiment**.
 
+## 32. SIS type 34/35 checksums (T2)
+
+- **Requires:** experiments 15–16 (type-12 children; type-3 zlib prefix) and experiment 13 (EPOC CRC16 byte step). Frozen experiment-7 `hello.sis` and experiment-8 `hello.sisx`.
+- **Skip if:** those files are gone
+- **Procedure:** Re-dump the frozen files. Walk type-12 children. Try CRC16/CRC32 variants on compressed payload, uncompressed type 13, type-12 payload without checksums, file after UID, zlib-only, exe, and padded type-3 / type-30 field bytes. Do not copy MakeSIS C. Do not commit `.sis` / `.sisx` / `.exe`. Confirm a match on both SIS and SISX.
+- **Expected result:** Pinned type-34/35 two-byte payloads and the CRC input that produces them, or a recorded unknown algorithm with the two-byte goldens still usable.
+- **Decision unblocked:** T2 `SisChecksum34` / `SisChecksum35` encode (outer type 12 still later).
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Frozen `$HOME/src/symdev-experiment-5/hello.sis` (4000 bytes) and `hello.sisx` (5172 bytes). After the 16-byte UID, outer type 12. First children of that payload (SIS):
+
+  | off | type | n | occupied | payload |
+  |-----|------|---|----------|---------|
+  | 0 | 34 | 2 | 12 | `5c 9e` (LE u16 `0x9e5c`) |
+  | 12 | 35 | 2 | 12 | `64 03` (LE u16 `0x0364`) |
+  | 24 | 3 | 295 | 304 | deflate, uncompressed 548 |
+  | 328 | 30 | 3640 | 3648 | file data (alg-0 nested type 3 holds 3588-byte `hello.exe`) |
+
+  SISX type 34 is `01 c4` (`0xc401`); type 35 is the same `64 03`. Type-3 fields differ (SIS occupied 304, SISX occupied 1476, inflated 1868). Type-30 field bytes are identical (3648).
+
+  **Tried (no match for the paired type-34 SIS/SISX targets and type-35 `0x0364`):** CRC-32/IEEE (low/high 16), Adler-32, sum16, CRC-16 IBM / CCITT reflected, CRC-16/T10-DIF, init `0xffff` / `0x1d0f` / xorout `0xffff`, EPOC CRC16 init ≠ 0. Blobs that failed those algos: type-3 payload, zlib-only, type-3 prefix, inflated type 13 / type-13 payload, type-12 payload from type 3 onward, type-12 with checksum payloads zeroed, file after UID, whole file, `hello.exe`, type-3 field without the pad byte (303 / 1475).
+
+  **Match:** EPOC CRC16 init `0` (same byte step as experiment 13: `crc = rotl8(crc) ^ b; crc ^= (crc & 0xff) >> 4; crc ^= crc << 12; crc ^= (crc & 0xff) << 5`). Same values as CRC-16/XMODEM (`poly 0x1021`, init 0, xorout 0, not reflected) on these inputs and on 50 random 32-byte samples. Input is the **padded** `SisField::bytes()` of the inner field (kind, length, payload, pad):
+
+  - type 34 ← CRC16 of the type-3 field (SIS 304 bytes including one pad `00` → `5c 9e`; SISX 1476 bytes → `01 c4`)
+  - type 35 ← CRC16 of the type-30 field (3648 bytes, already 4-byte aligned → `64 03` on both files)
+
+  Type 12 compose, type-30 encode, native inflate, and `package` wiring stay **out of this experiment**.
+
