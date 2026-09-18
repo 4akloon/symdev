@@ -718,5 +718,59 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 
   Live sign: SHA-1 + DSA via RustCrypto (`sha1` 0.10, `dsa` 0.6 RFC 6979 k) over `SisController::signed_bytes()`, cert DER in type 22, OID `1.2.840.10040.4.3`. Frozen type-39 blob still pins `hello.sisx` (recorded). Live sign of the same controller does **not** byte-equal frozen `hello.sisx` (SignSIS random k ≠ RFC 6979). Dates in new makekeys certs also block equality. `SisPackage` writes SISX with `with_signatures` + live key; Wine `signsis` is not spawned. Wine `makekeys` remains when cert/key are absent.
 
+## 41. Wine `rcomp` goldens + native RSC UID header (T3)
+
+- **Requires:** experiment 9 (Wine `rcomp` usage + `cpp.exe`/`rcomp.exe` argv) and a legal-access FP2 SDK. Experiment **40** is reserved for makekeys (independent branch).
+- **Skip if:** no SDK (`rcomp.exe` missing)
+- **Procedure:** Dump `rcomp.exe` no-arg usage (do not invent argv). Re-run experiment-9 Wine `cpp.exe` then `rcomp.exe` on the already-copied SDK example `_reg.rss` files (`driveinfo_reg.rss`, `filebrowseapp_reg.rss`) in a workdir outside git. From the usage string, also pass glued `-hHeaderFile`. Pin `.rsc` / `.rsg` bytes. Native slice: first 16 bytes of `.rsc` via existing `UidCrc` (do not copy rcomp C). Do not spawn Wine in `cargo test`. Do not commit SDK / `.rss` / `.rpp` / `.rsc` binaries.
+- **Expected result:** Recorded usage; bit-identical `.rsc` vs experiment 9; whether `-h` emits a `.rsg`; whether the 16-byte UID prefix is `UidCrc`.
+- **Decision unblocked:** T3 first native encode (`RscUid` / `RcompTool` argv). Full rcomp / RSS parse / `START RESOURCE` wiring stay later.
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Workdir `$HOME/src/symdev-experiment-41/` (outside git). SDK `rcomp.exe` `/home/genius/sdk/S60_3rd_FP2/epoc32/tools/rcomp.exe` (188416; PE32 i386). `/usr/bin/wine` `wine-10.0 (Ubuntu 10.0~repack-12ubuntu1)`. Log `$HOME/src/symdev-experiment-41/experiment-41.log`.
+
+  **Usage** (no-arg; tool exit 255; stdout empty; stderr after Wine `experimental wow64 mode`):
+
+```
+Resource compiler version 8.1 (Build 004) (C) 1997-2005 Symbian Software Ltd.
+Usage: rcomp [-vpul] [-force] [-oRSCFile] [-{uid2,uid3}] [-hHeaderFile] [-sSourceFile] [-iBaseInputFileName]
+	v	verbose
+	p	Parser debugging
+	l	Check localisation comments
+	force	Emit localisation warnings even if no localisation tags are present
+	add-defaults	Amend input rss/rpp file to add missing default localisation options
+
+	u	Generate Unicode resource binary
+```
+
+  **(a) `driveinfo_reg`:** same experiment-9 `cpp.exe` then `rcomp.exe` argv (`WINEPATH` = SDK tools so sibling `uidcrc.exe` is found). Exit 0. `driveinfo_reg.rsc` 74 bytes, SHA-256 `10bd8e607b9f166629ac1e9285d6abbad24e88972a885a15062f8680d575b7d8`, **byte-equal** experiment-9. First 16 bytes `6b 4a 1f 10 21 80 1f 10 f4 01 00 a0 b4 0c c8 f0` = `UidCrc` of UID1 `0x101f4a6b`, UID2 `0x101f8021`, UID3 `0xa00001f4`, checked `0xf0c80cb4`.
+
+  **(b) `-h` from usage:** `-hdriveinfo_reg.rsg` after `-o` (glued, like `-o`/`-s`/`-i`). Exit 0. `.rsc` still the same 74-byte file. `.rsg` **0 bytes** (SHA-256 of empty `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`). Registration RSS has no `NAME`; rcomp writes an empty header. Not committed.
+
+  **(c) `filebrowseapp_reg`:** same path. `.rsc` 109 bytes, SHA-256 `437dbc17eef7b26d9650917b408d22922f96e7ed888e2916035f56eb010f0b60`, byte-equal experiment-9. Header `6b 4a 1f 10 21 80 1f 10 a6 00 00 e8 69 64 35 0a` = same UID1/UID2, UID3 `0xe80000a6`, checked `0x0a356469`. `.rsg` also 0 bytes.
+
+  Recorded working argv (flags from usage / experiment 9; `WINEPATH` is Wine lookup for `uidcrc.exe`, not an rcomp flag):
+
+```
+WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
+/usr/bin/wine /home/genius/sdk/S60_3rd_FP2/epoc32/gcc/bin/cpp.exe \
+  -nostdinc -undef -C -D_UNICODE \
+  -I 'Z:\home\genius\sdk\S60_3rd_FP2\epoc32\include' \
+  driveinfo_reg.rss -o driveinfo_reg.rpp
+```
+
+```
+WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
+/usr/bin/wine /home/genius/sdk/S60_3rd_FP2/epoc32/tools/rcomp.exe \
+  -u -odriveinfo_reg.rsc -sdriveinfo_reg.rpp -idriveinfo_reg.rss
+```
+
+```
+WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
+/usr/bin/wine /home/genius/sdk/S60_3rd_FP2/epoc32/tools/rcomp.exe \
+  -u -odriveinfo_reg.rsc -hdriveinfo_reg.rsg -sdriveinfo_reg.rpp -idriveinfo_reg.rss
+```
+
+  `symdev` still does **not** spawn `rcomp`: MMP keeps `START RESOURCE` inner lines only (rss filename dropped); `GcceBuild` / CLI have no rcomp verb or path. Native body/index after the 16-byte UID, RSS tokens, and `package`/`build` wiring stay **out of this experiment**.
+
 
 
