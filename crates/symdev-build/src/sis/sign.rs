@@ -11,11 +11,13 @@ use symdev_core::{Error, Result};
 
 const DSA_WITH_SHA1: &str = "1.2.840.10040.4.3";
 
-pub fn verify_dsa_sha1(signed_bytes: &[u8], signature_blob: &[u8], cert_der: &[u8]) -> Result<()> {
-    let sig = parse_signature(signature_blob)?;
-    let vk = verifying_key_from_cert(cert_der)?;
-    vk.verify_digest(Sha1::new_with_prefix(signed_bytes), &sig)
-        .map_err(|_| Error::Other("DSA-SHA1 signature verify failed".into()))
+impl SisBlob37 {
+    pub fn verify_dsa_sha1(&self, signed_bytes: &[u8], cert_der: &[u8]) -> Result<()> {
+        let sig = parse_signature(&self.data)?;
+        let vk = verifying_key_from_cert(cert_der)?;
+        vk.verify_digest(Sha1::new_with_prefix(signed_bytes), &sig)
+            .map_err(|_| Error::Other("DSA-SHA1 signature verify failed".into()))
+    }
 }
 
 impl SisController {
@@ -34,13 +36,13 @@ impl SisController {
         let mut blob = sig.to_bytes().to_vec();
         let pad = (4 - (blob.len() % 4)) % 4;
         blob.resize(blob.len() + pad, 0);
-        verify_dsa_sha1(&signed, &blob, &cert_der)?;
+        let value = SisBlob37::new(blob);
+        value.verify_dsa_sha1(&signed, &cert_der)?;
         Ok(SisSignatures39::new(
-            SisArray::new(vec![SisSignature36::new(
-                SisAlgorithm38::new(SisString::new(DSA_WITH_SHA1)),
-                SisBlob37::new(blob),
-            )
-            .field()]),
+            SisArray::new(vec![
+                SisSignature36::new(SisAlgorithm38::new(SisString::new(DSA_WITH_SHA1)), value)
+                    .field(),
+            ]),
             SisChain22::new(SisBlob37::new(cert_der)),
         ))
     }
@@ -181,7 +183,7 @@ fn decrypt_openssl_dsa_pem(text: &str, password: &str) -> Result<Vec<u8>> {
         .collect();
     let ciphertext = base64_decode(&b64)?;
     let key = evp_bytes_to_key_md5(password.as_bytes(), &iv, 24);
-    use des::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyIvInit};
+    use des::cipher::{BlockDecryptMut, KeyIvInit, block_padding::Pkcs7};
     type TdesCbc = cbc::Decryptor<des::TdesEde3>;
     TdesCbc::new_from_slices(&key, &iv)
         .map_err(|_| Error::Other("invalid 3DES key/iv".into()))?
@@ -303,29 +305,33 @@ mod tests {
             ),
             SisWords16::new(SisWords::new(vec![0x21])),
             SisLanguages::new(SisArray::new(vec![SisLanguage::new(1).field()])),
-            SisProducts::new(SisArray::new(vec![SisProduct::new(
-                SisPkgUid::new(0x1027_52ae),
-                SisProductVersion::new(SisVersion::new(0, 0, 0)),
-                SisArray::new(vec![SisString::new("S60ProductID").field()]),
-            )
-            .field()])),
+            SisProducts::new(SisArray::new(vec![
+                SisProduct::new(
+                    SisPkgUid::new(0x1027_52ae),
+                    SisProductVersion::new(SisVersion::new(0, 0, 0)),
+                    SisArray::new(vec![SisString::new("S60ProductID").field()]),
+                )
+                .field(),
+            ])),
             SisWords19::new(SisWords::new(vec![0x14])),
             SisFiles::new(
-                SisArray::new(vec![SisFile::new(
-                    SisString::new("!:\\sys\\bin\\hello.exe"),
-                    SisString::new(""),
-                    SisWord41::new(0x000b_e000),
-                    SisHash::new(
-                        [1, 0x25, 0x14],
-                        [
-                            0x3a, 0x23, 0xe7, 0xe7, 0xe6, 0x0e, 0xd9, 0x73, 0x54, 0x53, 0x4b, 0x2a,
-                            0x77, 0xe5, 0x65, 0xcd, 0x64, 0xea, 0x39, 0x70,
-                        ],
-                    ),
-                    SisString::new(""),
-                    [3588, 0, 3588, 0, 0],
-                )
-                .field()]),
+                SisArray::new(vec![
+                    SisFile::new(
+                        SisString::new("!:\\sys\\bin\\hello.exe"),
+                        SisString::new(""),
+                        SisWord41::new(0x000b_e000),
+                        SisHash::new(
+                            [1, 0x25, 0x14],
+                            [
+                                0x3a, 0x23, 0xe7, 0xe7, 0xe6, 0x0e, 0xd9, 0x73, 0x54, 0x53, 0x4b,
+                                0x2a, 0x77, 0xe5, 0x65, 0xcd, 0x64, 0xea, 0x39, 0x70,
+                            ],
+                        ),
+                        SisString::new(""),
+                        [3588, 0, 3588, 0, 0],
+                    )
+                    .field(),
+                ]),
                 SisWords::new(vec![0x0d]),
                 SisWords::new(vec![0x1a]),
             ),
@@ -337,14 +343,20 @@ mod tests {
     fn hello_frozen_dsa_signature_verifies_signed_bytes() {
         let signed = hello_controller().signed_bytes();
         assert_eq!(signed.len(), 528);
-        verify_dsa_sha1(&signed, &hello_sig_blob(), &hello_der()).unwrap();
+        SisBlob37::new(hello_sig_blob().to_vec())
+            .verify_dsa_sha1(&signed, &hello_der())
+            .unwrap();
     }
 
     #[test]
     fn hello_frozen_dsa_signature_rejects_wrong_bytes() {
         let mut signed = hello_controller().signed_bytes();
         signed[0] ^= 1;
-        assert!(verify_dsa_sha1(&signed, &hello_sig_blob(), &hello_der()).is_err());
+        assert!(
+            SisBlob37::new(hello_sig_blob().to_vec())
+                .verify_dsa_sha1(&signed, &hello_der())
+                .is_err()
+        );
     }
 
     fn type37_blob(sigs: &SisSignatures39) -> Vec<u8> {
@@ -366,7 +378,9 @@ mod tests {
             .signatures_from_key_and_cert(&key, &cert, "")
             .unwrap();
         assert_eq!(signed.chain.cert.data, cert);
-        verify_dsa_sha1(&controller.signed_bytes(), &type37_blob(&signed), &cert).unwrap();
+        SisBlob37::new(type37_blob(&signed))
+            .verify_dsa_sha1(&controller.signed_bytes(), &cert)
+            .unwrap();
     }
 
     #[test]
@@ -377,7 +391,9 @@ mod tests {
         let signed = controller
             .signatures_from_key_and_cert(&key, &cert, "test")
             .unwrap();
-        verify_dsa_sha1(&controller.signed_bytes(), &type37_blob(&signed), &cert).unwrap();
+        SisBlob37::new(type37_blob(&signed))
+            .verify_dsa_sha1(&controller.signed_bytes(), &cert)
+            .unwrap();
     }
 
     #[test]
@@ -388,6 +404,8 @@ mod tests {
         let signed = controller
             .signatures_from_key_and_cert(&key, &cert, "")
             .unwrap();
-        verify_dsa_sha1(&controller.signed_bytes(), &type37_blob(&signed), &cert).unwrap();
+        SisBlob37::new(type37_blob(&signed))
+            .verify_dsa_sha1(&controller.signed_bytes(), &cert)
+            .unwrap();
     }
 }

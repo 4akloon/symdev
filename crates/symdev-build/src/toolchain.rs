@@ -14,19 +14,19 @@ pub struct Toolchain {
 impl Toolchain {
     pub fn from_env() -> Result<Self> {
         Ok(Self {
-            epocroot: required("SYMDEV_EPOCROOT")?,
-            gxx: required("SYMDEV_GXX")?,
-            ld: required("SYMDEV_LD")?,
-            elf2e32: required("SYMDEV_ELF2E32")?,
-            gcc_lib: required("SYMDEV_GCC_LIB")?,
-            gcc_target_lib: required("SYMDEV_GCC_TARGET_LIB")?,
+            epocroot: Self::required("SYMDEV_EPOCROOT")?,
+            gxx: Self::required("SYMDEV_GXX")?,
+            ld: Self::required("SYMDEV_LD")?,
+            elf2e32: Self::required("SYMDEV_ELF2E32")?,
+            gcc_lib: Self::required("SYMDEV_GCC_LIB")?,
+            gcc_target_lib: Self::required("SYMDEV_GCC_TARGET_LIB")?,
         })
     }
-}
 
-fn required(key: &str) -> Result<PathBuf> {
-    match std::env::var(key) {
-        Ok(v) if !v.is_empty() => Ok(PathBuf::from(v)),
-        _ => Err(Error::Other(format!("missing toolchain: {key}"))),
+    fn required(key: &str) -> Result<PathBuf> {
+        match std::env::var(key) {
+            Ok(v) if !v.is_empty() => Ok(PathBuf::from(v)),
+            _ => Err(Error::Other(format!("missing toolchain: {key}"))),
+        }
     }
 }

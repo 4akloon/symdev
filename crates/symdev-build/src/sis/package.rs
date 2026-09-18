@@ -1,12 +1,12 @@
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use super::makekeys::SelfSignedDsa;
 use super::{
-    SisArray, SisCompressed, SisController, SisData, SisData31, SisData32, SisDate, SisDateTime,
-    SisEncode, SisFile, SisFiles, SisHash, SisInfo, SisLanguage, SisLanguages, SisPkgUid,
-    SisProduct, SisProductVersion, SisProducts, SisString, SisTime, SisU32, SisUid, SisUnsigned,
-    SisVersion, SisWord41, SisWords, SisWords16, SisWords19,
+    SisArray, SisCompressed, SisController, SisData, SisData31, SisData32, SisDateTime, SisEncode,
+    SisFile, SisFiles, SisHash, SisInfo, SisLanguage, SisLanguages, SisPkgUid, SisProduct,
+    SisProductVersion, SisProducts, SisString, SisU32, SisUid, SisUnsigned, SisVersion, SisWord41,
+    SisWords, SisWords16, SisWords19,
 };
 use sha1::{Digest, Sha1};
 use symdev_core::{Artifact, Error, Package, PackageBackend, Result};
@@ -20,7 +20,7 @@ pub struct SisTools {
 
 impl SisTools {
     pub fn from_env() -> Result<Self> {
-        let epocroot = required("SYMDEV_EPOCROOT")?;
+        let epocroot = Self::required("SYMDEV_EPOCROOT")?;
         let wine = match std::env::var("SYMDEV_WINE") {
             Ok(v) if !v.is_empty() => PathBuf::from(v),
             _ => PathBuf::from("/usr/bin/wine"),
@@ -36,8 +36,8 @@ impl SisTools {
 
     pub fn makesis_args(&self, pkg: &str, sis: &str) -> Vec<String> {
         vec![
-            path_arg(&self.wine),
-            path_arg(&self.makesis),
+            Self::path_arg(&self.wine),
+            Self::path_arg(&self.makesis),
             "-v".into(),
             pkg.into(),
             sis.into(),
@@ -46,8 +46,8 @@ impl SisTools {
 
     pub fn makekeys_args(&self, password: &str, key: &str, cer: &str) -> Vec<String> {
         vec![
-            path_arg(&self.wine),
-            path_arg(&self.makekeys),
+            Self::path_arg(&self.wine),
+            Self::path_arg(&self.makekeys),
             "-cert".into(),
             "-expdays".into(),
             "3650".into(),
@@ -56,24 +56,22 @@ impl SisTools {
             "-len".into(),
             "2048".into(),
             "-dname".into(),
-            dname().into(),
+            SelfSignedDsa::DNAME.into(),
             key.into(),
             cer.into(),
         ]
     }
-}
 
-pub fn dname() -> &'static str {
-    "CN=Joe Bloggs OU=Development O=Acme Ltd C=GB EM=noone@nowhere.com"
-}
-
-pub fn validate_password(password: &str) -> Result<()> {
-    if password.len() < 4 {
-        return Err(Error::Other(
-            "SYMDEV_SIGN_PASSWORD must be at least 4 characters".into(),
-        ));
+    fn required(key: &str) -> Result<PathBuf> {
+        match std::env::var(key) {
+            Ok(v) if !v.is_empty() => Ok(PathBuf::from(v)),
+            _ => Err(Error::Other(format!("missing toolchain: {key}"))),
+        }
     }
-    Ok(())
+
+    fn path_arg(path: &Path) -> String {
+        path.display().to_string()
+    }
 }
 
 pub struct SisUnsignedSpec<'a> {
@@ -87,10 +85,94 @@ pub struct SisUnsignedSpec<'a> {
     pub datetime: SisDateTime,
 }
 
+impl SisUnsignedSpec<'_> {
+    fn parts(&self) -> Result<(SisController, SisData)> {
+        let caps = SisWord41::from_capabilities(self.capabilities)?;
+        let size = self.exe.len() as u32;
+        let digest: [u8; 20] = Sha1::digest(self.exe).into();
+        let dest = format!("!:\\sys\\bin\\{}.exe", self.name);
+        let (major, minor, build) = self.version;
+        let controller = SisController::new(
+            SisInfo::new(
+                SisPkgUid::new(self.uid3),
+                SisString::new(self.vendor),
+                SisArray::new(vec![SisString::new(self.name).field()]),
+                SisArray::new(vec![SisString::new(self.vendor_localized).field()]),
+                SisVersion::new(major, minor, build),
+                self.datetime,
+            ),
+            SisWords16::new(SisWords::new(vec![0x21])), // ponytail: recorded TYPE=SA &EN one-file words; derive when pkg grammar grows
+            SisLanguages::new(SisArray::new(vec![SisLanguage::new(1).field()])),
+            SisProducts::new(SisArray::new(vec![
+                SisProduct::new(
+                    SisPkgUid::new(0x1027_52ae),
+                    SisProductVersion::new(SisVersion::new(0, 0, 0)),
+                    SisArray::new(vec![SisString::new("S60ProductID").field()]),
+                )
+                .field(),
+            ])),
+            SisWords19::new(SisWords::new(vec![0x14])),
+            SisFiles::new(
+                SisArray::new(vec![
+                    SisFile::new(
+                        SisString::new(dest),
+                        SisString::new(""),
+                        caps,
+                        SisHash::new([1, 0x25, 0x14], digest),
+                        SisString::new(""),
+                        [size, 0, size, 0, 0],
+                    )
+                    .field(),
+                ]),
+                SisWords::new(vec![0x0d]),
+                SisWords::new(vec![0x1a]),
+            ),
+            SisU32::new(0),
+        );
+        let data = SisData::new(SisArray::new(vec![
+            SisData31::new(SisArray::new(vec![
+                SisData32::new(SisCompressed {
+                    algorithm: 0,
+                    uncompressed_size: size,
+                    reserved: 0,
+                    data: self.exe.to_vec(),
+                })
+                .field(),
+            ]))
+            .field(),
+        ]));
+        Ok((controller, data))
+    }
+}
+
+impl SisWord41 {
+    fn from_capabilities(caps: &[String]) -> Result<Self> {
+        // Bits recorded by experiment 6's six user-grantable names + hello type-41 `0x000be000`.
+        const MAP: &[(&str, u32)] = &[
+            ("NetworkServices", 13),
+            ("LocalServices", 14),
+            ("ReadUserData", 15),
+            ("WriteUserData", 16),
+            ("Location", 17),
+            ("UserEnvironment", 19),
+        ];
+        let mut word = 0u32;
+        for cap in caps {
+            let Some((_, bit)) = MAP.iter().copied().find(|(name, _)| *name == cap.as_str()) else {
+                return Err(Error::Other(format!(
+                    "SIS capability bits not yet derived from pkg: {cap}"
+                )));
+            };
+            word |= 1 << bit;
+        }
+        Ok(Self::new(word))
+    }
+}
+
 impl SisUnsigned {
     pub fn encode(spec: &SisUnsignedSpec<'_>) -> Result<Vec<u8>> {
-        let (controller, data) = unsigned_parts(spec)?;
-        wrap_sis(spec.uid3, &controller, data)
+        let (controller, data) = spec.parts()?;
+        Self::wrap(spec.uid3, &controller, data)
     }
 
     pub fn encode_signed(
@@ -99,148 +181,19 @@ impl SisUnsigned {
         cert_pem_or_der: &[u8],
         password: &str,
     ) -> Result<Vec<u8>> {
-        let (controller, data) = unsigned_parts(spec)?;
+        let (controller, data) = spec.parts()?;
         let signatures =
             controller.signatures_from_key_and_cert(key_pem, cert_pem_or_der, password)?;
-        wrap_sis(spec.uid3, &controller.with_signatures(signatures), data)
+        Self::wrap(spec.uid3, &controller.with_signatures(signatures), data)
     }
-}
 
-fn wrap_sis(uid3: u32, controller: &SisController, data: SisData) -> Result<Vec<u8>> {
-    Ok(SisUnsigned::new(
-        SisUid::new(uid3),
-        SisCompressed::zlib(&controller.field().bytes())?,
-        data,
-    )
-    .bytes())
-}
-
-fn unsigned_parts(spec: &SisUnsignedSpec<'_>) -> Result<(SisController, SisData)> {
-    let caps = capability_word(spec.capabilities)?;
-    let size = spec.exe.len() as u32;
-    let digest: [u8; 20] = Sha1::digest(spec.exe).into();
-    let dest = format!("!:\\sys\\bin\\{}.exe", spec.name);
-    let (major, minor, build) = spec.version;
-    let controller = SisController::new(
-        SisInfo::new(
-            SisPkgUid::new(spec.uid3),
-            SisString::new(spec.vendor),
-            SisArray::new(vec![SisString::new(spec.name).field()]),
-            SisArray::new(vec![SisString::new(spec.vendor_localized).field()]),
-            SisVersion::new(major, minor, build),
-            spec.datetime,
-        ),
-        SisWords16::new(SisWords::new(vec![0x21])), // ponytail: recorded TYPE=SA &EN one-file words; derive when pkg grammar grows
-        SisLanguages::new(SisArray::new(vec![SisLanguage::new(1).field()])),
-        SisProducts::new(SisArray::new(vec![SisProduct::new(
-            SisPkgUid::new(0x1027_52ae),
-            SisProductVersion::new(SisVersion::new(0, 0, 0)),
-            SisArray::new(vec![SisString::new("S60ProductID").field()]),
+    fn wrap(uid3: u32, controller: &SisController, data: SisData) -> Result<Vec<u8>> {
+        Ok(Self::new(
+            SisUid::new(uid3),
+            SisCompressed::zlib(&controller.field().bytes())?,
+            data,
         )
-        .field()])),
-        SisWords19::new(SisWords::new(vec![0x14])),
-        SisFiles::new(
-            SisArray::new(vec![SisFile::new(
-                SisString::new(dest),
-                SisString::new(""),
-                SisWord41::new(caps),
-                SisHash::new([1, 0x25, 0x14], digest),
-                SisString::new(""),
-                [size, 0, size, 0, 0],
-            )
-            .field()]),
-            SisWords::new(vec![0x0d]),
-            SisWords::new(vec![0x1a]),
-        ),
-        SisU32::new(0),
-    );
-    let data = SisData::new(SisArray::new(vec![SisData31::new(SisArray::new(vec![
-        SisData32::new(SisCompressed {
-            algorithm: 0,
-            uncompressed_size: size,
-            reserved: 0,
-            data: spec.exe.to_vec(),
-        })
-        .field(),
-    ]))
-    .field()]));
-    Ok((controller, data))
-}
-
-fn capability_word(caps: &[String]) -> Result<u32> {
-    // Bits recorded by experiment 6's six user-grantable names + hello type-41 `0x000be000`.
-    const MAP: &[(&str, u32)] = &[
-        ("NetworkServices", 13),
-        ("LocalServices", 14),
-        ("ReadUserData", 15),
-        ("WriteUserData", 16),
-        ("Location", 17),
-        ("UserEnvironment", 19),
-    ];
-    let mut word = 0u32;
-    for cap in caps {
-        let Some((_, bit)) = MAP.iter().copied().find(|(name, _)| *name == cap.as_str()) else {
-            return Err(Error::Other(format!(
-                "SIS capability bits not yet derived from pkg: {cap}"
-            )));
-        };
-        word |= 1 << bit;
-    }
-    Ok(word)
-}
-
-fn datetime_utc(now: SystemTime) -> SisDateTime {
-    let secs = now
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let days = (secs / 86_400) as i32;
-    let rem = (secs % 86_400) as u32;
-    let (year, month, day) = civil_from_unix_days(days);
-    SisDateTime::new(
-        SisDate::new(year, month, day),
-        SisTime::new(
-            (rem / 3600) as u8,
-            ((rem % 3600) / 60) as u8,
-            (rem % 60) as u8,
-        ),
-    )
-}
-
-fn civil_from_unix_days(z: i32) -> (u16, u8, u8) {
-    let z = z + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = (z - era * 146_097) as u32;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe as i32 + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = y + i32::from(m <= 2);
-    (year as u16, m as u8, d as u8)
-}
-
-pub fn write_pkg_file(
-    dir: &Path,
-    name: &str,
-    uid3: u32,
-    version: (u32, u32, u32),
-    vendor: &str,
-) -> Result<PathBuf> {
-    let path = dir.join(format!("{name}.pkg"));
-    std::fs::write(&path, crate::render_pkg(name, uid3, version, vendor))
-        .map_err(|e| Error::Other(e.to_string()))?;
-    Ok(path)
-}
-
-pub fn existing_signing_pair(
-    cert: &Option<PathBuf>,
-    key: &Option<PathBuf>,
-) -> Option<(PathBuf, PathBuf)> {
-    match (cert, key) {
-        (Some(c), Some(k)) if c.is_file() && k.is_file() => Some((c.clone(), k.clone())),
-        _ => None,
+        .bytes())
     }
 }
 
@@ -255,9 +208,43 @@ pub struct SisPackage {
     pub key: Option<PathBuf>,
 }
 
+impl SisPackage {
+    pub fn pkg_text(&self) -> String {
+        let (major, minor, patch) = self.version;
+        format!(
+            "&EN\r\n#{{\"{name}\"}},(0x{uid3:08x}),{major},{minor},{patch},TYPE=SA\r\n%{{\"{vendor}\"}}\r\n:\"{vendor}\"\r\n[0x102752AE], 0, 0, 0, {{\"S60ProductID\"}}\r\n\"{name}.exe\"\t\t-\"!:\\sys\\bin\\{name}.exe\"\r\n",
+            name = self.name,
+            uid3 = self.uid3,
+            vendor = self.vendor,
+        )
+    }
+
+    pub fn write_pkg_file(&self, dir: &Path) -> Result<PathBuf> {
+        let path = dir.join(format!("{}.pkg", self.name));
+        std::fs::write(&path, self.pkg_text()).map_err(|e| Error::Other(e.to_string()))?;
+        Ok(path)
+    }
+
+    pub fn validate_password(&self) -> Result<()> {
+        if self.password.len() < 4 {
+            return Err(Error::Other(
+                "SYMDEV_SIGN_PASSWORD must be at least 4 characters".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn existing_signing_pair(&self) -> Option<(PathBuf, PathBuf)> {
+        match (&self.cert, &self.key) {
+            (Some(c), Some(k)) if c.is_file() && k.is_file() => Some((c.clone(), k.clone())),
+            _ => None,
+        }
+    }
+}
+
 impl PackageBackend for SisPackage {
     fn package(&self, artifacts: &[Artifact]) -> Result<Package> {
-        validate_password(&self.password)?;
+        self.validate_password()?;
         let artifact = match artifacts {
             [one] => one,
             _ => return Err(Error::Other("no E32 artifact".into())),
@@ -274,12 +261,12 @@ impl PackageBackend for SisPackage {
             .path
             .parent()
             .ok_or_else(|| Error::Other("E32 not found".into()))?;
-        write_pkg_file(workdir, &self.name, self.uid3, self.version, &self.vendor)?;
+        self.write_pkg_file(workdir)?;
         let sis = format!("{}.sis", self.name);
         let sisx = format!("{}.sisx", self.name);
         let exe = std::fs::read(&artifact.path).map_err(|e| Error::Other(e.to_string()))?;
         let now = SystemTime::now();
-        let datetime = datetime_utc(now);
+        let datetime = SisDateTime::utc(now);
         let spec = SisUnsignedSpec {
             name: &self.name,
             uid3: self.uid3,
@@ -292,7 +279,7 @@ impl PackageBackend for SisPackage {
         };
         let bytes = SisUnsigned::encode(&spec)?;
         std::fs::write(workdir.join(&sis), &bytes).map_err(|e| Error::Other(e.to_string()))?;
-        let (cert_bytes, key_bytes) = match existing_signing_pair(&self.cert, &self.key) {
+        let (cert_bytes, key_bytes) = match self.existing_signing_pair() {
             Some((cer, key)) => (
                 std::fs::read(&cer).map_err(|e| Error::Other(e.to_string()))?,
                 std::fs::read(&key).map_err(|e| Error::Other(e.to_string()))?,
@@ -320,17 +307,6 @@ impl PackageBackend for SisPackage {
             companions: vec![workdir.join(&sis)],
         })
     }
-}
-
-fn required(key: &str) -> Result<PathBuf> {
-    match std::env::var(key) {
-        Ok(v) if !v.is_empty() => Ok(PathBuf::from(v)),
-        _ => Err(Error::Other(format!("missing toolchain: {key}"))),
-    }
-}
-
-fn path_arg(path: &Path) -> String {
-    path.display().to_string()
 }
 
 #[cfg(test)]
@@ -426,28 +402,42 @@ fn makekeys_args_match_experiment_8() {
 #[test]
 fn dname_is_makekeys_example_usage() {
     assert_eq!(
-        dname(),
+        SelfSignedDsa::DNAME,
         "CN=Joe Bloggs OU=Development O=Acme Ltd C=GB EM=noone@nowhere.com"
     );
 }
 
 #[test]
 fn validate_password_rejects_shorter_than_four_characters() {
-    let err = validate_password("abc").unwrap_err();
+    let mut pkg = fake_pkg();
+    pkg.password = "abc".into();
+    let err = pkg.validate_password().unwrap_err();
     assert_eq!(
         err.to_string(),
         "SYMDEV_SIGN_PASSWORD must be at least 4 characters"
     );
-    assert!(validate_password("").is_err());
-    validate_password("abcd").unwrap();
+    pkg.password = "".into();
+    assert!(pkg.validate_password().is_err());
+    pkg.password = "abcd".into();
+    pkg.validate_password().unwrap();
 }
 
 #[test]
 fn write_pkg_file_writes_recorded_pkg_next_to_exe() {
     let dir = tempfile::tempdir().unwrap();
-    let path = write_pkg_file(dir.path(), "hello", 0xe79e4cf9, (0, 1, 0), "symdev").unwrap();
+    let path = fake_pkg().write_pkg_file(dir.path()).unwrap();
     assert_eq!(path, dir.path().join("hello.pkg"));
     let s = std::fs::read_to_string(&path).unwrap();
+    assert!(s.contains("\r\n"));
+    assert_eq!(
+        s.replace("\r\n", "\n"),
+        "&EN\n#{\"hello\"},(0xe79e4cf9),0,1,0,TYPE=SA\n%{\"symdev\"}\n:\"symdev\"\n[0x102752AE], 0, 0, 0, {\"S60ProductID\"}\n\"hello.exe\"\t\t-\"!:\\sys\\bin\\hello.exe\"\n"
+    );
+}
+
+#[test]
+fn pkg_text_matches_experiment_7_grammar() {
+    let s = fake_pkg().pkg_text();
     assert!(s.contains("\r\n"));
     assert_eq!(
         s.replace("\r\n", "\n"),
@@ -504,10 +494,10 @@ fn existing_signing_pair_when_both_files_exist() {
     let key = dir.path().join("hello.key");
     std::fs::write(&cert, b"c").unwrap();
     std::fs::write(&key, b"k").unwrap();
-    assert_eq!(
-        existing_signing_pair(&Some(cert.clone()), &Some(key.clone())),
-        Some((cert, key))
-    );
+    let mut pkg = fake_pkg();
+    pkg.cert = Some(cert.clone());
+    pkg.key = Some(key.clone());
+    assert_eq!(pkg.existing_signing_pair(), Some((cert, key)));
 }
 
 #[test]
@@ -516,9 +506,16 @@ fn existing_signing_pair_none_when_missing() {
     let cert = dir.path().join("hello.cer");
     let key = dir.path().join("hello.key");
     std::fs::write(&cert, b"c").unwrap();
-    assert_eq!(existing_signing_pair(&Some(cert.clone()), &Some(key)), None);
-    assert_eq!(existing_signing_pair(&None, &None), None);
-    assert_eq!(existing_signing_pair(&Some(cert), &None), None);
+    let mut pkg = fake_pkg();
+    pkg.cert = Some(cert.clone());
+    pkg.key = Some(key);
+    assert_eq!(pkg.existing_signing_pair(), None);
+    pkg.cert = None;
+    pkg.key = None;
+    assert_eq!(pkg.existing_signing_pair(), None);
+    pkg.cert = Some(cert);
+    pkg.key = None;
+    assert_eq!(pkg.existing_signing_pair(), None);
 }
 
 #[cfg(test)]
@@ -751,7 +748,7 @@ fn experiment5_hello_key_native_sign_skipped_without_password() {
 #[cfg(test)]
 fn hello_makekeys_not_before() -> SystemTime {
     // Frozen experiment-8 hello.cer Not Before: 2026-09-17 15:21:21 GMT
-    UNIX_EPOCH + std::time::Duration::from_secs(1_789_654_881)
+    std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_789_654_881)
 }
 
 #[test]
@@ -789,12 +786,9 @@ fn generated_self_signed_dsa_verifies_with_injected_dates() {
         .to_der()
         .unwrap();
     let parsed = x509_cert::Certificate::from_der(&der).unwrap();
-    crate::sis::verify_dsa_sha1(
-        &parsed.tbs_certificate.to_der().unwrap(),
-        parsed.signature.raw_bytes(),
-        &der,
-    )
-    .unwrap();
+    crate::sis::SisBlob37::new(parsed.signature.raw_bytes().to_vec())
+        .verify_dsa_sha1(&parsed.tbs_certificate.to_der().unwrap(), &der)
+        .unwrap();
     let spec = SisUnsignedSpec {
         name: "hello",
         uid3: 0xe79e_4cf9,
