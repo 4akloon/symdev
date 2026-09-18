@@ -845,11 +845,8 @@ version = "0.1.0"
 dependencies = [
  "der",
  "symdev-core",
- "symdev-elf2e32",
  "symdev-makekeys",
- "symdev-rcomp",
  "symdev-sis",
- "symdev-uidcrc",
  "tempfile",
  "thiserror",
  "x509-cert",
