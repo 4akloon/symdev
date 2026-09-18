@@ -1,4 +1,5 @@
 mod array;
+mod checksum;
 mod compressed;
 mod controller;
 mod data;
@@ -17,6 +18,7 @@ mod version;
 mod words;
 
 pub use array::SisArray;
+pub use checksum::{SisChecksum34, SisChecksum35};
 pub use compressed::SisCompressed;
 pub use controller::SisController;
 pub use data::{SisData, SisData31, SisData32};
