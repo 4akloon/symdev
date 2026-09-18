@@ -17,5 +17,6 @@ pub use sis::{
     SisPackage, SisPkgUid, SisProduct, SisProductVersion, SisString, SisTime, SisTools, SisUid,
     SisVersion, dname,
 };
+pub use sis::{SisU32, SisWords, SisWords16, SisWords19};
 pub use toolchain::Toolchain;
 pub use uidcrc::{UidCrc, UidCrcTool};
