@@ -1,5 +1,5 @@
 use super::array::SisArray;
-use super::field::SisField;
+use super::field::SisEncode;
 use super::pkg_uid::SisPkgUid;
 use super::version::SisVersion;
 
@@ -13,9 +13,13 @@ impl SisProductVersion {
     pub fn new(version: SisVersion) -> Self {
         Self { version }
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.version.field().bytes())
+impl SisEncode for SisProductVersion {
+    const KIND: u32 = SisProductVersion::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        self.version.field().bytes()
     }
 }
 
@@ -42,14 +46,19 @@ impl SisProduct {
         out.extend(self.names.field().bytes());
         out
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload())
+impl SisEncode for SisProduct {
+    const KIND: u32 = SisProduct::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisProduct::payload(self)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::SisEncode;
     use super::*;
     use crate::sis::{SisArray, SisPkgUid, SisString, SisVersion};
 

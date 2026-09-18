@@ -1,4 +1,4 @@
-use super::field::SisField;
+use super::field::SisEncode;
 
 pub struct SisDate {
     pub year: u16,
@@ -20,9 +20,13 @@ impl SisDate {
         out[3] = self.day;
         out
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload().to_vec())
+impl SisEncode for SisDate {
+    const KIND: u32 = SisDate::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisDate::payload(self).to_vec()
     }
 }
 
@@ -46,9 +50,13 @@ impl SisTime {
     pub fn payload(&self) -> [u8; 3] {
         [self.hour, self.minute, self.second]
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload().to_vec())
+impl SisEncode for SisTime {
+    const KIND: u32 = SisTime::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisTime::payload(self).to_vec()
     }
 }
 
@@ -63,17 +71,19 @@ impl SisDateTime {
     pub fn new(date: SisDate, time: SisTime) -> Self {
         Self { date, time }
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(
-            Self::KIND,
-            [self.date.field().bytes(), self.time.field().bytes()].concat(),
-        )
+impl SisEncode for SisDateTime {
+    const KIND: u32 = SisDateTime::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        [self.date.field().bytes(), self.time.field().bytes()].concat()
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::SisEncode;
     use super::*;
 
     #[test]

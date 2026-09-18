@@ -1,4 +1,4 @@
-use super::field::SisField;
+use super::field::SisEncode;
 
 pub struct SisWords {
     pub values: Vec<u32>,
@@ -14,9 +14,13 @@ impl SisWords {
     pub fn payload(&self) -> Vec<u8> {
         self.values.iter().flat_map(|v| v.to_le_bytes()).collect()
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload())
+impl SisEncode for SisWords {
+    const KIND: u32 = SisWords::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisWords::payload(self)
     }
 }
 
@@ -30,9 +34,13 @@ impl SisWords16 {
     pub fn new(words: SisWords) -> Self {
         Self { words }
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.words.field().bytes())
+impl SisEncode for SisWords16 {
+    const KIND: u32 = SisWords16::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        self.words.field().bytes()
     }
 }
 
@@ -46,9 +54,13 @@ impl SisWords19 {
     pub fn new(words: SisWords) -> Self {
         Self { words }
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.words.field().bytes())
+impl SisEncode for SisWords19 {
+    const KIND: u32 = SisWords19::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        self.words.field().bytes()
     }
 }
 
@@ -66,14 +78,19 @@ impl SisU32 {
     pub fn payload(&self) -> [u8; 4] {
         self.value.to_le_bytes()
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload().to_vec())
+impl SisEncode for SisU32 {
+    const KIND: u32 = SisU32::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisU32::payload(self).to_vec()
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::SisEncode;
     use super::*;
 
     #[test]

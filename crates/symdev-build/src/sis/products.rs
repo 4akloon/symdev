@@ -1,5 +1,5 @@
 use super::array::SisArray;
-use super::field::SisField;
+use super::field::SisEncode;
 
 pub struct SisProducts {
     pub products: SisArray,
@@ -17,14 +17,19 @@ impl SisProducts {
         out.extend([2, 0, 0, 0, 4, 0, 0, 0, 0x12, 0, 0, 0]);
         out
     }
+}
 
-    pub fn field(&self) -> SisField {
-        SisField::new(Self::KIND, self.payload())
+impl SisEncode for SisProducts {
+    const KIND: u32 = SisProducts::KIND;
+
+    fn payload(&self) -> Vec<u8> {
+        SisProducts::payload(self)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::SisEncode;
     use super::*;
     use crate::sis::{SisArray, SisPkgUid, SisProduct, SisProductVersion, SisString, SisVersion};
 
