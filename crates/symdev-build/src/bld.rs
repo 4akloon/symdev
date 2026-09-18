@@ -54,14 +54,18 @@ pub fn parse_bld_inf(text: &str) -> Result<BldInf, ParseError> {
         }
 
         if line.starts_with('#') {
-            let tok = line.split_whitespace().next().unwrap();
+            let Some(tok) = line.split_whitespace().next() else {
+                continue;
+            };
             if preprocessor(tok) {
                 return Err(ParseError(format!("unsupported preprocessor: {tok}")));
             }
             continue;
         }
 
-        let tok = line.split_whitespace().next().unwrap();
+        let Some(tok) = line.split_whitespace().next() else {
+            continue;
+        };
         if known_directive(tok) {
             if tok.eq_ignore_ascii_case("PRJ_PLATFORMS") {
                 section = Section::Platforms;
@@ -86,8 +90,7 @@ pub fn parse_bld_inf(text: &str) -> Result<BldInf, ParseError> {
             }
             Section::Platforms => {
                 platforms
-                    .as_mut()
-                    .unwrap()
+                    .get_or_insert_with(Vec::new)
                     .extend(line.split_whitespace().map(str::to_string));
             }
             Section::Exports => exports.push(line.to_string()),
