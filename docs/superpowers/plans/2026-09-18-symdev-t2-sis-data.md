@@ -38,7 +38,7 @@
 - Consumes: `SisField`, `SisArray`, `SisCompressed`
 - Produces: `SisData32` KIND 32; `SisData31` KIND 31; `SisData` KIND 30
 
-- [ ] **Step 1: Failing tests** — dump the type-30 field from frozen `$HOME/src/symdev-experiment-5/hello.sis` into hex testdata (do not commit the `.sis`). Unit tests in `data.rs`:
+- [x] **Step 1: Failing tests** — dump the type-30 field from frozen `$HOME/src/symdev-experiment-5/hello.sis` into hex testdata (do not commit the `.sis`). Unit tests in `data.rs`:
 
 ```rust
 fn parse_hex(s: &str) -> Vec<u8> {
@@ -122,10 +122,10 @@ fn hello_data_field_matches_experiment_33() {
 
 `HELLO_DATA_SHA1` is a pinned `[u8; 20]` const (host SHA-1 of the 3588-byte payload / `hello.exe`; same digest as experiment 29). Do not add a sha1 crate. Do not `include_bytes!` a `.sis`.
 
-- [ ] **Step 2:** `cargo test -p symdev-build sis::data --offline` FAIL (type missing)
-- [ ] **Step 3:** Implement as specified. `SisData32::payload()` is `compressed.field().bytes()`. `SisData31` / `SisData` payloads are `items.field().bytes()`. Reuse `SisArray` and `SisCompressed`. Algorithm `0` via public fields. No zlib. No Wine.
-- [ ] **Step 4:** PASS `cargo test -p symdev-build sis::data --offline` then `cargo test --workspace --offline`
-- [ ] **Step 5: Commit** `Encode SIS type-30 data from hello compressed file bytes.`
+- [x] **Step 2:** `cargo test -p symdev-build sis::data --offline` FAIL (type missing)
+- [x] **Step 3:** Implement as specified. `SisData32::payload()` is `compressed.field().bytes()`. `SisData31` / `SisData` payloads are `items.field().bytes()`. Reuse `SisArray` and `SisCompressed`. Algorithm `0` via public fields. No zlib. No Wine.
+- [x] **Step 4:** PASS `cargo test -p symdev-build sis::data --offline` then `cargo test --workspace --offline`
+- [x] **Step 5: Commit** `Encode SIS type-30 data from hello compressed file bytes.`
 
 ---
 
