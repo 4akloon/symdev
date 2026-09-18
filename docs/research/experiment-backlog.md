@@ -509,3 +509,38 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 
   Concatenate those 12 trailing bytes in `payload()`. Do not create `SisWords` here. Types 16/19/40, native inflate, and `package` wiring stay **out of this experiment**.
 
+## 29. SIS file record (type 24) (T2)
+
+- **Requires:** experiments 17 and 25 (string encode; raw-u32 type-2 rule; same inflated type-13 block).
+- **Skip if:** experiment-7 `hello.sis` is gone
+- **Procedure:** Same host inflate of frozen `hello.sis` as experiments 17–28 (Python `zlib`, not a repo crate). Record type `24` inside type `28`. Walk nested TLVs. Do not copy MakeSIS C. Do not invent C / capability names. Do not commit `.sis` / `.exe`. Confirm the type-25 trailing 20 bytes against SHA-1 of frozen `hello.exe` (experiment 6). Confirm leftover `0x0e04` against that file’s size. Do **not** walk leftover `04 0e 00 00 00 00 00 00` as type `3588` length 0. A previous walk’s “type 29” was KIND `41` (header byte `0x29`).
+- **Expected result:** Pinned type-24 field 144 bytes, payload `n=136`: dest `SisString` `!:\sys\bin\hello.exe`, empty `SisString`, type `41` u32 `0x000be000`, type `25` three LE u32 plus 20-byte digest, empty `SisString`, then five LE u32 `3588, 0, 3588, 0, 0`.
+- **Decision unblocked:** T2 `SisWord41` / `SisHash` / `SisFile` encode.
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Same inflate as experiment 25 (548 bytes, type `13` n=540). Type `24` length `136` (`0x88`) inside type `28`’s type-2 array. Field 144 bytes. Children inside the unpadded payload:
+
+  1. type `1` n=40 UTF-16-LE `!:\sys\bin\hello.exe` (matches experiment-7 pkg `"hello.exe"-"!:\sys\bin\hello.exe"`)
+  2. type `1` n=0 empty
+  3. type `41` n=4 payload `00 e0 0b 00` = `0x000be000`
+  4. type `25` n=32 payload `01 00 00 00 25 00 00 00 14 00 00 00` + 20 bytes `3a23e7e7e60ed97354534b2a77e565cd64ea3970`. Host `hashlib.sha1` of `$HOME/src/symdev-experiment-5/hello.exe` (3588 bytes) equals those 20 bytes. Payload is not nested TLVs (`type=1 n=0x25` would overrun).
+  5. type `1` n=0 empty
+  6. leftover 20 bytes `04 0e 00 00 00 00 00 00 04 0e 00 00 00 00 00 00 00 00 00 00` = five LE u32 `3588, 0, 3588, 0, 0`. `3588` is experiment-6 `hello.exe` size. Not a TLV.
+
+  Native inflate, type 28 wrapper, type 13 compose, type 30 data, and `package` wiring stay **out of this experiment**.
+
+## 30. SIS files list (type 28) (T2)
+
+- **Requires:** experiment 29 (type-24 file) and experiment 25 (`SisWords` raw-u32 type 2).
+- **Skip if:** experiment-7 `hello.sis` is gone
+- **Procedure:** Record type `28` from the same inflated controller. Confirm it wraps a type-2 array of the experiment-29 type-24 field, then two type-2 fields of length 4 whose payloads are LE u32 `0x0d` and `0x1a`. Those are raw u32 arrays (`SisWords`), not `SisArray`. Do not copy MakeSIS C. Do not commit `.sis`. Do not pin type 28 as opaque bytes.
+- **Expected result:** Pinned type-28 field 184 bytes, payload `n=176`: type-2 array `n=144` of one hello `SisFile` field, then `SisWords::new(vec![0x0d])` and `SisWords::new(vec![0x1a])`.
+- **Decision unblocked:** T2 `SisFiles` encode.
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Same inflate. Type `28` length `176` (`0xb0`) at type-13 offset 344. Field 184 bytes:
+
+  1. type `2` length `144` (`0x90`) whose payload is exactly the 144-byte type-24 field from experiment 29
+  2. type `2` length `4` payload `0d 00 00 00` = `0x0d`
+  3. type `2` length `4` payload `1a 00 00 00` = `0x1a`
+
+  Header `1c 00 00 00 b0 00 00 00`. Type 13 compose, type 30 data, checksums 34/35, and `package` wiring stay **out of this experiment**.
+
