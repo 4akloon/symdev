@@ -1,4 +1,5 @@
 use super::field::SisEncode;
+use symdev_core::{Error, Result};
 
 pub struct SisCompressed {
     pub algorithm: u32,
@@ -20,15 +21,19 @@ impl SisCompressed {
         }
     }
 
-    pub fn zlib(uncompressed: &[u8]) -> Self {
+    pub fn zlib(uncompressed: &[u8]) -> Result<Self> {
         use std::io::Write;
 
         let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::new(6));
-        encoder.write_all(uncompressed).expect("zlib encode");
-        Self::new(
+        encoder
+            .write_all(uncompressed)
+            .map_err(|e| Error::Other(format!("zlib encode: {e}")))?;
+        Ok(Self::new(
             uncompressed.len() as u32,
-            encoder.finish().expect("zlib finish"),
-        )
+            encoder
+                .finish()
+                .map_err(|e| Error::Other(format!("zlib finish: {e}")))?,
+        ))
     }
 
     pub fn header_bytes(&self) -> [u8; 12] {
