@@ -493,3 +493,19 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
   `28 00 00 00 04 00 00 00 00 00 00 00`
 
   Payload is one LE u32 `0`. No inner type-2 header. Type 28 stays **out of this experiment**. Native inflate, type-13 compose, and `package` wiring stay out.
+
+## 28. SIS products list (type 17) (T2)
+
+- **Requires:** experiment 24 (type-18 product) and the same inflated type-13 block.
+- **Skip if:** experiment-7 `hello.sis` is gone
+- **Procedure:** Record type `17` from the inflated controller. It wraps a type-2 array of the experiment-24 type-18 field, then a type-2 field of length 4 whose payload is LE `u32` `0x12`. Do not copy MakeSIS C. Do not commit `.sis` / `.pkg`. Do not invent a second version. Do not add `SisWords`.
+- **Expected result:** Pinned type-17 field 116 bytes, payload `n=108`: type-2 array `n=88` of one hello `SisProduct` field, then `02 00 00 00 04 00 00 00 12 00 00 00`.
+- **Decision unblocked:** T2 `SisProducts` encode.
+- **Outcome:** pass
+- **Evidence:** 2026-09-18, Ubuntu 26.04.1 LTS x86_64. Same frozen hello type-13 as experiments 22–24. Type `17` length `108` (`0x6c`), field 116 bytes:
+
+  1. type `2` length `88` (`0x58`) whose payload is exactly `SisProduct::new(SisPkgUid::new(0x102752AE), SisProductVersion::new(SisVersion::new(0,0,0)), SisArray::new(vec![SisString::new("S60ProductID").field()])).field().bytes()`
+  2. type `2` length `4` payload `12 00 00 00`
+
+  Concatenate those 12 trailing bytes in `payload()`. Do not create `SisWords` here. Types 16/19/40, native inflate, and `package` wiring stay **out of this experiment**.
+
