@@ -39,7 +39,7 @@ The short why: **configurability without a grammar is how you ship an uninstalla
 | `symbian.uid3`, name, version, vendor, capabilities, cert/key | 2 | `Manifest`, `SisPackage` |
 | Toolchain paths, Wine path, sign password | 2 | `Toolchain::from_env`, `SisTools::from_env`, `SYMDEV_SIGN_PASSWORD` |
 | Install dest `!:\sys\bin\{name}.exe`, `&EN` / language id `1`, `TYPE=SA` token, localized vendor | 3 | `render_pkg` / `unsigned_parts`; MMP `TARGETPATH` parsed, unused |
-| Signing DN `CN=Joe Bloggs…`, cert serial 1, `-expdays 3650` | 3 (DN) / 4 (serial, OID, key size) | `dname()`, `SelfSignedDsa` |
+| Signing DN `CN=Joe Bloggs…`, cert serial 1, `-expdays 3650` | 2 (DN: `signing.subject`, RFC 4514; default stays the recorded example) / 4 (serial, OID, key size) | `SelfSignedDsa::generate_for`, `SisPackage::subject` |
 | Hello UID `0xe79e4cf9`, Vendor / Vendor-EN, stamp 2026-09-17 | tests only | golden constructors, not live `SisPackage` |
 | Month 0-based in type 6; language id 1 | 1 (encoding) / 3 (which languages) | `SisDate`, `SisLanguage::new(1)` |
 | DSA 1024/160 vs makekeys `-len 2048`; RFC 6979 `k`; `/usr/bin/wine` default; recorded tool argv | 4 | `SelfSignedDsa`, `SisTools`, `RcompTool`, `UidCrcTool` |

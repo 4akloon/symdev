@@ -138,6 +138,7 @@ fn package_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
             .signing
             .key
             .map(|p| if p.is_absolute() { p } else { cwd.join(p) }),
+        subject: m.signing.subject,
     }
     .package(&[Artifact {
         path: cwd.join(&e32),

@@ -1,3 +1,5 @@
+> **Historical (2026-09-19).** Written by an earlier agent session before experiments 45–48; superseded by [eka2l1-bringup.md](eka2l1-bringup.md) and `symdev run`. Kept as a record; its plans and claims are not verified.
+
 # EKA2L1 bring-up (M5 spike on this Linux host)
 
 Investigation only. No implementation. Does **not** start T4, does **not** add `symdev emu`, does **not** download ROM/SDK/firmware, does **not** claim E52.

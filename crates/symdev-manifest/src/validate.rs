@@ -206,12 +206,19 @@ fn signing(raw: Option<crate::schema::RawSigning>) -> Result<Signing> {
             mode: SigningMode::SelfSigned,
             cert: None,
             key: None,
+            subject: None,
         });
     };
     Ok(Signing {
         mode: raw.mode.unwrap_or(SigningMode::SelfSigned),
         cert: nonempty_path(raw.cert, "signing.cert")?,
         key: nonempty_path(raw.key, "signing.key")?,
+        subject: match raw.subject {
+            Some(s) if s.trim().is_empty() => {
+                return Err(Error::Invalid("signing.subject must not be empty".into()));
+            }
+            other => other,
+        },
     })
 }
 

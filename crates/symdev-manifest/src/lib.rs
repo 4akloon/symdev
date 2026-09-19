@@ -204,3 +204,19 @@ fn load_missing_file() {
     assert!(matches!(err, symdev_manifest::Error::MissingFile));
     assert_eq!(err.to_string(), "no symdev.toml in current directory");
 }
+
+#[test]
+fn signing_subject_is_optional_and_nonempty() {
+    let base = "[package]\nname = \"hello\"\nversion = \"0.1.0\"\n[target]\ndevice = \"nokia-e52\"\n[language]\nname = \"cpp\"\n[symbian]\ncapabilities = []\nvendor = \"symdev\"\n";
+    let with =
+        format!("{base}[signing]\nmode = \"self-signed\"\nsubject = \"CN=Alice,O=Example\"\n");
+    let m = parse(&with).unwrap();
+    assert_eq!(m.signing.subject.as_deref(), Some("CN=Alice,O=Example"));
+    let empty = format!("{base}[signing]\nsubject = \" \"\n");
+    assert!(
+        parse(&empty)
+            .unwrap_err()
+            .to_string()
+            .contains("signing.subject")
+    );
+}
