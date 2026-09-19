@@ -17,6 +17,22 @@ pub struct ElfImportReloc {
     pub vaddr: u32,
 }
 
+/// A dynamic relocation against a defined symbol: the word at `vaddr` refers to `target`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ElfLocalReloc {
+    pub vaddr: u32,
+    pub target: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ElfRel {
+    vaddr: u32,
+    kind: u32,
+    symbol: usize,
+    symbol_value: u32,
+    symbol_section: u16,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct ElfSection {
     kind: u32,
@@ -49,6 +65,8 @@ impl ElfImage {
     const DT_RELSZ: u32 = 18;
     const DT_JMPREL: u32 = 23;
     const SHN_UNDEF: u16 = 0;
+    const R_ARM_ABS32: u32 = 2;
+    const R_ARM_RELATIVE: u32 = 23;
     const EM_ARM: u16 = 40;
 
     pub fn parse(bytes: impl Into<Vec<u8>>) -> Result<Self> {
@@ -142,16 +160,62 @@ impl ElfImage {
 
     /// `DT_REL` then `DT_JMPREL` relocations whose symbol is undefined, in file order.
     pub fn import_relocs(&self) -> Result<Vec<ElfImportReloc>> {
-        let dynsym = self
-            .section(Self::SHT_DYNSYM)
-            .ok_or_else(|| Error::Other("ELF has no .dynsym".into()))?;
         let versym = self
             .section(Self::SHT_GNU_VERSYM)
             .ok_or_else(|| Error::Other("ELF has no .gnu.version".into()))?;
         let versions = self.versions()?;
         let mut out = Vec::new();
-        // DT_RELSZ may already span the PLT relocations (experiment-6 hello.elf);
-        // each relocation entry counts once.
+        for rel in self.dynamic_relocs()? {
+            if rel.symbol == 0 || rel.symbol_section != Self::SHN_UNDEF {
+                continue;
+            }
+            let index = self.u16_at(versym.offset + rel.symbol * 2)? & 0x7fff;
+            let dll = versions
+                .iter()
+                .find(|(v, _)| *v == index)
+                .map(|(_, name)| name.clone())
+                .ok_or_else(|| {
+                    Error::Other(format!(
+                        "ELF import at {:#x} has no version {index}",
+                        rel.vaddr
+                    ))
+                })?;
+            out.push(ElfImportReloc {
+                dll,
+                vaddr: rel.vaddr,
+            });
+        }
+        Ok(out)
+    }
+
+    /// Dynamic relocations against defined symbols (the image's own fixups), in file order.
+    pub fn local_relocs(&self) -> Result<Vec<ElfLocalReloc>> {
+        let mut out = Vec::new();
+        for rel in self.dynamic_relocs()? {
+            if rel.symbol != 0 && rel.symbol_section == Self::SHN_UNDEF {
+                continue;
+            }
+            if !matches!(rel.kind, Self::R_ARM_ABS32 | Self::R_ARM_RELATIVE) {
+                return Err(Error::Other(format!(
+                    "TODO: ARM relocation type {} at {:#x} (not observed)",
+                    rel.kind, rel.vaddr
+                )));
+            }
+            out.push(ElfLocalReloc {
+                vaddr: rel.vaddr,
+                target: rel.symbol_value,
+            });
+        }
+        Ok(out)
+    }
+
+    /// `DT_REL` then `DT_JMPREL` entries. `DT_RELSZ` may already span the PLT
+    /// relocations (experiment-6 hello.elf); each entry counts once.
+    fn dynamic_relocs(&self) -> Result<Vec<ElfRel>> {
+        let dynsym = self
+            .section(Self::SHT_DYNSYM)
+            .ok_or_else(|| Error::Other("ELF has no .dynsym".into()))?;
+        let mut out = Vec::new();
         let mut seen = std::collections::HashSet::new();
         for (start, size) in [
             (Self::DT_REL, Self::DT_RELSZ),
@@ -160,29 +224,20 @@ impl ElfImage {
             let (Some(at), Some(len)) = (self.dynamic(start)?, self.dynamic(size)?) else {
                 continue;
             };
-            let table = self.file_range(at, len)?;
-            for rel in table.step_by(8) {
+            for rel in self.file_range(at, len)?.step_by(8) {
                 if !seen.insert(rel) {
                     continue;
                 }
-                let offset = self.u32_at(rel)?;
-                let sym = (self.u32_at(rel + 4)? >> 8) as usize;
-                if sym == 0 {
-                    continue;
-                }
-                let entry = dynsym.offset + sym * 16;
-                if self.u16_at(entry + 14)? != Self::SHN_UNDEF {
-                    continue;
-                }
-                let index = self.u16_at(versym.offset + sym * 2)? & 0x7fff;
-                let dll = versions
-                    .iter()
-                    .find(|(v, _)| *v == index)
-                    .map(|(_, name)| name.clone())
-                    .ok_or_else(|| {
-                        Error::Other(format!("ELF import at {offset:#x} has no version {index}"))
-                    })?;
-                out.push(ElfImportReloc { dll, vaddr: offset });
+                let info = self.u32_at(rel + 4)?;
+                let symbol = (info >> 8) as usize;
+                let entry = dynsym.offset + symbol * 16;
+                out.push(ElfRel {
+                    vaddr: self.u32_at(rel)?,
+                    kind: info & 0xff,
+                    symbol,
+                    symbol_value: self.u32_at(entry + 4)?,
+                    symbol_section: self.u16_at(entry + 14)?,
+                });
             }
         }
         Ok(out)

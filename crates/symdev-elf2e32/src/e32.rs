@@ -127,6 +127,80 @@ impl E32ImportSection {
     }
 }
 
+/// E32 code relocation section (experiment 44 uncompressed `hello.exe`): `u32 size`
+/// (blocks only), `u32 count` (real entries), then per 4 KiB page `u32 page, u32 block
+/// size, u16 entries` padded to 4 with a zero entry. Entry = kind << 12 | page offset.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct E32RelocSection {
+    /// `(code offset, kind)` sorted by offset.
+    pub entries: Vec<(u32, u16)>,
+}
+
+impl E32RelocSection {
+    pub const KIND_TEXT: u16 = 1;
+    pub const KIND_DATA: u16 = 2;
+    const PAGE: u32 = 0x1000;
+
+    /// Code relocations: every local dynamic relocation whose word lies in the code
+    /// segment; kind by which segment its target lies in.
+    pub fn code_from_elf(elf: &ElfImage, layout: &E32Layout) -> Result<Self> {
+        let code_end = layout.code_base + layout.code_size;
+        let data_end = layout.data_base + layout.data_size + layout.bss_size;
+        let mut entries = Vec::new();
+        for rel in elf.local_relocs()? {
+            if !(layout.code_base..code_end).contains(&rel.vaddr) {
+                return Err(Error::Other(format!(
+                    "TODO: relocation at {:#x} outside code (data relocs not observed)",
+                    rel.vaddr
+                )));
+            }
+            let kind = if (layout.code_base..code_end).contains(&rel.target) {
+                Self::KIND_TEXT
+            } else if (layout.data_base..data_end).contains(&rel.target) {
+                Self::KIND_DATA
+            } else {
+                return Err(Error::Other(format!(
+                    "relocation at {:#x} targets {:#x} outside code and data",
+                    rel.vaddr, rel.target
+                )));
+            };
+            entries.push((rel.vaddr - layout.code_base, kind));
+        }
+        entries.sort_unstable();
+        Ok(Self { entries })
+    }
+
+    pub fn count(&self) -> u32 {
+        self.entries.len() as u32
+    }
+
+    pub fn bytes(&self) -> Vec<u8> {
+        let mut blocks = Vec::new();
+        let mut i = 0;
+        while i < self.entries.len() {
+            let page = self.entries[i].0 & !(Self::PAGE - 1);
+            let mut words = Vec::new();
+            while i < self.entries.len() && self.entries[i].0 & !(Self::PAGE - 1) == page {
+                let (offset, kind) = self.entries[i];
+                words.push((kind << 12) | (offset - page) as u16);
+                i += 1;
+            }
+            if words.len() % 2 != 0 {
+                words.push(0);
+            }
+            blocks.extend_from_slice(&page.to_le_bytes());
+            blocks.extend_from_slice(&((8 + 2 * words.len()) as u32).to_le_bytes());
+            for w in words {
+                blocks.extend_from_slice(&w.to_le_bytes());
+            }
+        }
+        let mut out = (blocks.len() as u32).to_le_bytes().to_vec();
+        out.extend_from_slice(&self.count().to_le_bytes());
+        out.extend_from_slice(&blocks);
+        out
+    }
+}
+
 /// UID prefix of an E32 image (`iUid1`/`iUid2`/`iUid3` + uidcrc checksum).
 pub struct E32Uid {
     pub uid1: u32,
@@ -438,6 +512,23 @@ mod tests {
         assert_eq!(imports.blocks[0].dll, "drtaeabi{000a0000}.dll");
         assert_eq!(imports.blocks[1].dll, "euser{000a0000}[100039e5].dll");
         assert_eq!(imports.bytes().as_slice(), &golden[0x14e8..0x15b8]);
+    }
+
+    #[test]
+    fn hello_code_relocs_match_experiment_44() {
+        let golden = hello_uncompressed();
+        let relocs = E32RelocSection::code_from_elf(&hello_elf(), &hello_layout()).unwrap();
+        assert_eq!(relocs.count(), 32);
+        assert_eq!(
+            relocs
+                .entries
+                .iter()
+                .filter(|(_, k)| *k == E32RelocSection::KIND_DATA)
+                .count(),
+            1
+        );
+        // Code relocations are the last section: 0x15b8 to end of file.
+        assert_eq!(relocs.bytes().as_slice(), &golden[0x15b8..]);
     }
 
     #[test]
