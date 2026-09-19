@@ -21,6 +21,10 @@ std::fs::read(path).map_err(|e| Error::Other(format!("read {path:?}: {e}")))?
 sha1::Sha1::digest(data)
 ```
 
+## File size
+
+A `.rs` file is at most **300 lines**, tests included, so it reads and navigates in one go. When a file grows past that, split it by domain concept: one type (or one tightly coupled group) per module file, re-exported where the old path was public. Move a long `#[cfg(test)] mod tests { … }` to `<module>/tests.rs` (`#[cfg(test)] mod tests;`). Fixtures under `testdata/` and generated files do not count. Do not split mechanically (`part1.rs`, `helpers.rs`): each file is named after what it holds.
+
 ## Tests and blobs
 
 Default `cargo test` pins frozen experiment bytes (hex includes / literals). Do not read `.sis` / `.sisx` from disk by default. Do not spawn Wine in default tests.
