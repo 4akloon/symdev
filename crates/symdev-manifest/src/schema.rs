@@ -69,6 +69,8 @@ pub struct Signing {
     pub mode: SigningMode,
     pub cert: Option<PathBuf>,
     pub key: Option<PathBuf>,
+    /// RFC 4514 subject for a generated self-signed cert; `None` = recorded example.
+    pub subject: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -138,4 +140,5 @@ pub(crate) struct RawSigning {
     pub(crate) mode: Option<SigningMode>,
     pub(crate) cert: Option<PathBuf>,
     pub(crate) key: Option<PathBuf>,
+    pub(crate) subject: Option<String>,
 }
