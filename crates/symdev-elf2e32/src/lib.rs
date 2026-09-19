@@ -5,6 +5,7 @@ use symdev_core::{Error, Result};
 mod e32;
 
 pub use e32::E32Uid;
+pub use e32::{E32ImageHeader, E32ImageHeaderJ, E32ImageHeaderV};
 
 pub struct Elf2E32 {
     pub uid1: u32,

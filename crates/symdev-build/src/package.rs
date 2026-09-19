@@ -20,7 +20,7 @@ impl SisPackage {
     pub fn pkg_text(&self) -> String {
         let (major, minor, patch) = self.version;
         format!(
-            "&EN\r\n#{{\"{name}\"}},(0x{uid3:08x}),{major},{minor},{patch},TYPE=SA\r\n%{{\"{vendor}\"}}\r\n:\"{vendor}\"\r\n[0x102752AE], 0, 0, 0, {{\"S60ProductID\"}}\r\n\"{name}.exe\"\t\t-\"!:\\sys\\bin\\{name}.exe\"\r\n",
+            "&EN\r\n#{{\"{name}\"}},(0x{uid3:08x}),{major},{minor},{patch},TYPE=SA\r\n%{{\"{vendor}\"}}\r\n:\"{vendor}\"\r\n[0x102752AE], 0, 0, 0, {{\"S60ProductID\"}}\r\n\"{name}.exe\"\t\t-\"!:\\sys\\bin\\{name}.exe\"\r\n\"{name}_reg.rsc\"\t\t-\"!:\\private\\10003a3f\\import\\apps\\{name}_reg.rsc\"\r\n",
             name = self.name,
             uid3 = self.uid3,
             vendor = self.vendor,
@@ -75,6 +75,9 @@ impl PackageBackend for SisPackage {
         let exe = std::fs::read(&artifact.path).map_err(|e| Error::Other(e.to_string()))?;
         let now = SystemTime::now();
         let datetime = SisDateTime::utc(now);
+        let rsc = symdev_rcomp::Rsc::registration(self.uid3, &self.name)?.bytes()?;
+        std::fs::write(workdir.join(format!("{}_reg.rsc", self.name)), &rsc)
+            .map_err(|e| Error::Other(e.to_string()))?;
         let spec = SisUnsignedSpec {
             name: &self.name,
             uid3: self.uid3,
@@ -84,6 +87,7 @@ impl PackageBackend for SisPackage {
             exe: &exe,
             capabilities: &self.capabilities,
             datetime,
+            reg_rsc: Some(&rsc),
         };
         let bytes = SisUnsigned::encode(&spec)?;
         std::fs::write(workdir.join(&sis), &bytes).map_err(|e| Error::Other(e.to_string()))?;
@@ -149,17 +153,17 @@ fn write_pkg_file_writes_recorded_pkg_next_to_exe() {
     assert!(s.contains("\r\n"));
     assert_eq!(
         s.replace("\r\n", "\n"),
-        "&EN\n#{\"hello\"},(0xe79e4cf9),0,1,0,TYPE=SA\n%{\"symdev\"}\n:\"symdev\"\n[0x102752AE], 0, 0, 0, {\"S60ProductID\"}\n\"hello.exe\"\t\t-\"!:\\sys\\bin\\hello.exe\"\n"
+        "&EN\n#{\"hello\"},(0xe79e4cf9),0,1,0,TYPE=SA\n%{\"symdev\"}\n:\"symdev\"\n[0x102752AE], 0, 0, 0, {\"S60ProductID\"}\n\"hello.exe\"\t\t-\"!:\\sys\\bin\\hello.exe\"\n\"hello_reg.rsc\"\t\t-\"!:\\private\\10003a3f\\import\\apps\\hello_reg.rsc\"\n"
     );
 }
 
 #[test]
-fn pkg_text_matches_experiment_7_grammar() {
+fn pkg_text_includes_verified_reg_rsc_dest() {
     let s = fake_pkg().pkg_text();
     assert!(s.contains("\r\n"));
     assert_eq!(
         s.replace("\r\n", "\n"),
-        "&EN\n#{\"hello\"},(0xe79e4cf9),0,1,0,TYPE=SA\n%{\"symdev\"}\n:\"symdev\"\n[0x102752AE], 0, 0, 0, {\"S60ProductID\"}\n\"hello.exe\"\t\t-\"!:\\sys\\bin\\hello.exe\"\n"
+        "&EN\n#{\"hello\"},(0xe79e4cf9),0,1,0,TYPE=SA\n%{\"symdev\"}\n:\"symdev\"\n[0x102752AE], 0, 0, 0, {\"S60ProductID\"}\n\"hello.exe\"\t\t-\"!:\\sys\\bin\\hello.exe\"\n\"hello_reg.rsc\"\t\t-\"!:\\private\\10003a3f\\import\\apps\\hello_reg.rsc\"\n"
     );
 }
 
@@ -302,6 +306,18 @@ fn package_writes_native_sis_and_keys_without_wine() {
     assert!(dir.path().join("hello.sis").is_file());
     assert!(dir.path().join("hello.sisx").is_file());
     assert!(dir.path().join("hello.pkg").is_file());
+    let rsc = dir.path().join("hello_reg.rsc");
+    assert!(rsc.is_file());
+    let rsc_bytes = std::fs::read(&rsc).unwrap();
+    assert_eq!(
+        &rsc_bytes[..16],
+        &symdev_rcomp::RscUid::registration(0xe79e_4cf9).bytes()
+    );
+    let sis = std::fs::read(dir.path().join("hello.sis")).unwrap();
+    let stored = symdev_sis::SisCompressed::smallest(&rsc_bytes)
+        .unwrap()
+        .data;
+    assert!(sis.windows(stored.len()).any(|w| w == stored));
     let cer = std::fs::read(&stale_cer).unwrap();
     let key = std::fs::read(&stale_key).unwrap();
     assert_ne!(cer, b"stale-cer");
@@ -406,6 +422,7 @@ fn generated_self_signed_dsa_verifies_with_injected_dates() {
         exe: &hello_exe_bytes(),
         capabilities: &hello_caps(),
         datetime: hello_datetime(),
+        reg_rsc: None,
     };
     let sisx = SisUnsigned::encode_signed(&spec, &key_pem, &cert_pem, "").unwrap();
     assert!(sisx.len() > hello_sis_golden().len());

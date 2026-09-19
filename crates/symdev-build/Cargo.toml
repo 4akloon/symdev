@@ -8,6 +8,7 @@ rust-version.workspace = true
 symdev-core = { path = "../symdev-core" }
 symdev-sis = { path = "../symdev-sis" }
 symdev-makekeys = { path = "../symdev-makekeys" }
+symdev-rcomp = { path = "../symdev-rcomp" }
 thiserror = "2"
 
 [dev-dependencies]

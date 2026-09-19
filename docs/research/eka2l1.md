@@ -45,6 +45,7 @@ Experiment 10 in the backlog covers EKA2L1 install + launch with user ROM and ob
 
 ## Related
 
+- Where to get the binary / legal ROM: [eka2l1-bringup.md](eka2l1-bringup.md)
 - Runbook chapter: [m0-bare-metal-runbook.md](m0-bare-metal-runbook.md) §11
 - Licensing: [licensing.md](licensing.md)
 - Spec: `docs/superpowers/specs/2026-09-16-symdev-m0-north-star-design.md` §12
