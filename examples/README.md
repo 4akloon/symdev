@@ -21,8 +21,8 @@ symdev package   # build/hello.sisx (EXE + hello_reg.rsc), self-signed
 Run it in the patched EKA2L1 ([docs/research/eka2l1-bringup.md](../docs/research/eka2l1-bringup.md)):
 
 ```bash
-eka2l1_qt --install build/hello.sisx
-eka2l1_qt --run 0xef9f2cab
+export SYMDEV_EKA2L1=~/.local/bin/eka2l1-patched   # eka2l1_qt or a wrapper that sets its env
+symdev run      # installs build/hello.sisx and launches 0xef9f2cab; log in build/eka2l1.log
 ```
 
 Verified 2026-09-19 in EKA2L1 (RM-469 firmware), built without `SYMDEV_ELF2E32` (experiment 47): installs, appears as `hello` (UID `0xEF9F2CAB`), shows `Hello, world!`. Emulator only — not a claim of E52 support.

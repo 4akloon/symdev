@@ -41,16 +41,17 @@ fn dummy_e32(dir: &tempfile::TempDir) {
 }
 
 #[test]
-fn help_lists_only_four_commands() {
+fn help_lists_only_five_commands() {
+    // `run` (EKA2L1, M5) joined the §17 four on 2026-09-19; the other north-star
+    // verbs are still not subcommands.
     let assert = bin().arg("--help").assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    for cmd in ["new", "build", "package", "deploy"] {
+    for cmd in ["new", "build", "package", "deploy", "run"] {
         assert!(stdout.contains(cmd), "missing {cmd}: {stdout}");
     }
     for cmd in [
         "doctor",
         "test",
-        "run",
         "debug",
         "sdk",
         "toolchain",
@@ -419,4 +420,46 @@ fn build_invalid_manifest_not_not_implemented() {
         .code(1)
         .stderr(predicate::str::contains("error: invalid manifest:"))
         .stderr(predicate::str::contains("not implemented").not());
+}
+
+#[test]
+fn run_without_sisx_asks_for_package() {
+    let dir = tempfile::tempdir().unwrap();
+    write_toml(
+        &dir,
+        &HELLO.replace(
+            "capabilities = []",
+            "uid3 = \"0xE0000001\"\ncapabilities = []",
+        ),
+    );
+    bin()
+        .current_dir(&dir)
+        .env("SYMDEV_EKA2L1", "/emu/eka2l1")
+        .arg("run")
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("run symdev package"));
+}
+
+#[test]
+fn run_without_emulator_names_symdev_eka2l1() {
+    let dir = tempfile::tempdir().unwrap();
+    write_toml(
+        &dir,
+        &HELLO.replace(
+            "capabilities = []",
+            "uid3 = \"0xE0000001\"\ncapabilities = []",
+        ),
+    );
+    std::fs::create_dir(dir.path().join("build")).unwrap();
+    std::fs::write(dir.path().join("build/hello.sisx"), b"sisx").unwrap();
+    bin()
+        .current_dir(&dir)
+        .env_remove("SYMDEV_EKA2L1")
+        .arg("run")
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("SYMDEV_EKA2L1"));
 }

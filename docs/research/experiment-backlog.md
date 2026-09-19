@@ -252,7 +252,7 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 - **Procedure:** Install the hand-built `.sisx` and launch the app using the user-installed EKA2L1 process and user ROM. **Observe** CLI and on-disk ROM layout; do not invent flags. EKA2L1 is GPL-3.0: process only, never vendor source. Headless install + screenshot is **M5**, not this experiment.
 - **Expected result:** Observed install + launch (or a recorded failure). CLI flags and ROM layout written into research notes.
 - **Decision unblocked:** interim de-risk. Does **not** unblock “E52 supported.”
-- **Outcome:** skip
+- **Outcome:** pass (2026-09-19; see experiments 45–48). Originally skipped 2026-09-17 (evidence below).
 - **Evidence:** 2026-09-17, Ubuntu 26.04.1 LTS x86_64. `SYMDEV_EKA2L1` **unset** (`k in os.environ` is false). `SYMDEV_ROM` **unset**. No download. Common paths missing: `$HOME/src/eka2l1`, `$HOME/src/EKA2L1`, `$HOME/eka2l1`, `$HOME/EKA2L1`, `$HOME/.local/bin/eka2l1`, `/opt/eka2l1`, `/usr/local/bin/eka2l1`, `/usr/bin/eka2l1`; `which eka2l1` / `EKA2L1` not on PATH; `find` under `$HOME/src`, `$HOME/.local`, `/opt`, `/usr/local` returned no `*eka2l1*` names. ROM candidates missing: `$HOME/rom`, `$HOME/roms`, `$HOME/src/rom`, `$HOME/Downloads/*.img` / `*ROM*` / `*.bin`. SISX path not installed: `/home/genius/src/symdev-experiment-5/hello.sisx`. Skip does not fail §17 accept. Does not authorize emulator or E52 support. Does not lift the M1 gate (experiments 8+10 not both present).
 
 ## 11. Stock E52 install + launch
@@ -901,3 +901,11 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 - **Procedure:** Copy `examples/hello`; `symdev build` with the M1 toolchain env **without** `SYMDEV_ELF2E32`, then `symdev package`, `eka2l1_qt --install build/hello.sisx`, `eka2l1_qt --run 0xef9f2cab`. Compare `build/hello.exe` with the same project built with `SYMDEV_ELF2E32=elf2e32_next`.
 - **Outcome:** pass (emulator only; **not** E52 support)
 - **Evidence:** 2026-09-19. Native and external `hello.exe` are both 3588 bytes and differ only at `iHeaderCrc` (0x14–0x17) and `iTimeLo` (0x24–0x27). Installed `E:\sys\bin\hello.exe` byte-identical to the native build; screen shows `Hello, world!` / `[press any key]`.
+
+## 48. `symdev run`: one EKA2L1 invocation installs and launches
+
+- **Requires:** experiment 47; patched EKA2L1 ([eka2l1-bringup.md](eka2l1-bringup.md)).
+- **Procedure:** Read EKA2L1's own CLI option table (`--install, -i` "Install a SIS."; `--run, -a, --app` "Run an app with given name or UID"). `eka2l1_qt --install <sisx> --run 0x<uid3>` in one process. Then `symdev run` in `examples/hello` with `SYMDEV_EKA2L1` pointing at a host wrapper that sets the software-GL environment.
+- **Outcome:** pass (emulator only)
+- **Evidence:** 2026-09-19. Upstream EKA2L1 `--install` reported `Installation of SIS failed` right after `Installation done!` and quit: the CLI handler stored the `installation_result` enum in a `bool`, and success is `0`. Patched to compare with `installation_result_success` (in `~/src/EKA2L1-econs-heap.patch`). With that, one invocation installs to E: and launches; `symdev run` starts it in its own process group, logs to `build/eka2l1.log`, exits 0; log shows `Installation done!`, `Found app: hello, uid: 0xEF9F2CAB`, `Loaded library: econs`; screen shows `Hello, world!`.
+
