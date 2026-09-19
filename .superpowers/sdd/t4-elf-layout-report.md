@@ -26,5 +26,6 @@ ELF with no writable `PT_LOAD`; ELF without the exception-descriptor symbol.
 - ~~Code relocations~~ done (experiment 44): `E32RelocSection::code_from_elf`, byte-equal
 - ~~Code words at import slots~~ done (experiment 44): `E32CodeSection::from_elf` byte-equal; `Elf2E32::ordinals` reads `--libpath` DSOs; tests pin the 33 used ordinals
 - ~~Full uncompressed image~~ done: `E32Image::exe(...).uncompressed()` byte-equals experiment-44 `hello_u.exe`; `Elf2E32::encode` + bin write it for `--uncompressed` (caps via shared `symdev_core::Capabilities`, live `E32Time`). Experiment 45: native build installs and runs in EKA2L1.
-- Next: Symbian deflate for the default (compressed) output; wire native encode into `GcceBuild` instead of `SYMDEV_ELF2E32`
+- ~~Symbian deflate~~ done clean-room (experiment 46): `E32Deflate` from `e32-deflate-spec.md`; native default output reproduces the frozen experiment-6 `hello.exe`
+- Next: wire native encode into `GcceBuild` instead of `SYMDEV_ELF2E32`
 - Capability bit packing; deflate of the post-header payload; `Elf2E32::encode`; wiring into `GcceBuild`

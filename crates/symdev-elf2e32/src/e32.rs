@@ -579,6 +579,25 @@ impl E32Image {
         })
     }
 
+    /// Default `elf2e32` output: header up to `iCodeOffset`, then the E32 deflate stream
+    /// of the body (`docs/research/e32-deflate-spec.md` §1).
+    pub fn compressed(&self) -> Result<Vec<u8>> {
+        let header = E32ImageHeader {
+            compression_type: E32ImageHeader::COMPRESSION_DEFLATE,
+            ..self.header.clone()
+        };
+        let mut out = header.uncompressed(&self.j, &self.v).to_vec();
+        out.extend_from_slice(&crate::E32Deflate::compress(&self.body())?);
+        Ok(out)
+    }
+
+    fn body(&self) -> Vec<u8> {
+        let mut out = self.code.bytes.clone();
+        out.extend_from_slice(&self.imports.bytes());
+        out.extend_from_slice(&self.relocs.bytes());
+        out
+    }
+
     /// `elf2e32 --uncompressed` output: `iCompressionType` 0, body stored as is.
     pub fn uncompressed(&self) -> Vec<u8> {
         let header = E32ImageHeader {
@@ -586,9 +605,7 @@ impl E32Image {
             ..self.header.clone()
         };
         let mut out = header.uncompressed(&self.j, &self.v).to_vec();
-        out.extend_from_slice(&self.code.bytes);
-        out.extend_from_slice(&self.imports.bytes());
-        out.extend_from_slice(&self.relocs.bytes());
+        out.extend_from_slice(&self.body());
         out
     }
 }
@@ -782,6 +799,22 @@ mod tests {
         )
         .unwrap();
         assert_eq!(image.uncompressed(), golden);
+    }
+
+    #[test]
+    fn hello_body_deflate_matches_experiment_6_stream() {
+        let body = &hello_uncompressed()[0x9c..];
+        let stream = &hello_exe()[0x9c..];
+        assert_eq!(body.len(), 0x1578);
+        assert_eq!(stream.len(), 3432);
+        assert_eq!(
+            crate::E32Deflate::compress(body).unwrap().as_slice(),
+            stream
+        );
+        assert_eq!(
+            crate::E32Deflate::decompress(stream, body.len()).unwrap(),
+            body
+        );
     }
 
     #[test]
