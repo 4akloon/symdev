@@ -9,6 +9,7 @@ pub use e32::E32Layout;
 pub use e32::E32RelocSection;
 pub use e32::E32Uid;
 pub use e32::{E32CodeSection, E32Ordinals};
+pub use e32::{E32Image, E32Time};
 pub use e32::{E32ImageHeader, E32ImageHeaderJ, E32ImageHeaderV};
 pub use e32::{E32ImportBlock, E32ImportSection};
 pub use elf::ElfImportReloc;
@@ -25,6 +26,8 @@ pub struct Elf2E32 {
     pub elfinput: PathBuf,
     pub linkas: String,
     pub libpath: PathBuf,
+    /// Observed `--uncompressed` (`elf2e32 --help`; experiment 44).
+    pub uncompressed: bool,
 }
 
 impl Elf2E32 {
@@ -42,7 +45,12 @@ impl Elf2E32 {
         let mut elfinput = None;
         let mut linkas = None;
         let mut libpath = None;
+        let mut uncompressed = false;
         for tok in tokens {
+            if tok == "--uncompressed" {
+                uncompressed = true;
+                continue;
+            }
             let Some((key, val)) = tok.split_once('=') else {
                 return Err(Error::Other(format!("unknown elf2e32 arg: {tok}")));
             };
@@ -70,6 +78,7 @@ impl Elf2E32 {
             elfinput: elfinput.ok_or_else(|| Error::Other("elf2e32 missing --elfinput".into()))?,
             linkas: linkas.ok_or_else(|| Error::Other("elf2e32 missing --linkas".into()))?,
             libpath: libpath.ok_or_else(|| Error::Other("elf2e32 missing --libpath".into()))?,
+            uncompressed,
         })
     }
 
@@ -98,9 +107,50 @@ impl Elf2E32 {
         Ok(ordinals)
     }
 
+    /// Reads `--elfinput` and the `--libpath` DSOs, stamps the current time.
     pub fn encode(&self) -> Result<Vec<u8>> {
-        let _ = self;
-        Err(Error::Other("TODO: native ELF→E32 encode".into()))
+        let bytes = std::fs::read(&self.elfinput)
+            .map_err(|e| Error::Other(format!("read ELF {:?}: {e}", self.elfinput)))?;
+        let elf = ElfImage::parse(bytes)?;
+        let ordinals = self.ordinals(&elf)?;
+        self.encode_elf(
+            &elf,
+            &ordinals,
+            E32Time::from_system(std::time::SystemTime::now())?,
+        )
+    }
+
+    /// E32 bytes for an already-read ELF (no host I/O).
+    pub fn encode_elf(
+        &self,
+        elf: &ElfImage,
+        ordinals: &E32Ordinals,
+        time: E32Time,
+    ) -> Result<Vec<u8>> {
+        if self.targettype != "EXE" {
+            return Err(Error::Other(format!(
+                "TODO: native elf2e32 --targettype={} (only EXE observed)",
+                self.targettype
+            )));
+        }
+        if self.fpu != "softvfp" {
+            return Err(Error::Other(format!(
+                "TODO: native elf2e32 --fpu={} (only softvfp observed)",
+                self.fpu
+            )));
+        }
+        if !self.uncompressed {
+            return Err(Error::Other(
+                "TODO: native elf2e32 deflate; pass --uncompressed".into(),
+            ));
+        }
+        let names: Vec<&str> = self
+            .capability
+            .as_deref()
+            .map(|c| c.split('+').collect())
+            .unwrap_or_default();
+        let caps = symdev_core::Capabilities::from_names(&names)?;
+        Ok(E32Image::exe(elf, self.uid(), caps, ordinals, time)?.uncompressed())
     }
 }
 
@@ -132,6 +182,9 @@ impl Elf2E32Tool {
             format!("--linkas={}", img.linkas),
             format!("--libpath={}", img.libpath.display()),
         ]);
+        if img.uncompressed {
+            args.push("--uncompressed".into());
+        }
         args
     }
 }
@@ -156,6 +209,71 @@ mod tests {
             .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
             .collect();
         ElfImage::parse(bytes).unwrap()
+    }
+
+    fn hello_ordinals() -> E32Ordinals {
+        let mut ordinals = E32Ordinals::default();
+        for line in include_str!("testdata/hello_ordinals.txt").lines() {
+            if line.starts_with('#') {
+                continue;
+            }
+            let f: Vec<&str> = line.split_whitespace().collect();
+            let ordinal = u32::from_str_radix(f[2].trim_start_matches("0x"), 16).unwrap();
+            ordinals.insert(f[0], f[1], ordinal);
+        }
+        ordinals
+    }
+
+    fn experiment_44() -> Elf2E32 {
+        let mut a = args(&[
+            "elf2e32",
+            "--uid1=0x1000007a",
+            "--uid3=0xe79e4cf9",
+            "--capability=LocalServices+NetworkServices+ReadUserData+WriteUserData+UserEnvironment+Location",
+            "--fpu=softvfp",
+            "--targettype=EXE",
+            "--output=hello_u.exe",
+            "--elfinput=hello.elf",
+            "--linkas=hello{000a0000}[e79e4cf9].exe",
+            "--libpath=/sdk/epoc32/release/armv5/lib",
+        ]);
+        a.push("--uncompressed".into());
+        Elf2E32::from_args(&a).unwrap()
+    }
+
+    #[test]
+    fn experiment_44_encode_matches_uncompressed_golden() {
+        let hex = include_str!("testdata/hello_uncompressed.exe.hex");
+        let hex: String = hex.chars().filter(|c| !c.is_whitespace()).collect();
+        let golden: Vec<u8> = (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect();
+        let job = experiment_44();
+        assert!(job.uncompressed);
+        let bytes = job
+            .encode_elf(
+                &hello_elf(),
+                &hello_ordinals(),
+                E32Time(0x00e3_3986_c0a8_ae80),
+            )
+            .unwrap();
+        assert_eq!(bytes, golden);
+    }
+
+    #[test]
+    fn experiment_6_compressed_encode_is_todo() {
+        let err = experiment_6()
+            .encode_elf(&hello_elf(), &hello_ordinals(), E32Time(0))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("deflate"), "{err}");
+    }
+
+    #[test]
+    fn experiment_44_tool_args_end_with_uncompressed() {
+        let args = Elf2E32Tool::new(Path::new("/elf2e32")).args(&experiment_44());
+        assert_eq!(args.last().map(String::as_str), Some("--uncompressed"));
     }
 
     #[test]
