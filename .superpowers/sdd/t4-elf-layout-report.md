@@ -29,3 +29,5 @@ ELF with no writable `PT_LOAD`; ELF without the exception-descriptor symbol.
 - ~~Symbian deflate~~ done clean-room (experiment 46): `E32Deflate` from `e32-deflate-spec.md`; native default output reproduces the frozen experiment-6 `hello.exe`
 - Next: wire native encode into `GcceBuild` instead of `SYMDEV_ELF2E32`
 - Capability bit packing; deflate of the post-header payload; `Elf2E32::encode`; wiring into `GcceBuild`
+- ~~Data section~~ done (experiment 49): `E32DataSection`, `E32RelocSection::data_from_elf`; `counter` with .data runs in EKA2L1
+- Still TODO (not observed): DLL target, exports, imports located in data, other capabilities
