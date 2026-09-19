@@ -450,6 +450,8 @@ impl E32ImageHeader {
     /// Recorded `--fpu=softvfp` (no HW-float bits) plus elf2e32_next EXE defaults:
     /// ELF imports, header format V, EKA2 entry, EABI, no-call-entry.
     pub const FLAGS_EXE_SOFTVFP: u32 = 0x1000_0000 | 0x0200_0000 | 0x20 | 0x8 | 0x2;
+    /// The EXE flags plus the DLL bit (experiment 52: `0x1200002b`).
+    pub const FLAGS_DLL_SOFTVFP: u32 = Self::FLAGS_EXE_SOFTVFP | 0x1;
     pub const SIZE: usize = 124;
     pub const CODE_OFFSET: u32 = 156;
 
@@ -535,6 +537,8 @@ pub struct E32ImageHeaderV {
 impl E32ImageHeaderV {
     pub const SIZE: usize = 28;
     pub const EXPORT_DESC_FULL_BITMAP: u8 = 0x01;
+    /// DLL with every ordinal present (experiment 52).
+    pub const EXPORT_DESC_NO_HOLES: u8 = 0x00;
 
     pub fn bytes(&self) -> [u8; Self::SIZE] {
         let mut out = [0u8; Self::SIZE];
@@ -575,6 +579,60 @@ impl E32Time {
     }
 }
 
+/// What elf2e32 is asked to produce (`--targettype`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum E32Target {
+    Exe,
+    Dll,
+}
+
+/// A DLL's exports: ordinal = 1-based position after sorting by symbol name
+/// (experiment 52: `_Z7MathAbsi` got ordinal 1 despite the highest address).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct E32Exports {
+    /// `(symbol, link address)` in ordinal order.
+    pub symbols: Vec<(String, u32)>,
+}
+
+impl E32Exports {
+    /// `ignore_noncallable` (`--ignorenoncallable`, the SDK recipe for a DLL without a
+    /// `.def`): export functions only, skipping linker symbols such as `_edata`.
+    pub fn from_elf(elf: &ElfImage, ignore_noncallable: bool) -> Result<Self> {
+        let mut symbols = Vec::new();
+        for (name, value, is_function) in elf.exported_symbols()? {
+            if is_function {
+                symbols.push((name, value));
+            } else if !ignore_noncallable {
+                return Err(Error::Other(format!(
+                    "TODO: non-function export {name} without --ignorenoncallable (not observed)"
+                )));
+            }
+        }
+        symbols.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(Self { symbols })
+    }
+
+    /// Export directory appended to the code: `u32 count`, then one link address per
+    /// ordinal (experiment 52).
+    pub fn table(&self) -> Vec<u8> {
+        let mut out = (self.symbols.len() as u32).to_le_bytes().to_vec();
+        for (_, addr) in &self.symbols {
+            out.extend_from_slice(&addr.to_le_bytes());
+        }
+        out
+    }
+
+    /// `--defoutput` text for a first (unfrozen) build (experiment 52).
+    pub fn def_text(&self) -> String {
+        let mut out = String::from("EXPORTS\n; NEW:\n");
+        for (i, (name, _)) in self.symbols.iter().enumerate() {
+            out.push_str(&format!("\t{name} @ {} NONAME\n", i + 1));
+        }
+        out.push('\n');
+        out
+    }
+}
+
 /// A whole E32 image built from an ELF: header, code, imports, code relocations.
 pub struct E32Image {
     pub header: E32ImageHeader,
@@ -599,12 +657,57 @@ impl E32Image {
         ordinals: &E32Ordinals,
         time: E32Time,
     ) -> Result<Self> {
-        let layout = E32Layout::from_elf(elf)?;
-        let code = E32CodeSection::from_elf(elf, &layout, ordinals)?;
-        let data = E32DataSection::from_elf(elf, &layout)?;
-        let imports = E32ImportSection::from_elf(elf, layout.code_base)?;
-        let relocs = E32RelocSection::code_from_elf(elf, &layout)?;
-        let data_relocs = E32RelocSection::data_from_elf(elf, &layout)?;
+        Self::new(E32Target::Exe, elf, uid, caps, ordinals, time, false)
+    }
+
+    pub fn new(
+        target: E32Target,
+        elf: &ElfImage,
+        uid: E32Uid,
+        caps: symdev_core::Capabilities,
+        ordinals: &E32Ordinals,
+        time: E32Time,
+        ignore_noncallable: bool,
+    ) -> Result<Self> {
+        let elf_layout = E32Layout::from_elf(elf)?;
+        let mut code = E32CodeSection::from_elf(elf, &elf_layout, ordinals)?;
+        let mut relocs = E32RelocSection::code_from_elf(elf, &elf_layout)?;
+        let data_relocs = E32RelocSection::data_from_elf(elf, &elf_layout)?;
+        let data = E32DataSection::from_elf(elf, &elf_layout)?;
+        let imports = E32ImportSection::from_elf(elf, elf_layout.code_base)?;
+        let mut layout = elf_layout;
+        let (flags, export_dir_offset, export_dir_count, export_desc_type) = match target {
+            E32Target::Exe => (
+                E32ImageHeader::FLAGS_EXE_SOFTVFP,
+                0,
+                0,
+                E32ImageHeaderV::EXPORT_DESC_FULL_BITMAP,
+            ),
+            E32Target::Dll => {
+                let exports = E32Exports::from_elf(elf, ignore_noncallable)?;
+                if exports.symbols.is_empty() {
+                    return Err(Error::Other(
+                        "TODO: DLL without exports (not observed)".into(),
+                    ));
+                }
+                let table_at = elf_layout.code_size;
+                code.bytes.extend_from_slice(&exports.table());
+                // Each export slot is relocated like any code pointer (experiment 52).
+                for i in 0..exports.symbols.len() as u32 {
+                    relocs
+                        .entries
+                        .push((table_at + 4 + 4 * i, E32RelocSection::KIND_TEXT));
+                }
+                relocs.entries.sort_unstable();
+                layout.code_size = code.bytes.len() as u32;
+                (
+                    E32ImageHeader::FLAGS_DLL_SOFTVFP,
+                    E32ImageHeader::CODE_OFFSET + table_at + 4,
+                    exports.symbols.len() as u32,
+                    E32ImageHeaderV::EXPORT_DESC_NO_HOLES,
+                )
+            }
+        };
         let import_len = imports.bytes().len() as u32;
         let reloc_len = relocs.stored_len();
         let data_reloc_len = data_relocs.stored_len();
@@ -620,7 +723,7 @@ impl E32Image {
             tool_build: E32ImageHeader::TOOL_BUILD,
             time_lo: time.lo(),
             time_hi: time.hi(),
-            flags: E32ImageHeader::FLAGS_EXE_SOFTVFP,
+            flags,
             code_size: layout.code_size,
             data_size: layout.data_size,
             heap_size_min: E32ImageHeader::HEAP_MIN,
@@ -631,8 +734,8 @@ impl E32Image {
             code_base: layout.code_base,
             data_base: layout.data_base,
             dll_ref_table_count: imports.dll_count() as i32,
-            export_dir_offset: 0,
-            export_dir_count: 0,
+            export_dir_offset,
+            export_dir_count,
             text_size: layout.code_size,
             code_offset: E32ImageHeader::CODE_OFFSET,
             data_offset: if layout.data_size == 0 {
@@ -668,7 +771,7 @@ impl E32Image {
             exception_descriptor: layout.exception_descriptor,
             spare2: 0,
             export_desc_size: 0,
-            export_desc_type: E32ImageHeaderV::EXPORT_DESC_FULL_BITMAP,
+            export_desc_type,
         };
         Ok(Self {
             header,

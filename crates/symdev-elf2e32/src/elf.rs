@@ -81,6 +81,8 @@ impl ElfImage {
     const DT_RELSZ: u32 = 18;
     const DT_JMPREL: u32 = 23;
     const SHN_UNDEF: u16 = 0;
+    const STB_GLOBAL: u8 = 1;
+    const STT_FUNC: u8 = 2;
     const R_ARM_ABS32: u32 = 2;
     const R_ARM_GLOB_DAT: u32 = 21;
     const R_ARM_RELATIVE: u32 = 23;
@@ -168,6 +170,27 @@ impl ElfImage {
             }
         }
         Ok(None)
+    }
+
+    /// Defined `STB_GLOBAL` `.dynsym` entries as `(name, value, is_function)`.
+    pub fn exported_symbols(&self) -> Result<Vec<(String, u32, bool)>> {
+        let Some(dynsym) = self.section(Self::SHT_DYNSYM) else {
+            return Ok(Vec::new());
+        };
+        let mut out = Vec::new();
+        for sym in (dynsym.offset..dynsym.offset + dynsym.size).step_by(16) {
+            let info = *self
+                .bytes
+                .get(sym + 12)
+                .ok_or_else(|| Error::Other("ELF .dynsym truncated".into()))?;
+            let shndx = self.u16_at(sym + 14)?;
+            if shndx == Self::SHN_UNDEF || info >> 4 != Self::STB_GLOBAL {
+                continue;
+            }
+            let name = self.string(dynsym.link, self.u32_at(sym)? as usize)?;
+            out.push((name, self.u32_at(sym + 4)?, info & 0xf == Self::STT_FUNC));
+        }
+        Ok(out)
     }
 
     /// DLL names from `.gnu.version_r`, in section order.
