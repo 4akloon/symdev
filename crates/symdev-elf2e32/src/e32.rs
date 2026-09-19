@@ -284,6 +284,7 @@ impl E32RelocSection {
 }
 
 /// UID prefix of an E32 image (`iUid1`/`iUid2`/`iUid3` + uidcrc checksum).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct E32Uid {
     pub uid1: u32,
     pub uid2: u32,
@@ -312,6 +313,7 @@ impl E32Uid {
 }
 
 /// E32 image header (`E32ImageHeader` as laid out by elf2e32_next).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct E32ImageHeader {
     pub uid: E32Uid,
     pub header_crc: u32,
@@ -456,6 +458,137 @@ impl E32ImageHeaderV {
         put(&mut out, &mut off, &self.spare2.to_le_bytes());
         put(&mut out, &mut off, &self.export_desc_size.to_le_bytes());
         out[off] = self.export_desc_type;
+        out
+    }
+}
+
+/// Symbian time: microseconds since 0001-01-01 UTC (`iTimeLo`/`iTimeHi`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct E32Time(pub u64);
+
+impl E32Time {
+    /// Microseconds from 0001-01-01 to 1970-01-01 (experiment 44: header time equals the
+    /// file's mtime).
+    const UNIX_EPOCH: u64 = 0x00dc_ddb3_0f2f_8000;
+
+    pub fn from_system(t: std::time::SystemTime) -> Result<Self> {
+        let since = t
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| Error::Other(format!("time before 1970: {e}")))?;
+        Ok(Self(Self::UNIX_EPOCH + since.as_micros() as u64))
+    }
+
+    pub fn lo(&self) -> u32 {
+        self.0 as u32
+    }
+
+    pub fn hi(&self) -> u32 {
+        (self.0 >> 32) as u32
+    }
+}
+
+/// A whole E32 image built from an ELF: header, code, imports, code relocations.
+pub struct E32Image {
+    pub header: E32ImageHeader,
+    pub j: E32ImageHeaderJ,
+    pub v: E32ImageHeaderV,
+    pub code: E32CodeSection,
+    pub imports: E32ImportSection,
+    pub relocs: E32RelocSection,
+}
+
+impl E32Image {
+    /// elf2e32_next default `--version 10.0` (the `{000a0000}` in `--linkas`).
+    pub const MODULE_VERSION: u32 = 0x000a_0000;
+
+    /// EXE with the recorded elf2e32_next defaults (heap, stack, priority, ARMv5, softvfp).
+    pub fn exe(
+        elf: &ElfImage,
+        uid: E32Uid,
+        caps: symdev_core::Capabilities,
+        ordinals: &E32Ordinals,
+        time: E32Time,
+    ) -> Result<Self> {
+        let layout = E32Layout::from_elf(elf)?;
+        if layout.data_size != 0 {
+            return Err(Error::Other(
+                "TODO: E32 data section (not observed on hello)".into(),
+            ));
+        }
+        let code = E32CodeSection::from_elf(elf, &layout, ordinals)?;
+        let imports = E32ImportSection::from_elf(elf, layout.code_base)?;
+        let relocs = E32RelocSection::code_from_elf(elf, &layout)?;
+        let import_len = imports.bytes().len() as u32;
+        let reloc_len = relocs.bytes().len() as u32;
+        let secure_id = uid.uid3;
+        let header = E32ImageHeader {
+            uid,
+            header_crc: E32ImageHeader::CRC_INITIALISER,
+            module_version: Self::MODULE_VERSION,
+            compression_type: E32ImageHeader::COMPRESSION_DEFLATE,
+            tool_major: E32ImageHeader::TOOL_MAJOR,
+            tool_minor: E32ImageHeader::TOOL_MINOR,
+            tool_build: E32ImageHeader::TOOL_BUILD,
+            time_lo: time.lo(),
+            time_hi: time.hi(),
+            flags: E32ImageHeader::FLAGS_EXE_SOFTVFP,
+            code_size: layout.code_size,
+            data_size: layout.data_size,
+            heap_size_min: E32ImageHeader::HEAP_MIN,
+            heap_size_max: E32ImageHeader::HEAP_MAX,
+            stack_size: E32ImageHeader::STACK,
+            bss_size: layout.bss_size as i32,
+            entry_point: layout.entry_point,
+            code_base: layout.code_base,
+            data_base: layout.data_base,
+            dll_ref_table_count: imports.dll_count() as i32,
+            export_dir_offset: 0,
+            export_dir_count: 0,
+            text_size: layout.code_size,
+            code_offset: E32ImageHeader::CODE_OFFSET,
+            data_offset: 0,
+            import_offset: layout.import_offset(),
+            code_reloc_offset: if relocs.count() == 0 {
+                0
+            } else {
+                layout.import_offset() + import_len
+            },
+            data_reloc_offset: 0,
+            process_priority: E32ImageHeader::PRIORITY_FOREGROUND,
+            cpu_identifier: E32ImageHeader::CPU_ARMV5,
+        };
+        let j = E32ImageHeaderJ {
+            uncompressed_size: layout.code_size + layout.data_size + import_len + reloc_len,
+        };
+        let v = E32ImageHeaderV {
+            secure_id,
+            vendor_id: 0,
+            caps: caps.bits(),
+            exception_descriptor: layout.exception_descriptor,
+            spare2: 0,
+            export_desc_size: 0,
+            export_desc_type: E32ImageHeaderV::EXPORT_DESC_FULL_BITMAP,
+        };
+        Ok(Self {
+            header,
+            j,
+            v,
+            code,
+            imports,
+            relocs,
+        })
+    }
+
+    /// `elf2e32 --uncompressed` output: `iCompressionType` 0, body stored as is.
+    pub fn uncompressed(&self) -> Vec<u8> {
+        let header = E32ImageHeader {
+            compression_type: 0,
+            ..self.header.clone()
+        };
+        let mut out = header.uncompressed(&self.j, &self.v).to_vec();
+        out.extend_from_slice(&self.code.bytes);
+        out.extend_from_slice(&self.imports.bytes());
+        out.extend_from_slice(&self.relocs.bytes());
         out
     }
 }
@@ -624,6 +757,37 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("no ordinal"), "{err}");
+    }
+
+    #[test]
+    fn hello_uncompressed_image_matches_experiment_44() {
+        let golden = hello_uncompressed();
+        let caps = symdev_core::Capabilities::from_names(&[
+            "LocalServices",
+            "NetworkServices",
+            "ReadUserData",
+            "WriteUserData",
+            "UserEnvironment",
+            "Location",
+        ])
+        .unwrap();
+        // Experiment-44 hello_u.exe header time (2026-09-19 10:43:54 UTC).
+        let time = E32Time(0x00e3_3986_c0a8_ae80);
+        let image = E32Image::exe(
+            &hello_elf(),
+            E32Uid::for_exe(0x1000_007a, 0xe79e_4cf9),
+            caps,
+            &hello_ordinals(),
+            time,
+        )
+        .unwrap();
+        assert_eq!(image.uncompressed(), golden);
+    }
+
+    #[test]
+    fn e32_time_from_unix_epoch_matches_symbian_offset() {
+        let t = E32Time::from_system(std::time::UNIX_EPOCH).unwrap();
+        assert_eq!(t.0, 0x00dc_ddb3_0f2f_8000);
     }
 
     #[test]
