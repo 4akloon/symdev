@@ -11,6 +11,6 @@ Code rules (shared with Cursor, always apply):
 
 ## Claude-specific
 
-- Before reporting done: `cargo test --workspace --offline` and `cargo clippy --workspace --offline` with no new warnings.
+- Before reporting done: `cargo test --workspace --offline` and `cargo clippy --workspace --all-targets --offline` with zero warnings (clean since 2026-09-19).
 - Cursor session history (for context only, not truth): `~/.cursor/projects/home-genius-*symdev*/agent-transcripts/*/*.jsonl`.
 - Reply in the user's language (usually Ukrainian).

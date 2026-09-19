@@ -100,10 +100,10 @@ impl BldInf {
             }
         }
 
-        if let Some(tokens) = &platforms {
-            if !tokens.iter().any(|t| usable_platform(t)) {
-                return Err(ParseError("PRJ_PLATFORMS has no usable platform".into()));
-            }
+        if let Some(tokens) = &platforms
+            && !tokens.iter().any(|t| usable_platform(t))
+        {
+            return Err(ParseError("PRJ_PLATFORMS has no usable platform".into()));
         }
 
         Ok(Self {

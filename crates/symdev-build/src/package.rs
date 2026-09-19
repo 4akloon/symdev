@@ -436,7 +436,7 @@ fn generated_self_signed_dsa_verifies_with_injected_dates() {
     let generated = SelfSignedDsa::generate(not_before).unwrap();
     let cert_pem = generated.cert_pem();
     let key_pem = generated.key_pem();
-    let cert = x509_cert::Certificate::from_pem(&cert_pem).unwrap();
+    let cert = x509_cert::Certificate::from_pem(cert_pem).unwrap();
     assert_eq!(
         cert.tbs_certificate.serial_number,
         x509_cert::serial_number::SerialNumber::from(1u32)
@@ -459,7 +459,7 @@ fn generated_self_signed_dsa_verifies_with_injected_dates() {
         cert.tbs_certificate.validity.not_after.to_unix_duration(),
         std::time::Duration::from_secs(1_789_654_881 + 3650 * 86400)
     );
-    let der = x509_cert::Certificate::from_pem(&cert_pem)
+    let der = x509_cert::Certificate::from_pem(cert_pem)
         .unwrap()
         .to_der()
         .unwrap();
@@ -478,7 +478,7 @@ fn generated_self_signed_dsa_verifies_with_injected_dates() {
         datetime: hello_datetime(),
         files: &[],
     };
-    let sisx = SisUnsigned::encode_signed(&spec, &key_pem, &cert_pem, "").unwrap();
+    let sisx = SisUnsigned::encode_signed(&spec, key_pem, cert_pem, "").unwrap();
     assert!(sisx.len() > hello_sis_golden().len());
     let exp = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
         .join("src/symdev-experiment-5/hello.cer");
