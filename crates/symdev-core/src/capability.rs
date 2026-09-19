@@ -7,14 +7,28 @@ pub struct Capabilities {
 }
 
 impl Capabilities {
-    /// Bits recorded for the six user-grantable names (experiment 6: hello
-    /// `iCaps` / SIS type-41 `0x000be000`). Other names are not derived yet.
+    /// Bit per capability name, recorded from elf2e32_next `iCaps` one name at a time
+    /// (experiment 50); SIS type 41 uses the same bits (Wine makesis, experiment 50).
     const BITS: &[(&str, u32)] = &[
+        ("TCB", 0),
+        ("CommDD", 1),
+        ("PowerMgmt", 2),
+        ("MultimediaDD", 3),
+        ("ReadDeviceData", 4),
+        ("WriteDeviceData", 5),
+        ("DRM", 6),
+        ("TrustedUI", 7),
+        ("ProtServ", 8),
+        ("DiskAdmin", 9),
+        ("NetworkControl", 10),
+        ("AllFiles", 11),
+        ("SwEvent", 12),
         ("NetworkServices", 13),
         ("LocalServices", 14),
         ("ReadUserData", 15),
         ("WriteUserData", 16),
         ("Location", 17),
+        ("SurroundingsDD", 18),
         ("UserEnvironment", 19),
     ];
 
@@ -56,10 +70,18 @@ mod tests {
     }
 
     #[test]
+    fn experiment_50_privileged_mix_matches_elf2e32_and_makesis() {
+        let caps =
+            Capabilities::from_names(&["TCB", "AllFiles", "ReadDeviceData", "UserEnvironment"])
+                .unwrap();
+        assert_eq!(caps.bits(), 0x0008_0811);
+    }
+
+    #[test]
     fn unknown_capability_is_an_error() {
-        let err = Capabilities::from_names(&["AllFiles"])
+        let err = Capabilities::from_names(&["NotACapability"])
             .unwrap_err()
             .to_string();
-        assert!(err.contains("AllFiles"), "{err}");
+        assert!(err.contains("NotACapability"), "{err}");
     }
 }
