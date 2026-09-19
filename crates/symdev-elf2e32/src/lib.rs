@@ -8,6 +8,7 @@ mod elf;
 pub use e32::E32Layout;
 pub use e32::E32RelocSection;
 pub use e32::E32Uid;
+pub use e32::{E32CodeSection, E32Ordinals};
 pub use e32::{E32ImageHeader, E32ImageHeaderJ, E32ImageHeaderV};
 pub use e32::{E32ImportBlock, E32ImportSection};
 pub use elf::ElfImportReloc;
@@ -76,6 +77,27 @@ impl Elf2E32 {
         E32Uid::for_exe(self.uid1, self.uid3)
     }
 
+    /// Ordinals for every import of `elf`, read from the DSOs `.gnu.version_r` names
+    /// under `--libpath`.
+    pub fn ordinals(&self, elf: &ElfImage) -> Result<E32Ordinals> {
+        let mut ordinals = E32Ordinals::default();
+        let mut dsos = std::collections::BTreeMap::new();
+        for imp in elf.import_relocs()? {
+            if !dsos.contains_key(&imp.dso) {
+                let path = self.libpath.join(&imp.dso);
+                let bytes = std::fs::read(&path)
+                    .map_err(|e| Error::Other(format!("read DSO {path:?}: {e}")))?;
+                dsos.insert(imp.dso.clone(), ElfImage::parse(bytes)?);
+            }
+            let dso = &dsos[&imp.dso];
+            let ordinal = dso.dso_ordinal(&imp.symbol)?.ok_or_else(|| {
+                Error::Other(format!("{} does not export {}", imp.dso, imp.symbol))
+            })?;
+            ordinals.insert(imp.dll, imp.symbol, ordinal);
+        }
+        Ok(ordinals)
+    }
+
     pub fn encode(&self) -> Result<Vec<u8>> {
         let _ = self;
         Err(Error::Other("TODO: native ELF→E32 encode".into()))
@@ -125,6 +147,42 @@ fn parse_uid(s: &str) -> Result<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn hello_elf() -> ElfImage {
+        let hex = include_str!("testdata/hello.elf.hex");
+        let hex: String = hex.chars().filter(|c| !c.is_whitespace()).collect();
+        let bytes: Vec<u8> = (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect();
+        ElfImage::parse(bytes).unwrap()
+    }
+
+    #[test]
+    fn fp2_dso_ordinals_match_experiment_44_table() {
+        // Reads SDK DSOs only when SYMDEV_EPOCROOT points at an FP2 SDK; skipped otherwise.
+        let Some(root) = std::env::var_os("SYMDEV_EPOCROOT") else {
+            return;
+        };
+        let libpath = PathBuf::from(root).join("epoc32/release/armv5/lib");
+        if !libpath.is_dir() {
+            return;
+        }
+        let job = Elf2E32 {
+            libpath,
+            ..experiment_6()
+        };
+        let ordinals = job.ordinals(&hello_elf()).unwrap();
+        for line in include_str!("testdata/hello_ordinals.txt").lines() {
+            if line.starts_with('#') {
+                continue;
+            }
+            let mut f = line.split_whitespace();
+            let (dll, symbol, want) = (f.next().unwrap(), f.next().unwrap(), f.next().unwrap());
+            let want = u32::from_str_radix(want.trim_start_matches("0x"), 16).unwrap();
+            assert_eq!(ordinals.get(dll, symbol), Some(want), "{dll} {symbol}");
+        }
+    }
 
     fn args(tokens: &[&str]) -> Vec<String> {
         tokens.iter().map(|t| (*t).to_string()).collect()

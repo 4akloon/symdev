@@ -9,19 +9,32 @@ pub struct ElfSegment {
     pub mem_size: u32,
 }
 
-/// A dynamic relocation against an undefined symbol, tagged with the DLL that
-/// `.gnu.version_r` says provides it.
+/// A dynamic relocation against an undefined symbol, tagged with the DLL (and the
+/// DSO file) that `.gnu.version_r` says provides it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ElfImportReloc {
     pub dll: String,
+    pub dso: String,
+    pub symbol: String,
     pub vaddr: u32,
 }
 
 /// A dynamic relocation against a defined symbol: the word at `vaddr` refers to `target`.
+/// `absolute` is `R_ARM_ABS32` (word holds the addend); otherwise `R_ARM_RELATIVE`
+/// (word already holds the link-time address).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ElfLocalReloc {
     pub vaddr: u32,
     pub target: u32,
+    pub absolute: bool,
+}
+
+/// One `.gnu.version_r` auxiliary entry.
+#[derive(Debug, Clone)]
+struct ElfVersion {
+    index: u16,
+    dll: String,
+    dso: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -29,6 +42,7 @@ struct ElfRel {
     vaddr: u32,
     kind: u32,
     symbol: usize,
+    symbol_name: usize,
     symbol_value: u32,
     symbol_section: u16,
 }
@@ -155,7 +169,41 @@ impl ElfImage {
 
     /// DLL names from `.gnu.version_r`, in section order.
     pub fn needed_dlls(&self) -> Result<Vec<String>> {
-        Ok(self.versions()?.into_iter().map(|(_, name)| name).collect())
+        Ok(self.versions()?.into_iter().map(|v| v.dll).collect())
+    }
+
+    /// File bytes of a segment (its `p_filesz` part).
+    pub fn segment_bytes(&self, seg: ElfSegment) -> Result<&[u8]> {
+        let start = seg.offset as usize;
+        self.bytes
+            .get(start..start + seg.file_size as usize)
+            .ok_or_else(|| Error::Other(format!("ELF segment at {:#x} out of range", seg.vaddr)))
+    }
+
+    /// For a Symbian DSO: the ordinal an exported symbol names, i.e. the word its
+    /// `.dynsym` value points at in its section (experiment 44: `ER_RO` ordinal table).
+    pub fn dso_ordinal(&self, name: &str) -> Result<Option<u32>> {
+        let Some(dynsym) = self.section(Self::SHT_DYNSYM) else {
+            return Ok(None);
+        };
+        for sym in (dynsym.offset..dynsym.offset + dynsym.size).step_by(16) {
+            let shndx = self.u16_at(sym + 14)?;
+            if shndx == Self::SHN_UNDEF
+                || self.string(dynsym.link, self.u32_at(sym)? as usize)? != name
+            {
+                continue;
+            }
+            let section = self
+                .sections
+                .get(shndx as usize)
+                .ok_or_else(|| Error::Other(format!("DSO symbol {name} in missing section")))?;
+            let value = self.u32_at(sym + 4)?;
+            let at = value
+                .checked_sub(section.addr)
+                .ok_or_else(|| Error::Other(format!("DSO symbol {name} below its section")))?;
+            return Ok(Some(self.u32_at(section.offset + at as usize)?));
+        }
+        Ok(None)
     }
 
     /// `DT_REL` then `DT_JMPREL` relocations whose symbol is undefined, in file order.
@@ -170,18 +218,19 @@ impl ElfImage {
                 continue;
             }
             let index = self.u16_at(versym.offset + rel.symbol * 2)? & 0x7fff;
-            let dll = versions
-                .iter()
-                .find(|(v, _)| *v == index)
-                .map(|(_, name)| name.clone())
-                .ok_or_else(|| {
-                    Error::Other(format!(
-                        "ELF import at {:#x} has no version {index}",
-                        rel.vaddr
-                    ))
-                })?;
+            let version = versions.iter().find(|v| v.index == index).ok_or_else(|| {
+                Error::Other(format!(
+                    "ELF import at {:#x} has no version {index}",
+                    rel.vaddr
+                ))
+            })?;
+            let dynsym = self
+                .section(Self::SHT_DYNSYM)
+                .ok_or_else(|| Error::Other("ELF has no .dynsym".into()))?;
             out.push(ElfImportReloc {
-                dll,
+                dll: version.dll.clone(),
+                dso: version.dso.clone(),
+                symbol: self.string(dynsym.link, rel.symbol_name)?,
                 vaddr: rel.vaddr,
             });
         }
@@ -204,6 +253,7 @@ impl ElfImage {
             out.push(ElfLocalReloc {
                 vaddr: rel.vaddr,
                 target: rel.symbol_value,
+                absolute: rel.kind == Self::R_ARM_ABS32,
             });
         }
         Ok(out)
@@ -235,6 +285,7 @@ impl ElfImage {
                     vaddr: self.u32_at(rel)?,
                     kind: info & 0xff,
                     symbol,
+                    symbol_name: self.u32_at(entry)? as usize,
                     symbol_value: self.u32_at(entry + 4)?,
                     symbol_section: self.u16_at(entry + 14)?,
                 });
@@ -243,8 +294,8 @@ impl ElfImage {
         Ok(out)
     }
 
-    /// `(version index, vernaux name)` pairs from `.gnu.version_r`.
-    fn versions(&self) -> Result<Vec<(u16, String)>> {
+    /// Auxiliary entries of `.gnu.version_r`, in section order.
+    fn versions(&self) -> Result<Vec<ElfVersion>> {
         let Some(verneed) = self.section(Self::SHT_GNU_VERNEED) else {
             return Ok(Vec::new());
         };
@@ -252,11 +303,14 @@ impl ElfImage {
         let mut need = verneed.offset;
         loop {
             let count = self.u16_at(need + 2)? as usize;
+            let dso = self.string(verneed.link, self.u32_at(need + 4)? as usize)?;
             let mut aux = need + self.u32_at(need + 8)? as usize;
             for _ in 0..count {
-                let other = self.u16_at(aux + 6)?;
-                let name = self.string(verneed.link, self.u32_at(aux + 8)? as usize)?;
-                out.push((other, name));
+                out.push(ElfVersion {
+                    index: self.u16_at(aux + 6)?,
+                    dll: self.string(verneed.link, self.u32_at(aux + 8)? as usize)?,
+                    dso: dso.clone(),
+                });
                 let next = self.u32_at(aux + 12)? as usize;
                 if next == 0 {
                     break;
