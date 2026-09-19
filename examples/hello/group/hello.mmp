@@ -1,0 +1,4 @@
+TARGET hello.exe
+TARGETTYPE EXE
+SOURCEPATH ../src
+SOURCE hello.cpp
