@@ -936,3 +936,14 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
   - **SIS:** Wine makesis keeps `.pkg` file order (exe, `\resource\apps\gui.rsc`, `import\apps\gui_reg.rsc`) and writes **no** type-41 field for an EXE without capabilities. Native `SisUnsigned::encode` with a file list byte-equals the 5736-byte `gui.sis`.
   - **End to end:** `symdev new notes --template gui` → `build` → `package` (three-file `.pkg`) → `run`: EKA2L1 `Found app: notes`; screen (PID-bound capture) shows title `notes`, centered `Hello from symdev`, softkey `Exit`.
 
+
+## 52. DLL: E32 image, `.def` and `.dso` (T4)
+
+- **Requires:** experiment 51. SDK GCCE recipe read from `epoc32/tools/cl_bpabi.pm` (entry `_E32Dll`, `edll.lib`, `--targettype=DLL`, `--dso`, `--defoutput`, `--definput` when a `.def` exists else `--ignorenoncallable`).
+- **Procedure:** Build `mathlib` (three `EXPORT_C` functions) with `-D__DLL__`, link with `edll.lib`, `--entry _E32Dll`, soname `mathlib{000a0000}[e5d1b001].dll`; run `elf2e32_next --sid --uid1=0x10000079 --uid2=0x1000008d --uid3 --targettype=DLL --ignorenoncallable --dso --defoutput` (compressed and `--uncompressed`). Also DLLs with 1, 4, 5, 6, 8, 10, 13, 17, 25, 40 exports for the `.dso` hash.
+- **Outcome:** pass
+- **Evidence:** 2026-09-19, `$HOME/src/symdev-experiment-52/`.
+  - **Image:** export directory appended to the code: `u32 count`, then each export's link address (Thumb bit kept); `iExportDirOffset` points at the first address; `iCodeSize`/`iTextSize` include it; every address slot gets a text relocation. Flags `0x1200002b` (EXE flags + DLL bit), `iEntryPoint` = `_E32Dll`, V export description type 0. Ordinals follow **symbol-name order** (`_Z7MathAbsi` is ordinal 1 despite the highest address). `--ignorenoncallable` ("Generate exports for functions only") skips linker symbols such as `_edata`/`__bss_start`.
+  - **`.def`:** `EXPORTS`, `; NEW:`, `\t<name> @ <ordinal> NONAME` lines, trailing blank line.
+  - **`.dso`:** ELF32 ARM `ET_DYN`, flags `0x04000004`; sections `ER_RO` (ordinal words 1..n + a zero word), `.dynamic` (SONAME = the `--dso` file name, SYMTAB, SYMENT, STRTAB, STRSZ, VERSYM, VERDEF, VERDEFNUM=2, HASH, NULL), `.hash` (`nbucket = N/3 + N%3`, N = n+1; clean-room spec `dso-hash-spec.md`), `.version_d` (base = soname, 2 = linkas), `.version`, `.strtab` (exports, soname, linkas; zero-padded to 4), `.dynsym` (value 4·i, size 4, GLOBAL FUNC, section 1), `.shstrtab`; sections 4-aligned after the headers; program headers last (LOAD flags `0x80000001`, DYNAMIC).
+  - Native `symdev-elf2e32` output equals elf2e32_next for the DLL (apart from CRC/time) and **byte-equals** every `.def` and `.dso` (11 DSOs).
