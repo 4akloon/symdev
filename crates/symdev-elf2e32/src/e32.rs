@@ -145,6 +145,55 @@ impl E32Ordinals {
     }
 }
 
+/// Word fixups inside one ELF segment's bytes (`base` = its link address).
+struct E32Fixups;
+
+impl E32Fixups {
+    fn slot(bytes: &[u8], base: u32, vaddr: u32) -> Result<std::ops::Range<usize>> {
+        let at = vaddr
+            .checked_sub(base)
+            .map(|o| o as usize)
+            .filter(|&o| o + 4 <= bytes.len())
+            .ok_or_else(|| {
+                Error::Other(format!("fixup at {vaddr:#x} outside segment {base:#x}"))
+            })?;
+        Ok(at..at + 4)
+    }
+
+    fn word(bytes: &[u8], base: u32, vaddr: u32) -> Result<u32> {
+        let r = Self::slot(bytes, base, vaddr)?;
+        Ok(u32::from_le_bytes([
+            bytes[r.start],
+            bytes[r.start + 1],
+            bytes[r.start + 2],
+            bytes[r.start + 3],
+        ]))
+    }
+
+    fn set_word(bytes: &mut [u8], base: u32, vaddr: u32, value: u32) -> Result<()> {
+        let r = Self::slot(bytes, base, vaddr)?;
+        bytes[r].copy_from_slice(&value.to_le_bytes());
+        Ok(())
+    }
+
+    /// `R_ARM_ABS32` words in `[base, base + len)` become `S + A`; `R_ARM_RELATIVE`
+    /// words stay as linked (experiments 44, 49).
+    fn absolute(elf: &ElfImage, bytes: &mut [u8], base: u32) -> Result<()> {
+        let end = base + bytes.len() as u32;
+        for rel in elf.local_relocs()? {
+            if !rel.absolute || !(base..end).contains(&rel.vaddr) {
+                continue;
+            }
+            let addend = Self::word(bytes, base, rel.vaddr)?;
+            let value = rel.target.checked_add(addend).ok_or_else(|| {
+                Error::Other(format!("absolute relocation at {:#x} overflows", rel.vaddr))
+            })?;
+            Self::set_word(bytes, base, rel.vaddr, value)?;
+        }
+        Ok(())
+    }
+}
+
 /// E32 code section: the ELF code segment with import slots and absolute
 /// relocations rewritten (experiment 44).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -157,55 +206,47 @@ impl E32CodeSection {
     /// `R_ARM_RELATIVE` words stay as linked.
     pub fn from_elf(elf: &ElfImage, layout: &E32Layout, ordinals: &E32Ordinals) -> Result<Self> {
         let mut bytes = elf.segment_bytes(elf.code_segment()?)?.to_vec();
+        let base = layout.code_base;
+        let end = base + bytes.len() as u32;
         for imp in elf.import_relocs()? {
+            if !(base..end).contains(&imp.vaddr) {
+                return Err(Error::Other(format!(
+                    "TODO: import {} at {:#x} outside code (not observed)",
+                    imp.symbol, imp.vaddr
+                )));
+            }
             let ordinal = ordinals.get(&imp.dll, &imp.symbol).ok_or_else(|| {
                 Error::Other(format!("no ordinal for {} in {}", imp.symbol, imp.dll))
             })?;
-            let addend = Self::word(&bytes, layout, imp.vaddr)?;
+            let addend = E32Fixups::word(&bytes, base, imp.vaddr)?;
             if addend > 0xffff || ordinal > 0xffff {
                 return Err(Error::Other(format!(
                     "import {} addend {addend:#x} / ordinal {ordinal:#x} exceed 16 bits",
                     imp.symbol
                 )));
             }
-            Self::set_word(&mut bytes, layout, imp.vaddr, (addend << 16) | ordinal)?;
+            E32Fixups::set_word(&mut bytes, base, imp.vaddr, (addend << 16) | ordinal)?;
         }
-        for rel in elf.local_relocs()? {
-            if !rel.absolute {
-                continue;
-            }
-            let addend = Self::word(&bytes, layout, rel.vaddr)?;
-            let value = rel.target.checked_add(addend).ok_or_else(|| {
-                Error::Other(format!("absolute relocation at {:#x} overflows", rel.vaddr))
-            })?;
-            Self::set_word(&mut bytes, layout, rel.vaddr, value)?;
-        }
+        E32Fixups::absolute(elf, &mut bytes, base)?;
         Ok(Self { bytes })
     }
+}
 
-    fn slot(bytes: &[u8], layout: &E32Layout, vaddr: u32) -> Result<std::ops::Range<usize>> {
-        let at = vaddr
-            .checked_sub(layout.code_base)
-            .map(|o| o as usize)
-            .filter(|&o| o + 4 <= bytes.len())
-            .ok_or_else(|| Error::Other(format!("fixup at {vaddr:#x} outside code")))?;
-        Ok(at..at + 4)
-    }
+/// E32 data section: the writable segment's initialised bytes with absolute
+/// relocations rewritten (experiment 49). BSS is not stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct E32DataSection {
+    pub bytes: Vec<u8>,
+}
 
-    fn word(bytes: &[u8], layout: &E32Layout, vaddr: u32) -> Result<u32> {
-        let r = Self::slot(bytes, layout, vaddr)?;
-        Ok(u32::from_le_bytes([
-            bytes[r.start],
-            bytes[r.start + 1],
-            bytes[r.start + 2],
-            bytes[r.start + 3],
-        ]))
-    }
-
-    fn set_word(bytes: &mut [u8], layout: &E32Layout, vaddr: u32, value: u32) -> Result<()> {
-        let r = Self::slot(bytes, layout, vaddr)?;
-        bytes[r].copy_from_slice(&value.to_le_bytes());
-        Ok(())
+impl E32DataSection {
+    pub fn from_elf(elf: &ElfImage, layout: &E32Layout) -> Result<Self> {
+        let Some(seg) = elf.data_segment() else {
+            return Ok(Self { bytes: Vec::new() });
+        };
+        let mut bytes = elf.segment_bytes(seg)?.to_vec();
+        E32Fixups::absolute(elf, &mut bytes, layout.data_base)?;
+        Ok(Self { bytes })
     }
 }
 
@@ -223,22 +264,34 @@ impl E32RelocSection {
     pub const KIND_DATA: u16 = 2;
     const PAGE: u32 = 0x1000;
 
-    /// Code relocations: every local dynamic relocation whose word lies in the code
-    /// segment; kind by which segment its target lies in.
+    /// Code relocations: local dynamic relocations whose word lies in the code segment;
+    /// kind by which segment the target lies in (experiment 44).
     pub fn code_from_elf(elf: &ElfImage, layout: &E32Layout) -> Result<Self> {
-        let code_end = layout.code_base + layout.code_size;
-        let data_end = layout.data_base + layout.data_size + layout.bss_size;
+        Self::from_elf(elf, layout, layout.code_base, layout.code_size)
+    }
+
+    /// Data relocations: the same for words in the initialised data (experiment 49).
+    pub fn data_from_elf(elf: &ElfImage, layout: &E32Layout) -> Result<Self> {
+        Self::from_elf(elf, layout, layout.data_base, layout.data_size)
+    }
+
+    fn from_elf(elf: &ElfImage, layout: &E32Layout, base: u32, len: u32) -> Result<Self> {
+        let code = layout.code_base..layout.code_base + layout.code_size;
+        let data = layout.data_base..layout.data_base + layout.data_size + layout.bss_size;
         let mut entries = Vec::new();
         for rel in elf.local_relocs()? {
-            if !(layout.code_base..code_end).contains(&rel.vaddr) {
+            if !code.contains(&rel.vaddr) && !data.contains(&rel.vaddr) {
                 return Err(Error::Other(format!(
-                    "TODO: relocation at {:#x} outside code (data relocs not observed)",
+                    "relocation at {:#x} outside code and data",
                     rel.vaddr
                 )));
             }
-            let kind = if (layout.code_base..code_end).contains(&rel.target) {
+            if !(base..base + len).contains(&rel.vaddr) {
+                continue;
+            }
+            let kind = if code.contains(&rel.target) {
                 Self::KIND_TEXT
-            } else if (layout.data_base..data_end).contains(&rel.target) {
+            } else if data.contains(&rel.target) {
                 Self::KIND_DATA
             } else {
                 return Err(Error::Other(format!(
@@ -246,7 +299,7 @@ impl E32RelocSection {
                     rel.vaddr, rel.target
                 )));
             };
-            entries.push((rel.vaddr - layout.code_base, kind));
+            entries.push((rel.vaddr - base, kind));
         }
         entries.sort_unstable();
         Ok(Self { entries })
@@ -254,6 +307,15 @@ impl E32RelocSection {
 
     pub fn count(&self) -> u32 {
         self.entries.len() as u32
+    }
+
+    /// Bytes this section takes in the image: none when there are no entries.
+    pub fn stored_len(&self) -> u32 {
+        if self.entries.is_empty() {
+            0
+        } else {
+            self.bytes().len() as u32
+        }
     }
 
     pub fn bytes(&self) -> Vec<u8> {
@@ -493,8 +555,10 @@ pub struct E32Image {
     pub j: E32ImageHeaderJ,
     pub v: E32ImageHeaderV,
     pub code: E32CodeSection,
+    pub data: E32DataSection,
     pub imports: E32ImportSection,
     pub relocs: E32RelocSection,
+    pub data_relocs: E32RelocSection,
 }
 
 impl E32Image {
@@ -510,16 +574,15 @@ impl E32Image {
         time: E32Time,
     ) -> Result<Self> {
         let layout = E32Layout::from_elf(elf)?;
-        if layout.data_size != 0 {
-            return Err(Error::Other(
-                "TODO: E32 data section (not observed on hello)".into(),
-            ));
-        }
         let code = E32CodeSection::from_elf(elf, &layout, ordinals)?;
+        let data = E32DataSection::from_elf(elf, &layout)?;
         let imports = E32ImportSection::from_elf(elf, layout.code_base)?;
         let relocs = E32RelocSection::code_from_elf(elf, &layout)?;
+        let data_relocs = E32RelocSection::data_from_elf(elf, &layout)?;
         let import_len = imports.bytes().len() as u32;
-        let reloc_len = relocs.bytes().len() as u32;
+        let reloc_len = relocs.stored_len();
+        let data_reloc_len = data_relocs.stored_len();
+        let code_reloc_offset = layout.import_offset() + import_len;
         let secure_id = uid.uid3;
         let header = E32ImageHeader {
             uid,
@@ -546,19 +609,31 @@ impl E32Image {
             export_dir_count: 0,
             text_size: layout.code_size,
             code_offset: E32ImageHeader::CODE_OFFSET,
-            data_offset: 0,
+            data_offset: if layout.data_size == 0 {
+                0
+            } else {
+                E32ImageHeader::CODE_OFFSET + layout.code_size
+            },
             import_offset: layout.import_offset(),
             code_reloc_offset: if relocs.count() == 0 {
                 0
             } else {
-                layout.import_offset() + import_len
+                code_reloc_offset
             },
-            data_reloc_offset: 0,
+            data_reloc_offset: if data_relocs.count() == 0 {
+                0
+            } else {
+                code_reloc_offset + reloc_len
+            },
             process_priority: E32ImageHeader::PRIORITY_FOREGROUND,
             cpu_identifier: E32ImageHeader::CPU_ARMV5,
         };
         let j = E32ImageHeaderJ {
-            uncompressed_size: layout.code_size + layout.data_size + import_len + reloc_len,
+            uncompressed_size: layout.code_size
+                + layout.data_size
+                + import_len
+                + reloc_len
+                + data_reloc_len,
         };
         let v = E32ImageHeaderV {
             secure_id,
@@ -574,8 +649,10 @@ impl E32Image {
             j,
             v,
             code,
+            data,
             imports,
             relocs,
+            data_relocs,
         })
     }
 
@@ -593,8 +670,13 @@ impl E32Image {
 
     fn body(&self) -> Vec<u8> {
         let mut out = self.code.bytes.clone();
+        out.extend_from_slice(&self.data.bytes);
         out.extend_from_slice(&self.imports.bytes());
-        out.extend_from_slice(&self.relocs.bytes());
+        for relocs in [&self.relocs, &self.data_relocs] {
+            if relocs.count() > 0 {
+                out.extend_from_slice(&relocs.bytes());
+            }
+        }
         out
     }
 
