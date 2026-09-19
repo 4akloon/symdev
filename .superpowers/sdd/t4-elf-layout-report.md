@@ -23,5 +23,6 @@ ELF with no writable `PT_LOAD`; ELF without the exception-descriptor symbol.
 ## Remaining (next T4 slices)
 
 - ~~`iDllRefTableCount` and the import section~~ done in the imports slice (experiment 44): `E32ImportSection::from_elf`, byte-equal to the uncompressed golden
-- Code relocations (32 entries, pages 0x0 / 0x1000) and the code words at import slots (ordinals from `--libpath` DSOs; pin only the used ordinals)
+- ~~Code relocations~~ done (experiment 44): `E32RelocSection::code_from_elf`, byte-equal
+- Code words at import slots (ordinals from `--libpath` DSOs; pin only the used ordinals)
 - Capability bit packing; deflate of the post-header payload; `Elf2E32::encode`; wiring into `GcceBuild`
