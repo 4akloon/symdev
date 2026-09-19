@@ -14,6 +14,8 @@ pub struct SisPackage {
     pub password: String,
     pub cert: Option<PathBuf>,
     pub key: Option<PathBuf>,
+    /// Subject for a generated self-signed cert (`signing.subject`).
+    pub subject: Option<String>,
 }
 
 impl SisPackage {
@@ -97,7 +99,10 @@ impl PackageBackend for SisPackage {
                 std::fs::read(&key).map_err(|e| Error::Other(e.to_string()))?,
             ),
             None => {
-                let generated = SelfSignedDsa::generate(now)?;
+                let generated = match &self.subject {
+                    Some(subject) => SelfSignedDsa::generate_for(subject, now)?,
+                    None => SelfSignedDsa::generate(now)?,
+                };
                 std::fs::write(
                     workdir.join(format!("{}.cer", self.name)),
                     generated.cert_pem(),
@@ -178,6 +183,7 @@ fn fake_pkg() -> SisPackage {
         password: "secret".into(),
         cert: None,
         key: None,
+        subject: None,
     }
 }
 

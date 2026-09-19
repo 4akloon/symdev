@@ -43,7 +43,16 @@ impl SelfSignedDsa {
     pub const DNAME: &'static str =
         "CN=Joe Bloggs OU=Development O=Acme Ltd C=GB EM=noone@nowhere.com";
 
+    /// Recorded makekeys example subject (experiment 8).
     pub fn generate(not_before: SystemTime) -> Result<Self> {
+        Self::generate_for(SUBJECT, not_before)
+    }
+
+    /// Self-signed cert for an RFC 4514 subject (issuer = subject), e.g.
+    /// `CN=Vendor,O=Vendor`.
+    pub fn generate_for(subject: &str, not_before: SystemTime) -> Result<Self> {
+        let subject = Name::from_str(subject)
+            .map_err(|e| Error::Other(format!("signing subject {subject:?}: {e}")))?;
         let not_after = not_before
             .checked_add(Duration::from_secs(EXPDAYS * 86_400))
             .ok_or_else(|| Error::Other("certificate expiry overflow".into()))?;
@@ -58,7 +67,6 @@ impl SelfSignedDsa {
                 .as_bytes(),
         )
         .map_err(|e| Error::Other(format!("DSA SPKI DER: {e}")))?;
-        let subject = Name::from_str(SUBJECT).map_err(|e| Error::Other(format!("dname: {e}")))?;
         let alg = AlgorithmIdentifierOwned {
             oid: DSA_WITH_SHA1,
             parameters: None,
@@ -247,6 +255,26 @@ impl Makekeys {
 mod tool_tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn generate_for_uses_the_given_subject() {
+        let pair = SelfSignedDsa::generate_for("CN=Alice,O=Example", SystemTime::now()).unwrap();
+        let pem = String::from_utf8(pair.cert_pem().to_vec()).unwrap();
+        use x509_cert::der::DecodePem;
+        let cert = x509_cert::Certificate::from_pem(pem.as_bytes()).unwrap();
+        let subject = cert.tbs_certificate.subject.to_string();
+        assert!(subject.contains("CN=Alice"), "{subject}");
+        assert_eq!(cert.tbs_certificate.issuer, cert.tbs_certificate.subject);
+    }
+
+    #[test]
+    fn generate_for_rejects_malformed_subject() {
+        let err = SelfSignedDsa::generate_for("not a dn", SystemTime::now())
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        assert!(err.contains("signing subject"), "{err}");
+    }
 
     #[test]
     fn dname_is_makekeys_example_usage() {

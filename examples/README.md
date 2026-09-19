@@ -21,7 +21,7 @@ symdev package   # build/hello.sisx (EXE + hello_reg.rsc), self-signed
 Run it in the patched EKA2L1 ([docs/research/eka2l1-bringup.md](../docs/research/eka2l1-bringup.md)):
 
 ```bash
-export SYMDEV_EKA2L1=~/.local/bin/eka2l1-patched   # eka2l1_qt or a wrapper that sets its env
+export SYMDEV_EKA2L1=~/.local/bin/eka2l1   # eka2l1_qt or a wrapper that sets its env
 symdev run      # installs build/hello.sisx and launches 0xef9f2cab; log in build/eka2l1.log
 ```
 

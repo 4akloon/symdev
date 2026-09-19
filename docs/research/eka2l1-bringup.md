@@ -57,5 +57,9 @@ The official install-device page uses **5320** as the S60v3 screenshot example. 
 
 ## `symdev run`
 
-`symdev run` spawns `$SYMDEV_EKA2L1 --install build/<name>.sisx --run 0x<uid3>` in the background (experiment 48). On this host `SYMDEV_EKA2L1=~/.local/bin/eka2l1-patched`, a wrapper (outside git) that exports the same environment as `eka2l1-patched.service` and execs `~/src/EKA2L1-build/bin/eka2l1_qt`. The patch also fixes `--install` treating success (`installation_result_success == 0`) as failure.
+`symdev run` spawns `$SYMDEV_EKA2L1 --install build/<name>.sisx --run 0x<uid3>` in the background (experiment 48). On this host `SYMDEV_EKA2L1=~/.local/bin/eka2l1`, an existing wrapper (outside git; also the desktop entry's `Exec`) that exports the same environment as `eka2l1-patched.service` and execs `~/src/EKA2L1-build/bin/eka2l1_qt`. The patch also fixes `--install` treating success (`installation_result_success == 0`) as failure.
+
+## Local EKA2L1 fixes
+
+Six fixes live as commits on `symdev-fixes` in `~/src/EKA2L1` (base `e169852`), exported to `~/src/EKA2L1-upstream-patches/` with a README (origin + how each was verified). Besides the console/scaling/`--install` fixes, one fixes an upstream abort when closing the window with any app running (`property` cancel completing into freed threads during kernel wipeout; found with gdb, closing 3/3 crashed → 3/3 clean). The Downloads `EKA2L1-Linux-x86_64.AppImage` was replaced by an earlier session with a shell stub that execs `~/.local/bin/eka2l1`; the original AppImage is kept as `EKA2L1-Linux-x86_64.AppImage.unpatched`.
 
