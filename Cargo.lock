@@ -845,6 +845,7 @@ version = "0.1.0"
 dependencies = [
  "der",
  "symdev-core",
+ "symdev-elf2e32",
  "symdev-makekeys",
  "symdev-rcomp",
  "symdev-sis",
@@ -863,6 +864,7 @@ dependencies = [
  "predicates",
  "symdev-build",
  "symdev-core",
+ "symdev-emulator",
  "symdev-manifest",
  "tempfile",
 ]
@@ -881,6 +883,13 @@ version = "0.1.0"
 dependencies = [
  "symdev-core",
  "symdev-uidcrc",
+]
+
+[[package]]
+name = "symdev-emulator"
+version = "0.1.0"
+dependencies = [
+ "symdev-core",
 ]
 
 [[package]]

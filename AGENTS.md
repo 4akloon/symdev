@@ -68,6 +68,7 @@ The emulator bring-up lives outside git — check it before assuming anything:
 
 - EKA2L1 source `~/src/EKA2L1` (+ local diff), exported patch `~/src/EKA2L1-econs-heap.patch`, build dir `~/src/EKA2L1-build`.
 - Runs as systemd user unit `eka2l1-patched.service`; config `~/.local/share/EKA2L1/config.yml`, `~/.config/EKA2L1/EKA2L1.conf`.
+- `SYMDEV_EKA2L1=~/.local/bin/eka2l1-patched` (wrapper with the service env) for `symdev run`.
 - Rebuild: `PATH=~/.local/eka2l1-tools/bin:~/.local/eka2l1-tools/cmake/bin:$PATH LIBRARY_PATH=~/.local/eka2l1-sysroot/usr/lib/x86_64-linux-gnu ninja -C ~/src/EKA2L1-build eka2l1_qt ekatests`; run `ekatests` from `~/src/EKA2L1-build/src/tests`. `eka2l1_qt --run hello` launches the app without clicking.
 - Re-export the patch after changing the emulator: `git -C ~/src/EKA2L1 diff > ~/src/EKA2L1-econs-heap.patch` (new files need `git add -N` first).
 - Notes: `docs/research/eka2l1-bringup.md`, `docs/research/eka2l1.md`.

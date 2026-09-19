@@ -54,3 +54,8 @@ Do not use firmware-dump / torrent / warez sites.
 ## 5320 vs E52
 
 The official install-device page uses **5320** as the S60v3 screenshot example. This project’s hardware target is **Nokia E52 (RM-469)**. A 5320 (or other) image is a different device. Emulator success on 5320 ≠ E52 supported.
+
+## `symdev run`
+
+`symdev run` spawns `$SYMDEV_EKA2L1 --install build/<name>.sisx --run 0x<uid3>` in the background (experiment 48). On this host `SYMDEV_EKA2L1=~/.local/bin/eka2l1-patched`, a wrapper (outside git) that exports the same environment as `eka2l1-patched.service` and execs `~/src/EKA2L1-build/bin/eka2l1_qt`. The patch also fixes `--install` treating success (`installation_result_success == 0`) as failure.
+

@@ -57,6 +57,19 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
+        Some(Commands::Run) => match symdev_manifest::load(Path::new("symdev.toml")) {
+            Ok(m) => match run_project(m) {
+                Ok(code) => code,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    ExitCode::from(1)
+                }
+            },
+            Err(e) => {
+                eprintln!("error: invalid manifest: {e}");
+                ExitCode::from(1)
+            }
+        },
         Some(Commands::Deploy) => match symdev_manifest::load(Path::new("symdev.toml")) {
             Ok(m) => match deploy_project(m) {
                 Ok(code) => code,
@@ -143,5 +156,29 @@ fn deploy_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
     }
     let cwd = std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?;
     println!("{}", cwd.join(&sisx).display());
+    Ok(ExitCode::SUCCESS)
+}
+
+fn run_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
+    let uid3 = m
+        .symbian
+        .uid3
+        .ok_or_else(|| Error::Other("uid3 required for run (set symbian.uid3)".into()))?;
+    let cwd = std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?;
+    let sisx = cwd.join("build").join(format!("{}.sisx", m.package.name));
+    if !sisx.is_file() {
+        return Err(Error::Other(format!(
+            "SISX not found: build/{}.sisx (run symdev package)",
+            m.package.name
+        )));
+    }
+    let emulator = symdev_emulator::Eka2l1Backend::from_env()?;
+    let log = cwd.join("build").join("eka2l1.log");
+    let pid = emulator.run(&sisx, uid3, &log)?;
+    println!(
+        "EKA2L1 pid {pid}: installing {} and launching 0x{uid3:08x}",
+        sisx.display()
+    );
+    println!("log: {}", log.display());
     Ok(ExitCode::SUCCESS)
 }
