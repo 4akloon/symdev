@@ -551,7 +551,7 @@ mod tests {
     fn round_trips_edge_inputs() {
         let mut long = vec![7u8; 5000];
         long.extend((0..3000u32).map(|i| (i * 31 % 251) as u8));
-        long.extend_from_slice(&long[100..4200].to_vec());
+        long.extend_from_within(100..4200);
         for body in [long, b"abcabcabcabcabcabcabcabc".repeat(40)] {
             let stream = E32Deflate::compress(&body).unwrap();
             assert_eq!(E32Deflate::decompress(&stream, body.len()).unwrap(), body);
