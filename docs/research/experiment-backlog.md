@@ -947,3 +947,11 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
   - **`.def`:** `EXPORTS`, `; NEW:`, `\t<name> @ <ordinal> NONAME` lines, trailing blank line.
   - **`.dso`:** ELF32 ARM `ET_DYN`, flags `0x04000004`; sections `ER_RO` (ordinal words 1..n + a zero word), `.dynamic` (SONAME = the `--dso` file name, SYMTAB, SYMENT, STRTAB, STRSZ, VERSYM, VERDEF, VERDEFNUM=2, HASH, NULL), `.hash` (`nbucket = N/3 + N%3`, N = n+1; clean-room spec `dso-hash-spec.md`), `.version_d` (base = soname, 2 = linkas), `.version`, `.strtab` (exports, soname, linkas; zero-padded to 4), `.dynsym` (value 4·i, size 4, GLOBAL FUNC, section 1), `.shstrtab`; sections 4-aligned after the headers; program headers last (LOAD flags `0x80000001`, DYNAMIC).
   - Native `symdev-elf2e32` output equals elf2e32_next for the DLL (apart from CRC/time) and **byte-equals** every `.def` and `.dso` (11 DSOs).
+
+## 53. `symdev build` with a project DLL (EXE + own DLL)
+
+- **Requires:** experiment 52.
+- **Procedure:** `symdev new calc`; add `group/mathlib.mmp` (`TARGETTYPE DLL`, `UID 0x1000008d 0xe5d1b001`) before `calc.mmp` in `bld.inf`; `calc.mmp` gets `LIBRARY mathlib.lib`; `hello.cpp` prints `MathTwice(21)` and `MathAbs(-5)`. `symdev build` (native post-link), `symdev package`, `symdev run`. Then set `capabilities = ["ReadUserData"]`, rebuild, and compare the SIS with Wine `makesis` on the generated `.pkg`.
+- **Outcome:** pass (emulator only; **not** E52 support)
+- **Evidence:** 2026-09-19. Build writes `mathlib.dll`, `mathlib.dso`, `mathlib.def` (DLL recipe from `cl_bpabi.pm`: `-D__DLL__`, `edll.lib`, `_E32Dll`, `--libpath=<sdk>;build`), then links `calc.exe` against `build/mathlib.dso`. `.pkg`: `calc.exe`, `mathlib.dll` → `!:\sys\bin\`, `calc_reg.rsc`. EKA2L1 shows `MathTwice(21)=42 MathAbs(-5)=5` (PID-bound screenshot), so ordinals from our `.dso` resolve at runtime. Wine makesis writes type 41 for **each** E32 file from its own header (the DLL too); with that, the native controller equals Wine's once date/time are masked, same file size (4716).
+

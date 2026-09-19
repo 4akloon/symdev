@@ -91,6 +91,18 @@ pub struct SisPkgFile<'a> {
 }
 
 impl<'a> SisPkgFile<'a> {
+    /// makesis takes type 41 from an E32 file's own header (`EPOC` at 16, `iCaps` at
+    /// 0x88): observed for a DLL next to its EXE (experiment 53).
+    fn e32_capabilities(&self) -> Option<SisWord41> {
+        if self.data.get(16..20) != Some(b"EPOC".as_slice()) {
+            return None;
+        }
+        let caps = self.data.get(0x88..0x8c)?;
+        Some(SisWord41::new(u32::from_le_bytes([
+            caps[0], caps[1], caps[2], caps[3],
+        ])))
+    }
+
     /// `!:\private\10003a3f\import\apps\<name>_reg.rsc` (experiment 43 template).
     pub fn reg_rsc_dest(name: &str) -> String {
         format!("!:\\private\\10003a3f\\import\\apps\\{name}_reg.rsc")
@@ -135,8 +147,9 @@ impl SisUnsignedSpec<'_> {
         let mut files = vec![exe_file];
         let mut blobs = vec![exe_blob];
         for (idx, extra) in self.files.iter().enumerate() {
+            let caps = extra.e32_capabilities().filter(|c| c.value != 0);
             let (file, blob) =
-                Self::install_file(extra.dest.to_string(), extra.data, None, idx as u32 + 1)?;
+                Self::install_file(extra.dest.to_string(), extra.data, caps, idx as u32 + 1)?;
             files.push(file);
             blobs.push(blob);
         }
@@ -396,6 +409,23 @@ fn encode_unsigned_sis_with_reg_rsc_matches_experiment_43() {
     .unwrap();
     assert_eq!(bytes.len(), golden.len());
     assert_eq!(bytes, golden);
+}
+
+#[test]
+fn e32_files_carry_their_own_capabilities() {
+    let mut dll = vec![0u8; 0x9c];
+    dll[16..20].copy_from_slice(b"EPOC");
+    dll[0x88..0x8c].copy_from_slice(&0x8000u32.to_le_bytes());
+    let file = SisPkgFile {
+        dest: "!:\\sys\\bin\\mathlib.dll",
+        data: &dll,
+    };
+    assert_eq!(file.e32_capabilities().map(|w| w.value), Some(0x8000));
+    let rsc = SisPkgFile {
+        dest: "!:\\resource\\apps\\gui.rsc",
+        data: b"\x6b\x4a\x1f\x10not an E32 image at all",
+    };
+    assert!(rsc.e32_capabilities().is_none());
 }
 
 #[test]

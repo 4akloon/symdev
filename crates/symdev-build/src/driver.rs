@@ -7,6 +7,43 @@ use crate::resources::{ProjectMmps, SdkIncludeCaseFold};
 use crate::toolchain::Toolchain;
 use crate::{Mmp, MmpResource};
 
+/// What one MMP builds: its E32 kind and UIDs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Module {
+    pub dll: bool,
+    pub uid2: u32,
+    pub uid3: u32,
+}
+
+impl Module {
+    /// DLL UIDs come from the MMP `UID <uid2> <uid3>` line; EXEs keep the recorded
+    /// experiment-6 UIDs (UID2 omitted, UID3 from the manifest).
+    pub fn of(mmp: &Mmp, manifest_uid3: u32) -> Result<Self> {
+        if mmp.target_type.eq_ignore_ascii_case("DLL") {
+            let [uid2, uid3] = mmp.uid[..] else {
+                return Err(Error::Other(format!(
+                    "{}: TARGETTYPE DLL needs `UID <uid2> <uid3>`",
+                    mmp.target
+                )));
+            };
+            return Ok(Self {
+                dll: true,
+                uid2,
+                uid3,
+            });
+        }
+        Ok(Self {
+            dll: false,
+            uid2: 0,
+            uid3: manifest_uid3,
+        })
+    }
+
+    fn ext(&self) -> &'static str {
+        if self.dll { "dll" } else { "exe" }
+    }
+}
+
 /// Extra `-I` directories: `user` after the source directory (build dir for `.rsg`,
 /// `USERINCLUDE`), `system` after `epoc32/include` (`SYSTEMINCLUDE`, case-fold overlay).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -27,12 +64,32 @@ fn arg(path: &Path) -> String {
 }
 
 impl GcceBuild {
-    fn linkas(&self, name: &str) -> String {
-        format!("{name}{{000a0000}}[{:08x}].exe", self.uid3)
+    fn linkas_for(module: &Module, name: &str) -> String {
+        format!("{name}{{000a0000}}[{:08x}].{}", module.uid3, module.ext())
+    }
+
+    fn exe_module(&self) -> Module {
+        Module {
+            dll: false,
+            uid2: 0,
+            uid3: self.uid3,
+        }
     }
 
     pub fn compile_args(
         &self,
+        source_dir: &Path,
+        includes: &CompileIncludes,
+        source: &Path,
+        obj: &Path,
+    ) -> Vec<String> {
+        self.compile_args_for(&self.exe_module(), source_dir, includes, source, obj)
+    }
+
+    /// `-D__EXE__` or `-D__DLL__` by module (SDK `cl_bpabi.pm`).
+    pub fn compile_args_for(
+        &self,
+        module: &Module,
         source_dir: &Path,
         includes: &CompileIncludes,
         source: &Path,
@@ -56,7 +113,7 @@ impl GcceBuild {
             "-D__EPOC32__".into(),
             "-D__MARM__".into(),
             "-D__GCCE__".into(),
-            "-D__EXE__".into(),
+            if module.dll { "-D__DLL__" } else { "-D__EXE__" }.into(),
             "-include".into(),
             arg(&epoc.join("epoc32/include/gcce/gcce.h")),
             format!(
@@ -110,6 +167,27 @@ impl GcceBuild {
         map: &Path,
         libraries: &[String],
     ) -> Vec<String> {
+        self.link_args_for(&self.exe_module(), name, obj, elf, map, libraries, &[])
+    }
+
+    /// DLLs link `edll.lib` with entry `_E32Dll` (SDK `cl_bpabi.pm`); `lib_dirs` are
+    /// searched for this project's own `.dso` files.
+    #[allow(clippy::too_many_arguments)]
+    pub fn link_args_for(
+        &self,
+        module: &Module,
+        name: &str,
+        obj: &Path,
+        elf: &Path,
+        map: &Path,
+        libraries: &[String],
+        lib_dirs: &[PathBuf],
+    ) -> Vec<String> {
+        let (entry, first_lib) = if module.dll {
+            ("_E32Dll", "-l:edll.lib")
+        } else {
+            ("_E32Startup", "-l:eexe.lib")
+        };
         let mut args: Vec<String> = vec![
             arg(&self.tools.ld),
             format!("-L{}/", self.tools.gcc_lib.display()),
@@ -125,15 +203,15 @@ impl GcceBuild {
             "0x400000".into(),
             "--default-symver".into(),
             "-soname".into(),
-            self.linkas(name),
+            Self::linkas_for(module, name),
             "--target1-abs".into(),
             "--no-undefined".into(),
             "-nostdlib".into(),
             "--strip-debug".into(),
             "--entry".into(),
-            "_E32Startup".into(),
+            entry.into(),
             "-u".into(),
-            "_E32Startup".into(),
+            entry.into(),
             format!(
                 "-L{}",
                 self.tools
@@ -141,7 +219,7 @@ impl GcceBuild {
                     .join("epoc32/release/armv5/urel")
                     .display()
             ),
-            "-l:eexe.lib".into(),
+            first_lib.into(),
             "-o".into(),
             arg(elf),
             "-Map".into(),
@@ -165,6 +243,10 @@ impl GcceBuild {
             "-l:scppnwdl.dso".into(),
             "-l:drtrvct2_2.dso".into(),
         ];
+        let at = args.len() - 6;
+        for (i, dir) in lib_dirs.iter().enumerate() {
+            args.insert(at + i, format!("-L{}", dir.display()));
+        }
         for lib in libraries {
             let flag = format!("-l:{lib}");
             if !args.contains(&flag) {
@@ -256,33 +338,66 @@ impl GcceBuild {
     }
 
     pub fn elf2e32_args(&self, name: &str, elf: &Path, exe: &Path) -> Vec<String> {
+        self.elf2e32_args_for(&self.exe_module(), name, elf, exe, None)
+    }
+
+    /// EXE: the recorded experiment-6 argv. DLL: the SDK recipe (`--sid`, UID1
+    /// `0x10000079`, `--uid2`, `--targettype=DLL`, `--ignorenoncallable`, `--dso` and
+    /// `--defoutput` next to the output). `build_dir` joins `--libpath` (a `;` list per
+    /// `elf2e32 --help`) so this project's own `.dso` files resolve.
+    pub fn elf2e32_args_for(
+        &self,
+        module: &Module,
+        name: &str,
+        elf: &Path,
+        out: &Path,
+        build_dir: Option<&Path>,
+    ) -> Vec<String> {
         let argv0 = match &self.tools.elf2e32 {
             Some(tool) => arg(tool),
             None => "elf2e32".into(),
         };
-        let mut args = vec![
-            argv0,
-            "--uid1=0x1000007a".into(),
-            format!("--uid3=0x{:08x}", self.uid3),
-        ];
+        let mut args = vec![argv0];
+        if module.dll {
+            args.extend([
+                format!("--sid=0x{:08x}", module.uid3),
+                "--uid1=0x10000079".into(),
+                format!("--uid2=0x{:08x}", module.uid2),
+            ]);
+        } else {
+            args.push("--uid1=0x1000007a".into());
+        }
+        args.push(format!("--uid3=0x{:08x}", module.uid3));
         // Empty `--capability=` is rejected: "Option capability has missed argument"
         // (elf2e32_next 3.0 Build 2). Omit the flag when the manifest list is empty.
         if !self.capabilities.is_empty() {
             args.push(format!("--capability={}", self.capabilities.join("+")));
         }
+        args.push("--fpu=softvfp".into());
+        if module.dll {
+            let dir = out.parent().unwrap_or(Path::new("."));
+            args.extend([
+                "--targettype=DLL".into(),
+                "--ignorenoncallable".into(),
+                format!("--output={}", out.display()),
+                format!("--dso={}", dir.join(format!("{name}.dso")).display()),
+                format!("--defoutput={}", dir.join(format!("{name}.def")).display()),
+            ]);
+        } else {
+            args.extend([
+                "--targettype=EXE".into(),
+                format!("--output={}", out.display()),
+            ]);
+        }
+        let sdk_lib = self.tools.epocroot.join("epoc32/release/armv5/lib");
+        let libpath = match build_dir {
+            Some(dir) => format!("{};{}", sdk_lib.display(), dir.display()),
+            None => sdk_lib.display().to_string(),
+        };
         args.extend([
-            "--fpu=softvfp".into(),
-            "--targettype=EXE".into(),
-            format!("--output={}", exe.display()),
             format!("--elfinput={}", elf.display()),
-            format!("--linkas={}", self.linkas(name)),
-            format!(
-                "--libpath={}",
-                self.tools
-                    .epocroot
-                    .join("epoc32/release/armv5/lib")
-                    .display()
-            ),
+            format!("--linkas={}", Self::linkas_for(module, name)),
+            format!("--libpath={libpath}"),
         ]);
         args
     }
@@ -293,9 +408,7 @@ impl GcceBuild {
         if self.tools.elf2e32.is_some() {
             return self.run_tool(args, cwd);
         }
-        let job = symdev_elf2e32::Elf2E32::from_args(args)?;
-        let bytes = job.encode()?;
-        std::fs::write(&job.output, bytes).map_err(io)
+        symdev_elf2e32::Elf2E32::from_args(args)?.write_outputs()
     }
 
     fn run_tool(&self, args: &[String], cwd: &RemotePath) -> Result<()> {
@@ -371,6 +484,7 @@ impl BuildBackend for GcceBuild {
         let mut artifacts = Vec::new();
         for (mmp_dir, mmp) in &mmps.mmps {
             let name = mmp.name();
+            let module = Module::of(mmp, self.uid3)?;
             // Resources first: sources include the generated `.rsg` headers.
             for res in &mmp.resource {
                 self.compile_resource(res, mmp_dir, mmp, &build_dir, &cwd)?;
@@ -402,7 +516,7 @@ impl BuildBackend for GcceBuild {
                     .unwrap_or(src.as_str());
                 let obj = build_dir.join(format!("{stem}.o"));
                 self.run_tool(
-                    &self.compile_args(source_dir, &includes, &source, &obj),
+                    &self.compile_args_for(&module, source_dir, &includes, &source, &obj),
                     &cwd,
                 )?;
                 objs.push(obj);
@@ -411,8 +525,16 @@ impl BuildBackend for GcceBuild {
                 .first()
                 .ok_or_else(|| Error::Other("no SOURCE".into()))?;
             let elf = build_dir.join(format!("{name}.elf"));
-            let map = build_dir.join(format!("{name}.exe.map"));
-            let mut link = self.link_args(name, obj, &elf, &map, &mmp.dso_libraries());
+            let map = build_dir.join(format!("{name}.{}.map", module.ext()));
+            let mut link = self.link_args_for(
+                &module,
+                name,
+                obj,
+                &elf,
+                &map,
+                &mmp.dso_libraries(),
+                std::slice::from_ref(&build_dir),
+            );
             if objs.len() > 1 {
                 let first = arg(obj);
                 if let Some(pos) = link.iter().position(|a| a == &first) {
@@ -422,9 +544,16 @@ impl BuildBackend for GcceBuild {
                 }
             }
             self.run_tool(&link, &cwd)?;
-            let exe = build_dir.join(format!("{name}.exe"));
-            self.run_elf2e32(&self.elf2e32_args(name, &elf, &exe), &cwd)?;
-            artifacts.push(Artifact::exe(exe));
+            let out = build_dir.join(format!("{name}.{}", module.ext()));
+            self.run_elf2e32(
+                &self.elf2e32_args_for(&module, name, &elf, &out, Some(&build_dir)),
+                &cwd,
+            )?;
+            artifacts.push(if module.dll {
+                Artifact::installed(out, format!("!:\\sys\\bin\\{name}.dll"))
+            } else {
+                Artifact::exe(out)
+            });
             for res in &mmp.resource {
                 artifacts.push(Artifact::installed(
                     build_dir.join(format!("{}.rsc", res.stem()?)),
@@ -460,6 +589,70 @@ mod tests {
 
     fn s(args: &[&str]) -> Vec<String> {
         args.iter().map(|a| (*a).to_string()).collect()
+    }
+
+    #[test]
+    fn dll_module_uses_the_sdk_dll_recipe() {
+        let d = fake();
+        let mmp = Mmp::parse(
+            "TARGET mathlib.dll\nTARGETTYPE DLL\nUID 0x1000008d 0xe5d1b001\nSOURCE m.cpp\n",
+        )
+        .unwrap();
+        let module = Module::of(&mmp, 0xe79e_4cf9).unwrap();
+        assert!(module.dll);
+        let args = d.elf2e32_args_for(
+            &module,
+            "mathlib",
+            Path::new("/p/build/mathlib.elf"),
+            Path::new("/p/build/mathlib.dll"),
+            Some(Path::new("/p/build")),
+        );
+        for want in [
+            "--sid=0xe5d1b001",
+            "--uid1=0x10000079",
+            "--uid2=0x1000008d",
+            "--uid3=0xe5d1b001",
+            "--targettype=DLL",
+            "--ignorenoncallable",
+            "--dso=/p/build/mathlib.dso",
+            "--defoutput=/p/build/mathlib.def",
+            "--linkas=mathlib{000a0000}[e5d1b001].dll",
+            "--libpath=/sdk/epoc32/release/armv5/lib;/p/build",
+        ] {
+            assert!(args.iter().any(|a| a == want), "missing {want}: {args:?}");
+        }
+        let job = symdev_elf2e32::Elf2E32::from_args(&args).unwrap();
+        assert_eq!(job.uid().uid2, 0x1000_008d);
+        let link = d.link_args_for(
+            &module,
+            "mathlib",
+            Path::new("/p/build/m.o"),
+            Path::new("/p/build/mathlib.elf"),
+            Path::new("/p/build/mathlib.dll.map"),
+            &[],
+            &[PathBuf::from("/p/build")],
+        );
+        assert!(link.iter().any(|a| a == "-l:edll.lib"));
+        assert!(link.iter().any(|a| a == "_E32Dll"));
+        assert!(link.iter().any(|a| a == "mathlib{000a0000}[e5d1b001].dll"));
+        let l = link.iter().position(|a| a == "-L/p/build").unwrap();
+        let euser = link.iter().position(|a| a == "-l:euser.dso").unwrap();
+        assert!(l < euser);
+        let compile = d.compile_args_for(
+            &module,
+            Path::new("/p"),
+            &CompileIncludes::default(),
+            Path::new("/p/m.cpp"),
+            Path::new("/p/build/m.o"),
+        );
+        assert!(compile.iter().any(|a| a == "-D__DLL__"));
+        assert!(!compile.iter().any(|a| a == "-D__EXE__"));
+    }
+
+    #[test]
+    fn dll_module_needs_uid_line() {
+        let mmp = Mmp::parse("TARGET m.dll\nTARGETTYPE DLL\nSOURCE m.cpp\n").unwrap();
+        assert!(Module::of(&mmp, 1).is_err());
     }
 
     #[test]

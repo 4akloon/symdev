@@ -7,8 +7,8 @@ mod resources;
 mod toolchain;
 
 pub use bld::ParseError;
-pub use driver::CompileIncludes;
 pub use driver::GcceBuild;
+pub use driver::{CompileIncludes, Module};
 pub use model::{BldInf, Mmp, MmpResource};
 pub use package::SisPackage;
 pub use resources::{BuildOutputs, SdkIncludeCaseFold};
