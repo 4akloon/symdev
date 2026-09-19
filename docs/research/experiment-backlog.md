@@ -884,3 +884,13 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 - **Decision unblocked:** native elf2e32 is usable for EXE output; only the default deflate compression is still missing.
 - **Outcome:** pass (emulator only; **not** E52 support)
 - **Evidence:** 2026-09-19. Native `native_u.exe` 5652 bytes; differs from `elf2e32_next` `hello_u.exe` only at `iHeaderCrc` and `iTimeLo` (live time). Workdir `$HOME/src/symdev-experiment-45/`: native `hello.sis` 4108 bytes. EKA2L1 log `Installation done!`; installed `E:\sys\bin\hello.exe` is byte-identical to the native image; applist `Found app: hello, uid: 0xE79E4CF9`; launch loads `econs`; screen shows `Hello, world!` / `[press any key]` (pixel check, no grid).
+
+## 46. Native compressed E32 (clean-room deflate) in EKA2L1 (T4)
+
+- **Requires:** experiment 45; `docs/research/e32-deflate-spec.md`.
+- **Skip if:** no FP2 `--libpath` DSOs or no EKA2L1
+- **Procedure:** Clean-room in two roles: a separate agent read elf2e32_next (EPL-1.0) and wrote only a behavioural spec (`e32-deflate-spec.md`, verified by its own throwaway decoder/encoder written from the spec). `E32Deflate` was then implemented from that document alone, without reading the source. Run the native `elf2e32` bin with the verbatim experiment-6 argv (compressed default), diff against the frozen experiment-6 `hello.exe`, package with native `makesis` (EXE + `_reg.rsc`), install and run in EKA2L1.
+- **Expected result:** Native default output equals elf2e32_next apart from CRC/time, and runs.
+- **Decision unblocked:** `symdev build` can drop `SYMDEV_ELF2E32` for EXEs.
+- **Outcome:** pass (emulator only; **not** E52 support)
+- **Evidence:** 2026-09-19. `E32Deflate::compress` of the 5496-byte body byte-equals the 3432-byte experiment-6 stream; with the frozen time, native `encode_elf` reproduces the whole 3588-byte frozen `hello.exe`. Live run: 3588 bytes, differs only at `iHeaderCrc` and `iTimeLo`/`iTimeHi` (0x24–0x28). Workdir `$HOME/src/symdev-experiment-46/`: native `hello.sis` 4172 bytes; EKA2L1 `Installation done!`; installed `E:\sys\bin\hello.exe` byte-identical; `--run 0xe79e4cf9` shows `Hello, world!` / `[press any key]`.

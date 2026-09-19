@@ -2,9 +2,11 @@ use std::path::{Path, PathBuf};
 
 use symdev_core::{Error, Result};
 
+mod deflate;
 mod e32;
 mod elf;
 
+pub use deflate::E32Deflate;
 pub use e32::E32Layout;
 pub use e32::E32RelocSection;
 pub use e32::E32Uid;
@@ -139,18 +141,18 @@ impl Elf2E32 {
                 self.fpu
             )));
         }
-        if !self.uncompressed {
-            return Err(Error::Other(
-                "TODO: native elf2e32 deflate; pass --uncompressed".into(),
-            ));
-        }
         let names: Vec<&str> = self
             .capability
             .as_deref()
             .map(|c| c.split('+').collect())
             .unwrap_or_default();
         let caps = symdev_core::Capabilities::from_names(&names)?;
-        Ok(E32Image::exe(elf, self.uid(), caps, ordinals, time)?.uncompressed())
+        let image = E32Image::exe(elf, self.uid(), caps, ordinals, time)?;
+        if self.uncompressed {
+            Ok(image.uncompressed())
+        } else {
+            image.compressed()
+        }
     }
 }
 
@@ -262,12 +264,17 @@ mod tests {
     }
 
     #[test]
-    fn experiment_6_compressed_encode_is_todo() {
-        let err = experiment_6()
-            .encode_elf(&hello_elf(), &hello_ordinals(), E32Time(0))
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("deflate"), "{err}");
+    fn experiment_6_encode_matches_frozen_hello_exe() {
+        // Frozen experiment-6 hello.exe header time.
+        let bytes = experiment_6()
+            .encode_elf(
+                &hello_elf(),
+                &hello_ordinals(),
+                E32Time(0x00e3_3963_208d_5e00),
+            )
+            .unwrap();
+        assert_eq!(bytes.len(), 3588);
+        assert_eq!(bytes, hello_exe());
     }
 
     #[test]
