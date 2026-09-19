@@ -25,6 +25,10 @@ pub struct Mmp {
     pub epocstacksize: Option<String>,
     pub epocheapsize: Option<String>,
     pub epocallowdlldata: bool,
+    /// `DEFFILE`: frozen exports, relative to the MMP (`mmp.pm`).
+    pub deffile: Option<String>,
+    /// `NOSTRICTDEF`: no `u` suffix on the frozen `.def` name.
+    pub nostrictdef: bool,
     pub resource: Vec<MmpResource>,
 }
 

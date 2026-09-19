@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser};
-use symdev_build::{BuildOutputs, GcceBuild, SisPackage, Toolchain};
+use symdev_build::{BuildOutputs, FrozenExports, GcceBuild, SisPackage, Toolchain};
 use symdev_core::{Artifact, BuildBackend, Error, LocalEnv, PackageBackend, Project};
 
 use cli::{Cli, Commands};
@@ -70,6 +70,13 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
+        Some(Commands::Freeze) => match freeze_project() {
+            Ok(code) => code,
+            Err(e) => {
+                eprintln!("error: {e}");
+                ExitCode::from(1)
+            }
+        },
         Some(Commands::Deploy) => match symdev_manifest::load(Path::new("symdev.toml")) {
             Ok(m) => match deploy_project(m) {
                 Ok(code) => code,
@@ -105,6 +112,41 @@ fn build_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
     })?;
     for artifact in artifacts {
         println!("{}", artifact.path.display());
+    }
+    for dll in FrozenExports::of(&current_project()?)? {
+        if !dll.unfrozen.is_empty() {
+            eprintln!(
+                "warning: {}: {} export(s) not frozen in {} ({}); run `symdev freeze` \
+                 before shipping so their ordinals stay fixed",
+                dll.dll,
+                dll.unfrozen.len(),
+                dll.frozen_def.display(),
+                dll.unfrozen.join(", ")
+            );
+        }
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+fn current_project() -> Result<Project, Error> {
+    Ok(Project {
+        root: std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?,
+    })
+}
+
+fn freeze_project() -> Result<ExitCode, Error> {
+    let project = current_project()?;
+    let changed = FrozenExports::freeze(&project)?;
+    if changed.is_empty() {
+        println!("exports already frozen");
+    }
+    for dll in changed {
+        println!(
+            "{}: froze {} in {}",
+            dll.dll,
+            dll.unfrozen.join(", "),
+            dll.frozen_def.display()
+        );
     }
     Ok(ExitCode::SUCCESS)
 }

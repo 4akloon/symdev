@@ -1,0 +1,12 @@
+EXPORTS
+	_ZN6CShapeC1Ei @ 1 NONAME
+	_ZN6CShapeC2Ei @ 2 NONAME ; ; my comment
+	_ZN6CShapeD0Ev @ 3 NONAME
+	_ZN6CShapeD1Ev @ 4 NONAME
+	_ZN6CShapeD2Ev @ 5 NONAME
+	_ZNK6CShape4AreaEv @ 6 NONAME
+	_ZTI6CShape @ 7 NONAME ; ; #<TI>#
+	_ZTV6CShape @ 8 NONAME DATA 24 ; ; #<VT>#
+; NEW:
+	_ZdlPvj @ 9 NONAME
+

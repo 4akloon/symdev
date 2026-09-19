@@ -41,12 +41,13 @@ fn dummy_e32(dir: &tempfile::TempDir) {
 }
 
 #[test]
-fn help_lists_only_five_commands() {
-    // `run` (EKA2L1, M5) joined the §17 four on 2026-09-19; the other north-star
-    // verbs are still not subcommands.
+fn help_lists_only_the_six_commands() {
+    // `run` (EKA2L1, M5) joined the §17 four on 2026-09-19, `freeze` (DLL exports,
+    // experiment 54) the same day; the other north-star verbs are still not
+    // subcommands.
     let assert = bin().arg("--help").assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    for cmd in ["new", "build", "package", "deploy", "run"] {
+    for cmd in ["new", "build", "package", "deploy", "run", "freeze"] {
         assert!(stdout.contains(cmd), "missing {cmd}: {stdout}");
     }
     for cmd in [

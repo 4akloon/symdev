@@ -39,5 +39,7 @@ Verified 2026-09-19 in EKA2L1 (experiment 51): title pane shows the caption, the
 
 ## DLLs in a project
 
-An MMP with `TARGETTYPE DLL` and `UID <uid2> <uid3>` builds `build/<name>.dll` plus its import library `build/<name>.dso` and `build/<name>.def` (natively, experiments 52–53). List the DLL's MMP before its users in `bld.inf`; a user MMP adds `LIBRARY <name>.lib`. `symdev package` installs the DLL to `!:\sys\bin\`. Frozen exports (`.def` input) are not supported yet.
+An MMP with `TARGETTYPE DLL` and `UID <uid2> <uid3>` builds `build/<name>.dll` plus its import library `build/<name>.dso` and `build/<name>.def` (natively, experiments 52–53). List the DLL's MMP before its users in `bld.inf`; a user MMP adds `LIBRARY <name>.lib`. `symdev package` installs the DLL to `!:\sys\bin\`.
+
+Ordinals follow symbol-name order until you freeze them. Once an EXE built against the DLL ships, run `symdev freeze`: it writes `eabi/<name>u.def` next to `group/` (or the MMP's `DEFFILE`), and later builds pass it to elf2e32 as `--definput`, so existing ordinals stay put and new exports get the next numbers. `symdev build` warns while exports are unfrozen. To retire an export, keep its line and add `ABSENT`. A DLL with writable static data needs `EPOCALLOWDLLDATA` in its MMP (experiment 54).
 

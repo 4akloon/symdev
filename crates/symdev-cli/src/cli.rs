@@ -25,6 +25,8 @@ pub enum Commands {
     Deploy,
     /// Install build/<name>.sisx into EKA2L1 and launch it (SYMDEV_EKA2L1).
     Run,
+    /// Append the DLLs' new exports to their frozen .def files (eabi/<name>u.def).
+    Freeze,
 }
 
 #[derive(Clone, ValueEnum)]
