@@ -16,6 +16,9 @@ pub enum Commands {
         target: Target,
         #[arg(long, default_value = "cpp")]
         lang: Lang,
+        /// `console` (econs text app) or `gui` (Avkon app with resources).
+        #[arg(long, default_value = "console")]
+        template: Template,
     },
     Build,
     Package,
@@ -28,6 +31,12 @@ pub enum Commands {
 pub enum Target {
     #[value(name = "nokia-e52")]
     NokiaE52,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum Template {
+    Console,
+    Gui,
 }
 
 #[derive(Clone, ValueEnum)]

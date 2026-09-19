@@ -58,6 +58,7 @@ Do not claim E52 support until stock install + launch on hardware. Emulator succ
 ## Workflow
 
 - Toolchain: Rust **1.98.1 / edition 2024 / resolver 3**. Offline builds: `cargo test --workspace --offline`, `cargo clippy --workspace --offline`.
+- Resources (`START RESOURCE`) compile with the SDK `cpp.exe`/`rcomp.exe` under Wine (`SYMDEV_WINE`); symdev also builds `build/sdk-include-casefold` because SDK headers include each other with the wrong case.
 - Feature work happens on a branch in a worktree under `~/worktrees/symdev/<branch>`, merged into `main`.
 - Specs and plans: `docs/superpowers/specs/`, `docs/superpowers/plans/`. Research notes: `docs/research/`. Task briefs/reports: `.superpowers/sdd/`.
 - Commit messages: one full sentence, imperative, ending with a period (see `git log`).

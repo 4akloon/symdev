@@ -11,6 +11,9 @@ pub struct Toolchain {
     pub elf2e32: Option<PathBuf>,
     pub gcc_lib: PathBuf,
     pub gcc_target_lib: PathBuf,
+    /// Wine for the SDK resource tools (`SYMDEV_WINE`, default `/usr/bin/wine`); only
+    /// used when an MMP has `START RESOURCE`.
+    pub wine: PathBuf,
 }
 
 impl Toolchain {
@@ -22,6 +25,7 @@ impl Toolchain {
             elf2e32: Self::optional("SYMDEV_ELF2E32"),
             gcc_lib: Self::required("SYMDEV_GCC_LIB")?,
             gcc_target_lib: Self::required("SYMDEV_GCC_TARGET_LIB")?,
+            wine: Self::optional("SYMDEV_WINE").unwrap_or_else(|| PathBuf::from("/usr/bin/wine")),
         })
     }
 

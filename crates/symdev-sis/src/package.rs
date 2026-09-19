@@ -79,7 +79,22 @@ pub struct SisUnsignedSpec<'a> {
     pub exe: &'a [u8],
     pub capabilities: &'a [String],
     pub datetime: SisDateTime,
-    pub reg_rsc: Option<&'a [u8]>,
+    /// Non-EXE files in `.pkg` order (experiment 51: SIS keeps that order).
+    pub files: &'a [SisPkgFile<'a>],
+}
+
+/// A non-EXE file to install: its `!:\...` destination and bytes.
+#[derive(Debug, Clone, Copy)]
+pub struct SisPkgFile<'a> {
+    pub dest: &'a str,
+    pub data: &'a [u8],
+}
+
+impl<'a> SisPkgFile<'a> {
+    /// `!:\private\10003a3f\import\apps\<name>_reg.rsc` (experiment 43 template).
+    pub fn reg_rsc_dest(name: &str) -> String {
+        format!("!:\\private\\10003a3f\\import\\apps\\{name}_reg.rsc")
+    }
 }
 
 impl SisUnsignedSpec<'_> {
@@ -109,21 +124,19 @@ impl SisUnsignedSpec<'_> {
     fn parts(&self) -> Result<(SisController, SisData)> {
         let caps = SisWord41::from_capabilities(self.capabilities)?;
         let (major, minor, build) = self.version;
+        // makesis writes type 41 only when the EXE has capabilities (experiment 51).
+        let caps = (caps.value != 0).then_some(caps);
         let (exe_file, exe_blob) = Self::install_file(
             format!("!:\\sys\\bin\\{}.exe", self.name),
             self.exe,
-            Some(caps),
+            caps,
             0,
         )?;
         let mut files = vec![exe_file];
         let mut blobs = vec![exe_blob];
-        if let Some(rsc) = self.reg_rsc {
-            let (file, blob) = Self::install_file(
-                format!("!:\\private\\10003a3f\\import\\apps\\{}_reg.rsc", self.name),
-                rsc,
-                None,
-                1,
-            )?;
+        for (idx, extra) in self.files.iter().enumerate() {
+            let (file, blob) =
+                Self::install_file(extra.dest.to_string(), extra.data, None, idx as u32 + 1)?;
             files.push(file);
             blobs.push(blob);
         }
@@ -347,7 +360,7 @@ fn encode_unsigned_sis_matches_hello_pkg_fixture() {
         exe: &hello_exe_bytes(),
         capabilities: &hello_caps(),
         datetime: hello_datetime(),
-        reg_rsc: None,
+        files: &[],
     })
     .unwrap();
     let golden = hello_sis_golden();
@@ -375,7 +388,45 @@ fn encode_unsigned_sis_with_reg_rsc_matches_experiment_43() {
             crate::SisDate::new(2026, 8, 19),
             crate::SisTime::new(9, 2, 53),
         ),
-        reg_rsc: Some(&rsc),
+        files: &[SisPkgFile {
+            dest: &SisPkgFile::reg_rsc_dest("hello"),
+            data: &rsc,
+        }],
+    })
+    .unwrap();
+    assert_eq!(bytes.len(), golden.len());
+    assert_eq!(bytes, golden);
+}
+
+#[test]
+fn encode_unsigned_three_file_gui_sis_matches_experiment_51() {
+    // Wine makesis on gui.exe (no capabilities) + gui.rsc + gui_reg.rsc, in .pkg order.
+    let exe = parse_hex(include_str!("testdata/exp51_gui_exe.hex"));
+    let rsc = parse_hex(include_str!("testdata/exp51_gui_rsc.hex"));
+    let reg = parse_hex(include_str!("testdata/exp51_gui_reg_rsc.hex"));
+    let golden = parse_hex(include_str!("testdata/exp51_gui_sis.hex"));
+    let bytes = SisUnsigned::encode(&SisUnsignedSpec {
+        name: "gui",
+        uid3: 0xe5d1_a001,
+        version: (1, 0, 0),
+        vendor: "Vendor",
+        vendor_localized: "Vendor-EN",
+        exe: &exe,
+        capabilities: &[],
+        datetime: crate::SisDateTime::new(
+            crate::SisDate::new(2026, 8, 19),
+            crate::SisTime::new(16, 1, 18),
+        ),
+        files: &[
+            SisPkgFile {
+                dest: "!:\\resource\\apps\\gui.rsc",
+                data: &rsc,
+            },
+            SisPkgFile {
+                dest: &SisPkgFile::reg_rsc_dest("gui"),
+                data: &reg,
+            },
+        ],
     })
     .unwrap();
     assert_eq!(bytes.len(), golden.len());
@@ -393,7 +444,7 @@ fn encode_unsigned_sis_uses_project_fields_not_hello_goldens() {
         exe: &hello_exe_bytes(),
         capabilities: &[],
         datetime: hello_datetime(),
-        reg_rsc: None,
+        files: &[],
     })
     .unwrap();
     assert_ne!(bytes, hello_sis_golden());
@@ -412,7 +463,7 @@ fn encode_unsigned_sis_rejects_capability_bits_not_derived() {
         exe: &hello_exe_bytes(),
         capabilities: &["NotACapability".into()],
         datetime: hello_datetime(),
-        reg_rsc: None,
+        files: &[],
     })
     .unwrap_err();
     assert_eq!(
@@ -436,7 +487,7 @@ fn encode_signed_sisx_is_verifiable_and_not_hello_golden() {
         exe: &exe,
         capabilities: &caps,
         datetime: hello_datetime(),
-        reg_rsc: None,
+        files: &[],
     };
     let unsigned = SisUnsigned::encode(&spec).unwrap();
     let sisx = SisUnsigned::encode_signed(&spec, &key, &cert, "").unwrap();
@@ -471,7 +522,7 @@ fn experiment5_hello_key_native_sign_skipped_without_password() {
         exe: &exe,
         capabilities: &caps,
         datetime: hello_datetime(),
-        reg_rsc: None,
+        files: &[],
     };
     let key_bytes = std::fs::read(&key).unwrap();
     let cer_bytes = std::fs::read(&cer).unwrap();

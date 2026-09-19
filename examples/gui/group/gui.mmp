@@ -1,0 +1,14 @@
+TARGET gui.exe
+TARGETTYPE EXE
+UID 0x100039CE 0xe7351c20
+SOURCEPATH ..\src
+SOURCE gui.cpp
+SOURCEPATH ..\data
+START RESOURCE gui.rss
+HEADER
+TARGETPATH \resource\apps
+END
+START RESOURCE gui_reg.rss
+TARGETPATH \private\10003a3f\apps
+END
+LIBRARY euser.lib apparc.lib cone.lib eikcore.lib avkon.lib gdi.lib
