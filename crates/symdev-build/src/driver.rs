@@ -13,13 +13,15 @@ pub struct Module {
     pub dll: bool,
     pub uid2: u32,
     pub uid3: u32,
+    /// `EPOCALLOWDLLDATA`: writable static data in a DLL (`--dlldata`).
+    pub allow_data: bool,
 }
 
 impl Module {
     /// DLL UIDs come from the MMP `UID <uid2> <uid3>` line; EXEs keep the recorded
     /// experiment-6 UIDs (UID2 omitted, UID3 from the manifest).
     pub fn of(mmp: &Mmp, manifest_uid3: u32) -> Result<Self> {
-        if mmp.target_type.eq_ignore_ascii_case("DLL") {
+        if mmp.is_dll() {
             let [uid2, uid3] = mmp.uid[..] else {
                 return Err(Error::Other(format!(
                     "{}: TARGETTYPE DLL needs `UID <uid2> <uid3>`",
@@ -30,12 +32,14 @@ impl Module {
                 dll: true,
                 uid2,
                 uid3,
+                allow_data: mmp.epocallowdlldata,
             });
         }
         Ok(Self {
             dll: false,
             uid2: 0,
             uid3: manifest_uid3,
+            allow_data: false,
         })
     }
 
@@ -73,6 +77,7 @@ impl GcceBuild {
             dll: false,
             uid2: 0,
             uid3: self.uid3,
+            allow_data: false,
         }
     }
 
@@ -338,11 +343,12 @@ impl GcceBuild {
     }
 
     pub fn elf2e32_args(&self, name: &str, elf: &Path, exe: &Path) -> Vec<String> {
-        self.elf2e32_args_for(&self.exe_module(), name, elf, exe, None)
+        self.elf2e32_args_for(&self.exe_module(), name, elf, exe, None, None)
     }
 
     /// EXE: the recorded experiment-6 argv. DLL: the SDK recipe (`--sid`, UID1
-    /// `0x10000079`, `--uid2`, `--targettype=DLL`, `--ignorenoncallable`, `--dso` and
+    /// `0x10000079`, `--uid2`, `--targettype=DLL`, `--definput=<frozen .def>` when it
+    /// exists else `--ignorenoncallable`, `--dlldata` for `EPOCALLOWDLLDATA`, `--dso` and
     /// `--defoutput` next to the output). `build_dir` joins `--libpath` (a `;` list per
     /// `elf2e32 --help`) so this project's own `.dso` files resolve.
     pub fn elf2e32_args_for(
@@ -352,6 +358,7 @@ impl GcceBuild {
         elf: &Path,
         out: &Path,
         build_dir: Option<&Path>,
+        frozen_def: Option<&Path>,
     ) -> Vec<String> {
         let argv0 = match &self.tools.elf2e32 {
             Some(tool) => arg(tool),
@@ -376,9 +383,15 @@ impl GcceBuild {
         args.push("--fpu=softvfp".into());
         if module.dll {
             let dir = out.parent().unwrap_or(Path::new("."));
+            args.push("--targettype=DLL".into());
+            args.push(match frozen_def {
+                Some(def) => format!("--definput={}", def.display()),
+                None => "--ignorenoncallable".into(),
+            });
+            if module.allow_data {
+                args.push("--dlldata".into());
+            }
             args.extend([
-                "--targettype=DLL".into(),
-                "--ignorenoncallable".into(),
                 format!("--output={}", out.display()),
                 format!("--dso={}", dir.join(format!("{name}.dso")).display()),
                 format!("--defoutput={}", dir.join(format!("{name}.def")).display()),
@@ -408,7 +421,9 @@ impl GcceBuild {
         if self.tools.elf2e32.is_some() {
             return self.run_tool(args, cwd);
         }
-        symdev_elf2e32::Elf2E32::from_args(args)?.write_outputs()
+        symdev_elf2e32::Elf2E32::from_args(args)?
+            .write_outputs()
+            .map(|_| ())
     }
 
     fn run_tool(&self, args: &[String], cwd: &RemotePath) -> Result<()> {
@@ -545,8 +560,16 @@ impl BuildBackend for GcceBuild {
             }
             self.run_tool(&link, &cwd)?;
             let out = build_dir.join(format!("{name}.{}", module.ext()));
+            let frozen_def = Some(mmp.frozen_def(mmp_dir)?).filter(|p| module.dll && p.is_file());
             self.run_elf2e32(
-                &self.elf2e32_args_for(&module, name, &elf, &out, Some(&build_dir)),
+                &self.elf2e32_args_for(
+                    &module,
+                    name,
+                    &elf,
+                    &out,
+                    Some(&build_dir),
+                    frozen_def.as_deref(),
+                ),
                 &cwd,
             )?;
             artifacts.push(if module.dll {
@@ -606,6 +629,7 @@ mod tests {
             Path::new("/p/build/mathlib.elf"),
             Path::new("/p/build/mathlib.dll"),
             Some(Path::new("/p/build")),
+            None,
         );
         for want in [
             "--sid=0xe5d1b001",

@@ -58,6 +58,37 @@ struct ElfSection {
     link: usize,
 }
 
+/// A defined global `.dynsym` entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ElfSymbol {
+    pub name: String,
+    pub value: u32,
+    pub size: u32,
+    /// `STT_*`.
+    pub kind: u8,
+    /// `st_shndx`.
+    pub section: u16,
+}
+
+impl ElfSymbol {
+    const STT_OBJECT: u8 = 1;
+    const STT_FUNC: u8 = 2;
+    const SHN_ABS: u16 = 0xfff1;
+
+    pub fn is_function(&self) -> bool {
+        self.kind == Self::STT_FUNC
+    }
+
+    pub fn is_object(&self) -> bool {
+        self.kind == Self::STT_OBJECT
+    }
+
+    /// `SHN_ABS` (linker-made markers such as the version-name symbol).
+    pub fn is_absolute(&self) -> bool {
+        self.section == Self::SHN_ABS
+    }
+}
+
 /// Little-endian ELF32 ARM image as linked for elf2e32 (the parts E32 needs).
 #[derive(Debug)]
 pub struct ElfImage {
@@ -82,7 +113,6 @@ impl ElfImage {
     const DT_JMPREL: u32 = 23;
     const SHN_UNDEF: u16 = 0;
     const STB_GLOBAL: u8 = 1;
-    const STT_FUNC: u8 = 2;
     const R_ARM_ABS32: u32 = 2;
     const R_ARM_GLOB_DAT: u32 = 21;
     const R_ARM_RELATIVE: u32 = 23;
@@ -172,8 +202,8 @@ impl ElfImage {
         Ok(None)
     }
 
-    /// Defined `STB_GLOBAL` `.dynsym` entries as `(name, value, is_function)`.
-    pub fn exported_symbols(&self) -> Result<Vec<(String, u32, bool)>> {
+    /// Defined `STB_GLOBAL` `.dynsym` entries, in `.dynsym` order.
+    pub fn exported_symbols(&self) -> Result<Vec<ElfSymbol>> {
         let Some(dynsym) = self.section(Self::SHT_DYNSYM) else {
             return Ok(Vec::new());
         };
@@ -187,8 +217,13 @@ impl ElfImage {
             if shndx == Self::SHN_UNDEF || info >> 4 != Self::STB_GLOBAL {
                 continue;
             }
-            let name = self.string(dynsym.link, self.u32_at(sym)? as usize)?;
-            out.push((name, self.u32_at(sym + 4)?, info & 0xf == Self::STT_FUNC));
+            out.push(ElfSymbol {
+                name: self.string(dynsym.link, self.u32_at(sym)? as usize)?,
+                value: self.u32_at(sym + 4)?,
+                size: self.u32_at(sym + 8)?,
+                kind: info & 0xf,
+                section: shndx,
+            });
         }
         Ok(out)
     }

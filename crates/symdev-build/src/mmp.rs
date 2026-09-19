@@ -48,6 +48,8 @@ impl Mmp {
         let mut epocstacksize = None;
         let mut epocheapsize = None;
         let mut epocallowdlldata = false;
+        let mut deffile = None;
+        let mut nostrictdef = false;
         let mut resource = Vec::new();
         let mut resource_block: Option<MmpResource> = None;
 
@@ -152,6 +154,10 @@ impl Mmp {
                 epocheapsize = Some(rest(line, tok));
             } else if tok.eq_ignore_ascii_case("EPOCALLOWDLLDATA") {
                 epocallowdlldata = true;
+            } else if tok.eq_ignore_ascii_case("DEFFILE") {
+                deffile = Some(rest(line, tok));
+            } else if tok.eq_ignore_ascii_case("NOSTRICTDEF") {
+                nostrictdef = true;
             } else {
                 return Err(ParseError(format!("unknown directive: {tok}")));
             }
@@ -183,6 +189,8 @@ impl Mmp {
             epocstacksize,
             epocheapsize,
             epocallowdlldata,
+            deffile,
+            nostrictdef,
             resource,
         })
     }
