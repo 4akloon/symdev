@@ -21,6 +21,7 @@ RESOURCE LOCALISABLE_APP_INFO r_app_localisable_app_info
     caption_and_icon = CAPTION_AND_ICON_INFO
         {
         caption = "{{NAME}}";
-        number_of_icons = 0;
+        number_of_icons = 1;
+        icon_file = "\\resource\\apps\\{{NAME}}_aif.mif";
         };
     }

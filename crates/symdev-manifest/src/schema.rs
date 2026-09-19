@@ -62,6 +62,8 @@ pub struct Symbian {
     pub uid3: Option<u32>,
     pub capabilities: Vec<String>,
     pub vendor: String,
+    /// App icon SVG, relative to the project root (built into `<app>_aif.mif`).
+    pub icon: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -132,6 +134,7 @@ pub(crate) struct RawSymbian {
     #[serde(default)]
     pub(crate) capabilities: Vec<String>,
     pub(crate) vendor: Option<String>,
+    pub(crate) icon: Option<PathBuf>,
 }
 
 #[derive(Deserialize)]
