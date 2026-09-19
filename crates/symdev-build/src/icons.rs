@@ -109,16 +109,18 @@ impl MifConvTool {
     /// `/c32,8`: 32-bit colour with an 8-bit mask, as the SDK example icon makefiles.
     pub const DEPTH: &str = "/c32,8";
 
+    /// `/a/b` → `Z:\\a\\b` (Wine maps `/` to drive `Z:`).
+    fn wine_path(path: &Path) -> String {
+        format!("Z:{}", path.display().to_string().replace('/', "\\"))
+    }
+
     pub fn args(&self, mif: &str, mbg: &str, temp: &str, svg: &str) -> Vec<String> {
         vec![
             self.wine.display().to_string(),
             self.mifconv.display().to_string(),
             mif.to_string(),
             format!("/H{mbg}"),
-            format!(
-                "/S{}",
-                symdev_rcomp::RssCppTool::wine_path(&self.encoder_dir)
-            ),
+            format!("/S{}", Self::wine_path(&self.encoder_dir)),
             format!("/T{temp}"),
             Self::DEPTH.to_string(),
             svg.to_string(),

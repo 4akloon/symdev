@@ -1,0 +1,6 @@
+NAME TEST
+enum { EOne = 1, ETwo, EFive = 5 };
+STRUCT E { BYTE e; }
+STRUCT S { BYTE b; }
+RESOURCE S r_b { b = 1 + 2 * 3; }
+RESOURCE E r_c { e = 65; }

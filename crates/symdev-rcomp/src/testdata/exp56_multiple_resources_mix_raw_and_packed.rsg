@@ -1,0 +1,3 @@
+#define R_ONE                                     0x6120e001
+#define R_TWO                                     0x6120e002
+#define R_THREE                                   0x6120e003

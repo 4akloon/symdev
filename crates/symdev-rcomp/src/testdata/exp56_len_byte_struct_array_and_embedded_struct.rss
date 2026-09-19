@@ -1,0 +1,6 @@
+NAME TEST
+enum { EOne = 1, ETwo, EFive = 5 };
+STRUCT IN { BYTE x = 3; WORD y; }
+STRUCT E { BYTE e; }
+STRUCT S { LEN BYTE STRUCT items[]; STRUCT one; }
+RESOURCE S r_b { items = { IN { y = 5; }, IN { x = 4; } }; one = IN { y = 0xabcd; }; }
