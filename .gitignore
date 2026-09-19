@@ -7,3 +7,4 @@
 /rom/
 /third_party/sdk/
 /third_party/rom/
+/.claude/settings.local.json
