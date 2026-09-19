@@ -57,6 +57,76 @@ impl E32Layout {
     }
 }
 
+/// One DLL's block in the ELF-format import section: code offsets of the import slots.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct E32ImportBlock {
+    pub dll: String,
+    pub code_offsets: Vec<u32>,
+}
+
+/// E32 import section, `KImageImpFmt_ELF` layout (experiment 44 uncompressed `hello.exe`):
+/// `u32 size`, per DLL `u32 name_offset, u32 count, count × u32 code offset`, then the
+/// NUL-terminated names, padded to 4.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct E32ImportSection {
+    pub blocks: Vec<E32ImportBlock>,
+}
+
+impl E32ImportSection {
+    /// DLL blocks in `.gnu.version_r` order; slots in `DT_REL` then `DT_JMPREL` order.
+    pub fn from_elf(elf: &ElfImage, code_base: u32) -> Result<Self> {
+        let relocs = elf.import_relocs()?;
+        let mut blocks = Vec::new();
+        for dll in elf.needed_dlls()? {
+            let code_offsets = relocs
+                .iter()
+                .filter(|r| r.dll == dll)
+                .map(|r| {
+                    r.vaddr.checked_sub(code_base).ok_or_else(|| {
+                        Error::Other(format!("import slot {:#x} below code base", r.vaddr))
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            if !code_offsets.is_empty() {
+                blocks.push(E32ImportBlock { dll, code_offsets });
+            }
+        }
+        Ok(Self { blocks })
+    }
+
+    /// `iDllRefTableCount`.
+    pub fn dll_count(&self) -> u32 {
+        self.blocks.len() as u32
+    }
+
+    pub fn bytes(&self) -> Vec<u8> {
+        let table: usize = self
+            .blocks
+            .iter()
+            .map(|b| 8 + 4 * b.code_offsets.len())
+            .sum();
+        let mut names = Vec::new();
+        let mut body = Vec::new();
+        for block in &self.blocks {
+            let name_offset = (4 + table + names.len()) as u32;
+            body.extend_from_slice(&name_offset.to_le_bytes());
+            body.extend_from_slice(&(block.code_offsets.len() as u32).to_le_bytes());
+            for off in &block.code_offsets {
+                body.extend_from_slice(&off.to_le_bytes());
+            }
+            names.extend_from_slice(block.dll.as_bytes());
+            names.push(0);
+        }
+        body.extend_from_slice(&names);
+        while (4 + body.len()) % 4 != 0 {
+            body.push(0);
+        }
+        let mut out = ((4 + body.len()) as u32).to_le_bytes().to_vec();
+        out.extend_from_slice(&body);
+        out
+    }
+}
+
 /// UID prefix of an E32 image (`iUid1`/`iUid2`/`iUid3` + uidcrc checksum).
 pub struct E32Uid {
     pub uid1: u32,
@@ -276,8 +346,21 @@ mod tests {
         E32Layout::from_elf(&elf).unwrap()
     }
 
+    fn hello_elf() -> ElfImage {
+        ElfImage::parse(parse_hex(include_str!("testdata/hello.elf.hex"))).unwrap()
+    }
+
+    fn hello_uncompressed() -> Vec<u8> {
+        parse_hex(include_str!("testdata/hello_uncompressed.exe.hex"))
+    }
+
+    fn hello_imports() -> E32ImportSection {
+        E32ImportSection::from_elf(&hello_elf(), 0x8000).unwrap()
+    }
+
     fn hello_headers() -> (E32ImageHeader, E32ImageHeaderJ, E32ImageHeaderV) {
         let layout = hello_layout();
+        let imports = hello_imports();
         let uid = E32Uid::for_exe(0x1000_007a, 0xe79e_4cf9);
         let secure_id = uid.uid3;
         let hdr = E32ImageHeader {
@@ -300,14 +383,14 @@ mod tests {
             entry_point: layout.entry_point,
             code_base: layout.code_base,
             data_base: layout.data_base,
-            dll_ref_table_count: 2,
+            dll_ref_table_count: imports.dll_count() as i32,
             export_dir_offset: 0,
             export_dir_count: 0,
             text_size: layout.code_size,
             code_offset: E32ImageHeader::CODE_OFFSET,
             data_offset: 0,
             import_offset: layout.import_offset(),
-            code_reloc_offset: 0x15b8,
+            code_reloc_offset: layout.import_offset() + imports.bytes().len() as u32,
             data_reloc_offset: 0,
             process_priority: E32ImageHeader::PRIORITY_FOREGROUND,
             cpu_identifier: E32ImageHeader::CPU_ARMV5,
@@ -344,6 +427,26 @@ mod tests {
             }
         );
         assert_eq!(hello_layout().import_offset(), 0x14e8);
+    }
+
+    #[test]
+    fn hello_import_section_matches_experiment_44() {
+        let golden = hello_uncompressed();
+        assert_eq!(golden.len(), 0x1614);
+        let imports = hello_imports();
+        assert_eq!(imports.dll_count(), 2);
+        assert_eq!(imports.blocks[0].dll, "drtaeabi{000a0000}.dll");
+        assert_eq!(imports.blocks[1].dll, "euser{000a0000}[100039e5].dll");
+        assert_eq!(imports.bytes().as_slice(), &golden[0x14e8..0x15b8]);
+    }
+
+    #[test]
+    fn hello_elf_needs_two_of_six_dsos() {
+        // DT_NEEDED lists six DSOs; only drtaeabi and euser are versioned imports.
+        assert_eq!(
+            hello_elf().needed_dlls().unwrap(),
+            ["drtaeabi{000a0000}.dll", "euser{000a0000}[100039e5].dll"]
+        );
     }
 
     #[test]

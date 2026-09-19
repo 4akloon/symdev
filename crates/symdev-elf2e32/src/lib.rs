@@ -8,6 +8,8 @@ mod elf;
 pub use e32::E32Layout;
 pub use e32::E32Uid;
 pub use e32::{E32ImageHeader, E32ImageHeaderJ, E32ImageHeaderV};
+pub use e32::{E32ImportBlock, E32ImportSection};
+pub use elf::ElfImportReloc;
 pub use elf::{ElfImage, ElfSegment};
 
 pub struct Elf2E32 {
