@@ -874,3 +874,13 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
   **Code section** (`0x9c..0x14e8`): the ELF executable segment with 34 words rewritten. 33 import slots become `addend << 16 | ordinal` (32 with addend 0; one `R_ARM_ABS32` import of `_ZTVN10__cxxabiv117__class_type_infoE` with addend 8 → `0x8007b`). The one local `R_ARM_ABS32` (0x1298) becomes `S + A` (0x9280). `R_ARM_RELATIVE` words stay as linked. Ordinal = the word a DSO `.dynsym` symbol's value points at in `ER_RO` (equals `value / 4 + 1` on all 33). The 33 used ordinals are recorded in `hello_ordinals.txt`; `Elf2E32::ordinals` reads them from `--libpath` DSOs and matches that table (test runs only when `SYMDEV_EPOCROOT` is set). Native `E32CodeSection::from_elf` **byte-equals** the code section.
 
   Native `E32ImportSection::from_elf` **byte-equals** the import section; the golden header builds `iDllRefTableCount` and `iCodeRelocOffset` from it.
+
+## 45. Native `elf2e32 --uncompressed` hello in EKA2L1 (T4)
+
+- **Requires:** experiments 43 (native two-file SIS), 44 (uncompressed golden), patched EKA2L1 with the RM-469 firmware (see [eka2l1-bringup.md](eka2l1-bringup.md)).
+- **Skip if:** no FP2 `--libpath` DSOs or no EKA2L1
+- **Procedure:** Run the native `symdev-elf2e32` bin with the experiment-44 argv (experiment-6 argv + `--uncompressed`, real `--libpath`). Diff against `elf2e32_next`'s `hello_u.exe`. Package the result with the native `makesis` bin on the experiment-43 `.pkg` (EXE + `_reg.rsc`), `eka2l1_qt --install`, then `eka2l1_qt --run hello`.
+- **Expected result:** A hello built without `elf2e32_next` installs and runs.
+- **Decision unblocked:** native elf2e32 is usable for EXE output; only the default deflate compression is still missing.
+- **Outcome:** pass (emulator only; **not** E52 support)
+- **Evidence:** 2026-09-19. Native `native_u.exe` 5652 bytes; differs from `elf2e32_next` `hello_u.exe` only at `iHeaderCrc` and `iTimeLo` (live time). Workdir `$HOME/src/symdev-experiment-45/`: native `hello.sis` 4108 bytes. EKA2L1 log `Installation done!`; installed `E:\sys\bin\hello.exe` is byte-identical to the native image; applist `Found app: hello, uid: 0xE79E4CF9`; launch loads `econs`; screen shows `Hello, world!` / `[press any key]` (pixel check, no grid).
