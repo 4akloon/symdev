@@ -3,9 +3,12 @@ use std::path::{Path, PathBuf};
 use symdev_core::{Error, Result};
 
 mod e32;
+mod elf;
 
+pub use e32::E32Layout;
 pub use e32::E32Uid;
 pub use e32::{E32ImageHeader, E32ImageHeaderJ, E32ImageHeaderV};
+pub use elf::{ElfImage, ElfSegment};
 
 pub struct Elf2E32 {
     pub uid1: u32,
