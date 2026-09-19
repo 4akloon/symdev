@@ -161,9 +161,9 @@ impl Mmp {
             return Err(ParseError("unclosed START RESOURCE".into()));
         }
 
-        if !target_type.eq_ignore_ascii_case("EXE") {
+        if !target_type.eq_ignore_ascii_case("EXE") && !target_type.eq_ignore_ascii_case("DLL") {
             return Err(ParseError(format!(
-                "TARGETTYPE must be EXE, got {target_type}"
+                "TARGETTYPE must be EXE or DLL, got {target_type}"
             )));
         }
 
@@ -196,8 +196,12 @@ fn parse_exe_with_source() {
 }
 
 #[test]
-fn dll_rejected() {
-    assert!(Mmp::parse("TARGET x.dll\nTARGETTYPE DLL\n").is_err());
+fn dll_accepted_other_types_rejected() {
+    let m = Mmp::parse("TARGET m.dll\nTARGETTYPE DLL\nUID 0x1000008d 0xe5d1b001\nSOURCE m.cpp\n")
+        .unwrap();
+    assert_eq!(m.target_type, "DLL");
+    assert_eq!(m.uid, [0x1000_008d, 0xe5d1_b001]);
+    assert!(Mmp::parse("TARGET x.dll\nTARGETTYPE PLUGIN\nSOURCE a.cpp\n").is_err());
 }
 
 #[test]
