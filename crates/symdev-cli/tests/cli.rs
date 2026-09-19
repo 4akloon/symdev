@@ -278,6 +278,32 @@ fn build_valid_manifest_no_bld_inf() {
 }
 
 #[test]
+fn build_does_not_require_external_elf2e32() {
+    let dir = tempfile::tempdir().unwrap();
+    write_toml(
+        &dir,
+        &HELLO.replace(
+            "capabilities = []",
+            "uid3 = \"0xE0000001\"\ncapabilities = []",
+        ),
+    );
+    bin()
+        .current_dir(&dir)
+        .env("SYMDEV_EPOCROOT", "/sdk")
+        .env("SYMDEV_GXX", "/gcc/g++")
+        .env("SYMDEV_LD", "/gcc/ld")
+        .env_remove("SYMDEV_ELF2E32")
+        .env("SYMDEV_GCC_LIB", "/gcc/lib")
+        .env("SYMDEV_GCC_TARGET_LIB", "/gcc/target")
+        .arg("build")
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("no bld.inf"))
+        .stderr(predicate::str::contains("missing toolchain").not());
+}
+
+#[test]
 fn package_omitted_uid3_errors() {
     let dir = tempfile::tempdir().unwrap();
     write_toml(&dir, HELLO);

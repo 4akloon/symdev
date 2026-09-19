@@ -894,3 +894,10 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 - **Decision unblocked:** `symdev build` can drop `SYMDEV_ELF2E32` for EXEs.
 - **Outcome:** pass (emulator only; **not** E52 support)
 - **Evidence:** 2026-09-19. `E32Deflate::compress` of the 5496-byte body byte-equals the 3432-byte experiment-6 stream; with the frozen time, native `encode_elf` reproduces the whole 3588-byte frozen `hello.exe`. Live run: 3588 bytes, differs only at `iHeaderCrc` and `iTimeLo`/`iTimeHi` (0x24–0x28). Workdir `$HOME/src/symdev-experiment-46/`: native `hello.sis` 4172 bytes; EKA2L1 `Installation done!`; installed `E:\sys\bin\hello.exe` byte-identical; `--run 0xe79e4cf9` shows `Hello, world!` / `[press any key]`.
+
+## 47. `symdev build` with native post-link (examples/hello)
+
+- **Requires:** experiment 46.
+- **Procedure:** Copy `examples/hello`; `symdev build` with the M1 toolchain env **without** `SYMDEV_ELF2E32`, then `symdev package`, `eka2l1_qt --install build/hello.sisx`, `eka2l1_qt --run 0xef9f2cab`. Compare `build/hello.exe` with the same project built with `SYMDEV_ELF2E32=elf2e32_next`.
+- **Outcome:** pass (emulator only; **not** E52 support)
+- **Evidence:** 2026-09-19. Native and external `hello.exe` are both 3588 bytes and differ only at `iHeaderCrc` (0x14–0x17) and `iTimeLo` (0x24–0x27). Installed `E:\sys\bin\hello.exe` byte-identical to the native build; screen shows `Hello, world!` / `[press any key]`.
