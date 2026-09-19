@@ -175,7 +175,15 @@ fn run_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
     }
     let emulator = symdev_emulator::Eka2l1Backend::from_env()?;
     let log = cwd.join("build").join("eka2l1.log");
+    let pid_file = cwd.join("build").join("eka2l1.pid");
+    if let Some(old) = symdev_emulator::Eka2l1Backend::previous(&pid_file) {
+        eprintln!(
+            "warning: EKA2L1 from the previous run (pid {old}) is still open; close its window \
+             (it ignores SIGTERM) to avoid two emulators on the same data"
+        );
+    }
     let pid = emulator.run(&sisx, uid3, &log)?;
+    std::fs::write(&pid_file, pid.to_string()).map_err(|e| Error::Other(e.to_string()))?;
     println!(
         "EKA2L1 pid {pid}: installing {} and launching 0x{uid3:08x}",
         sisx.display()
