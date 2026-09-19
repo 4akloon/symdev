@@ -319,7 +319,7 @@ mod tests {
                     SisFile::new(
                         SisString::new("!:\\sys\\bin\\hello.exe"),
                         SisString::new(""),
-                        SisWord41::new(0x000b_e000),
+                        Some(SisWord41::new(0x000b_e000)),
                         SisHash::new(
                             [1, 0x25, 0x14],
                             [

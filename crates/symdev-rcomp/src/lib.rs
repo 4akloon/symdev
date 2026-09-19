@@ -14,9 +14,14 @@ pub struct RscUid {
 
 impl RscUid {
     pub const UID1: u32 = 0x101f_4a6b;
+    pub const REGISTRATION_UID2: u32 = 0x101f_8021;
 
     pub fn new(uid2: u32, uid3: u32) -> Self {
         Self { uid2, uid3 }
+    }
+
+    pub fn registration(uid3: u32) -> Self {
+        Self::new(Self::REGISTRATION_UID2, uid3)
     }
 
     pub fn crc(&self) -> UidCrc {
@@ -193,6 +198,23 @@ mod tests {
     #[test]
     fn rsc_uid1_is_recorded_unicode_resource_file() {
         assert_eq!(RscUid::UID1, 0x101f_4a6b);
+        assert_eq!(RscUid::REGISTRATION_UID2, 0x101f_8021);
+    }
+
+    #[test]
+    fn hello_registration_rsc_matches_experiment_43() {
+        let golden = parse_hex(include_str!("testdata/hello_reg.rsc.hex"));
+        assert_eq!(golden.len(), 67);
+        let rsc = Rsc::registration(0xe79e_4cf9, "hello").unwrap();
+        assert_eq!(rsc.bytes().unwrap(), golden);
+    }
+
+    #[test]
+    fn registration_rsc_rejects_empty_app_file() {
+        match Rsc::registration(0xe79e_4cf9, "") {
+            Err(err) => assert!(err.to_string().contains("app_file empty")),
+            Ok(_) => panic!("expected app_file empty"),
+        }
     }
 
     #[test]

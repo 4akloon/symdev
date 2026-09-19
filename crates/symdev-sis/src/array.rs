@@ -12,7 +12,16 @@ impl SisArray {
     }
 
     pub fn payload(&self) -> Vec<u8> {
-        self.items.iter().flat_map(|f| f.bytes()).collect()
+        let Some(first) = self.items.first() else {
+            return Vec::new();
+        };
+        // SIS array payload is element type once, then each child without repeating the type.
+        let mut out = first.kind.to_le_bytes().to_vec();
+        for f in &self.items {
+            let full = f.bytes();
+            out.extend_from_slice(&full[4..]);
+        }
+        out
     }
 }
 
@@ -41,5 +50,20 @@ mod tests {
             ]
         );
         assert_eq!(SisArray::KIND, 2);
+    }
+
+    #[test]
+    fn two_item_array_repeats_len_not_type() {
+        let f = SisArray::new(vec![
+            SisString::new("ab").field(),
+            SisString::new("c").field(),
+        ])
+        .field();
+        let b = f.bytes();
+        assert_eq!(&b[..8], [2, 0, 0, 0, 20, 0, 0, 0]);
+        assert_eq!(&b[8..12], [1, 0, 0, 0]); // element type once
+        // two string bodies: len 4 "ab" pad0; len 2 "c\0" pad
+        assert_eq!(&b[12..20], [4, 0, 0, 0, b'a', 0, b'b', 0]);
+        assert_eq!(&b[20..28], [2, 0, 0, 0, b'c', 0, 0, 0]);
     }
 }

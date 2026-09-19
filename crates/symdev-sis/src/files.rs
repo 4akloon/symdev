@@ -60,7 +60,7 @@ impl SisEncode for SisHash {
 pub struct SisFile {
     pub dest: SisString,
     pub empty: SisString,
-    pub word41: SisWord41,
+    pub word41: Option<SisWord41>,
     pub hash: SisHash,
     pub empty2: SisString,
     pub tail: [u32; 5],
@@ -72,7 +72,7 @@ impl SisFile {
     pub fn new(
         dest: SisString,
         empty: SisString,
-        word41: SisWord41,
+        word41: Option<SisWord41>,
         hash: SisHash,
         empty2: SisString,
         tail: [u32; 5],
@@ -88,10 +88,12 @@ impl SisFile {
     }
 
     pub fn payload(&self) -> Vec<u8> {
+        // makesis writes type 41 only for files that carry capabilities (experiment 43).
+        let word41 = self.word41.as_ref().map(|w| w.field().bytes());
         let mut out = [
             self.dest.field().bytes(),
             self.empty.field().bytes(),
-            self.word41.field().bytes(),
+            word41.unwrap_or_default(),
             self.hash.field().bytes(),
             self.empty2.field().bytes(),
         ]
@@ -162,7 +164,7 @@ mod tests {
         SisFile::new(
             SisString::new("!:\\sys\\bin\\hello.exe"),
             SisString::new(""),
-            SisWord41::new(0x000b_e000),
+            Some(SisWord41::new(0x000b_e000)),
             hello_hash(),
             SisString::new(""),
             [3588, 0, 3588, 0, 0],

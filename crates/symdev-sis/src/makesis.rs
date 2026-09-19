@@ -17,6 +17,7 @@ struct Wave0Pkg {
     vendor: String,
     vendor_localized: String,
     exe: PathBuf,
+    reg_rsc: Option<PathBuf>,
 }
 
 impl Makesis {
@@ -57,14 +58,21 @@ impl Makesis {
         let text = std::fs::read_to_string(&self.pkg)
             .map_err(|e| Error::Other(format!("read pkg {:?}: {e}", self.pkg)))?;
         let parsed = Wave0Pkg::parse(&text)?;
-        let exe_path = self
-            .pkg
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(&parsed.exe);
+        let dir = self.pkg.parent().unwrap_or_else(|| Path::new("."));
+        let exe_path = dir.join(&parsed.exe);
         let exe = std::fs::read(&exe_path)
             .map_err(|e| Error::Other(format!("read exe {exe_path:?}: {e}")))?;
         let _ = self.verbose;
+        let rsc = match &parsed.reg_rsc {
+            Some(src) => {
+                let path = dir.join(src);
+                Some(
+                    std::fs::read(&path)
+                        .map_err(|e| Error::Other(format!("read reg rsc {path:?}: {e}")))?,
+                )
+            }
+            None => None,
+        };
         // TODO: capability bits from E32 (Wine makesis; not in Wave 0 .pkg)
         let spec = SisUnsignedSpec {
             name: &parsed.name,
@@ -75,6 +83,7 @@ impl Makesis {
             exe: &exe,
             capabilities: &[],
             datetime: SisDateTime::utc(std::time::SystemTime::now()),
+            reg_rsc: rsc.as_deref(),
         };
         let bytes = SisUnsigned::encode(&spec)?;
         std::fs::write(&self.sis, bytes)
@@ -98,11 +107,13 @@ impl Wave0Pkg {
         let mut vendor_localized = None;
         let mut vendor = None;
         let mut exe = None;
+        let mut reg_rsc = None;
         let mut saw_en = false;
         let mut saw_platform = false;
         for raw in text.lines() {
             let line = raw.trim();
-            if line.is_empty() {
+            // `;` comment lines as in the SDK example pkg (experiment 7).
+            if line.is_empty() || line.starts_with(';') {
                 continue;
             }
             if line == "&EN" {
@@ -153,12 +164,23 @@ impl Wave0Pkg {
                 )));
             }
             if line.starts_with('"') {
+                let (src, rest) = Self::quoted(line)?;
+                let dest = rest
+                    .trim_start()
+                    .strip_prefix('-')
+                    .ok_or_else(|| Error::Other(format!("pkg file line missing dest: {line}")))?;
+                let dest = Self::unquote(dest)?;
+                if Self::is_reg_rsc_dest(&dest) {
+                    if reg_rsc.replace((PathBuf::from(src), dest)).is_some() {
+                        return Err(Error::Other("pkg has more than one _reg.rsc".into()));
+                    }
+                    continue;
+                }
                 if exe.is_some() {
                     return Err(Error::Other(
                         "TODO: pkg files other than one EXE (rsc/mif)".into(),
                     ));
                 }
-                let (src, _) = Self::quoted(line)?;
                 exe = Some(PathBuf::from(src));
                 continue;
             }
@@ -170,15 +192,38 @@ impl Wave0Pkg {
         if !saw_platform {
             return Err(Error::Other("pkg missing platform UID 0x102752AE".into()));
         }
+        let name = name.ok_or_else(|| Error::Other("pkg missing name".into()))?;
+        let reg_rsc = match reg_rsc {
+            Some((src, dest)) => {
+                let want = format!("{}{name}_reg.rsc", Self::REG_RSC_DIR);
+                if !dest.eq_ignore_ascii_case(&want) {
+                    return Err(Error::Other(format!(
+                        "TODO: reg rsc dest other than {want}: {dest}"
+                    )));
+                }
+                Some(src)
+            }
+            None => None,
+        };
         Ok(Self {
-            name: name.ok_or_else(|| Error::Other("pkg missing name".into()))?,
+            name,
             uid3: uid3.ok_or_else(|| Error::Other("pkg missing UID".into()))?,
             version: version.ok_or_else(|| Error::Other("pkg missing version".into()))?,
             vendor: vendor.ok_or_else(|| Error::Other("pkg missing vendor".into()))?,
             vendor_localized: vendor_localized
                 .ok_or_else(|| Error::Other("pkg missing localized vendor".into()))?,
             exe: exe.ok_or_else(|| Error::Other("pkg missing EXE".into()))?,
+            reg_rsc,
         })
+    }
+
+    const REG_RSC_DIR: &str = "!:\\private\\10003a3f\\import\\apps\\";
+
+    fn is_reg_rsc_dest(dest: &str) -> bool {
+        dest.len() > Self::REG_RSC_DIR.len()
+            && dest
+                .get(..Self::REG_RSC_DIR.len())
+                .is_some_and(|dir| dir.eq_ignore_ascii_case(Self::REG_RSC_DIR))
     }
 
     fn quoted(s: &str) -> Result<(String, &str)> {
@@ -252,6 +297,33 @@ mod tests {
         assert_eq!(p.vendor, "Vendor");
         assert_eq!(p.vendor_localized, "Vendor-EN");
         assert_eq!(p.exe, PathBuf::from("hello.exe"));
+        assert_eq!(p.reg_rsc, None);
+    }
+
+    #[test]
+    fn parse_wave0_pkg_skips_comment_lines() {
+        let text = "; header\r\n&EN\r\n; vendor\r\n#{\"hello\"},(0xe79e4cf9),1,0,24,TYPE=SA\r\n%{\"Vendor-EN\"}\r\n:\"Vendor\"\r\n[0x102752AE], 0, 0, 0, {\"S60ProductID\"}\r\n; EXEs\r\n\"hello.exe\"\t\t-\"!:\\sys\\bin\\hello.exe\"\r\n";
+        let p = Wave0Pkg::parse(text).unwrap();
+        assert_eq!(p.name, "hello");
+        assert_eq!(p.exe, PathBuf::from("hello.exe"));
+    }
+
+    #[test]
+    fn parse_wave0_pkg_rejects_reg_rsc_for_other_app() {
+        let text = "&EN\n#{\"hello\"},(0xe79e4cf9),0,1,0,TYPE=SA\n%{\"symdev\"}\n:\"symdev\"\n[0x102752AE], 0, 0, 0, {\"S60ProductID\"}\n\"hello.exe\"\t\t-\"!:\\sys\\bin\\hello.exe\"\n\"other_reg.rsc\"\t\t-\"!:\\private\\10003a3f\\import\\apps\\other_reg.rsc\"\n";
+        let err = Wave0Pkg::parse(text)
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        assert!(err.contains("reg rsc dest"), "{err}");
+    }
+
+    #[test]
+    fn parse_wave0_pkg_accepts_verified_reg_rsc_dest() {
+        let text = "&EN\n#{\"hello\"},(0xe79e4cf9),0,1,0,TYPE=SA\n%{\"symdev\"}\n:\"symdev\"\n[0x102752AE], 0, 0, 0, {\"S60ProductID\"}\n\"hello.exe\"\t\t-\"!:\\sys\\bin\\hello.exe\"\n\"hello_reg.rsc\"\t\t-\"!:\\private\\10003a3f\\import\\apps\\hello_reg.rsc\"\n";
+        let p = Wave0Pkg::parse(text).unwrap();
+        assert_eq!(p.exe, PathBuf::from("hello.exe"));
+        assert_eq!(p.reg_rsc, Some(PathBuf::from("hello_reg.rsc")));
     }
 
     #[test]
