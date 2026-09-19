@@ -24,5 +24,6 @@ ELF with no writable `PT_LOAD`; ELF without the exception-descriptor symbol.
 
 - ~~`iDllRefTableCount` and the import section~~ done in the imports slice (experiment 44): `E32ImportSection::from_elf`, byte-equal to the uncompressed golden
 - ~~Code relocations~~ done (experiment 44): `E32RelocSection::code_from_elf`, byte-equal
-- Code words at import slots (ordinals from `--libpath` DSOs; pin only the used ordinals)
+- ~~Code words at import slots~~ done (experiment 44): `E32CodeSection::from_elf` byte-equal; `Elf2E32::ordinals` reads `--libpath` DSOs; tests pin the 33 used ordinals
+- Next: assemble the full uncompressed image (needs caps from `--capability` and live time), then Symbian deflate for the default compressed output
 - Capability bit packing; deflate of the post-header payload; `Elf2E32::encode`; wiring into `GcceBuild`
