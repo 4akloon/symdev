@@ -832,3 +832,25 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
   Native `Rsc::bytes()` of `RscAppRegistration` **byte-equals** both goldens. `.rsg` / RSS parse / `START RESOURCE` stay **out of this experiment**. `:-` is not on `RcompTool`.
 
 
+
+## 43. Two-file SIS: hello EXE + `_reg.rsc` (T2/T3)
+
+- **Requires:** experiments 7 (hello `.pkg` + Wine `makesis`) and 42 (native `Rsc` byte-equal to Wine `rcomp`).
+- **Skip if:** experiment-5 `hello.exe` or the FP2 SDK is gone
+- **Procedure:** Copy experiment-9 `driveinfo_reg.rss`, substitute only `UID3 0xE79E4CF9` and `app_file="hello"`. Run the recorded experiment-9 Wine `cpp.exe` + `rcomp.exe -u` argv. Append to the experiment-7 `.pkg` one `_reg.rsc` line in the SDK example's form (`locationsatviewrefapp_armv5.pkg`), dest `!:\private\10003a3f\import\apps\hello_reg.rsc`. Run recorded experiment-7 `makesis.exe -v hello.pkg hello.sis`. Compare against native `Rsc::registration` and `SisUnsigned::encode` with the SIS datetime read back from the Wine controller.
+- **Expected result:** Recorded bytes for a SIS carrying a non-EXE file; tells whether native encode needs per-file rules.
+- **Decision unblocked:** `symdev package` shipping `_reg.rsc`; `Makesis` reading the pkg's `_reg.rsc` line.
+- **Outcome:** pass
+- **Evidence:** 2026-09-19, Ubuntu 26.04.1 LTS x86_64. Workdir `$HOME/src/symdev-experiment-43/` (outside git). `hello_reg.rsc` 67 bytes (SHA-256 `c9d15ec1…4367`); rcomp warns only about unused `datatype_list` / `file_ownership_list` / `service_list`. `makesis` exit 0; `hello.sis` 4172 bytes (SHA-256 `442abbf2…947e`). Controller datetime `2026-(8)-19 09:02:53`.
+
+  Native `Rsc::registration(0xe79e4cf9, "hello")` **byte-equals** the Wine `_reg.rsc` (same shape as `driveinfo_reg`: empty `localisable_resource_file`, so no `_loc` / caption `.rsc` is needed).
+
+  Wine `makesis` differs from a naive second `SisFile` in two recorded ways:
+
+  | Field | EXE | `_reg.rsc` |
+  |---|---|---|
+  | Type-41 capabilities field | present (`0x000be000`) | **absent** |
+  | Data blob | stored, algorithm 0 (zlib 3599 ≥ 3588) | **zlib**, algorithm 1 (50 < 67) |
+  | Descriptor length / uncompressed | 3588 / 3588 | **50** / 67 |
+
+  Rule: each file is zlib-compressed (level 6) and kept compressed only when smaller (`SisCompressed::smallest`); capabilities only on the EXE. With those, native `SisUnsigned::encode` **byte-equals** the Wine `hello.sis` (goldens `hello_reg.rsc.hex`, `hello_reg_sis.hex`). The multi-element `SisArray` (element type once) is pinned by this golden too.

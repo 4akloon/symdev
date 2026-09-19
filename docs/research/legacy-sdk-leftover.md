@@ -78,7 +78,7 @@ No `*Tool` type for SDK `cpp.exe` (`epoc32/gcc/bin/cpp.exe`), `elf2e32.exe` (PE)
 | Piece | Type / bin | Evidence |
 |---|---|---|
 | UID CRC | `UidCrc::{checked,bytes,line}` + bin `uidcrc` | experiment 13 goldens; bin writes 16-byte file or prints the stdout line |
-| Unsigned SIS | `SisUnsigned::encode` / `Makesis::run` | experiment 38; Wave 0 one-file `TYPE=SA` `&EN` + platform `0x102752AE` |
+| Unsigned SIS | `SisUnsigned::encode` / `Makesis::run` | experiment 38; Wave 0 `TYPE=SA` `&EN` + platform `0x102752AE`; EXE + optional `_reg.rsc` (experiment 43) |
 | Signed SISX | `SisUnsigned::encode_signed` | experiments 39–40; `SisPackage::package` |
 | makekeys `-cert` | `SelfSignedDsa::generate` + `Makekeys::run` | experiment 40; PKCS#8 `BEGIN PRIVATE KEY`, DSA 1024/160, recorded DN |
 | RSC body goldens | `Rsc` / `RscAppRegistration` / `RscLtext16` / `RscUid` | experiments 41–42; byte-equal Wine `driveinfo_reg.rsc` / `filebrowseapp_reg.rsc` hex |
@@ -92,7 +92,7 @@ Product CLI uses the libraries, not the tool bins ([ported-tools-crates.md](port
 | `Elf2E32::encode` / bin `todo!("native ELF→E32 encode")` | `symdev-elf2e32` | Wave 0 still spawns Linux `SYMDEV_ELF2E32` |
 | RSS source parse / `.rsg` | `rcomp` bin `todo!("RSS source parse / .rsg")`; `Rcomp::from_args` TODO on `-v -p -l -force -{uid2,uid3}` | not on Wave 0; `START RESOURCE` not compiled |
 | `signsis` inflate of an existing `.sis` | `Signsis::run` TODO; bin `todo!` | not Wave 0 (`encode_signed` on the library) |
-| makesis flags `-h -i -s -d`; pkg beyond one EXE `TYPE=SA`; caps from E32 | `Makesis` | Wave 0 `.pkg` has no caps line; caps come from Manifest → elf2e32 / SIS type 41 |
+| makesis flags `-h -i -s -d`; pkg files beyond EXE + `_reg.rsc` (`TYPE=SA`); caps from E32 | `Makesis` | Wave 0 `.pkg` has no caps line; caps come from Manifest → elf2e32 / SIS type 41 |
 | makekeys `-req`/`-view`; `-expdays` ≠ 3650; `-len` ≠ `2048` token; other `-dname` | `Makekeys::from_args` | native keygen ignores `-len 2048` (DSA 1024/160) |
 | `mifconv` / `bmconv` | no crate | not on hello |
 | MMP `LIBRARY` / `SYSTEMINCLUDE` / `USERINCLUDE` / `STATICLIBRARY` / `CAPABILITY` / `UID` / `TARGETPATH` / `START RESOURCE` | parsed onto `Mmp`, **ignored** by `GcceBuild::build` | scaffold MMP is `TARGET`/`TARGETTYPE`/`SOURCEPATH`/`SOURCE` only |
