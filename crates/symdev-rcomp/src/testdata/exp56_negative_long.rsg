@@ -1,0 +1,2 @@
+#define R_B                                       0x6120e001
+#define R_C                                       0x6120e002

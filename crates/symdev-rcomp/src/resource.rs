@@ -203,3 +203,6 @@ impl RscPacked {
         })
     }
 }
+
+#[cfg(test)]
+mod tests;

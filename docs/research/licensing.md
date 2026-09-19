@@ -36,3 +36,7 @@ Future Rust reimplementations are **clean-room** from format specs and golden be
 `crates/symdev-elf2e32/src/deflate.rs` was written only from [e32-deflate-spec.md](e32-deflate-spec.md). A separate agent read elf2e32_next (EPL-1.0) and wrote that spec in prose and tables (no code, no source identifiers, no copied comments); the implementer did not read the elf2e32_next source or the spec writer's throwaway scripts. Keep this split for future ports: spec from the source by one party, code from the spec by another.
 
 Same split for the DSO `.hash` bucket rule: [dso-hash-spec.md](dso-hash-spec.md) (2026-09-19) was written by a separate agent from elf2e32_next; `crates/symdev-elf2e32/src/dso.rs` implements it without reading the source.
+
+### Clean-room record: rcomp (2026-09-19)
+
+The repository owner approved disassembling the SDK's `rcomp.exe` (8.1, build 004) to pin the parts black-box goldens leave open (compressed-Unicode encoder choices, when text stays uncompressed, defaults). Same two-role split: a separate agent disassembled the binary and wrote [rcomp-spec.md](rcomp-spec.md) in prose and tables; the native compiler in `crates/symdev-rcomp` is written from that spec, the experiment-56 golden corpus and black-box probes, and its author did not read the disassembly or the spec writer's scratch files.
