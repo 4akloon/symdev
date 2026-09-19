@@ -142,6 +142,7 @@ fn symbian(raw: Option<crate::schema::RawSymbian>) -> Result<Symbian> {
             uid3: None,
             capabilities: Vec::new(),
             vendor: "symdev".into(),
+            icon: None,
         });
     };
     Ok(Symbian {
@@ -151,6 +152,7 @@ fn symbian(raw: Option<crate::schema::RawSymbian>) -> Result<Symbian> {
         },
         capabilities: capabilities(raw.capabilities)?,
         vendor: vendor(raw.vendor)?,
+        icon: nonempty_path(raw.icon, "symbian.icon")?,
     })
 }
 

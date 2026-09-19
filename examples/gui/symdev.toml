@@ -12,6 +12,7 @@ name = "cpp"
 uid3 = "0xe7351c20"
 capabilities = []
 vendor = "symdev"
+icon = "gfx/gui.svg"
 
 [signing]
 mode = "self-signed"

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- symdev GUI template: app icon (SVG Tiny, built into {{NAME}}_aif.mif). -->
+<svg baseProfile="tiny" xmlns="http://www.w3.org/2000/svg" width="88" height="88" viewBox="0 0 88 88">
+<rect x="4" y="4" width="80" height="80" rx="18" ry="18" fill="#1f6feb"/>
+<rect x="22" y="22" width="44" height="30" rx="4" ry="4" fill="#ffffff"/>
+<rect x="30" y="58" width="28" height="8" rx="4" ry="4" fill="#ffffff"/>
+</svg>
