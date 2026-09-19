@@ -33,7 +33,7 @@ pub use files::{SisFile, SisFiles, SisHash, SisWord41};
 pub use info::SisInfo;
 pub use language::{SisLanguage, SisLanguages};
 pub use makesis::Makesis;
-pub use package::{SisTools, SisUnsignedSpec};
+pub use package::{SisPkgFile, SisTools, SisUnsignedSpec};
 pub use pkg_uid::SisPkgUid;
 pub use product::{SisProduct, SisProductVersion};
 pub use products::SisProducts;

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use super::{SisDateTime, SisUnsigned, SisUnsignedSpec};
+use super::{SisDateTime, SisPkgFile, SisUnsigned, SisUnsignedSpec};
 use symdev_core::{Error, Result};
 
 #[derive(Debug)]
@@ -17,7 +17,8 @@ struct Wave0Pkg {
     vendor: String,
     vendor_localized: String,
     exe: PathBuf,
-    reg_rsc: Option<PathBuf>,
+    /// Non-EXE `(source, destination)` lines in `.pkg` order.
+    files: Vec<(PathBuf, String)>,
 }
 
 impl Makesis {
@@ -63,16 +64,19 @@ impl Makesis {
         let exe = std::fs::read(&exe_path)
             .map_err(|e| Error::Other(format!("read exe {exe_path:?}: {e}")))?;
         let _ = self.verbose;
-        let rsc = match &parsed.reg_rsc {
-            Some(src) => {
-                let path = dir.join(src);
-                Some(
-                    std::fs::read(&path)
-                        .map_err(|e| Error::Other(format!("read reg rsc {path:?}: {e}")))?,
-                )
-            }
-            None => None,
-        };
+        let mut contents = Vec::new();
+        for (src, _) in &parsed.files {
+            let path = dir.join(src);
+            contents.push(
+                std::fs::read(&path).map_err(|e| Error::Other(format!("read {path:?}: {e}")))?,
+            );
+        }
+        let files: Vec<SisPkgFile> = parsed
+            .files
+            .iter()
+            .zip(&contents)
+            .map(|((_, dest), data)| SisPkgFile { dest, data })
+            .collect();
         // TODO: capability bits from E32 (Wine makesis; not in Wave 0 .pkg)
         let spec = SisUnsignedSpec {
             name: &parsed.name,
@@ -83,7 +87,7 @@ impl Makesis {
             exe: &exe,
             capabilities: &[],
             datetime: SisDateTime::utc(std::time::SystemTime::now()),
-            reg_rsc: rsc.as_deref(),
+            files: &files,
         };
         let bytes = SisUnsigned::encode(&spec)?;
         std::fs::write(&self.sis, bytes)
@@ -107,7 +111,7 @@ impl Wave0Pkg {
         let mut vendor_localized = None;
         let mut vendor = None;
         let mut exe = None;
-        let mut reg_rsc = None;
+        let mut files = Vec::new();
         let mut saw_en = false;
         let mut saw_platform = false;
         for raw in text.lines() {
@@ -170,18 +174,13 @@ impl Wave0Pkg {
                     .strip_prefix('-')
                     .ok_or_else(|| Error::Other(format!("pkg file line missing dest: {line}")))?;
                 let dest = Self::unquote(dest)?;
-                if Self::is_reg_rsc_dest(&dest) {
-                    if reg_rsc.replace((PathBuf::from(src), dest)).is_some() {
-                        return Err(Error::Other("pkg has more than one _reg.rsc".into()));
+                if Self::is_exe_dest(&dest) {
+                    if exe.replace((PathBuf::from(src), dest)).is_some() {
+                        return Err(Error::Other("TODO: pkg with more than one EXE".into()));
                     }
                     continue;
                 }
-                if exe.is_some() {
-                    return Err(Error::Other(
-                        "TODO: pkg files other than one EXE (rsc/mif)".into(),
-                    ));
-                }
-                exe = Some(PathBuf::from(src));
+                files.push((PathBuf::from(src), dest));
                 continue;
             }
             return Err(Error::Other(format!("TODO: pkg line: {line}")));
@@ -193,18 +192,13 @@ impl Wave0Pkg {
             return Err(Error::Other("pkg missing platform UID 0x102752AE".into()));
         }
         let name = name.ok_or_else(|| Error::Other("pkg missing name".into()))?;
-        let reg_rsc = match reg_rsc {
-            Some((src, dest)) => {
-                let want = format!("{}{name}_reg.rsc", Self::REG_RSC_DIR);
-                if !dest.eq_ignore_ascii_case(&want) {
-                    return Err(Error::Other(format!(
-                        "TODO: reg rsc dest other than {want}: {dest}"
-                    )));
-                }
-                Some(src)
-            }
-            None => None,
-        };
+        let (exe, exe_dest) = exe.ok_or_else(|| Error::Other("pkg missing EXE".into()))?;
+        let want = format!("{}{name}.exe", Self::EXE_DIR);
+        if !exe_dest.eq_ignore_ascii_case(&want) {
+            return Err(Error::Other(format!(
+                "TODO: EXE dest other than {want}: {exe_dest}"
+            )));
+        }
         Ok(Self {
             name,
             uid3: uid3.ok_or_else(|| Error::Other("pkg missing UID".into()))?,
@@ -212,18 +206,19 @@ impl Wave0Pkg {
             vendor: vendor.ok_or_else(|| Error::Other("pkg missing vendor".into()))?,
             vendor_localized: vendor_localized
                 .ok_or_else(|| Error::Other("pkg missing localized vendor".into()))?,
-            exe: exe.ok_or_else(|| Error::Other("pkg missing EXE".into()))?,
-            reg_rsc,
+            exe,
+            files,
         })
     }
 
-    const REG_RSC_DIR: &str = "!:\\private\\10003a3f\\import\\apps\\";
+    const EXE_DIR: &str = "!:\\sys\\bin\\";
 
-    fn is_reg_rsc_dest(dest: &str) -> bool {
-        dest.len() > Self::REG_RSC_DIR.len()
+    fn is_exe_dest(dest: &str) -> bool {
+        dest.len() > Self::EXE_DIR.len()
             && dest
-                .get(..Self::REG_RSC_DIR.len())
-                .is_some_and(|dir| dir.eq_ignore_ascii_case(Self::REG_RSC_DIR))
+                .get(..Self::EXE_DIR.len())
+                .is_some_and(|dir| dir.eq_ignore_ascii_case(Self::EXE_DIR))
+            && dest.to_ascii_lowercase().ends_with(".exe")
     }
 
     fn quoted(s: &str) -> Result<(String, &str)> {
@@ -297,7 +292,7 @@ mod tests {
         assert_eq!(p.vendor, "Vendor");
         assert_eq!(p.vendor_localized, "Vendor-EN");
         assert_eq!(p.exe, PathBuf::from("hello.exe"));
-        assert_eq!(p.reg_rsc, None);
+        assert!(p.files.is_empty());
     }
 
     #[test]
@@ -309,13 +304,18 @@ mod tests {
     }
 
     #[test]
-    fn parse_wave0_pkg_rejects_reg_rsc_for_other_app() {
-        let text = "&EN\n#{\"hello\"},(0xe79e4cf9),0,1,0,TYPE=SA\n%{\"symdev\"}\n:\"symdev\"\n[0x102752AE], 0, 0, 0, {\"S60ProductID\"}\n\"hello.exe\"\t\t-\"!:\\sys\\bin\\hello.exe\"\n\"other_reg.rsc\"\t\t-\"!:\\private\\10003a3f\\import\\apps\\other_reg.rsc\"\n";
-        let err = Wave0Pkg::parse(text)
-            .err()
-            .map(|e| e.to_string())
-            .unwrap_or_default();
-        assert!(err.contains("reg rsc dest"), "{err}");
+    fn parse_pkg_keeps_non_exe_files_in_pkg_order() {
+        let text = "&EN\n#{\"gui\"},(0xe5d1a001),1,0,0,TYPE=SA\n%{\"Vendor-EN\"}\n:\"Vendor\"\n[0x102752AE], 0, 0, 0, {\"S60ProductID\"}\n\"gui.exe\"\t\t-\"!:\\sys\\bin\\gui.exe\"\n\"gui.rsc\"\t\t-\"!:\\resource\\apps\\gui.rsc\"\n\"gui_reg.rsc\"\t\t-\"!:\\private\\10003a3f\\import\\apps\\gui_reg.rsc\"\n";
+        let p = Wave0Pkg::parse(text).unwrap();
+        assert_eq!(p.exe, PathBuf::from("gui.exe"));
+        let dests: Vec<&str> = p.files.iter().map(|(_, d)| d.as_str()).collect();
+        assert_eq!(
+            dests,
+            [
+                "!:\\resource\\apps\\gui.rsc",
+                "!:\\private\\10003a3f\\import\\apps\\gui_reg.rsc"
+            ]
+        );
     }
 
     #[test]
@@ -323,7 +323,13 @@ mod tests {
         let text = "&EN\n#{\"hello\"},(0xe79e4cf9),0,1,0,TYPE=SA\n%{\"symdev\"}\n:\"symdev\"\n[0x102752AE], 0, 0, 0, {\"S60ProductID\"}\n\"hello.exe\"\t\t-\"!:\\sys\\bin\\hello.exe\"\n\"hello_reg.rsc\"\t\t-\"!:\\private\\10003a3f\\import\\apps\\hello_reg.rsc\"\n";
         let p = Wave0Pkg::parse(text).unwrap();
         assert_eq!(p.exe, PathBuf::from("hello.exe"));
-        assert_eq!(p.reg_rsc, Some(PathBuf::from("hello_reg.rsc")));
+        assert_eq!(
+            p.files,
+            [(
+                PathBuf::from("hello_reg.rsc"),
+                "!:\\private\\10003a3f\\import\\apps\\hello_reg.rsc".to_string()
+            )]
+        );
     }
 
     #[test]

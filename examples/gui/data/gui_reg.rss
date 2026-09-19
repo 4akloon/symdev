@@ -1,0 +1,13 @@
+// symdev GUI template: registration resource.
+#include <appinfo.rh>
+#include <gui.rsg>
+
+UID2 KUidAppRegistrationResourceFile
+UID3 0xe7351c20
+
+RESOURCE APP_REGISTRATION_INFO
+    {
+    app_file = "gui";
+    localisable_resource_file = "\\resource\\apps\\gui";
+    localisable_resource_id = R_APP_LOCALISABLE_APP_INFO;
+    }

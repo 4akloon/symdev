@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser};
-use symdev_build::{GcceBuild, SisPackage, Toolchain};
+use symdev_build::{BuildOutputs, GcceBuild, SisPackage, Toolchain};
 use symdev_core::{Artifact, BuildBackend, Error, LocalEnv, PackageBackend, Project};
 
 use cli::{Cli, Commands};
@@ -16,10 +16,10 @@ fn main() -> ExitCode {
             let _ = Cli::command().print_help();
             ExitCode::SUCCESS
         }
-        Some(Commands::New { name, .. }) => {
+        Some(Commands::New { name, template, .. }) => {
             match std::env::current_dir()
                 .map_err(|e| Error::Other(e.to_string()))
-                .and_then(|cwd| scaffold::create_project(&cwd, &name))
+                .and_then(|cwd| scaffold::create_project(&cwd, &name, template))
             {
                 Ok(root) => {
                     println!("{}", root.display());
@@ -140,9 +140,7 @@ fn package_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
             .map(|p| if p.is_absolute() { p } else { cwd.join(p) }),
         subject: m.signing.subject,
     }
-    .package(&[Artifact {
-        path: cwd.join(&e32),
-    }])?;
+    .package(&package_artifacts(&cwd, &e32)?)?;
     println!("{}", package.primary.display());
     Ok(ExitCode::SUCCESS)
 }
@@ -190,4 +188,28 @@ fn run_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
     );
     println!("log: {}", log.display());
     Ok(ExitCode::SUCCESS)
+}
+
+/// The EXE plus the resources the project's MMPs compile (`BuildOutputs`); a project
+/// without `bld.inf` packages its EXE alone.
+fn package_artifacts(cwd: &Path, e32: &Path) -> Result<Vec<Artifact>, Error> {
+    let has_bld = cwd.join("group/bld.inf").is_file() || cwd.join("bld.inf").is_file();
+    if !has_bld {
+        return Ok(vec![Artifact::exe(cwd.join(e32))]);
+    }
+    let outputs = BuildOutputs::of(&Project {
+        root: cwd.to_path_buf(),
+    })?;
+    for a in &outputs {
+        if a.dest.is_some() && !a.path.is_file() {
+            return Err(Error::Other(format!(
+                "resource not found: {} (run symdev build)",
+                a.path.display()
+            )));
+        }
+    }
+    Ok(outputs
+        .into_iter()
+        .filter(|a| a.dest.is_some() || a.path == cwd.join(e32))
+        .collect())
 }
