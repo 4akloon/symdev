@@ -30,4 +30,5 @@ ELF with no writable `PT_LOAD`; ELF without the exception-descriptor symbol.
 - Next: wire native encode into `GcceBuild` instead of `SYMDEV_ELF2E32`
 - Capability bit packing; deflate of the post-header payload; `Elf2E32::encode`; wiring into `GcceBuild`
 - ~~Data section~~ done (experiment 49): `E32DataSection`, `E32RelocSection::data_from_elf`; `counter` with .data runs in EKA2L1
-- Still TODO (not observed): DLL target, exports, imports located in data, other capabilities
+- ~~DLL target, exports, other capabilities~~ done (experiments 50, 52, 53): DLL image, `.def`, `.dso`; `symdev build` builds project DLLs
+- Still TODO (not observed): frozen exports (`--definput`), data exports, imports located in data, DLL writable static data (`--dlldata`)
