@@ -10,6 +10,7 @@ pub struct SisCompressed {
 
 impl SisCompressed {
     pub const KIND: u32 = 3;
+    pub const STORED: u32 = 0;
     pub const DEFLATE: u32 = 1;
 
     pub fn new(uncompressed_size: u32, data: Vec<u8>) -> Self {
@@ -34,6 +35,20 @@ impl SisCompressed {
                 .finish()
                 .map_err(|e| Error::Other(format!("zlib finish: {e}")))?,
         ))
+    }
+
+    /// makesis file blob: zlib when that is smaller, else stored (experiment 43).
+    pub fn smallest(uncompressed: &[u8]) -> Result<Self> {
+        let deflated = Self::zlib(uncompressed)?;
+        if deflated.data.len() < uncompressed.len() {
+            return Ok(deflated);
+        }
+        Ok(Self {
+            algorithm: Self::STORED,
+            uncompressed_size: uncompressed.len() as u32,
+            reserved: 0,
+            data: uncompressed.to_vec(),
+        })
     }
 
     pub fn header_bytes(&self) -> [u8; 12] {

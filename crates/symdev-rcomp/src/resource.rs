@@ -102,6 +102,17 @@ impl Rsc {
         Self { uid, resources }
     }
 
+    pub fn registration(uid3: u32, app_file: impl Into<String>) -> Result<Self> {
+        let app_file = RscLtext16::new(app_file)?;
+        if app_file.bytes() == [0] {
+            return Err(Error::Other("APP_REGISTRATION_INFO app_file empty".into()));
+        }
+        Ok(Self::new(
+            RscUid::registration(uid3),
+            vec![RscAppRegistration::new(app_file, RscLtext16::empty(), 1).resource()?],
+        ))
+    }
+
     pub fn bytes(&self) -> Result<Vec<u8>> {
         let largest = self
             .resources
