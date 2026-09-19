@@ -131,8 +131,12 @@ impl GcceBuild {
     }
 
     pub fn elf2e32_args(&self, name: &str, elf: &Path, exe: &Path) -> Vec<String> {
+        let argv0 = match &self.tools.elf2e32 {
+            Some(tool) => arg(tool),
+            None => "elf2e32".into(),
+        };
         let mut args = vec![
-            arg(&self.tools.elf2e32),
+            argv0,
             "--uid1=0x1000007a".into(),
             format!("--uid3=0x{:08x}", self.uid3),
         ];
@@ -156,6 +160,17 @@ impl GcceBuild {
             ),
         ]);
         args
+    }
+
+    /// External `SYMDEV_ELF2E32` when set; otherwise native `symdev-elf2e32` on the
+    /// same argv.
+    fn run_elf2e32(&self, args: &[String], cwd: &RemotePath) -> Result<()> {
+        if self.tools.elf2e32.is_some() {
+            return self.run_tool(args, cwd);
+        }
+        let job = symdev_elf2e32::Elf2E32::from_args(args)?;
+        let bytes = job.encode()?;
+        std::fs::write(&job.output, bytes).map_err(io)
     }
 
     fn run_tool(&self, args: &[String], cwd: &RemotePath) -> Result<()> {
@@ -263,7 +278,7 @@ impl BuildBackend for GcceBuild {
             }
             self.run_tool(&link, &cwd)?;
             let exe = build_dir.join(format!("{name}.exe"));
-            self.run_tool(&self.elf2e32_args(name, &elf, &exe), &cwd)?;
+            self.run_elf2e32(&self.elf2e32_args(name, &elf, &exe), &cwd)?;
             artifacts.push(Artifact { path: exe });
         }
         Ok(artifacts)
@@ -282,7 +297,7 @@ mod tests {
                 epocroot: PathBuf::from("/sdk"),
                 gxx: PathBuf::from("/gcc/bin/arm-none-symbianelf-g++"),
                 ld: PathBuf::from("/gcc/binutils/bin/arm-none-symbianelf-ld"),
-                elf2e32: PathBuf::from("/gcc/elf2e32"),
+                elf2e32: Some(PathBuf::from("/gcc/elf2e32")),
                 gcc_lib: PathBuf::from("/gcc/lib/gcc/arm-none-symbianelf/12.1.0"),
                 gcc_target_lib: PathBuf::from("/gcc/arm-none-symbianelf/lib"),
             },
@@ -424,6 +439,23 @@ mod tests {
                 .iter()
                 .any(|a| a.contains("gcc-12.1.0/bin/arm-none-symbianelf-ld"))
         );
+    }
+
+    #[test]
+    fn native_elf2e32_args_parse_as_the_recorded_job() {
+        let mut d = fake();
+        d.tools.elf2e32 = None;
+        let args = d.elf2e32_args(
+            "hello",
+            Path::new("/p/build/hello.elf"),
+            Path::new("/p/build/hello.exe"),
+        );
+        assert_eq!(args[0], "elf2e32");
+        let job = symdev_elf2e32::Elf2E32::from_args(&args).unwrap();
+        assert_eq!(job.uid3, 0xe79e4cf9);
+        assert_eq!(job.output, PathBuf::from("/p/build/hello.exe"));
+        assert_eq!(job.libpath, PathBuf::from("/sdk/epoc32/release/armv5/lib"));
+        assert!(!job.uncompressed);
     }
 
     #[test]
