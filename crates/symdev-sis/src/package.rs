@@ -410,12 +410,15 @@ fn encode_unsigned_sis_rejects_capability_bits_not_derived() {
         vendor: "Vendor",
         vendor_localized: "Vendor-EN",
         exe: &hello_exe_bytes(),
-        capabilities: &["AllFiles".into()],
+        capabilities: &["NotACapability".into()],
         datetime: hello_datetime(),
         reg_rsc: None,
     })
     .unwrap_err();
-    assert_eq!(err.to_string(), "capability bit not yet derived: AllFiles");
+    assert_eq!(
+        err.to_string(),
+        "capability bit not yet derived: NotACapability"
+    );
 }
 
 #[test]
