@@ -76,6 +76,45 @@ impl RcompTool {
     }
 }
 
+/// SDK `cpp.exe` under Wine, the RSS preprocessing step before `rcomp` (experiment 9).
+pub struct RssCppTool {
+    pub wine: PathBuf,
+    pub cpp: PathBuf,
+}
+
+impl RssCppTool {
+    pub fn new(wine: &Path, cpp: &Path) -> Self {
+        Self {
+            wine: wine.to_path_buf(),
+            cpp: cpp.to_path_buf(),
+        }
+    }
+
+    /// Recorded `cpp -nostdinc -undef -C -D_UNICODE -I <Z:\\...> <rss> -o <rpp>`; each
+    /// include dir becomes a Wine `Z:` path, as in experiment 9.
+    pub fn args(&self, includes: &[PathBuf], input: &str, output: &str) -> Vec<String> {
+        let mut args = vec![
+            self.wine.display().to_string(),
+            self.cpp.display().to_string(),
+            "-nostdinc".into(),
+            "-undef".into(),
+            "-C".into(),
+            "-D_UNICODE".into(),
+        ];
+        for dir in includes {
+            args.push("-I".into());
+            args.push(Self::wine_path(dir));
+        }
+        args.extend([input.to_string(), "-o".into(), output.to_string()]);
+        args
+    }
+
+    /// `/a/b` → `Z:\\a\\b` (Wine maps `/` to drive `Z:`).
+    pub fn wine_path(path: &Path) -> String {
+        format!("Z:{}", path.display().to_string().replace('/', "\\"))
+    }
+}
+
 pub struct Rcomp {
     pub unicode: bool,
     pub rsc: String,
@@ -232,6 +271,34 @@ mod tests {
                 "-odriveinfo_reg.rsc",
                 "-sdriveinfo_reg.rpp",
                 "-idriveinfo_reg.rss",
+            ]
+        );
+    }
+
+    #[test]
+    fn rss_cpp_args_match_experiment_9() {
+        let tool = RssCppTool::new(
+            Path::new("/usr/bin/wine"),
+            Path::new("/home/genius/sdk/S60_3rd_FP2/epoc32/gcc/bin/cpp.exe"),
+        );
+        assert_eq!(
+            tool.args(
+                &[PathBuf::from("/home/genius/sdk/S60_3rd_FP2/epoc32/include")],
+                "driveinfo_reg.rss",
+                "driveinfo_reg.rpp"
+            ),
+            [
+                "/usr/bin/wine",
+                "/home/genius/sdk/S60_3rd_FP2/epoc32/gcc/bin/cpp.exe",
+                "-nostdinc",
+                "-undef",
+                "-C",
+                "-D_UNICODE",
+                "-I",
+                "Z:\\home\\genius\\sdk\\S60_3rd_FP2\\epoc32\\include",
+                "driveinfo_reg.rss",
+                "-o",
+                "driveinfo_reg.rpp",
             ]
         );
     }
