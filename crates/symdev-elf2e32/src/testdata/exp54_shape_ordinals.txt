@@ -1,0 +1,6 @@
+# Experiment 54: import ordinals shape.dll uses (dll, symbol, ordinal), read from FP2 --libpath DSOs.
+drtaeabi{000a0000}.dll _ZTVN10__cxxabiv120__si_class_type_infoE 0x7f
+euser{000a0000}[100039e5].dll _ZN5CBase10Extension_EjRPvS0_ 0x84b
+euser{000a0000}[100039e5].dll _ZN5CBaseD2Ev 0x84e
+euser{000a0000}[100039e5].dll _ZTI5CBase 0x854
+scppnwdl{000a0000}.dll _ZdlPv 0x3

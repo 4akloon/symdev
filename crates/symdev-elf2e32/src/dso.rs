@@ -4,7 +4,7 @@
 
 use symdev_core::{Error, Result};
 
-use crate::E32Exports;
+use crate::{E32ExportKind, E32Exports};
 
 /// The `.dso` written next to a DLL (`--dso=<path>`).
 pub struct E32Dso<'a> {
@@ -24,14 +24,15 @@ impl E32Dso<'_> {
         b"\0ER_RO\0.dynamic\0.hash\0.version_d\0.version\0.strtab\0.dynsym\0.shstrtab\0";
 
     pub fn bytes(&self) -> Result<Vec<u8>> {
-        let n = self.exports.symbols.len();
+        let n = self.exports.entries.len();
         if n == 0 {
             return Err(Error::Other("DSO without exports".into()));
         }
         // .strtab: exports in ordinal order, then soname, then linkas.
+        let names: Vec<String> = self.exports.entries.iter().map(|e| e.dso_name()).collect();
         let mut strtab = vec![0u8];
         let mut name_at = Vec::new();
-        for (name, _) in &self.exports.symbols {
+        for name in &names {
             name_at.push(strtab.len() as u32);
             strtab.extend_from_slice(name.as_bytes());
             strtab.push(0);
@@ -52,7 +53,7 @@ impl E32Dso<'_> {
         }
         er_ro.extend_from_slice(&0u32.to_le_bytes());
 
-        let hash = Self::hash_table(&self.exports.symbols);
+        let hash = Self::hash_table(&names);
         let verdef = Self::verdef(self.soname, soname_at, self.linkas, linkas_at);
         // .version: local for the null symbol, version 2 for every export.
         let mut versym = 0u16.to_le_bytes().to_vec();
@@ -60,11 +61,17 @@ impl E32Dso<'_> {
             versym.extend_from_slice(&2u16.to_le_bytes());
         }
         let mut dynsym = vec![0u8; 16];
-        for (i, (_, _)) in self.exports.symbols.iter().enumerate() {
+        for (i, e) in self.exports.entries.iter().enumerate() {
+            // Functions: STB_GLOBAL | STT_FUNC, size 4. Data: STT_OBJECT with the
+            // .def size (experiment 54).
+            let (info, size) = match e.kind {
+                E32ExportKind::Function => (0x12u8, 4u32),
+                E32ExportKind::Data(size) => (0x11, size),
+            };
             dynsym.extend_from_slice(&name_at[i].to_le_bytes());
             dynsym.extend_from_slice(&(4 * i as u32).to_le_bytes());
-            dynsym.extend_from_slice(&4u32.to_le_bytes());
-            dynsym.extend_from_slice(&[0x12, 0]); // STB_GLOBAL | STT_FUNC, default visibility
+            dynsym.extend_from_slice(&size.to_le_bytes());
+            dynsym.extend_from_slice(&[info, 0]); // default visibility
             dynsym.extend_from_slice(&1u16.to_le_bytes()); // ER_RO
         }
 
@@ -228,13 +235,13 @@ impl E32Dso<'_> {
 
     /// SysV `.hash` (dso-hash-spec.md): `nbucket = N/3 + N%3` with `N = n + 1`; each
     /// bucket holds its lowest symbol index, chains ascend.
-    fn hash_table(symbols: &[(String, u32)]) -> Vec<u8> {
+    fn hash_table(symbols: &[String]) -> Vec<u8> {
         let nchain = symbols.len() + 1;
         let nbucket = nchain / 3 + nchain % 3;
         let mut bucket = vec![0u32; nbucket];
         let mut chain = vec![0u32; nchain];
         let mut tail = vec![0u32; nbucket];
-        for (i, (name, _)) in symbols.iter().enumerate() {
+        for (i, name) in symbols.iter().enumerate() {
             let index = i as u32 + 1;
             let b = Self::elf_hash(name.as_bytes()) as usize % nbucket;
             if bucket[b] == 0 {

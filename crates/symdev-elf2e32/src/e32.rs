@@ -1,4 +1,5 @@
 use super::ElfImage;
+use crate::E32DefFile;
 use symdev_core::{Error, Result};
 use symdev_uidcrc::UidCrc;
 
@@ -52,8 +53,8 @@ impl E32Layout {
     }
 
     /// Import section follows code and data (`iImportOffset`).
-    pub fn import_offset(&self) -> u32 {
-        E32ImageHeader::CODE_OFFSET + self.code_size + self.data_size
+    pub fn import_offset(&self, code_offset: u32) -> u32 {
+        code_offset + self.code_size + self.data_size
     }
 }
 
@@ -492,16 +493,13 @@ impl E32ImageHeader {
         out
     }
 
-    /// Uncompressed header (this + J + V) with `iHeaderCrc` stamped.
-    pub fn uncompressed(
-        &self,
-        j: &E32ImageHeaderJ,
-        v: &E32ImageHeaderV,
-    ) -> [u8; Self::CODE_OFFSET as usize] {
-        let mut out = [0u8; Self::CODE_OFFSET as usize];
-        out[..Self::SIZE].copy_from_slice(&self.bytes());
-        out[Self::SIZE..Self::SIZE + E32ImageHeaderJ::SIZE].copy_from_slice(&j.bytes());
-        out[Self::SIZE + E32ImageHeaderJ::SIZE..].copy_from_slice(&v.bytes());
+    /// Uncompressed header (this + J + V, zero-padded to `iCodeOffset`) with
+    /// `iHeaderCrc` stamped.
+    pub fn uncompressed(&self, j: &E32ImageHeaderJ, v: &E32ImageHeaderV) -> Vec<u8> {
+        let mut out = self.bytes().to_vec();
+        out.extend_from_slice(&j.bytes());
+        out.extend_from_slice(&v.bytes());
+        out.resize(v.code_offset() as usize, 0);
         out[20..24].copy_from_slice(&Self::CRC_INITIALISER.to_le_bytes());
         let n = usize::min(self.code_offset as usize, out.len());
         let crc = crc32(&out[..n]);
@@ -523,15 +521,16 @@ impl E32ImageHeaderJ {
     }
 }
 
-/// Versioning tail (`E32ImageHeaderV`) with `iExportDesc[1]` pad when size is 0.
+/// Versioning tail (`E32ImageHeaderV`): fixed fields, then `iExportDesc` (at least the
+/// one-byte pad when empty).
 pub struct E32ImageHeaderV {
     pub secure_id: u32,
     pub vendor_id: u32,
     pub caps: u64,
     pub exception_descriptor: u32,
     pub spare2: u32,
-    pub export_desc_size: u16,
     pub export_desc_type: u8,
+    pub export_desc: Vec<u8>,
 }
 
 impl E32ImageHeaderV {
@@ -539,18 +538,30 @@ impl E32ImageHeaderV {
     pub const EXPORT_DESC_FULL_BITMAP: u8 = 0x01;
     /// DLL with every ordinal present (experiment 52).
     pub const EXPORT_DESC_NO_HOLES: u8 = 0x00;
+    /// Absent ordinals, sparse presence bitmap (experiment 54).
+    pub const EXPORT_DESC_SPARSE_BITMAP: u8 = 0x02;
 
-    pub fn bytes(&self) -> [u8; Self::SIZE] {
-        let mut out = [0u8; Self::SIZE];
-        let mut off = 0usize;
-        put(&mut out, &mut off, &self.secure_id.to_le_bytes());
-        put(&mut out, &mut off, &self.vendor_id.to_le_bytes());
-        put(&mut out, &mut off, &self.caps.to_le_bytes());
-        put(&mut out, &mut off, &self.exception_descriptor.to_le_bytes());
-        put(&mut out, &mut off, &self.spare2.to_le_bytes());
-        put(&mut out, &mut off, &self.export_desc_size.to_le_bytes());
-        out[off] = self.export_desc_type;
+    pub fn bytes(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(Self::SIZE);
+        out.extend_from_slice(&self.secure_id.to_le_bytes());
+        out.extend_from_slice(&self.vendor_id.to_le_bytes());
+        out.extend_from_slice(&self.caps.to_le_bytes());
+        out.extend_from_slice(&self.exception_descriptor.to_le_bytes());
+        out.extend_from_slice(&self.spare2.to_le_bytes());
+        out.extend_from_slice(&(self.export_desc.len() as u16).to_le_bytes());
+        out.push(self.export_desc_type);
+        out.extend_from_slice(&self.export_desc);
+        if self.export_desc.is_empty() {
+            out.push(0);
+        }
         out
+    }
+
+    /// `iCodeOffset`: the whole header, rounded up to 4 (experiment 54: a 3-byte
+    /// description moves the code from 0x9c to 0xa0).
+    pub fn code_offset(&self) -> u32 {
+        let len = E32ImageHeader::SIZE + E32ImageHeaderJ::SIZE + self.bytes().len();
+        len.next_multiple_of(4) as u32
     }
 }
 
@@ -586,51 +597,224 @@ pub enum E32Target {
     Dll,
 }
 
-/// A DLL's exports: ordinal = 1-based position after sorting by symbol name
-/// (experiment 52: `_Z7MathAbsi` got ordinal 1 despite the highest address).
+/// How an export is typed in the `.def` and `.dso`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum E32ExportKind {
+    Function,
+    /// `DATA <size>` in the `.def`, `STT_OBJECT` of that size in the `.dso`.
+    Data(u32),
+}
+
+/// One ordinal of a DLL.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct E32Export {
+    pub name: String,
+    pub ordinal: u32,
+    /// Link address; for an `ABSENT` ordinal, the entry point (experiment 54).
+    pub address: u32,
+    pub kind: E32ExportKind,
+    pub absent: bool,
+    /// Not in the frozen `.def` (or no `.def` given): listed under `; NEW:`.
+    pub new: bool,
+    /// The frozen line's comment (from its `;`).
+    pub comment: Option<String>,
+}
+
+impl E32Export {
+    /// Name in the `.dso`: an absent ordinal becomes `_._.absent_export_<n>`
+    /// (experiment 54).
+    pub fn dso_name(&self) -> String {
+        if self.absent {
+            format!("_._.absent_export_{}", self.ordinal)
+        } else {
+            self.name.clone()
+        }
+    }
+}
+
+/// A DLL's exports in ordinal order. Without a frozen `.def`, ordinal = 1-based position
+/// after sorting by symbol name (experiment 52: `_Z7MathAbsi` got ordinal 1 despite the
+/// highest address). With one, its ordinals are kept and symbols it lacks follow, sorted
+/// by name (experiment 54).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct E32Exports {
-    /// `(symbol, link address)` in ordinal order.
-    pub symbols: Vec<(String, u32)>,
+    pub entries: Vec<E32Export>,
 }
 
 impl E32Exports {
-    /// `ignore_noncallable` (`--ignorenoncallable`, the SDK recipe for a DLL without a
-    /// `.def`): export functions only, skipping linker symbols such as `_edata`.
-    pub fn from_elf(elf: &ElfImage, ignore_noncallable: bool) -> Result<Self> {
-        let mut symbols = Vec::new();
-        for (name, value, is_function) in elf.exported_symbols()? {
-            if is_function {
-                symbols.push((name, value));
-            } else if !ignore_noncallable {
-                return Err(Error::Other(format!(
-                    "TODO: non-function export {name} without --ignorenoncallable (not observed)"
-                )));
+    /// Symbols elf2e32_next leaves out: typeinfo names (experiment 54: `_ZTS6CShape`,
+    /// `_ZTS3Foo` and `_ZTSzz` all skipped; `_ZTI`/`_ZTV`/`_ZTT` kept).
+    const SKIPPED_PREFIX: &str = "_ZTS";
+
+    /// Exportable symbols: defined global functions and objects in a real section
+    /// (experiment 54: `NOTYPE` linker markers and `SHN_ABS` objects never become
+    /// exports, with or without `--ignorenoncallable`).
+    fn candidates(elf: &ElfImage) -> Result<Vec<(String, u32, E32ExportKind)>> {
+        let mut out = Vec::new();
+        for sym in elf.exported_symbols()? {
+            if sym.is_absolute() || sym.name.starts_with(Self::SKIPPED_PREFIX) {
+                continue;
             }
+            let kind = if sym.is_function() {
+                E32ExportKind::Function
+            } else if sym.is_object() {
+                E32ExportKind::Data(sym.size)
+            } else {
+                continue;
+            };
+            out.push((sym.name, sym.value, kind));
         }
-        symbols.sort_by(|a, b| a.0.cmp(&b.0));
-        Ok(Self { symbols })
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(out)
+    }
+
+    pub fn from_elf(elf: &ElfImage, frozen: Option<&E32DefFile>) -> Result<Self> {
+        let mut candidates = Self::candidates(elf)?;
+        let mut entries = Vec::new();
+        let mut missing = Vec::new();
+        for frozen in frozen.map(|d| d.entries.as_slice()).unwrap_or_default() {
+            let kind = match frozen.data_size {
+                Some(size) => E32ExportKind::Data(size),
+                None => E32ExportKind::Function,
+            };
+            let address = if frozen.absent {
+                if let Some(at) = candidates.iter().position(|c| c.0 == frozen.name) {
+                    return Err(Error::Other(format!(
+                        "TODO: {} is ABSENT in the .def but defined in the ELF (not observed)",
+                        candidates[at].0
+                    )));
+                }
+                elf.entry()
+            } else {
+                match candidates.iter().position(|c| c.0 == frozen.name) {
+                    Some(at) => candidates.remove(at).1,
+                    None => {
+                        missing.push(frozen.name.clone());
+                        continue;
+                    }
+                }
+            };
+            entries.push(E32Export {
+                name: frozen.name.clone(),
+                ordinal: frozen.ordinal,
+                address,
+                kind,
+                absent: frozen.absent,
+                new: false,
+                comment: frozen.comment.clone(),
+            });
+        }
+        if !missing.is_empty() {
+            return Err(Error::Other(format!(
+                "frozen export(s) missing from the ELF: {} (mark them ABSENT in the .def to \
+                 retire the ordinal)",
+                missing.join(", ")
+            )));
+        }
+        for (name, address, kind) in candidates {
+            entries.push(E32Export {
+                name,
+                ordinal: entries.len() as u32 + 1,
+                address,
+                kind,
+                absent: false,
+                new: true,
+                comment: None,
+            });
+        }
+        Ok(Self { entries })
     }
 
     /// Export directory appended to the code: `u32 count`, then one link address per
     /// ordinal (experiment 52).
     pub fn table(&self) -> Vec<u8> {
-        let mut out = (self.symbols.len() as u32).to_le_bytes().to_vec();
-        for (_, addr) in &self.symbols {
-            out.extend_from_slice(&addr.to_le_bytes());
+        let mut out = (self.entries.len() as u32).to_le_bytes().to_vec();
+        for e in &self.entries {
+            out.extend_from_slice(&e.address.to_le_bytes());
         }
         out
     }
 
-    /// `--defoutput` text for a first (unfrozen) build (experiment 52).
+    /// `iExportDescType` and `iExportDesc` (experiment 54). No absent ordinal: type 0,
+    /// empty. Otherwise a presence bitmap, one bit per ordinal (LSB first, padding bits
+    /// set), either whole (type 1) or sparse (type 2: a bitmap of which bytes are not
+    /// `0xff`, then those bytes), whichever is shorter.
+    pub fn description(&self) -> Result<(u8, Vec<u8>)> {
+        if !self.entries.iter().any(|e| e.absent) {
+            return Ok((E32ImageHeaderV::EXPORT_DESC_NO_HOLES, Vec::new()));
+        }
+        let mut full = vec![0xffu8; self.entries.len().div_ceil(8)];
+        for (i, e) in self.entries.iter().enumerate() {
+            if e.absent {
+                full[i / 8] &= !(1 << (i % 8));
+            }
+        }
+        let mut sparse = vec![0u8; full.len().div_ceil(8)];
+        let mut holes = Vec::new();
+        for (i, &byte) in full.iter().enumerate() {
+            if byte != 0xff {
+                sparse[i / 8] |= 1 << (i % 8);
+                holes.push(byte);
+            }
+        }
+        sparse.extend_from_slice(&holes);
+        if full.len() < sparse.len() {
+            Ok((E32ImageHeaderV::EXPORT_DESC_FULL_BITMAP, full))
+        } else if sparse.len() < full.len() {
+            Ok((E32ImageHeaderV::EXPORT_DESC_SPARSE_BITMAP, sparse))
+        } else {
+            // 9-16 ordinals: both are 2 bytes and elf2e32_next rejects its own image
+            // ("gaps between export description and code sections"), so no golden.
+            Err(Error::Other(format!(
+                "TODO: ABSENT ordinals in a DLL with {} exports (9-16 not observed)",
+                self.entries.len()
+            )))
+        }
+    }
+
+    /// `--defoutput` text: frozen lines, then `; NEW:` and the new ones (experiments 52,
+    /// 54).
     pub fn def_text(&self) -> String {
-        let mut out = String::from("EXPORTS\n; NEW:\n");
-        for (i, (name, _)) in self.symbols.iter().enumerate() {
-            out.push_str(&format!("\t{name} @ {} NONAME\n", i + 1));
+        let mut out = String::from("EXPORTS\n");
+        let mut in_new = false;
+        for e in &self.entries {
+            if e.new && !in_new {
+                out.push_str("; NEW:\n");
+                in_new = true;
+            }
+            out.push_str(&format!("\t{} @ {} NONAME", e.name, e.ordinal));
+            if let E32ExportKind::Data(size) = e.kind {
+                out.push_str(&format!(" DATA {size}"));
+            }
+            if e.absent {
+                out.push_str(" ABSENT");
+            }
+            if let Some(comment) = &e.comment {
+                // elf2e32_next writes ` ; ` before the comment it read, `;` included.
+                out.push_str(&format!(" ; {comment}"));
+            }
+            out.push('\n');
         }
         out.push('\n');
         out
     }
+
+    /// Exports not yet in the frozen `.def`.
+    pub fn new_names(&self) -> Vec<&str> {
+        self.entries
+            .iter()
+            .filter(|e| e.new)
+            .map(|e| e.name.as_str())
+            .collect()
+    }
+}
+
+/// What makes an image a DLL: its exports, and whether writable static data is allowed
+/// (`--dlldata`, MMP `EPOCALLOWDLLDATA`).
+#[derive(Debug, Clone, Copy)]
+pub struct E32Dll<'a> {
+    pub exports: &'a E32Exports,
+    pub allow_data: bool,
 }
 
 /// A whole E32 image built from an ELF: header, code, imports, code relocations.
@@ -657,17 +841,17 @@ impl E32Image {
         ordinals: &E32Ordinals,
         time: E32Time,
     ) -> Result<Self> {
-        Self::new(E32Target::Exe, elf, uid, caps, ordinals, time, false)
+        Self::new(elf, uid, caps, ordinals, time, None)
     }
 
+    /// `dll`: `Some` for a DLL (export directory and description), `None` for an EXE.
     pub fn new(
-        target: E32Target,
         elf: &ElfImage,
         uid: E32Uid,
         caps: symdev_core::Capabilities,
         ordinals: &E32Ordinals,
         time: E32Time,
-        ignore_noncallable: bool,
+        dll: Option<E32Dll<'_>>,
     ) -> Result<Self> {
         let elf_layout = E32Layout::from_elf(elf)?;
         let mut code = E32CodeSection::from_elf(elf, &elf_layout, ordinals)?;
@@ -676,43 +860,68 @@ impl E32Image {
         let data = E32DataSection::from_elf(elf, &elf_layout)?;
         let imports = E32ImportSection::from_elf(elf, elf_layout.code_base)?;
         let mut layout = elf_layout;
-        let (flags, export_dir_offset, export_dir_count, export_desc_type) = match target {
-            E32Target::Exe => (
-                E32ImageHeader::FLAGS_EXE_SOFTVFP,
-                0,
-                0,
-                E32ImageHeaderV::EXPORT_DESC_FULL_BITMAP,
-            ),
-            E32Target::Dll => {
-                let exports = E32Exports::from_elf(elf, ignore_noncallable)?;
-                if exports.symbols.is_empty() {
+        let secure_id = uid.uid3;
+        let mut v = E32ImageHeaderV {
+            secure_id,
+            vendor_id: 0,
+            caps: caps.bits(),
+            exception_descriptor: layout.exception_descriptor,
+            spare2: 0,
+            export_desc_type: E32ImageHeaderV::EXPORT_DESC_FULL_BITMAP,
+            export_desc: Vec::new(),
+        };
+        let (flags, export_table_at, export_dir_count) = match dll {
+            None => (E32ImageHeader::FLAGS_EXE_SOFTVFP, None, 0),
+            Some(E32Dll {
+                exports,
+                allow_data,
+            }) => {
+                // elf2e32_next refuses a DLL with writable data unless --dlldata
+                // (experiment 54: "contains initialized/uninitialized writable data").
+                if !allow_data && (layout.data_size > 0 || layout.bss_size > 0) {
+                    let which = if layout.data_size > 0 {
+                        "initialized"
+                    } else {
+                        "uninitialized"
+                    };
+                    return Err(Error::Other(format!(
+                        "DLL contains {which} writable data; add EPOCALLOWDLLDATA to the MMP \
+                         (elf2e32 --dlldata)"
+                    )));
+                }
+                if exports.entries.is_empty() {
                     return Err(Error::Other(
                         "TODO: DLL without exports (not observed)".into(),
                     ));
                 }
+                (v.export_desc_type, v.export_desc) = exports.description()?;
                 let table_at = elf_layout.code_size;
                 code.bytes.extend_from_slice(&exports.table());
-                // Each export slot is relocated like any code pointer (experiment 52).
-                for i in 0..exports.symbols.len() as u32 {
-                    relocs
-                        .entries
-                        .push((table_at + 4 + 4 * i, E32RelocSection::KIND_TEXT));
+                // Each export slot is relocated like any code pointer (experiments 52, 54).
+                let data_end = layout.data_base + layout.data_size + layout.bss_size;
+                for (i, e) in exports.entries.iter().enumerate() {
+                    let kind = if (layout.data_base..data_end).contains(&e.address) {
+                        E32RelocSection::KIND_DATA
+                    } else {
+                        E32RelocSection::KIND_TEXT
+                    };
+                    relocs.entries.push((table_at + 4 + 4 * i as u32, kind));
                 }
                 relocs.entries.sort_unstable();
                 layout.code_size = code.bytes.len() as u32;
                 (
                     E32ImageHeader::FLAGS_DLL_SOFTVFP,
-                    E32ImageHeader::CODE_OFFSET + table_at + 4,
-                    exports.symbols.len() as u32,
-                    E32ImageHeaderV::EXPORT_DESC_NO_HOLES,
+                    Some(table_at),
+                    exports.entries.len() as u32,
                 )
             }
         };
+        let code_offset = v.code_offset();
+        let export_dir_offset = export_table_at.map_or(0, |at| code_offset + at + 4);
         let import_len = imports.bytes().len() as u32;
         let reloc_len = relocs.stored_len();
         let data_reloc_len = data_relocs.stored_len();
-        let code_reloc_offset = layout.import_offset() + import_len;
-        let secure_id = uid.uid3;
+        let code_reloc_offset = layout.import_offset(code_offset) + import_len;
         let header = E32ImageHeader {
             uid,
             header_crc: E32ImageHeader::CRC_INITIALISER,
@@ -737,13 +946,13 @@ impl E32Image {
             export_dir_offset,
             export_dir_count,
             text_size: layout.code_size,
-            code_offset: E32ImageHeader::CODE_OFFSET,
+            code_offset,
             data_offset: if layout.data_size == 0 {
                 0
             } else {
-                E32ImageHeader::CODE_OFFSET + layout.code_size
+                code_offset + layout.code_size
             },
-            import_offset: layout.import_offset(),
+            import_offset: layout.import_offset(code_offset),
             code_reloc_offset: if relocs.count() == 0 {
                 0
             } else {
@@ -763,15 +972,6 @@ impl E32Image {
                 + import_len
                 + reloc_len
                 + data_reloc_len,
-        };
-        let v = E32ImageHeaderV {
-            secure_id,
-            vendor_id: 0,
-            caps: caps.bits(),
-            exception_descriptor: layout.exception_descriptor,
-            spare2: 0,
-            export_desc_size: 0,
-            export_desc_type,
         };
         Ok(Self {
             header,
@@ -906,8 +1106,9 @@ mod tests {
             text_size: layout.code_size,
             code_offset: E32ImageHeader::CODE_OFFSET,
             data_offset: 0,
-            import_offset: layout.import_offset(),
-            code_reloc_offset: layout.import_offset() + imports.bytes().len() as u32,
+            import_offset: layout.import_offset(E32ImageHeader::CODE_OFFSET),
+            code_reloc_offset: layout.import_offset(E32ImageHeader::CODE_OFFSET)
+                + imports.bytes().len() as u32,
             data_reloc_offset: 0,
             process_priority: E32ImageHeader::PRIORITY_FOREGROUND,
             cpu_identifier: E32ImageHeader::CPU_ARMV5,
@@ -921,7 +1122,7 @@ mod tests {
             caps: 0xbe000,
             exception_descriptor: layout.exception_descriptor,
             spare2: 0,
-            export_desc_size: 0,
+            export_desc: Vec::new(),
             export_desc_type: E32ImageHeaderV::EXPORT_DESC_FULL_BITMAP,
         };
         (hdr, j, v)
@@ -943,7 +1144,10 @@ mod tests {
                 exception_descriptor: 0x10f5,
             }
         );
-        assert_eq!(hello_layout().import_offset(), 0x14e8);
+        assert_eq!(
+            hello_layout().import_offset(E32ImageHeader::CODE_OFFSET),
+            0x14e8
+        );
     }
 
     #[test]
