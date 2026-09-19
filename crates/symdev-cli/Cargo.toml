@@ -13,6 +13,7 @@ clap = { version = "4", features = ["derive"] }
 pollster = "0.4"
 symdev-build = { path = "../symdev-build" }
 symdev-core = { path = "../symdev-core" }
+symdev-emulator = { path = "../symdev-emulator" }
 symdev-manifest = { path = "../symdev-manifest" }
 
 [dev-dependencies]

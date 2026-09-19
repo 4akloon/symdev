@@ -20,6 +20,8 @@ pub enum Commands {
     Build,
     Package,
     Deploy,
+    /// Install build/<name>.sisx into EKA2L1 and launch it (SYMDEV_EKA2L1).
+    Run,
 }
 
 #[derive(Clone, ValueEnum)]

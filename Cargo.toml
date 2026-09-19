@@ -10,6 +10,7 @@ members = [
     "crates/symdev-elf2e32",
     "crates/symdev-cli",
     "crates/symdev-build",
+    "crates/symdev-emulator",
 ]
 
 [workspace.package]
