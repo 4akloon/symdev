@@ -25,6 +25,10 @@ pub fn create_project(cwd: &Path, name: &str, template: Template) -> Result<Path
     std::fs::create_dir_all(root.join("group")).map_err(io_err)?;
     std::fs::create_dir_all(root.join("src")).map_err(io_err)?;
     let uid3 = uid3_hex(name);
+    let icon = match template {
+        Template::Gui => format!("icon = \"gfx/{name}.svg\"\n"),
+        Template::Console => String::new(),
+    };
     std::fs::write(
         root.join("symdev.toml"),
         format!(
@@ -42,6 +46,7 @@ pub fn create_project(cwd: &Path, name: &str, template: Template) -> Result<Path
              uid3 = \"{uid3}\"\n\
              capabilities = []\n\
              vendor = \"symdev\"\n\
+             {icon}\
              \n\
              [signing]\n\
              mode = \"self-signed\"\n"
@@ -79,6 +84,7 @@ pub fn create_project(cwd: &Path, name: &str, template: Template) -> Result<Path
 fn write_gui(root: &Path, name: &str, uid3: &str) -> Result<(), Error> {
     let fill = |t: &str| t.replace("{{NAME}}", name).replace("{{UID3}}", uid3);
     std::fs::create_dir_all(root.join("data")).map_err(io_err)?;
+    std::fs::create_dir_all(root.join("gfx")).map_err(io_err)?;
     let files = [
         (
             "group/bld.inf".to_string(),
@@ -99,6 +105,10 @@ fn write_gui(root: &Path, name: &str, uid3: &str) -> Result<(), Error> {
         (
             format!("data/{name}_reg.rss"),
             fill(include_str!("../templates/gui/app_reg.rss")),
+        ),
+        (
+            format!("gfx/{name}.svg"),
+            fill(include_str!("../templates/gui/app.svg")),
         ),
     ];
     for (path, text) in files {
@@ -197,10 +207,14 @@ mod tests {
     fn examples_gui_matches_scaffold() {
         let dir = scratch();
         let root = create_project(&dir, "gui", Template::Gui).unwrap();
-        let example: [(&str, &str); 6] = [
+        let example: [(&str, &str); 7] = [
             (
                 "symdev.toml",
                 include_str!("../../../examples/gui/symdev.toml"),
+            ),
+            (
+                "gfx/gui.svg",
+                include_str!("../../../examples/gui/gfx/gui.svg"),
             ),
             (
                 "group/bld.inf",

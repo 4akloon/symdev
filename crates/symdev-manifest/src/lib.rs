@@ -206,6 +206,21 @@ fn load_missing_file() {
 }
 
 #[test]
+fn symbian_icon_is_optional_and_nonempty() {
+    let base = "[package]\nname = \"gui\"\nversion = \"0.1.0\"\n[target]\ndevice = \"nokia-e52\"\n[language]\nname = \"cpp\"\n[symbian]\ncapabilities = []\nvendor = \"symdev\"\n";
+    let m = parse(&format!("{base}icon = \"gfx/gui.svg\"\n")).unwrap();
+    assert_eq!(
+        m.symbian.icon.as_deref(),
+        Some(std::path::Path::new("gfx/gui.svg"))
+    );
+    assert_eq!(parse(base).unwrap().symbian.icon, None);
+    let err = parse(&format!("{base}icon = \"\"\n"))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("symbian.icon"), "{err}");
+}
+
+#[test]
 fn signing_subject_is_optional_and_nonempty() {
     let base = "[package]\nname = \"hello\"\nversion = \"0.1.0\"\n[target]\ndevice = \"nokia-e52\"\n[language]\nname = \"cpp\"\n[symbian]\ncapabilities = []\nvendor = \"symdev\"\n";
     let with =
