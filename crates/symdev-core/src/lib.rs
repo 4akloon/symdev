@@ -1,8 +1,10 @@
+mod capability;
 mod error;
 mod local_env;
 mod traits;
 mod types;
 
+pub use capability::Capabilities;
 pub use error::*;
 pub use local_env::*;
 pub use traits::*;

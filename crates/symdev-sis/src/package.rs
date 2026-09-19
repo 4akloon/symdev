@@ -163,24 +163,9 @@ impl SisUnsignedSpec<'_> {
 
 impl SisWord41 {
     fn from_capabilities(caps: &[String]) -> Result<Self> {
-        // Bits recorded by experiment 6's six user-grantable names + hello type-41 `0x000be000`.
-        const MAP: &[(&str, u32)] = &[
-            ("NetworkServices", 13),
-            ("LocalServices", 14),
-            ("ReadUserData", 15),
-            ("WriteUserData", 16),
-            ("Location", 17),
-            ("UserEnvironment", 19),
-        ];
-        let mut word = 0u32;
-        for cap in caps {
-            let Some((_, bit)) = MAP.iter().copied().find(|(name, _)| *name == cap.as_str()) else {
-                return Err(Error::Other(format!(
-                    "SIS capability bits not yet derived from pkg: {cap}"
-                )));
-            };
-            word |= 1 << bit;
-        }
+        let bits = symdev_core::Capabilities::from_names(caps)?.bits();
+        let word = u32::try_from(bits)
+            .map_err(|_| Error::Other(format!("SIS type-41 word cannot hold {bits:#x}")))?;
         Ok(Self::new(word))
     }
 }
@@ -430,10 +415,7 @@ fn encode_unsigned_sis_rejects_capability_bits_not_derived() {
         reg_rsc: None,
     })
     .unwrap_err();
-    assert_eq!(
-        err.to_string(),
-        "SIS capability bits not yet derived from pkg: AllFiles"
-    );
+    assert_eq!(err.to_string(), "capability bit not yet derived: AllFiles");
 }
 
 #[test]
