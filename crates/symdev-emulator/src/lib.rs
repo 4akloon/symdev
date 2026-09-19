@@ -66,12 +66,12 @@ mod tests {
     #[test]
     fn run_args_match_experiment_48() {
         let b = Eka2l1Backend {
-            eka2l1: PathBuf::from("/home/u/.local/bin/eka2l1-patched"),
+            eka2l1: PathBuf::from("/home/u/.local/bin/eka2l1"),
         };
         assert_eq!(
             b.run_args(Path::new("/p/build/hello.sisx"), 0xef9f_2cab),
             [
-                "/home/u/.local/bin/eka2l1-patched",
+                "/home/u/.local/bin/eka2l1",
                 "--install",
                 "/p/build/hello.sisx",
                 "--run",
