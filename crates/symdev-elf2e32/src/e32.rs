@@ -73,11 +73,22 @@ pub struct E32ImportSection {
 }
 
 impl E32ImportSection {
-    /// DLL blocks in `.gnu.version_r` order; slots in `DT_REL` then `DT_JMPREL` order.
+    /// Not imported: slots stay as linked and get an inferred-kind code relocation
+    /// (experiment 51: the only undefined symbol elf2e32_next treats this way).
+    pub const PURE_VIRTUAL: &str = "__cxa_pure_virtual";
+
+    /// DLL blocks sorted by DLL name (experiment 51); slots in `DT_REL` then
+    /// `DT_JMPREL` order.
     pub fn from_elf(elf: &ElfImage, code_base: u32) -> Result<Self> {
-        let relocs = elf.import_relocs()?;
+        let relocs: Vec<_> = elf
+            .import_relocs()?
+            .into_iter()
+            .filter(|r| r.symbol != Self::PURE_VIRTUAL)
+            .collect();
+        let mut dlls = elf.needed_dlls()?;
+        dlls.sort();
         let mut blocks = Vec::new();
-        for dll in elf.needed_dlls()? {
+        for dll in dlls {
             let code_offsets = relocs
                 .iter()
                 .filter(|r| r.dll == dll)
@@ -176,15 +187,19 @@ impl E32Fixups {
         Ok(())
     }
 
-    /// `R_ARM_ABS32` words in `[base, base + len)` become `S + A`; `R_ARM_RELATIVE`
-    /// words stay as linked (experiments 44, 49).
+    /// `R_ARM_ABS32` words in `[base, base + len)` become `S + A`, `R_ARM_GLOB_DAT`
+    /// words `S`; `R_ARM_RELATIVE` words stay as linked (experiments 44, 49, 51).
     fn absolute(elf: &ElfImage, bytes: &mut [u8], base: u32) -> Result<()> {
         let end = base + bytes.len() as u32;
         for rel in elf.local_relocs()? {
             if !rel.absolute || !(base..end).contains(&rel.vaddr) {
                 continue;
             }
-            let addend = Self::word(bytes, base, rel.vaddr)?;
+            let addend = if rel.addend_in_place {
+                Self::word(bytes, base, rel.vaddr)?
+            } else {
+                0
+            };
             let value = rel.target.checked_add(addend).ok_or_else(|| {
                 Error::Other(format!("absolute relocation at {:#x} overflows", rel.vaddr))
             })?;
@@ -209,6 +224,9 @@ impl E32CodeSection {
         let base = layout.code_base;
         let end = base + bytes.len() as u32;
         for imp in elf.import_relocs()? {
+            if imp.symbol == E32ImportSection::PURE_VIRTUAL {
+                continue;
+            }
             if !(base..end).contains(&imp.vaddr) {
                 return Err(Error::Other(format!(
                     "TODO: import {} at {:#x} outside code (not observed)",
@@ -262,6 +280,7 @@ pub struct E32RelocSection {
 impl E32RelocSection {
     pub const KIND_TEXT: u16 = 1;
     pub const KIND_DATA: u16 = 2;
+    pub const KIND_INFERRED: u16 = 3;
     const PAGE: u32 = 0x1000;
 
     /// Code relocations: local dynamic relocations whose word lies in the code segment;
@@ -300,6 +319,13 @@ impl E32RelocSection {
                 )));
             };
             entries.push((rel.vaddr - base, kind));
+        }
+        for imp in elf.import_relocs()? {
+            if imp.symbol == E32ImportSection::PURE_VIRTUAL
+                && (base..base + len).contains(&imp.vaddr)
+            {
+                entries.push((imp.vaddr - base, Self::KIND_INFERRED));
+            }
         }
         entries.sort_unstable();
         Ok(Self { entries })
