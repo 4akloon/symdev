@@ -969,3 +969,15 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
   - Native output byte-equals elf2e32_next (DLL apart from time/CRC, `.dso`, `.def`) in all 60+ cases that produced an image; every case it refused, symdev refuses too.
   - **Freeze:** SDK `efreeze.pl` does not run on Linux (Windows paths), so `symdev freeze` uses its own rule: keep the frozen text, append the `; NEW:` lines. E2E in EKA2L1: `calc.exe` built against frozen `mathlib`, then `MathAab` (sorts first) added and only the DLL rebuilt: frozen → `MathTwice(21)=42 MathAbs(-5)=5`; unfrozen → `MathTwice(21)=268435477 MathAbs(-5)=995` (old ordinals hit the wrong functions). Emulator only; not E52 support.
 
+## 55. App icon: SVG → MIF with Wine `mifconv` (GUI)
+
+- **Requires:** experiment 51 (GUI app), Wine.
+- **Procedure:** SDK example icon makefiles (`cpp_examples/*/group/icons_scalable.mk`) run `mifconv <App>_aif.mif /h<App>.mbg /c32,8 <icon>.svg` and the app's `LOCALISABLE_APP_INFO` names `icon_file = "\\resource\\apps\\<App>_aif.mif"`, `number_of_icons = 1`. Run SDK `mifconv.exe` (version 1.11 build 49) under Wine on a hand-written SVG Tiny; install the MIF with the GUI app and look for it in EKA2L1.
+- **Outcome:** pass (emulator only)
+- **Evidence:** 2026-09-19, `$HOME/src/symdev-experiment-55/`.
+  - Bare `mifconv` fails: "Binary converter 'SVGTBINENCODE.exe' not found" (needs `/S<epoc32\tools>`), then "Changing temporary working directory failed! \epoc32\BUILD\s60\icons\temp\" (needs `/T<dir>`). With both it writes the MIF and the `.mbg` enum (`EMbm<App>…`, 16384/16385).
+  - MIF layout: `B##4`, version 2, entry table offset 16, entry count 2 (icon and mask entries point at the same icon); each icon: `C##4`, version 1, header size 0x20, data length, type 1 (SVG), depth 0xb, animated 0, mask depth 4, then the `svgtbinencode` output.
+  - **Path trap:** the input path is mangled into the temporary `.svgb` name (`Z__home_…_gui.svgb`); when that path gets long (between ~85 and ~150 characters it stopped working) `svgtbinencode` writes nothing and `mifconv` still exits 0 with a 64-byte MIF whose icons have zero length. symdev runs it in `build/mifconv-temp` on `<app>.svg` with relative paths (worked from a 168-character directory) and rejects a MIF with an empty icon.
+  - The S60 context pane and Menu grid in EKA2L1 show a placeholder for every app (ROM Menu too), so they cannot confirm icons; EKA2L1's own app list shows the `gui` icon from our MIF (other apps: EKA2L1's default).
+  - Native MIF writing needs a clean-room SVG → SVGB encoder; not done.
+

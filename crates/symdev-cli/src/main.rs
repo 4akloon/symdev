@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser};
-use symdev_build::{BuildOutputs, FrozenExports, GcceBuild, SisPackage, Toolchain};
+use symdev_build::{AppIcon, BuildOutputs, FrozenExports, GcceBuild, SisPackage, Toolchain};
 use symdev_core::{Artifact, BuildBackend, Error, LocalEnv, PackageBackend, Project};
 
 use cli::{Cli, Commands};
@@ -105,6 +105,7 @@ fn build_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
             tools,
             uid3,
             capabilities: m.symbian.capabilities,
+            icon: m.symbian.icon,
         }
         .build(&Project {
             root: std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?,
@@ -163,6 +164,7 @@ fn package_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
             m.package.name
         )));
     }
+    let icon = m.symbian.icon.clone();
     let password = std::env::var("SYMDEV_SIGN_PASSWORD").unwrap_or_default();
     let cwd = std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?;
     let package = SisPackage {
@@ -182,7 +184,7 @@ fn package_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
             .map(|p| if p.is_absolute() { p } else { cwd.join(p) }),
         subject: m.signing.subject,
     }
-    .package(&package_artifacts(&cwd, &e32)?)?;
+    .package(&package_artifacts(&cwd, &e32, icon.as_deref())?)?;
     println!("{}", package.primary.display());
     Ok(ExitCode::SUCCESS)
 }
@@ -234,18 +236,22 @@ fn run_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
 
 /// The EXE plus the resources the project's MMPs compile (`BuildOutputs`); a project
 /// without `bld.inf` packages its EXE alone.
-fn package_artifacts(cwd: &Path, e32: &Path) -> Result<Vec<Artifact>, Error> {
+fn package_artifacts(cwd: &Path, e32: &Path, icon: Option<&Path>) -> Result<Vec<Artifact>, Error> {
     let has_bld = cwd.join("group/bld.inf").is_file() || cwd.join("bld.inf").is_file();
     if !has_bld {
         return Ok(vec![Artifact::exe(cwd.join(e32))]);
     }
-    let outputs = BuildOutputs::of(&Project {
+    let project = Project {
         root: cwd.to_path_buf(),
-    })?;
+    };
+    let mut outputs = BuildOutputs::of(&project)?;
+    if let Some(source) = icon {
+        outputs.push(AppIcon::of(&project, source)?.artifact(&cwd.join("build")));
+    }
     for a in &outputs {
         if a.dest.is_some() && !a.path.is_file() {
             return Err(Error::Other(format!(
-                "resource not found: {} (run symdev build)",
+                "build output not found: {} (run symdev build)",
                 a.path.display()
             )));
         }

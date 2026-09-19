@@ -33,7 +33,9 @@ Verified 2026-09-19 in EKA2L1 (RM-469 firmware), built without `SYMDEV_ELF2E32` 
 
 `examples/gui` is exactly what `symdev new gui --target nokia-e52 --template gui` generates (also kept in sync by a test): a minimal S60 3rd Edition Avkon application (`CAknApplication` / `CAknDocument` / `CAknAppUi` and one control that draws a line of text) with an application resource (`EIK_APP_INFO`, `LOCALISABLE_APP_INFO`) and a registration resource.
 
-Same steps as `hello`. Resources are compiled with the SDK's `cpp.exe` + `rcomp.exe` under Wine (`SYMDEV_WINE`, default `/usr/bin/wine`) until a native RSS compiler exists; `LIBRARY` lines are linked as `.dso`. `symdev package` installs `gui.exe`, `\resource\apps\gui.rsc` and the registration resource.
+Same steps as `hello`. Resources are compiled with the SDK's `cpp.exe` + `rcomp.exe` under Wine (`SYMDEV_WINE`, default `/usr/bin/wine`) until a native RSS compiler exists; `LIBRARY` lines are linked as `.dso`. `symdev package` installs `gui.exe`, `\resource\apps\gui.rsc`, the registration resource and the icon.
+
+The icon is `gfx/gui.svg` (SVG Tiny), named by `icon = "gfx/gui.svg"` under `[symbian]` in `symdev.toml`. `symdev build` turns it into `build/gui_aif.mif` with the SDK's `mifconv.exe` under Wine, and `data/gui.rss` points `icon_file` at `\resource\apps\gui_aif.mif` (experiment 55). EKA2L1 shows it in its own app list; its S60 status pane and menu show a placeholder for every app.
 
 Verified 2026-09-19 in EKA2L1 (experiment 51): title pane shows the caption, the view draws `Hello from symdev`, right softkey `Exit`. Emulator only.
 
