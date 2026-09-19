@@ -124,6 +124,38 @@ mod tests {
     }
 
     #[test]
+    fn examples_hello_matches_scaffold() {
+        let dir = scratch();
+        let root = create_project(&dir, "hello").unwrap();
+        let example: [(&str, &str); 5] = [
+            (
+                "symdev.toml",
+                include_str!("../../../examples/hello/symdev.toml"),
+            ),
+            (
+                "group/bld.inf",
+                include_str!("../../../examples/hello/group/bld.inf"),
+            ),
+            (
+                "group/hello.mmp",
+                include_str!("../../../examples/hello/group/hello.mmp"),
+            ),
+            (
+                "src/hello.cpp",
+                include_str!("../../../examples/hello/src/hello.cpp"),
+            ),
+            (
+                "src/hello.h",
+                include_str!("../../../examples/hello/src/hello.h"),
+            ),
+        ];
+        for (path, want) in example {
+            let got = std::fs::read_to_string(root.join(path)).unwrap();
+            assert_eq!(got, want, "examples/hello/{path} drifted from `symdev new`");
+        }
+    }
+
+    #[test]
     fn create_project_existing_dir_errors() {
         let dir = scratch();
         std::fs::create_dir(dir.join("hello")).unwrap();
