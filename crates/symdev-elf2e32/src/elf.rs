@@ -20,13 +20,15 @@ pub struct ElfImportReloc {
 }
 
 /// A dynamic relocation against a defined symbol: the word at `vaddr` refers to `target`.
-/// `absolute` is `R_ARM_ABS32` (word holds the addend); otherwise `R_ARM_RELATIVE`
-/// (word already holds the link-time address).
+/// `absolute` words are rewritten to the symbol address: `R_ARM_ABS32` adds the
+/// word already in place (`S + A`), `R_ARM_GLOB_DAT` does not (`S`, `addend_in_place`
+/// false). `R_ARM_RELATIVE` words already hold the link-time address.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ElfLocalReloc {
     pub vaddr: u32,
     pub target: u32,
     pub absolute: bool,
+    pub addend_in_place: bool,
 }
 
 /// One `.gnu.version_r` auxiliary entry.
@@ -80,6 +82,7 @@ impl ElfImage {
     const DT_JMPREL: u32 = 23;
     const SHN_UNDEF: u16 = 0;
     const R_ARM_ABS32: u32 = 2;
+    const R_ARM_GLOB_DAT: u32 = 21;
     const R_ARM_RELATIVE: u32 = 23;
     const EM_ARM: u16 = 40;
 
@@ -244,7 +247,10 @@ impl ElfImage {
             if rel.symbol != 0 && rel.symbol_section == Self::SHN_UNDEF {
                 continue;
             }
-            if !matches!(rel.kind, Self::R_ARM_ABS32 | Self::R_ARM_RELATIVE) {
+            if !matches!(
+                rel.kind,
+                Self::R_ARM_ABS32 | Self::R_ARM_GLOB_DAT | Self::R_ARM_RELATIVE
+            ) {
                 return Err(Error::Other(format!(
                     "TODO: ARM relocation type {} at {:#x} (not observed)",
                     rel.kind, rel.vaddr
@@ -253,7 +259,8 @@ impl ElfImage {
             out.push(ElfLocalReloc {
                 vaddr: rel.vaddr,
                 target: rel.symbol_value,
-                absolute: rel.kind == Self::R_ARM_ABS32,
+                absolute: rel.kind != Self::R_ARM_RELATIVE,
+                addend_in_place: rel.kind == Self::R_ARM_ABS32,
             });
         }
         Ok(out)
