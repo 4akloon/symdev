@@ -1,5 +1,5 @@
 use crate::bld::ParseError;
-use crate::model::Mmp;
+use crate::model::{Mmp, MmpResource};
 
 const PREPROCESSOR: &[&str] = &["if", "ifdef", "ifndef", "elif", "else", "endif", "include"];
 
@@ -38,6 +38,7 @@ impl Mmp {
         let mut uid = Vec::new();
         let mut targetpath = None;
         let mut source = Vec::new();
+        let mut source_sourcepath = Vec::new();
         let mut sourcepath = Vec::new();
         let mut systeminclude = Vec::new();
         let mut userinclude = Vec::new();
@@ -48,7 +49,7 @@ impl Mmp {
         let mut epocheapsize = None;
         let mut epocallowdlldata = false;
         let mut resource = Vec::new();
-        let mut resource_block: Option<Vec<String>> = None;
+        let mut resource_block: Option<MmpResource> = None;
 
         for raw in text.lines() {
             let line = match raw.find("//") {
@@ -77,19 +78,39 @@ impl Mmp {
             if let Some(mut block) = resource_block.take() {
                 if tok.eq_ignore_ascii_case("END") {
                     resource.push(block);
-                } else {
-                    block.push(line.to_string());
-                    resource_block = Some(block);
+                    continue;
                 }
+                if tok.eq_ignore_ascii_case("HEADER") {
+                    block.header = true;
+                } else if tok.eq_ignore_ascii_case("TARGETPATH") {
+                    block.targetpath = Some(rest(line, tok));
+                } else if tok.eq_ignore_ascii_case("LANG") {
+                    block.lang.extend(rest_tokens(line, tok));
+                } else {
+                    return Err(ParseError(format!(
+                        "TODO: START RESOURCE directive {tok} (not observed)"
+                    )));
+                }
+                resource_block = Some(block);
                 continue;
             }
 
             if tok.eq_ignore_ascii_case("START") {
-                let kind = line.split_whitespace().nth(1).unwrap_or("");
+                let mut words = line.split_whitespace().skip(1);
+                let kind = words.next().unwrap_or("");
                 if !kind.eq_ignore_ascii_case("RESOURCE") {
                     return Err(ParseError(format!("unknown directive: {line}")));
                 }
-                resource_block = Some(Vec::new());
+                let file = words
+                    .next()
+                    .ok_or_else(|| ParseError("START RESOURCE without a file".into()))?;
+                resource_block = Some(MmpResource {
+                    file: file.to_string(),
+                    sourcepath: sourcepath.last().cloned(),
+                    targetpath: None,
+                    header: false,
+                    lang: Vec::new(),
+                });
                 continue;
             }
 
@@ -109,7 +130,10 @@ impl Mmp {
             } else if tok.eq_ignore_ascii_case("TARGETPATH") {
                 targetpath = Some(rest(line, tok));
             } else if tok.eq_ignore_ascii_case("SOURCE") {
-                source.extend(rest_tokens(line, tok));
+                for file in rest_tokens(line, tok) {
+                    source.push(file);
+                    source_sourcepath.push(sourcepath.last().cloned());
+                }
             } else if tok.eq_ignore_ascii_case("SOURCEPATH") {
                 sourcepath.extend(rest_tokens(line, tok));
             } else if tok.eq_ignore_ascii_case("SYSTEMINCLUDE") {
@@ -149,6 +173,7 @@ impl Mmp {
             uid,
             targetpath,
             source,
+            source_sourcepath,
             sourcepath,
             systeminclude,
             userinclude,
@@ -207,17 +232,43 @@ fn uid_omitted() {
 }
 
 #[test]
-fn start_resource_retained_as_block() {
+fn start_resource_block_is_typed() {
     let m = Mmp::parse(
-        "TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\nSTART RESOURCE hello.rss\nHEADER\nTARGETPATH \\resource\\apps\nEND\n",
+        "TARGET x.exe\nTARGETTYPE EXE\nSOURCEPATH ..\\src\nSOURCE a.cpp\nSOURCEPATH ..\\data\nSTART RESOURCE hello.rss\nHEADER\nTARGETPATH \\resource\\apps\nEND\n",
     )
     .unwrap();
     assert_eq!(
         m.resource,
-        [vec![
-            "HEADER".to_string(),
-            "TARGETPATH \\resource\\apps".to_string()
-        ]]
+        [MmpResource {
+            file: "hello.rss".into(),
+            sourcepath: Some("..\\data".into()),
+            targetpath: Some("\\resource\\apps".into()),
+            header: true,
+            lang: Vec::new(),
+        }]
     );
     assert!(m.targetpath.is_none());
+}
+
+#[test]
+fn start_resource_rejects_unobserved_directive() {
+    assert!(
+        Mmp::parse(
+            "TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\nSTART RESOURCE a.rss\nTARGET b.rsc\nEND\n"
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn each_source_keeps_the_sourcepath_in_effect() {
+    let m = Mmp::parse(
+        "TARGET x.exe\nTARGETTYPE EXE\nSOURCEPATH ..\\src\nSOURCE a.cpp\nSOURCEPATH ..\\data\nSTART RESOURCE a.rss\nEND\nSOURCE b.cpp\n",
+    )
+    .unwrap();
+    assert_eq!(m.source, ["a.cpp", "b.cpp"]);
+    assert_eq!(
+        m.source_sourcepath,
+        [Some("..\\src".to_string()), Some("..\\data".to_string())]
+    );
 }
