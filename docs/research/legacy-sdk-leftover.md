@@ -10,7 +10,7 @@ Parked (not this host’s next slice): **T5** macOS GCC; **M3** SSH `ExecutionEn
 
 ## Executive answer
 
-`symdev build` / `symdev package` on this host **do not spawn Wine PE**. Packaging is native (`SisUnsigned` + `SelfSignedDsa`). The live Wave 0 spawns are host ELF binaries from `Toolchain::from_env`: `SYMDEV_GXX`, `SYMDEV_LD`, `SYMDEV_ELF2E32` (Linux `elf2e32_next`, not SDK `elf2e32.exe`).
+`symdev build` / `symdev package` on this host **do not spawn Wine PE**. Packaging is native (`SisUnsigned` + `SelfSignedDsa`). The live Wave 0 spawns are host ELF binaries from `Toolchain::from_env`: `SYMDEV_GXX`, `SYMDEV_LD`. The post-link step is native (`symdev-elf2e32`, experiments 45–47) unless the optional `SYMDEV_ELF2E32` points at an external Linux `elf2e32_next`.
 
 What is still “the SDK” is **files under `SYMDEV_EPOCROOT`**: headers, `.lib` / `.dso`, and `elf2e32 --libpath`. Wine `*Tool` types still *name* PE paths and pin recorded argv; nothing in `GcceBuild` / `SisPackage` / `symdev` CLI `Command::new`s them.
 
@@ -38,7 +38,7 @@ Wine PE adapters that **exist but are not spawned** (argv museums + unit tests; 
 
 No `*Tool` type for SDK `cpp.exe` (`epoc32/gcc/bin/cpp.exe`), `elf2e32.exe` (PE), `mifconv.exe`, `bmconv.exe`, `petran`, or `epocrc.pl`. Those PEs are research-only (experiments 3, 9). `WINEPATH=<EPOCROOT>/epoc32/tools` was required for Wine `rcomp.exe` to find sibling `uidcrc.exe`; that env is not in any type.
 
-`Elf2E32Tool` is **not** Wine: it prefixes `SYMDEV_ELF2E32` (Linux ELF). `GcceBuild::elf2e32_args` duplicates that argv and does not call `Elf2E32` / `Elf2E32Tool`.
+`Elf2E32Tool` is **not** Wine: it prefixes `SYMDEV_ELF2E32` (Linux ELF). `GcceBuild::elf2e32_args` builds the recorded argv; without `SYMDEV_ELF2E32` it feeds that argv to native `Elf2E32::from_args` + `encode` instead of spawning.
 
 ### 1b. Still consumed as files (EPOCROOT — not a PE spawn)
 
@@ -49,7 +49,7 @@ No `*Tool` type for SDK `cpp.exe` (`epoc32/gcc/bin/cpp.exe`), `elf2e32.exe` (PE)
 | `SYMDEV_EPOCROOT` | SDK root (`epoc32/…`) |
 | `SYMDEV_GXX` | host `arm-none-symbianelf-g++` |
 | `SYMDEV_LD` | host `arm-none-symbianelf-ld` (Wave 0: GNU ld **2.29.1**) |
-| `SYMDEV_ELF2E32` | Linux `elf2e32` (`elf2e32_next`, experiment 3) |
+| `SYMDEV_ELF2E32` | optional external Linux `elf2e32` (`elf2e32_next`, experiment 3); unset → native |
 | `SYMDEV_GCC_LIB` | GCC libdir (`…/lib/gcc/arm-none-symbianelf/12.1.0`) |
 | `SYMDEV_GCC_TARGET_LIB` | target lib (`…/arm-none-symbianelf/lib`) |
 
@@ -89,7 +89,7 @@ Product CLI uses the libraries, not the tool bins ([ported-tools-crates.md](port
 
 | Gap | Where | Wave 0 impact |
 |---|---|---|
-| `Elf2E32::encode` / bin `todo!("native ELF→E32 encode")` | `symdev-elf2e32` | Wave 0 still spawns Linux `SYMDEV_ELF2E32` |
+| `Elf2E32::encode` beyond observed EXE/softvfp (DLLs, exports, data sections, other capabilities) | `symdev-elf2e32` | EXE hello path is native (experiments 44–47) |
 | RSS source parse / `.rsg` | `rcomp` bin `todo!("RSS source parse / .rsg")`; `Rcomp::from_args` TODO on `-v -p -l -force -{uid2,uid3}` | not on Wave 0; `START RESOURCE` not compiled |
 | `signsis` inflate of an existing `.sis` | `Signsis::run` TODO; bin `todo!` | not Wave 0 (`encode_signed` on the library) |
 | makesis flags `-h -i -s -d`; pkg files beyond EXE + `_reg.rsc` (`TYPE=SA`); caps from E32 | `Makesis` | Wave 0 `.pkg` has no caps line; caps come from Manifest → elf2e32 / SIS type 41 |

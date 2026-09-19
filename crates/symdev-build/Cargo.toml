@@ -9,6 +9,7 @@ symdev-core = { path = "../symdev-core" }
 symdev-sis = { path = "../symdev-sis" }
 symdev-makekeys = { path = "../symdev-makekeys" }
 symdev-rcomp = { path = "../symdev-rcomp" }
+symdev-elf2e32 = { path = "../symdev-elf2e32" }
 thiserror = "2"
 
 [dev-dependencies]
