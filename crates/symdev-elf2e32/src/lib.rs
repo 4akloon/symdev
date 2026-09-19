@@ -3,15 +3,18 @@ use std::path::{Path, PathBuf};
 use symdev_core::{Error, Result};
 
 mod deflate;
+mod dso;
 mod e32;
 mod elf;
 
 pub use deflate::E32Deflate;
+pub use dso::E32Dso;
 pub use e32::E32DataSection;
 pub use e32::E32Layout;
 pub use e32::E32RelocSection;
 pub use e32::E32Uid;
 pub use e32::{E32CodeSection, E32Ordinals};
+pub use e32::{E32Exports, E32Target};
 pub use e32::{E32Image, E32Time};
 pub use e32::{E32ImageHeader, E32ImageHeaderJ, E32ImageHeaderV};
 pub use e32::{E32ImportBlock, E32ImportSection};
@@ -31,6 +34,13 @@ pub struct Elf2E32 {
     pub libpath: PathBuf,
     /// Observed `--uncompressed` (`elf2e32 --help`; experiment 44).
     pub uncompressed: bool,
+    /// DLL options from the SDK GCCE recipe (`cl_bpabi.pm`, experiment 52).
+    pub uid2: Option<u32>,
+    pub sid: Option<u32>,
+    pub dso: Option<PathBuf>,
+    pub defoutput: Option<PathBuf>,
+    pub definput: Option<PathBuf>,
+    pub ignorenoncallable: bool,
 }
 
 impl Elf2E32 {
@@ -49,9 +59,16 @@ impl Elf2E32 {
         let mut linkas = None;
         let mut libpath = None;
         let mut uncompressed = false;
+        let mut ignorenoncallable = false;
+        let (mut uid2, mut sid, mut dso, mut defoutput, mut definput) =
+            (None, None, None, None, None);
         for tok in tokens {
             if tok == "--uncompressed" {
                 uncompressed = true;
+                continue;
+            }
+            if tok == "--ignorenoncallable" {
+                ignorenoncallable = true;
                 continue;
             }
             let Some((key, val)) = tok.split_once('=') else {
@@ -67,6 +84,11 @@ impl Elf2E32 {
                 "--elfinput" => elfinput = Some(PathBuf::from(val)),
                 "--linkas" => linkas = Some(val.to_string()),
                 "--libpath" => libpath = Some(PathBuf::from(val)),
+                "--uid2" => uid2 = Some(parse_uid(val)?),
+                "--sid" => sid = Some(parse_uid(val)?),
+                "--dso" => dso = Some(PathBuf::from(val)),
+                "--defoutput" => defoutput = Some(PathBuf::from(val)),
+                "--definput" => definput = Some(PathBuf::from(val)),
                 _ => return Err(Error::Other(format!("unknown elf2e32 flag: {key}"))),
             }
         }
@@ -82,11 +104,34 @@ impl Elf2E32 {
             linkas: linkas.ok_or_else(|| Error::Other("elf2e32 missing --linkas".into()))?,
             libpath: libpath.ok_or_else(|| Error::Other("elf2e32 missing --libpath".into()))?,
             uncompressed,
+            uid2,
+            sid,
+            dso,
+            defoutput,
+            definput,
+            ignorenoncallable,
         })
     }
 
     pub fn uid(&self) -> E32Uid {
-        E32Uid::for_exe(self.uid1, self.uid3)
+        match self.uid2 {
+            Some(uid2) => E32Uid {
+                uid1: self.uid1,
+                uid2,
+                uid3: self.uid3,
+            },
+            None => E32Uid::for_exe(self.uid1, self.uid3),
+        }
+    }
+
+    fn target(&self) -> Result<E32Target> {
+        match self.targettype.as_str() {
+            "EXE" => Ok(E32Target::Exe),
+            "DLL" => Ok(E32Target::Dll),
+            other => Err(Error::Other(format!(
+                "TODO: native elf2e32 --targettype={other} (EXE and DLL observed)"
+            ))),
+        }
     }
 
     /// Ordinals for every import of `elf`, read from the DSOs `.gnu.version_r` names
@@ -96,7 +141,7 @@ impl Elf2E32 {
         let mut dsos = std::collections::BTreeMap::new();
         for imp in elf.import_relocs()? {
             if !dsos.contains_key(&imp.dso) {
-                let path = self.libpath.join(&imp.dso);
+                let path = self.find_dso(&imp.dso)?;
                 let bytes = std::fs::read(&path)
                     .map_err(|e| Error::Other(format!("read DSO {path:?}: {e}")))?;
                 dsos.insert(imp.dso.clone(), ElfImage::parse(bytes)?);
@@ -112,15 +157,63 @@ impl Elf2E32 {
 
     /// Reads `--elfinput` and the `--libpath` DSOs, stamps the current time.
     pub fn encode(&self) -> Result<Vec<u8>> {
-        let bytes = std::fs::read(&self.elfinput)
-            .map_err(|e| Error::Other(format!("read ELF {:?}: {e}", self.elfinput)))?;
-        let elf = ElfImage::parse(bytes)?;
+        let elf = self.read_elf()?;
         let ordinals = self.ordinals(&elf)?;
         self.encode_elf(
             &elf,
             &ordinals,
             E32Time::from_system(std::time::SystemTime::now())?,
         )
+    }
+
+    /// Write `--output`, and for a DLL `--defoutput` and `--dso`.
+    pub fn write_outputs(&self) -> Result<()> {
+        let elf = self.read_elf()?;
+        let ordinals = self.ordinals(&elf)?;
+        let image = self.encode_elf(
+            &elf,
+            &ordinals,
+            E32Time::from_system(std::time::SystemTime::now())?,
+        )?;
+        write(&self.output, &image)?;
+        if self.target()? == E32Target::Dll {
+            let exports = E32Exports::from_elf(&elf, self.ignorenoncallable)?;
+            if let Some(def) = &self.defoutput {
+                write(def, exports.def_text().as_bytes())?;
+            }
+            if let Some(dso) = &self.dso {
+                let soname = dso
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .ok_or_else(|| Error::Other(format!("bad --dso path {dso:?}")))?;
+                let bytes = E32Dso {
+                    soname,
+                    linkas: &self.linkas,
+                    exports: &exports,
+                }
+                .bytes()?;
+                write(dso, &bytes)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// `--libpath` is a `;`-separated search list (`elf2e32 --help`); first hit wins.
+    fn find_dso(&self, dso: &str) -> Result<PathBuf> {
+        let list = self.libpath.to_string_lossy().into_owned();
+        for dir in list.split(';').filter(|d| !d.is_empty()) {
+            let path = Path::new(dir).join(dso);
+            if path.is_file() {
+                return Ok(path);
+            }
+        }
+        Err(Error::Other(format!("{dso} not found in --libpath {list}")))
+    }
+
+    fn read_elf(&self) -> Result<ElfImage> {
+        let bytes = std::fs::read(&self.elfinput)
+            .map_err(|e| Error::Other(format!("read ELF {:?}: {e}", self.elfinput)))?;
+        ElfImage::parse(bytes)
     }
 
     /// E32 bytes for an already-read ELF (no host I/O).
@@ -130,11 +223,16 @@ impl Elf2E32 {
         ordinals: &E32Ordinals,
         time: E32Time,
     ) -> Result<Vec<u8>> {
-        if self.targettype != "EXE" {
-            return Err(Error::Other(format!(
-                "TODO: native elf2e32 --targettype={} (only EXE observed)",
-                self.targettype
-            )));
+        let target = self.target()?;
+        if self.definput.is_some() {
+            return Err(Error::Other(
+                "TODO: native elf2e32 --definput (frozen exports not observed)".into(),
+            ));
+        }
+        if self.sid.is_some_and(|sid| sid != self.uid3) {
+            return Err(Error::Other(
+                "TODO: --sid other than --uid3 (not observed)".into(),
+            ));
         }
         if self.fpu != "softvfp" {
             return Err(Error::Other(format!(
@@ -148,7 +246,15 @@ impl Elf2E32 {
             .map(|c| c.split('+').collect())
             .unwrap_or_default();
         let caps = symdev_core::Capabilities::from_names(&names)?;
-        let image = E32Image::exe(elf, self.uid(), caps, ordinals, time)?;
+        let image = E32Image::new(
+            target,
+            elf,
+            self.uid(),
+            caps,
+            ordinals,
+            time,
+            self.ignorenoncallable,
+        )?;
         if self.uncompressed {
             Ok(image.uncompressed())
         } else {
@@ -190,6 +296,10 @@ impl Elf2E32Tool {
         }
         args
     }
+}
+
+fn write(path: &Path, bytes: &[u8]) -> Result<()> {
+    std::fs::write(path, bytes).map_err(|e| Error::Other(format!("write {path:?}: {e}")))
 }
 
 fn parse_uid(s: &str) -> Result<u32> {
@@ -244,6 +354,81 @@ mod tests {
             a.push("--uncompressed".into());
         }
         Elf2E32::from_args(&a).unwrap()
+    }
+
+    /// Experiment 52: `mathlib` DLL with three exports and the SDK recipe's options.
+    fn experiment_52(uncompressed: bool) -> Elf2E32 {
+        let mut a = args(&[
+            "elf2e32",
+            "--sid=0xe5d1b001",
+            "--uid1=0x10000079",
+            "--uid2=0x1000008d",
+            "--uid3=0xe5d1b001",
+            "--fpu=softvfp",
+            "--targettype=DLL",
+            "--ignorenoncallable",
+            "--output=mathlib.dll",
+            "--dso=mathlib.dso",
+            "--defoutput=mathlib.def",
+            "--elfinput=mathlib.elf",
+            "--linkas=mathlib{000a0000}[e5d1b001].dll",
+            "--libpath=/sdk/epoc32/release/armv5/lib",
+        ]);
+        if uncompressed {
+            a.push("--uncompressed".into());
+        }
+        Elf2E32::from_args(&a).unwrap()
+    }
+
+    #[test]
+    fn experiment_52_dll_image_def_and_dso_match_elf2e32_next() {
+        let elf = ElfImage::parse(unhex(include_str!("testdata/exp52_mathlib_elf.hex"))).unwrap();
+        let time_of = |img: &[u8]| {
+            let lo = u32::from_le_bytes(img[0x24..0x28].try_into().unwrap());
+            let hi = u32::from_le_bytes(img[0x28..0x2c].try_into().unwrap());
+            E32Time((u64::from(hi) << 32) | u64::from(lo))
+        };
+        let none = E32Ordinals::default();
+        let u = unhex(include_str!("testdata/exp52_mathlib_u_dll.hex"));
+        assert_eq!(
+            experiment_52(true)
+                .encode_elf(&elf, &none, time_of(&u))
+                .unwrap(),
+            u
+        );
+        let c = unhex(include_str!("testdata/exp52_mathlib_dll.hex"));
+        assert_eq!(
+            experiment_52(false)
+                .encode_elf(&elf, &none, time_of(&c))
+                .unwrap(),
+            c
+        );
+
+        let exports = E32Exports::from_elf(&elf, true).unwrap();
+        let names: Vec<&str> = exports.symbols.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["_Z7MathAbsi", "_Z7MathAddii", "_Z9MathTwicei"]);
+        assert_eq!(
+            exports.def_text(),
+            include_str!("testdata/exp52_mathlib.def")
+        );
+        let dso = E32Dso {
+            soname: "mathlib.dso",
+            linkas: "mathlib{000a0000}[e5d1b001].dll",
+            exports: &exports,
+        }
+        .bytes()
+        .unwrap();
+        assert_eq!(dso, unhex(include_str!("testdata/exp52_mathlib_dso.hex")));
+        // The DSO we write reads back as the ordinal table the EXE side consumes.
+        let back = ElfImage::parse(dso).unwrap();
+        assert_eq!(back.dso_ordinal("_Z9MathTwicei").unwrap(), Some(3));
+    }
+
+    #[test]
+    fn dll_without_ignorenoncallable_rejects_linker_symbols() {
+        let elf = ElfImage::parse(unhex(include_str!("testdata/exp52_mathlib_elf.hex"))).unwrap();
+        let err = E32Exports::from_elf(&elf, false).unwrap_err().to_string();
+        assert!(err.contains("non-function export"), "{err}");
     }
 
     #[test]
