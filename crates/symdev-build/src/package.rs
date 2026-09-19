@@ -3,7 +3,7 @@ use std::time::SystemTime;
 
 use symdev_core::{Artifact, Error, Package, PackageBackend, Result};
 use symdev_makekeys::SelfSignedDsa;
-use symdev_sis::{SisDateTime, SisUnsigned, SisUnsignedSpec};
+use symdev_sis::{SisDateTime, SisPkgFile, SisUnsigned, SisUnsignedSpec};
 
 pub struct SisPackage {
     pub name: String,
@@ -19,19 +19,24 @@ pub struct SisPackage {
 }
 
 impl SisPackage {
-    pub fn pkg_text(&self) -> String {
+    /// `.pkg` text: header, the EXE, then `(source file, destination)` lines in order.
+    pub fn pkg_text(&self, files: &[(String, String)]) -> String {
         let (major, minor, patch) = self.version;
-        format!(
-            "&EN\r\n#{{\"{name}\"}},(0x{uid3:08x}),{major},{minor},{patch},TYPE=SA\r\n%{{\"{vendor}\"}}\r\n:\"{vendor}\"\r\n[0x102752AE], 0, 0, 0, {{\"S60ProductID\"}}\r\n\"{name}.exe\"\t\t-\"!:\\sys\\bin\\{name}.exe\"\r\n\"{name}_reg.rsc\"\t\t-\"!:\\private\\10003a3f\\import\\apps\\{name}_reg.rsc\"\r\n",
+        let mut text = format!(
+            "&EN\r\n#{{\"{name}\"}},(0x{uid3:08x}),{major},{minor},{patch},TYPE=SA\r\n%{{\"{vendor}\"}}\r\n:\"{vendor}\"\r\n[0x102752AE], 0, 0, 0, {{\"S60ProductID\"}}\r\n\"{name}.exe\"\t\t-\"!:\\sys\\bin\\{name}.exe\"\r\n",
             name = self.name,
             uid3 = self.uid3,
             vendor = self.vendor,
-        )
+        );
+        for (src, dest) in files {
+            text.push_str(&format!("\"{src}\"\t\t-\"{dest}\"\r\n"));
+        }
+        text
     }
 
-    pub fn write_pkg_file(&self, dir: &Path) -> Result<PathBuf> {
+    pub fn write_pkg_file(&self, dir: &Path, files: &[(String, String)]) -> Result<PathBuf> {
         let path = dir.join(format!("{}.pkg", self.name));
-        std::fs::write(&path, self.pkg_text()).map_err(|e| Error::Other(e.to_string()))?;
+        std::fs::write(&path, self.pkg_text(files)).map_err(|e| Error::Other(e.to_string()))?;
         Ok(path)
     }
 
@@ -55,8 +60,13 @@ impl SisPackage {
 impl PackageBackend for SisPackage {
     fn package(&self, artifacts: &[Artifact]) -> Result<Package> {
         self.validate_password()?;
-        let artifact = match artifacts {
-            [one] => one,
+        let artifact = match artifacts
+            .iter()
+            .filter(|a| a.dest.is_none())
+            .collect::<Vec<_>>()
+            .as_slice()
+        {
+            [one] => *one,
             _ => return Err(Error::Other("no E32 artifact".into())),
         };
         let expected = format!("{}.exe", self.name);
@@ -71,15 +81,48 @@ impl PackageBackend for SisPackage {
             .path
             .parent()
             .ok_or_else(|| Error::Other("E32 not found".into()))?;
-        self.write_pkg_file(workdir)?;
         let sis = format!("{}.sis", self.name);
         let sisx = format!("{}.sisx", self.name);
         let exe = std::fs::read(&artifact.path).map_err(|e| Error::Other(e.to_string()))?;
         let now = SystemTime::now();
         let datetime = SisDateTime::utc(now);
-        let rsc = symdev_rcomp::Rsc::registration(self.uid3, &self.name)?.bytes()?;
-        std::fs::write(workdir.join(format!("{}_reg.rsc", self.name)), &rsc)
-            .map_err(|e| Error::Other(e.to_string()))?;
+        let reg_dest = SisPkgFile::reg_rsc_dest(&self.name);
+        // (file name next to the EXE, destination, bytes), in build order.
+        let mut extra: Vec<(String, String, Vec<u8>)> = Vec::new();
+        for a in artifacts {
+            let Some(dest) = &a.dest else { continue };
+            let file = a
+                .path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .ok_or_else(|| Error::Other(format!("bad artifact path {:?}", a.path)))?;
+            if a.path.parent() != Some(workdir) {
+                return Err(Error::Other(format!(
+                    "{file} must sit next to the EXE in {workdir:?}"
+                )));
+            }
+            let data = std::fs::read(&a.path).map_err(|e| Error::Other(e.to_string()))?;
+            extra.push((file.to_string(), dest.clone(), data));
+        }
+        // No project _reg.rsc: generate the recorded registration (experiment 43).
+        if !extra
+            .iter()
+            .any(|(_, d, _)| d.eq_ignore_ascii_case(&reg_dest))
+        {
+            let rsc = symdev_rcomp::Rsc::registration(self.uid3, &self.name)?.bytes()?;
+            let file = format!("{}_reg.rsc", self.name);
+            std::fs::write(workdir.join(&file), &rsc).map_err(|e| Error::Other(e.to_string()))?;
+            extra.push((file, reg_dest.clone(), rsc));
+        }
+        let lines: Vec<(String, String)> = extra
+            .iter()
+            .map(|(f, d, _)| (f.clone(), d.clone()))
+            .collect();
+        self.write_pkg_file(workdir, &lines)?;
+        let files: Vec<SisPkgFile> = extra
+            .iter()
+            .map(|(_, dest, data)| SisPkgFile { dest, data })
+            .collect();
         let spec = SisUnsignedSpec {
             name: &self.name,
             uid3: self.uid3,
@@ -89,7 +132,7 @@ impl PackageBackend for SisPackage {
             exe: &exe,
             capabilities: &self.capabilities,
             datetime,
-            reg_rsc: Some(&rsc),
+            files: &files,
         };
         let bytes = SisUnsigned::encode(&spec)?;
         std::fs::write(workdir.join(&sis), &bytes).map_err(|e| Error::Other(e.to_string()))?;
@@ -152,7 +195,12 @@ fn validate_password_rejects_shorter_than_four_characters() {
 #[test]
 fn write_pkg_file_writes_recorded_pkg_next_to_exe() {
     let dir = tempfile::tempdir().unwrap();
-    let path = fake_pkg().write_pkg_file(dir.path()).unwrap();
+    let path = fake_pkg()
+        .write_pkg_file(
+            dir.path(),
+            &[("hello_reg.rsc".into(), SisPkgFile::reg_rsc_dest("hello"))],
+        )
+        .unwrap();
     assert_eq!(path, dir.path().join("hello.pkg"));
     let s = std::fs::read_to_string(&path).unwrap();
     assert!(s.contains("\r\n"));
@@ -164,7 +212,7 @@ fn write_pkg_file_writes_recorded_pkg_next_to_exe() {
 
 #[test]
 fn pkg_text_includes_verified_reg_rsc_dest() {
-    let s = fake_pkg().pkg_text();
+    let s = fake_pkg().pkg_text(&[("hello_reg.rsc".into(), SisPkgFile::reg_rsc_dest("hello"))]);
     assert!(s.contains("\r\n"));
     assert_eq!(
         s.replace("\r\n", "\n"),
@@ -197,7 +245,7 @@ fn package_empty_artifacts_is_no_e32_artifact() {
 fn package_missing_e32_file_errors() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("hello.exe");
-    let err = fake_pkg().package(&[Artifact { path }]).unwrap_err();
+    let err = fake_pkg().package(&[Artifact::exe(path)]).unwrap_err();
     assert_eq!(err.to_string(), "E32 not found");
 }
 
@@ -208,7 +256,7 @@ fn package_short_password_errors_before_tools() {
     std::fs::write(&path, b"").unwrap();
     let mut pkg = fake_pkg();
     pkg.password = "abc".into();
-    let err = pkg.package(&[Artifact { path }]).unwrap_err();
+    let err = pkg.package(&[Artifact::exe(path)]).unwrap_err();
     assert_eq!(
         err.to_string(),
         "SYMDEV_SIGN_PASSWORD must be at least 4 characters"
@@ -306,7 +354,7 @@ fn package_writes_native_sis_and_keys_without_wine() {
     pkg.vendor = "Vendor".into();
     pkg.capabilities = hello_caps();
     let out = pkg
-        .package(&[Artifact { path: exe_path }])
+        .package(&[Artifact::exe(exe_path)])
         .expect("native makekeys must not spawn Wine when cert/key are absent");
     assert_eq!(out.primary.file_name().unwrap(), "hello.sisx");
     assert!(dir.path().join("hello.sis").is_file());
@@ -363,7 +411,7 @@ fn package_writes_native_sisx_without_wine_signsis() {
     pkg.cert = Some(cert);
     pkg.key = Some(key);
     let out = pkg
-        .package(&[Artifact { path: exe_path }])
+        .package(&[Artifact::exe(exe_path)])
         .expect("native SISX must not spawn Wine signsis");
     assert!(out.primary.is_file());
     assert_eq!(out.primary.file_name().unwrap(), "hello.sisx");
@@ -428,7 +476,7 @@ fn generated_self_signed_dsa_verifies_with_injected_dates() {
         exe: &hello_exe_bytes(),
         capabilities: &hello_caps(),
         datetime: hello_datetime(),
-        reg_rsc: None,
+        files: &[],
     };
     let sisx = SisUnsigned::encode_signed(&spec, &key_pem, &cert_pem, "").unwrap();
     assert!(sisx.len() > hello_sis_golden().len());

@@ -36,6 +36,24 @@ pub struct Project {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Artifact {
     pub path: PathBuf,
+    /// Install destination (`!:\\...`) for packaged non-EXE files; `None` for the EXE.
+    pub dest: Option<String>,
+}
+
+impl Artifact {
+    pub fn exe(path: impl Into<PathBuf>) -> Self {
+        Self {
+            path: path.into(),
+            dest: None,
+        }
+    }
+
+    pub fn installed(path: impl Into<PathBuf>, dest: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            dest: Some(dest.into()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

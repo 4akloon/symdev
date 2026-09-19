@@ -95,8 +95,8 @@ Product CLI uses the libraries, not the tool bins ([ported-tools-crates.md](port
 | makesis flags `-h -i -s -d`; pkg files beyond EXE + `_reg.rsc` (`TYPE=SA`); caps from E32 | `Makesis` | Wave 0 `.pkg` has no caps line; caps come from Manifest → elf2e32 / SIS type 41 |
 | makekeys `-req`/`-view`; `-expdays` ≠ 3650; `-len` ≠ `2048` token; other `-dname` | `Makekeys::from_args` | native keygen ignores `-len 2048` (DSA 1024/160) |
 | `mifconv` / `bmconv` | no crate | not on hello |
-| MMP `LIBRARY` / `SYSTEMINCLUDE` / `USERINCLUDE` / `STATICLIBRARY` / `CAPABILITY` / `UID` / `TARGETPATH` / `START RESOURCE` | parsed onto `Mmp`, **ignored** by `GcceBuild::build` | scaffold MMP is `TARGET`/`TARGETTYPE`/`SOURCEPATH`/`SOURCE` only |
-| `START RESOURCE` rss filename | `Mmp::parse` drops the `RESOURCE <file>` token; keeps inner lines only | experiment 41: wiring stays later |
+| MMP `STATICLIBRARY` / `CAPABILITY` / `UID` / top-level `TARGETPATH` | parsed onto `Mmp`, ignored (`LIBRARY`, `USERINCLUDE`, `SYSTEMINCLUDE`, `START RESOURCE` are wired since experiment 51; resources still use Wine `rcomp`) | GUI template uses `START RESOURCE` + `LIBRARY` |
+| RSS compiler | Wine `cpp.exe` + `rcomp.exe` (experiment 9 argv) via `GcceBuild` | native RSS compiler (clean-room) is the next resource step |
 
 ---
 

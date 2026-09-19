@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 
 use symdev_core::Error;
 
+use crate::cli::Template;
+
 pub fn uid3_for_name(name: &str) -> u32 {
     let mut h: u32 = 0x811c9dc5;
     for b in name.as_bytes() {
@@ -15,7 +17,7 @@ pub fn uid3_hex(name: &str) -> String {
     format!("0x{:08x}", uid3_for_name(name))
 }
 
-pub fn create_project(cwd: &Path, name: &str) -> Result<PathBuf, Error> {
+pub fn create_project(cwd: &Path, name: &str, template: Template) -> Result<PathBuf, Error> {
     let root = cwd.join(name);
     if root.exists() {
         return Err(Error::Other(format!("directory `{name}` already exists")));
@@ -46,6 +48,10 @@ pub fn create_project(cwd: &Path, name: &str) -> Result<PathBuf, Error> {
         ),
     )
     .map_err(io_err)?;
+    if template == Template::Gui {
+        write_gui(&root, name, &uid3)?;
+        return Ok(root);
+    }
     std::fs::write(
         root.join("group/bld.inf"),
         format!("PRJ_MMPFILES\n{name}.mmp\n"),
@@ -67,6 +73,38 @@ pub fn create_project(cwd: &Path, name: &str) -> Result<PathBuf, Error> {
     )
     .map_err(io_err)?;
     Ok(root)
+}
+
+/// Avkon GUI app: sources, application + registration resources, MMP with LIBRARY.
+fn write_gui(root: &Path, name: &str, uid3: &str) -> Result<(), Error> {
+    let fill = |t: &str| t.replace("{{NAME}}", name).replace("{{UID3}}", uid3);
+    std::fs::create_dir_all(root.join("data")).map_err(io_err)?;
+    let files = [
+        (
+            "group/bld.inf".to_string(),
+            format!("PRJ_MMPFILES\n{name}.mmp\n"),
+        ),
+        (
+            format!("group/{name}.mmp"),
+            fill(include_str!("../templates/gui/app.mmp")),
+        ),
+        (
+            format!("src/{name}.cpp"),
+            fill(include_str!("../templates/gui/app.cpp")),
+        ),
+        (
+            format!("data/{name}.rss"),
+            fill(include_str!("../templates/gui/app.rss")),
+        ),
+        (
+            format!("data/{name}_reg.rss"),
+            fill(include_str!("../templates/gui/app_reg.rss")),
+        ),
+    ];
+    for (path, text) in files {
+        std::fs::write(root.join(path), text).map_err(io_err)?;
+    }
+    Ok(())
 }
 
 fn io_err(e: std::io::Error) -> Error {
@@ -100,7 +138,7 @@ mod tests {
     #[test]
     fn create_project_writes_hello_tree() {
         let dir = scratch();
-        let root = create_project(&dir, "hello").unwrap();
+        let root = create_project(&dir, "hello", Template::Console).unwrap();
         assert_eq!(root, dir.join("hello"));
         let toml = std::fs::read_to_string(root.join("symdev.toml")).unwrap();
         assert!(toml.contains("name = \"hello\""));
@@ -126,7 +164,7 @@ mod tests {
     #[test]
     fn examples_hello_matches_scaffold() {
         let dir = scratch();
-        let root = create_project(&dir, "hello").unwrap();
+        let root = create_project(&dir, "hello", Template::Console).unwrap();
         let example: [(&str, &str); 5] = [
             (
                 "symdev.toml",
@@ -156,10 +194,70 @@ mod tests {
     }
 
     #[test]
+    fn examples_gui_matches_scaffold() {
+        let dir = scratch();
+        let root = create_project(&dir, "gui", Template::Gui).unwrap();
+        let example: [(&str, &str); 6] = [
+            (
+                "symdev.toml",
+                include_str!("../../../examples/gui/symdev.toml"),
+            ),
+            (
+                "group/bld.inf",
+                include_str!("../../../examples/gui/group/bld.inf"),
+            ),
+            (
+                "group/gui.mmp",
+                include_str!("../../../examples/gui/group/gui.mmp"),
+            ),
+            (
+                "src/gui.cpp",
+                include_str!("../../../examples/gui/src/gui.cpp"),
+            ),
+            (
+                "data/gui.rss",
+                include_str!("../../../examples/gui/data/gui.rss"),
+            ),
+            (
+                "data/gui_reg.rss",
+                include_str!("../../../examples/gui/data/gui_reg.rss"),
+            ),
+        ];
+        for (path, want) in example {
+            let got = std::fs::read_to_string(root.join(path)).unwrap();
+            assert_eq!(
+                got, want,
+                "examples/gui/{path} drifted from `symdev new --template gui`"
+            );
+        }
+    }
+
+    #[test]
+    fn create_gui_project_fills_name_and_uid3() {
+        let dir = scratch();
+        let root = create_project(&dir, "notes", Template::Gui).unwrap();
+        let uid = uid3_hex("notes");
+        let mmp = std::fs::read_to_string(root.join("group/notes.mmp")).unwrap();
+        assert!(mmp.contains("TARGET notes.exe"));
+        assert!(mmp.contains("START RESOURCE notes_reg.rss"));
+        assert!(mmp.contains(&format!("UID 0x100039CE {uid}")));
+        let reg = std::fs::read_to_string(root.join("data/notes_reg.rss")).unwrap();
+        assert!(reg.contains("#include <notes.rsg>"));
+        assert!(reg.contains(&format!("UID3 {uid}")));
+        let cpp = std::fs::read_to_string(root.join("src/notes.cpp")).unwrap();
+        assert!(cpp.contains(&format!("static_cast<TInt32>({uid})")));
+        for text in [&mmp, &reg, &cpp] {
+            assert!(!text.contains("{{"), "unfilled template: {text}");
+        }
+        let toml = std::fs::read_to_string(root.join("symdev.toml")).unwrap();
+        assert!(toml.contains("name = \"notes\""));
+    }
+
+    #[test]
     fn create_project_existing_dir_errors() {
         let dir = scratch();
         std::fs::create_dir(dir.join("hello")).unwrap();
-        let err = create_project(&dir, "hello").unwrap_err();
+        let err = create_project(&dir, "hello", Template::Console).unwrap_err();
         assert_eq!(err.to_string(), "directory `hello` already exists");
     }
 }

@@ -28,3 +28,12 @@ symdev run      # installs build/hello.sisx and launches 0xef9f2cab; log in buil
 Verified 2026-09-19 in EKA2L1 (RM-469 firmware), built without `SYMDEV_ELF2E32` (experiment 47): installs, appears as `hello` (UID `0xEF9F2CAB`), shows `Hello, world!`. Emulator only — not a claim of E52 support.
 
 `build/` is ignored by git; never commit `.sis`, `.sisx`, `.cer` or `.key`.
+
+## gui
+
+`examples/gui` is exactly what `symdev new gui --target nokia-e52 --template gui` generates (also kept in sync by a test): a minimal S60 3rd Edition Avkon application (`CAknApplication` / `CAknDocument` / `CAknAppUi` and one control that draws a line of text) with an application resource (`EIK_APP_INFO`, `LOCALISABLE_APP_INFO`) and a registration resource.
+
+Same steps as `hello`. Resources are compiled with the SDK's `cpp.exe` + `rcomp.exe` under Wine (`SYMDEV_WINE`, default `/usr/bin/wine`) until a native RSS compiler exists; `LIBRARY` lines are linked as `.dso`. `symdev package` installs `gui.exe`, `\resource\apps\gui.rsc` and the registration resource.
+
+Verified 2026-09-19 in EKA2L1 (experiment 51): title pane shows the caption, the view draws `Hello from symdev`, right softkey `Exit`. Emulator only.
+
