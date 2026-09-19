@@ -1,0 +1,6 @@
+EXPORTS
+	_Z9MathTwicei @ 1 NONAME
+	_Z7MathAbsi @ 2 NONAME
+; NEW:
+	_Z7MathAddii @ 3 NONAME
+

@@ -1,0 +1,6 @@
+EXPORTS
+; NEW:
+	KAnswer @ 1 NONAME DATA 4
+	_Z3Getv @ 2 NONAME
+	gCounter @ 3 NONAME DATA 4
+
