@@ -46,7 +46,14 @@ impl BuildOutputs {
         let build_dir = project.root.join("build");
         let mut out = Vec::new();
         for (_, mmp) in ProjectMmps::load(project)?.mmps {
-            out.push(Artifact::exe(build_dir.join(format!("{}.exe", mmp.name()))));
+            if mmp.target_type.eq_ignore_ascii_case("DLL") {
+                out.push(Artifact::installed(
+                    build_dir.join(format!("{}.dll", mmp.name())),
+                    format!("!:\\sys\\bin\\{}.dll", mmp.name()),
+                ));
+            } else {
+                out.push(Artifact::exe(build_dir.join(format!("{}.exe", mmp.name()))));
+            }
             for res in &mmp.resource {
                 out.push(Artifact::installed(
                     build_dir.join(format!("{}.rsc", res.stem()?)),

@@ -37,3 +37,7 @@ Same steps as `hello`. Resources are compiled with the SDK's `cpp.exe` + `rcomp.
 
 Verified 2026-09-19 in EKA2L1 (experiment 51): title pane shows the caption, the view draws `Hello from symdev`, right softkey `Exit`. Emulator only.
 
+## DLLs in a project
+
+An MMP with `TARGETTYPE DLL` and `UID <uid2> <uid3>` builds `build/<name>.dll` plus its import library `build/<name>.dso` and `build/<name>.def` (natively, experiments 52–53). List the DLL's MMP before its users in `bld.inf`; a user MMP adds `LIBRARY <name>.lib`. `symdev package` installs the DLL to `!:\sys\bin\`. Frozen exports (`.def` input) are not supported yet.
+
