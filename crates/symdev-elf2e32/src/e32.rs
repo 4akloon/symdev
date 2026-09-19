@@ -127,6 +127,88 @@ impl E32ImportSection {
     }
 }
 
+/// Import ordinals by `(dll, symbol)`, as the `--libpath` DSOs define them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct E32Ordinals {
+    map: std::collections::BTreeMap<(String, String), u32>,
+}
+
+impl E32Ordinals {
+    pub fn insert(&mut self, dll: impl Into<String>, symbol: impl Into<String>, ordinal: u32) {
+        self.map.insert((dll.into(), symbol.into()), ordinal);
+    }
+
+    pub fn get(&self, dll: &str, symbol: &str) -> Option<u32> {
+        self.map
+            .get(&(dll.to_string(), symbol.to_string()))
+            .copied()
+    }
+}
+
+/// E32 code section: the ELF code segment with import slots and absolute
+/// relocations rewritten (experiment 44).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct E32CodeSection {
+    pub bytes: Vec<u8>,
+}
+
+impl E32CodeSection {
+    /// Import slot word = `addend << 16 | ordinal`; `R_ARM_ABS32` word = `S + A`;
+    /// `R_ARM_RELATIVE` words stay as linked.
+    pub fn from_elf(elf: &ElfImage, layout: &E32Layout, ordinals: &E32Ordinals) -> Result<Self> {
+        let mut bytes = elf.segment_bytes(elf.code_segment()?)?.to_vec();
+        for imp in elf.import_relocs()? {
+            let ordinal = ordinals.get(&imp.dll, &imp.symbol).ok_or_else(|| {
+                Error::Other(format!("no ordinal for {} in {}", imp.symbol, imp.dll))
+            })?;
+            let addend = Self::word(&bytes, layout, imp.vaddr)?;
+            if addend > 0xffff || ordinal > 0xffff {
+                return Err(Error::Other(format!(
+                    "import {} addend {addend:#x} / ordinal {ordinal:#x} exceed 16 bits",
+                    imp.symbol
+                )));
+            }
+            Self::set_word(&mut bytes, layout, imp.vaddr, (addend << 16) | ordinal)?;
+        }
+        for rel in elf.local_relocs()? {
+            if !rel.absolute {
+                continue;
+            }
+            let addend = Self::word(&bytes, layout, rel.vaddr)?;
+            let value = rel.target.checked_add(addend).ok_or_else(|| {
+                Error::Other(format!("absolute relocation at {:#x} overflows", rel.vaddr))
+            })?;
+            Self::set_word(&mut bytes, layout, rel.vaddr, value)?;
+        }
+        Ok(Self { bytes })
+    }
+
+    fn slot(bytes: &[u8], layout: &E32Layout, vaddr: u32) -> Result<std::ops::Range<usize>> {
+        let at = vaddr
+            .checked_sub(layout.code_base)
+            .map(|o| o as usize)
+            .filter(|&o| o + 4 <= bytes.len())
+            .ok_or_else(|| Error::Other(format!("fixup at {vaddr:#x} outside code")))?;
+        Ok(at..at + 4)
+    }
+
+    fn word(bytes: &[u8], layout: &E32Layout, vaddr: u32) -> Result<u32> {
+        let r = Self::slot(bytes, layout, vaddr)?;
+        Ok(u32::from_le_bytes([
+            bytes[r.start],
+            bytes[r.start + 1],
+            bytes[r.start + 2],
+            bytes[r.start + 3],
+        ]))
+    }
+
+    fn set_word(bytes: &mut [u8], layout: &E32Layout, vaddr: u32, value: u32) -> Result<()> {
+        let r = Self::slot(bytes, layout, vaddr)?;
+        bytes[r].copy_from_slice(&value.to_le_bytes());
+        Ok(())
+    }
+}
+
 /// E32 code relocation section (experiment 44 uncompressed `hello.exe`): `u32 size`
 /// (blocks only), `u32 count` (real entries), then per 4 KiB page `u32 page, u32 block
 /// size, u16 entries` padded to 4 with a zero entry. Entry = kind << 12 | page offset.
@@ -512,6 +594,36 @@ mod tests {
         assert_eq!(imports.blocks[0].dll, "drtaeabi{000a0000}.dll");
         assert_eq!(imports.blocks[1].dll, "euser{000a0000}[100039e5].dll");
         assert_eq!(imports.bytes().as_slice(), &golden[0x14e8..0x15b8]);
+    }
+
+    fn hello_ordinals() -> E32Ordinals {
+        let mut ordinals = E32Ordinals::default();
+        for line in include_str!("testdata/hello_ordinals.txt").lines() {
+            if line.starts_with('#') {
+                continue;
+            }
+            let f: Vec<&str> = line.split_whitespace().collect();
+            let ordinal = u32::from_str_radix(f[2].trim_start_matches("0x"), 16).unwrap();
+            ordinals.insert(f[0], f[1], ordinal);
+        }
+        ordinals
+    }
+
+    #[test]
+    fn hello_code_section_matches_experiment_44() {
+        let golden = hello_uncompressed();
+        let code =
+            E32CodeSection::from_elf(&hello_elf(), &hello_layout(), &hello_ordinals()).unwrap();
+        assert_eq!(code.bytes.len(), 0x144c);
+        assert_eq!(code.bytes.as_slice(), &golden[0x9c..0x14e8]);
+    }
+
+    #[test]
+    fn code_section_needs_every_import_ordinal() {
+        let err = E32CodeSection::from_elf(&hello_elf(), &hello_layout(), &E32Ordinals::default())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("no ordinal"), "{err}");
     }
 
     #[test]
