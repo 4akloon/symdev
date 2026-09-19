@@ -34,6 +34,21 @@ impl Eka2l1Backend {
         ]
     }
 
+    /// PID recorded by an earlier `run` if that process still exists (Linux `/proc`).
+    /// EKA2L1 ignores SIGTERM and each `run` starts a new instance, so callers warn.
+    pub fn previous(pid_file: &Path) -> Option<u32> {
+        let pid: u32 = std::fs::read_to_string(pid_file)
+            .ok()?
+            .trim()
+            .parse()
+            .ok()?;
+        let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).ok()?;
+        comm.trim()
+            .to_ascii_lowercase()
+            .contains("eka2l1")
+            .then_some(pid)
+    }
+
     /// Start the emulator in the background; its output goes to `log`.
     pub fn run(&self, sisx: &Path, uid3: u32, log: &Path) -> Result<u32> {
         let args = self.run_args(sisx, uid3);
@@ -78,6 +93,17 @@ mod tests {
                 "0xef9f2cab",
             ]
         );
+    }
+
+    #[test]
+    fn previous_ignores_missing_or_foreign_pid() {
+        let dir = std::env::temp_dir().join(format!("symdev-eka2l1-pid-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pid_file = dir.join("eka2l1.pid");
+        assert_eq!(Eka2l1Backend::previous(&pid_file), None);
+        // This test process is alive but is not EKA2L1.
+        std::fs::write(&pid_file, std::process::id().to_string()).unwrap();
+        assert_eq!(Eka2l1Backend::previous(&pid_file), None);
     }
 
     #[test]
