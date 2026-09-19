@@ -1,4 +1,61 @@
+use super::ElfImage;
+use symdev_core::{Error, Result};
 use symdev_uidcrc::UidCrc;
+
+/// E32 header fields elf2e32 derives from the linked ELF (experiment 6 `hello.elf`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct E32Layout {
+    pub code_base: u32,
+    pub code_size: u32,
+    pub data_base: u32,
+    pub data_size: u32,
+    pub bss_size: u32,
+    pub entry_point: u32,
+    pub exception_descriptor: u32,
+}
+
+impl E32Layout {
+    pub const EXCEPTION_DESCRIPTOR_SYMBOL: &str = "Symbian$$CPP$$Exception$$Descriptor";
+
+    pub fn from_elf(elf: &ElfImage) -> Result<Self> {
+        let code = elf.code_segment()?;
+        let data = elf.data_segment().ok_or_else(|| {
+            Error::Other("TODO: ELF without a writable PT_LOAD (not observed)".into())
+        })?;
+        let entry_point = elf
+            .entry()
+            .checked_sub(code.vaddr)
+            .ok_or_else(|| Error::Other(format!("ELF entry {:#x} below code base", elf.entry())))?;
+        let descriptor = elf
+            .dynamic_symbol(Self::EXCEPTION_DESCRIPTOR_SYMBOL)?
+            .ok_or_else(|| {
+                Error::Other(format!(
+                    "TODO: ELF without {} (not observed)",
+                    Self::EXCEPTION_DESCRIPTOR_SYMBOL
+                ))
+            })?;
+        let descriptor = descriptor.checked_sub(code.vaddr).ok_or_else(|| {
+            Error::Other(format!(
+                "exception descriptor {descriptor:#x} below code base"
+            ))
+        })?;
+        Ok(Self {
+            code_base: code.vaddr,
+            code_size: code.file_size,
+            data_base: data.vaddr,
+            data_size: data.file_size,
+            bss_size: data.mem_size.saturating_sub(data.file_size),
+            entry_point,
+            // Low bit marks the descriptor present (experiment 6: 0x10f4 → 0x10f5).
+            exception_descriptor: descriptor | 1,
+        })
+    }
+
+    /// Import section follows code and data (`iImportOffset`).
+    pub fn import_offset(&self) -> u32 {
+        E32ImageHeader::CODE_OFFSET + self.code_size + self.data_size
+    }
+}
 
 /// UID prefix of an E32 image (`iUid1`/`iUid2`/`iUid3` + uidcrc checksum).
 pub struct E32Uid {
@@ -214,7 +271,13 @@ mod tests {
         parse_hex(include_str!("testdata/hello.exe.hex"))
     }
 
+    fn hello_layout() -> E32Layout {
+        let elf = ElfImage::parse(parse_hex(include_str!("testdata/hello.elf.hex"))).unwrap();
+        E32Layout::from_elf(&elf).unwrap()
+    }
+
     fn hello_headers() -> (E32ImageHeader, E32ImageHeaderJ, E32ImageHeaderV) {
+        let layout = hello_layout();
         let uid = E32Uid::for_exe(0x1000_007a, 0xe79e_4cf9);
         let secure_id = uid.uid3;
         let hdr = E32ImageHeader {
@@ -228,22 +291,22 @@ mod tests {
             time_lo: 0x208d_5e00,
             time_hi: 0x00e3_3963,
             flags: E32ImageHeader::FLAGS_EXE_SOFTVFP,
-            code_size: 0x144c,
-            data_size: 0,
+            code_size: layout.code_size,
+            data_size: layout.data_size,
             heap_size_min: E32ImageHeader::HEAP_MIN,
             heap_size_max: E32ImageHeader::HEAP_MAX,
             stack_size: E32ImageHeader::STACK,
-            bss_size: 4,
-            entry_point: 0x1098,
-            code_base: 0x8000,
-            data_base: 0x40_0000,
+            bss_size: layout.bss_size as i32,
+            entry_point: layout.entry_point,
+            code_base: layout.code_base,
+            data_base: layout.data_base,
             dll_ref_table_count: 2,
             export_dir_offset: 0,
             export_dir_count: 0,
-            text_size: 0x144c,
+            text_size: layout.code_size,
             code_offset: E32ImageHeader::CODE_OFFSET,
             data_offset: 0,
-            import_offset: 0x14e8,
+            import_offset: layout.import_offset(),
             code_reloc_offset: 0x15b8,
             data_reloc_offset: 0,
             process_priority: E32ImageHeader::PRIORITY_FOREGROUND,
@@ -256,12 +319,37 @@ mod tests {
             secure_id,
             vendor_id: 0,
             caps: 0xbe000,
-            exception_descriptor: 0x10f5,
+            exception_descriptor: layout.exception_descriptor,
             spare2: 0,
             export_desc_size: 0,
             export_desc_type: E32ImageHeaderV::EXPORT_DESC_FULL_BITMAP,
         };
         (hdr, j, v)
+    }
+
+    #[test]
+    fn hello_elf_layout_matches_experiment_6_segments() {
+        // readelf -lW hello.elf: LOAD R E 0x8000 filesz 0x144c; LOAD RW 0x400000 0/4;
+        // entry 0x9098; dynsym Symbian$$CPP$$Exception$$Descriptor = 0x90f4.
+        assert_eq!(
+            hello_layout(),
+            E32Layout {
+                code_base: 0x8000,
+                code_size: 0x144c,
+                data_base: 0x40_0000,
+                data_size: 0,
+                bss_size: 4,
+                entry_point: 0x1098,
+                exception_descriptor: 0x10f5,
+            }
+        );
+        assert_eq!(hello_layout().import_offset(), 0x14e8);
+    }
+
+    #[test]
+    fn elf_parse_rejects_non_elf() {
+        let err = ElfImage::parse(hello_exe()).unwrap_err().to_string();
+        assert!(err.contains("ELF magic"), "{err}");
     }
 
     #[test]
