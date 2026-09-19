@@ -854,3 +854,21 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
   | Descriptor length / uncompressed | 3588 / 3588 | **50** / 67 |
 
   Rule: each file is zlib-compressed (level 6) and kept compressed only when smaller (`SisCompressed::smallest`); capabilities only on the EXE. With those, native `SisUnsigned::encode` **byte-equals** the Wine `hello.sis` (goldens `hello_reg.rsc.hex`, `hello_reg_sis.hex`). The multi-element `SisArray` (element type once) is pinned by this golden too.
+
+## 44. Uncompressed E32 from the experiment-6 argv (T4)
+
+- **Requires:** experiment 6 (`hello.elf`, Linux `elf2e32_next`, FP2 `--libpath`).
+- **Skip if:** experiment-5 `hello.elf` or `elf2e32_next` is gone
+- **Procedure:** Rerun the recorded experiment-6 argv verbatim (output `hello.exe`), then once more adding only `--uncompressed` (observed in `elf2e32 --help`: "Don't compress output e32image"; output `hello_u.exe`). Compare both with the frozen experiment-6 `hello.exe`. Decode the import section and code relocations of `hello_u.exe`.
+- **Expected result:** An uncompressed golden of the same image, so post-header sections can be pinned without writing a Symbian inflater.
+- **Decision unblocked:** T4 import section, `iDllRefTableCount`, `iCodeRelocOffset`; next: code relocations and code words.
+- **Outcome:** pass
+- **Evidence:** 2026-09-19, Ubuntu 26.04.1 LTS x86_64. Workdir `$HOME/src/symdev-experiment-44/` (outside git). Both runs exit 0.
+
+  Rerun `hello.exe` is 3588 bytes and differs from the frozen one only at `iHeaderCrc` (0x14) and `iTimeLo`/`iTimeHi` (0x24–0x28): `elf2e32_next` is deterministic apart from time. `hello_u.exe` is 5652 bytes (`0x9c + J.iUncompressedSize 0x1578`) and differs from the compressed header only at `iHeaderCrc` and `iCompressionType` (0). `hello_u.exe` SHA-256 `8f4f91db…d5d0` (fixture `hello_uncompressed.exe.hex`).
+
+  **Import section** (`0x14e8..0x15b8`, `KImageImpFmt_ELF`): `u32 size 0xd0`; per DLL `u32 name offset, u32 count, count × u32 code offset`; names NUL-terminated, padded to 4. Two DLLs, `drtaeabi{000a0000}.dll` (14 slots) then `euser{000a0000}[100039e5].dll` (19). Entries are code offsets of import slots, **not ordinals** (ordinals live in the code words). They are exactly the `DT_REL`/`DT_JMPREL` relocations against undefined `.dynsym` symbols, grouped by the `.gnu.version_r` name of the symbol's version, in `.gnu.version_r` order. `DT_RELSZ` (520) spans `.rel.dyn` + `.rel.plt` + `.rel.other`; each entry counts once. Six `DT_NEEDED` DSOs, but only these two are versioned imports → `iDllRefTableCount = 2`.
+
+  **Code relocations** (`0x15b8`, size 0x54): 32 entries in pages `0x0` (23) and `0x1000` (9); not pinned in this slice.
+
+  Native `E32ImportSection::from_elf` **byte-equals** the import section; the golden header builds `iDllRefTableCount` and `iCodeRelocOffset` from it.

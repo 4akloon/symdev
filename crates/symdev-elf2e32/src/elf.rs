@@ -9,20 +9,46 @@ pub struct ElfSegment {
     pub mem_size: u32,
 }
 
+/// A dynamic relocation against an undefined symbol, tagged with the DLL that
+/// `.gnu.version_r` says provides it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ElfImportReloc {
+    pub dll: String,
+    pub vaddr: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ElfSection {
+    kind: u32,
+    addr: u32,
+    offset: usize,
+    size: usize,
+    link: usize,
+}
+
 /// Little-endian ELF32 ARM image as linked for elf2e32 (the parts E32 needs).
 #[derive(Debug)]
 pub struct ElfImage {
     bytes: Vec<u8>,
     entry: u32,
     loads: Vec<(u32, ElfSegment)>,
-    dynsym: Option<(usize, usize, usize, usize)>,
+    sections: Vec<ElfSection>,
 }
 
 impl ElfImage {
     const PT_LOAD: u32 = 1;
     const PF_X: u32 = 1;
     const PF_W: u32 = 2;
+    const SHT_DYNAMIC: u32 = 6;
     const SHT_DYNSYM: u32 = 11;
+    const SHT_GNU_VERNEED: u32 = 0x6fff_fffe;
+    const SHT_GNU_VERSYM: u32 = 0x6fff_ffff;
+    const DT_NULL: u32 = 0;
+    const DT_PLTRELSZ: u32 = 2;
+    const DT_REL: u32 = 17;
+    const DT_RELSZ: u32 = 18;
+    const DT_JMPREL: u32 = 23;
+    const SHN_UNDEF: u16 = 0;
     const EM_ARM: u16 = 40;
 
     pub fn parse(bytes: impl Into<Vec<u8>>) -> Result<Self> {
@@ -39,7 +65,7 @@ impl ElfImage {
             bytes,
             entry: 0,
             loads: Vec::new(),
-            dynsym: None,
+            sections: Vec::new(),
         };
         if elf.u16_at(0x12)? != Self::EM_ARM {
             return Err(Error::Other("ELF machine is not ARM".into()));
@@ -69,18 +95,14 @@ impl ElfImage {
 
         for i in 0..shnum {
             let sh = shoff + i * shentsize;
-            if elf.u32_at(sh + 4)? != Self::SHT_DYNSYM {
-                continue;
-            }
-            let link = elf.u32_at(sh + 24)? as usize;
-            let str_sh = shoff + link * shentsize;
-            elf.dynsym = Some((
-                elf.u32_at(sh + 16)? as usize,
-                elf.u32_at(sh + 20)? as usize,
-                elf.u32_at(str_sh + 16)? as usize,
-                elf.u32_at(str_sh + 20)? as usize,
-            ));
-            break;
+            let section = ElfSection {
+                kind: elf.u32_at(sh + 4)?,
+                addr: elf.u32_at(sh + 12)?,
+                offset: elf.u32_at(sh + 16)? as usize,
+                size: elf.u32_at(sh + 20)? as usize,
+                link: elf.u32_at(sh + 24)? as usize,
+            };
+            elf.sections.push(section);
         }
         Ok(elf)
     }
@@ -102,24 +124,140 @@ impl ElfImage {
 
     /// Value of a `.dynsym` symbol by exact name.
     pub fn dynamic_symbol(&self, name: &str) -> Result<Option<u32>> {
-        let Some((off, size, str_off, str_size)) = self.dynsym else {
+        let Some(dynsym) = self.section(Self::SHT_DYNSYM) else {
             return Ok(None);
         };
-        let strtab = self
-            .bytes
-            .get(str_off..str_off + str_size)
-            .ok_or_else(|| Error::Other("ELF .dynstr out of range".into()))?;
-        for sym in (off..off + size).step_by(16) {
-            let name_off = self.u32_at(sym)? as usize;
-            let rest = strtab
-                .get(name_off..)
-                .ok_or_else(|| Error::Other("ELF symbol name out of range".into()))?;
-            let end = rest.iter().position(|&b| b == 0).unwrap_or(rest.len());
-            if &rest[..end] == name.as_bytes() {
+        for sym in (dynsym.offset..dynsym.offset + dynsym.size).step_by(16) {
+            if self.string(dynsym.link, self.u32_at(sym)? as usize)? == name {
                 return Ok(Some(self.u32_at(sym + 4)?));
             }
         }
         Ok(None)
+    }
+
+    /// DLL names from `.gnu.version_r`, in section order.
+    pub fn needed_dlls(&self) -> Result<Vec<String>> {
+        Ok(self.versions()?.into_iter().map(|(_, name)| name).collect())
+    }
+
+    /// `DT_REL` then `DT_JMPREL` relocations whose symbol is undefined, in file order.
+    pub fn import_relocs(&self) -> Result<Vec<ElfImportReloc>> {
+        let dynsym = self
+            .section(Self::SHT_DYNSYM)
+            .ok_or_else(|| Error::Other("ELF has no .dynsym".into()))?;
+        let versym = self
+            .section(Self::SHT_GNU_VERSYM)
+            .ok_or_else(|| Error::Other("ELF has no .gnu.version".into()))?;
+        let versions = self.versions()?;
+        let mut out = Vec::new();
+        // DT_RELSZ may already span the PLT relocations (experiment-6 hello.elf);
+        // each relocation entry counts once.
+        let mut seen = std::collections::HashSet::new();
+        for (start, size) in [
+            (Self::DT_REL, Self::DT_RELSZ),
+            (Self::DT_JMPREL, Self::DT_PLTRELSZ),
+        ] {
+            let (Some(at), Some(len)) = (self.dynamic(start)?, self.dynamic(size)?) else {
+                continue;
+            };
+            let table = self.file_range(at, len)?;
+            for rel in table.step_by(8) {
+                if !seen.insert(rel) {
+                    continue;
+                }
+                let offset = self.u32_at(rel)?;
+                let sym = (self.u32_at(rel + 4)? >> 8) as usize;
+                if sym == 0 {
+                    continue;
+                }
+                let entry = dynsym.offset + sym * 16;
+                if self.u16_at(entry + 14)? != Self::SHN_UNDEF {
+                    continue;
+                }
+                let index = self.u16_at(versym.offset + sym * 2)? & 0x7fff;
+                let dll = versions
+                    .iter()
+                    .find(|(v, _)| *v == index)
+                    .map(|(_, name)| name.clone())
+                    .ok_or_else(|| {
+                        Error::Other(format!("ELF import at {offset:#x} has no version {index}"))
+                    })?;
+                out.push(ElfImportReloc { dll, vaddr: offset });
+            }
+        }
+        Ok(out)
+    }
+
+    /// `(version index, vernaux name)` pairs from `.gnu.version_r`.
+    fn versions(&self) -> Result<Vec<(u16, String)>> {
+        let Some(verneed) = self.section(Self::SHT_GNU_VERNEED) else {
+            return Ok(Vec::new());
+        };
+        let mut out = Vec::new();
+        let mut need = verneed.offset;
+        loop {
+            let count = self.u16_at(need + 2)? as usize;
+            let mut aux = need + self.u32_at(need + 8)? as usize;
+            for _ in 0..count {
+                let other = self.u16_at(aux + 6)?;
+                let name = self.string(verneed.link, self.u32_at(aux + 8)? as usize)?;
+                out.push((other, name));
+                let next = self.u32_at(aux + 12)? as usize;
+                if next == 0 {
+                    break;
+                }
+                aux += next;
+            }
+            let next = self.u32_at(need + 12)? as usize;
+            if next == 0 {
+                break;
+            }
+            need += next;
+        }
+        Ok(out)
+    }
+
+    fn dynamic(&self, tag: u32) -> Result<Option<u32>> {
+        let Some(dynamic) = self.section(Self::SHT_DYNAMIC) else {
+            return Ok(None);
+        };
+        for entry in (dynamic.offset..dynamic.offset + dynamic.size).step_by(8) {
+            match self.u32_at(entry)? {
+                Self::DT_NULL => break,
+                t if t == tag => return Ok(Some(self.u32_at(entry + 4)?)),
+                _ => {}
+            }
+        }
+        Ok(None)
+    }
+
+    /// File bytes a dynamic tag points at. Non-loaded sections (address 0, as on
+    /// experiment-6 `hello.elf`) carry their file offset in the tag.
+    fn file_range(&self, at: u32, len: u32) -> Result<std::ops::Range<usize>> {
+        let section = self
+            .sections
+            .iter()
+            .find(|s| (s.addr != 0 && s.addr == at) || (s.addr == 0 && s.offset == at as usize))
+            .ok_or_else(|| Error::Other(format!("ELF dynamic pointer {at:#x} has no section")))?;
+        Ok(section.offset..section.offset + len as usize)
+    }
+
+    fn section(&self, kind: u32) -> Option<ElfSection> {
+        self.sections.iter().copied().find(|s| s.kind == kind)
+    }
+
+    fn string(&self, strtab: usize, at: usize) -> Result<String> {
+        let table = self
+            .sections
+            .get(strtab)
+            .ok_or_else(|| Error::Other(format!("ELF string table {strtab} missing")))?;
+        let rest = self
+            .bytes
+            .get(table.offset + at..table.offset + table.size)
+            .ok_or_else(|| Error::Other("ELF string out of range".into()))?;
+        let end = rest.iter().position(|&b| b == 0).unwrap_or(rest.len());
+        String::from_utf8(rest[..end].to_vec())
+            .map_err(|_| Error::Other("ELF string is not UTF-8".into()))
     }
 
     fn load(&self, want: impl Fn(u32) -> bool) -> Option<ElfSegment> {
