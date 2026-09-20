@@ -50,6 +50,14 @@
 // with `this` prepended as argument 0, and Rust declares it as
 // `extern "C" fn(this: *mut T, ...)`. Evidence: experiment 78.
 //
+// ONE DOCUMENTED EXCEPTION, in symrs_cstring.cpp: the C runtime routines LLVM emits
+// calls to and this platform does not export. euser exports memcpy/memset/memmove/
+// memclr and drtaeabi the __aeabi_mem* family, but nothing on the link line defines
+// memcmp or bcmp, and LLVM emits one of them for `a == b` on two byte slices. They are
+// plain C with no Symbian call in them, they live in this archive because that is the
+// one archive every Rust application already links, and they are pulled only by a
+// program that really compares bytes.
+//
 // A panic is NOT a leave and a TRAP does not catch it: e32panic.h line 131 documents
 // ETDes16Overflow = 11 (category USER) for "any of the copying, appending or formatting
 // member functions". Nothing here can turn a panic into an error, so a Rust wrapper that

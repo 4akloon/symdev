@@ -53,3 +53,14 @@ Task: build `symbian-std` (`io`/`fs`/`prelude` in `std` shape) over `RFs`/`RFile
 - **Careful: the drive path.** The skill says installed apps live under
   `~/.local/share/EKA2L1/data/drives/e/`, but `EmulatorData::drive_e` currently builds
   `<root>/drives/e`. Check the real tree before the first emulator run.
+- **`memcmp` is defined nowhere on the recorded link line.** `nm -D` over euser,
+  drtaeabi, dfpaeabi, scppnwdl and drtrvct2_2 finds `memcpy`/`memset`/`memmove`/
+  `memclr` and the `__aeabi_mem*` family but no `memcmp`/`bcmp`, and LLVM emits one of
+  them for `a == b` on two `[u8]`. Comparing byte slices in Rust did not link at all.
+  Two fixes measured: `-Zbuild-std-features=compiler-builtins-mem` works but costs
+  **4.6 kB** (one codegen unit drags `__adddf3`/`__divdf3`/`__muldf3` and the f32 trio
+  into a program with no arithmetic; `--gc-sections` cannot drop them because weak
+  *global* symbols are collection roots in a `-shared` link — experiment 68).
+  `shims/common/symrs_cstring.cpp` instead: `files` 15 595 → **10 242** bytes, the map's
+  `compiler_builtins` count 3 162 → **0**, and `hello` 3 187 / `hello-raw` 752 /
+  `alloc` 4 320 / `shim` 4 475 all unchanged.
