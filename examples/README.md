@@ -35,7 +35,7 @@ Verified 2026-09-19 in EKA2L1 (RM-469 firmware), built without `SYMDEV_ELF2E32` 
 
 Same steps as `hello`. Resources are compiled natively (symdev's own preprocessor and resource compiler, byte-equal to the SDK's `cpp.exe` + `rcomp.exe`, experiment 56); `LIBRARY` lines are linked as `.dso`. `symdev package` installs `gui.exe`, `\resource\apps\gui.rsc`, the registration resource and the icon.
 
-The icon is `gfx/gui.svg` (SVG Tiny), named by `icon = "gfx/gui.svg"` under `[symbian]` in `symdev.toml`. `symdev build` turns it into `build/gui_aif.mif` with the SDK's `mifconv.exe` under Wine, and `data/gui.rss` points `icon_file` at `\resource\apps\gui_aif.mif` (experiment 55). EKA2L1 shows it in its own app list; its S60 status pane and menu show a placeholder for every app.
+The icon is `gfx/gui.svg` (SVG Tiny), named by `icon = "gfx/gui.svg"` under `[symbian]` in `symdev.toml`. `symdev build` encodes it natively into `build/gui_aif.mif` (byte-equal to the SDK's `mifconv.exe`, experiments 55 and 57), and `data/gui.rss` points `icon_file` at `\resource\apps\gui_aif.mif`. EKA2L1 shows it in its own app list; its S60 status pane and menu show a placeholder for every app.
 
 Verified 2026-09-19 in EKA2L1 (experiment 51): title pane shows the caption, the view draws `Hello from symdev`, right softkey `Exit`. Emulator only.
 

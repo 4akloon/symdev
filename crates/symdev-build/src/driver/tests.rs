@@ -19,7 +19,6 @@ fn fake() -> GcceBuild {
             elf2e32: Some(PathBuf::from("/gcc/elf2e32")),
             gcc_lib: PathBuf::from("/gcc/lib/gcc/arm-none-symbianelf/12.1.0"),
             gcc_target_lib: PathBuf::from("/gcc/arm-none-symbianelf/lib"),
-            wine: PathBuf::from("/usr/bin/wine"),
         },
         uid3: 0xe79e4cf9,
         capabilities: Vec::new(),

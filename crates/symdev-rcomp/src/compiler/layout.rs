@@ -4,9 +4,7 @@
 use symdev_core::{Error, Result};
 
 use super::{RscResourceData, RscSegment, RssCompiler, RssConst};
-use crate::parser::{
-    RssExpr, RssMember, RssStruct, RssStructValue, RssType, RssValue, RssWidth,
-};
+use crate::parser::{RssExpr, RssMember, RssStruct, RssStructValue, RssType, RssValue, RssWidth};
 
 impl RssCompiler {
     /// `rcomp` accepts `-2^(8k-1) ..= 2^(8k)-1` for a `k`-byte integer and rejects the
