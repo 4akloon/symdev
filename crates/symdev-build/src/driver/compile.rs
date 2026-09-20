@@ -9,10 +9,12 @@ use super::{GcceBuild, arg};
 
 /// Extra `-I` directories: `user` after the source directory (build dir for `.rsg`,
 /// `USERINCLUDE`), `system` after `epoc32/include` (`SYSTEMINCLUDE`, case-fold overlay).
+/// `prefix` holds extra `-include` headers, force-included after the SDK's `gcce.h`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CompileIncludes {
     pub user: Vec<PathBuf>,
     pub system: Vec<PathBuf>,
+    pub prefix: Vec<PathBuf>,
 }
 
 impl GcceBuild {
@@ -58,6 +60,12 @@ impl GcceBuild {
             if module.dll { "-D__DLL__" } else { "-D__EXE__" }.into(),
             "-include".into(),
             arg(&epoc.join("epoc32/include/gcce/gcce.h")),
+        ]);
+        // After `gcce.h`, so a generated header can repair what it defines (`GcceCompat`).
+        for header in &includes.prefix {
+            args.extend(["-include".into(), arg(header)]);
+        }
+        args.extend([
             format!(
                 "-D__PRODUCT_INCLUDE__=\"{}\"",
                 epoc.join("epoc32/include/variant/symbian_os_v9.3.hrh")

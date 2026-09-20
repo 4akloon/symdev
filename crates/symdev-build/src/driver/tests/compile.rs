@@ -8,14 +8,16 @@ fn compile_includes_wrap_the_sdk_include_dir() {
     let inc = CompileIncludes {
         user: vec![PathBuf::from("/p/build")],
         system: vec![PathBuf::from("/p/build/sdk-include-casefold")],
+        prefix: Vec::new(),
     };
-    let args = d.compile_args(
-        Path::new("/p/src"),
-        &inc,
-        Path::new("/p/src/gui.cpp"),
-        Path::new("/p/build/gui.o"),
-    )
-    .unwrap();
+    let args = d
+        .compile_args(
+            Path::new("/p/src"),
+            &inc,
+            Path::new("/p/src/gui.cpp"),
+            Path::new("/p/build/gui.o"),
+        )
+        .unwrap();
     let at = |v: &str| args.iter().position(|a| a == v).unwrap();
     assert!(at("/p/src") < at("/p/build"));
     assert!(at("/p/build") < at("/sdk/epoc32/include"));
@@ -25,13 +27,14 @@ fn compile_includes_wrap_the_sdk_include_dir() {
 #[test]
 fn compile_args_match_recorded_experiment_5() {
     let d = fake();
-    let args = d.compile_args(
-        Path::new("/proj"),
-        &CompileIncludes::default(),
-        Path::new("/proj/hello.cpp"),
-        Path::new("/proj/build/hello.o"),
-    )
-    .unwrap();
+    let args = d
+        .compile_args(
+            Path::new("/proj"),
+            &CompileIncludes::default(),
+            Path::new("/proj/hello.cpp"),
+            Path::new("/proj/build/hello.o"),
+        )
+        .unwrap();
     assert_eq!(
         args,
         s(&[

@@ -2,6 +2,7 @@
 use symdev_core::{Artifact, BuildBackend, Error, Project, RemotePath, Result};
 
 use super::compile::CompileIncludes;
+use super::gcce_compat::GcceCompat;
 use super::module::Module;
 use super::source::resolve_source;
 use super::{GcceBuild, arg, io};
@@ -18,6 +19,7 @@ impl BuildBackend for GcceBuild {
             &self.tools.epocroot.join("epoc32/include"),
             &build_dir.join("sdk-include-casefold"),
         )?;
+        let compat = GcceCompat::ensure(&build_dir)?;
 
         let mut artifacts = Vec::new();
         if let Some(source) = &self.icon {
@@ -35,6 +37,7 @@ impl BuildBackend for GcceBuild {
             let mut includes = CompileIncludes {
                 user: vec![build_dir.clone()],
                 system: Vec::new(),
+                prefix: vec![compat.header().to_path_buf()],
             };
             includes.user.extend(
                 mmp.userinclude
