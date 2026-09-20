@@ -63,3 +63,32 @@ not EKA2L1 code:
   (Sunday), 30 days in the month = **2026-09-20, Sunday**. Correct.
 - **`UNIX_EPOCH` = 62_168_256_000_000_000 µs**, established from euser, and EKA2L1's
   clock conversion agrees with it.
+
+### 2026-09-20, the HAL route is closed (probe v3, `hal.txt`)
+
+`hal.dll` is not on this SDK's link line, but euser exports
+`_ZN7UserSvr6HalGetEiPv` — `UserSvr::HalGet(TInt, TAny*)` — which is what `HAL::Get`
+calls. Tried with the `HALData::TAttribute` ordinals counted out of `hal_data.h`
+(`ESystemTickPeriod` 14, `EMemoryRAM` 15, `ENanoTickPeriod` 92,
+`EFastCounterFrequency` 93, `EFastCounterCountsUp` 94):
+
+**every one returns KErrNotSupported (-5)** in EKA2L1, including attribute 14, whose
+value `UserHal::TickPeriod` hands over quite happily. So the whole `HalGet` path is
+unimplemented here and the nanokernel tick period is **not readable** on this platform.
+
+**Decision: `Instant` is `User::TickCount` + `UserHal::TickPeriod`.** It is the only
+counter whose period the platform will state through a call that works, so the
+tick→`Duration` factor is read at run time on whatever board this lands on instead of
+being an emulator measurement hard-coded as a device fact. The price is resolution:
+15.625 ms instead of `NTickCount`'s 1 ms. The gain, besides honesty, is the wrap
+window: 2^32 × 15.625 ms = **776.7 days (2.13 years)** against `NTickCount`'s 49.7 days.
+
+**Decision: `Instant::now()` returns `io::Result<Instant>`.** `UserHal::TickPeriod`
+returns a `TInt` and this crate may not panic, so the one std signature that has to
+give is `now()`; `elapsed`, `duration_since`, `checked_*`, `Add` and `Sub` all keep
+std's exact shapes. `Instant` carries the period it was taken with (8 bytes).
+
+**Decision: no `Ord`/`PartialOrd` for `Instant`.** A 32-bit wrapping counter has no
+total order; RFC 1982 serial comparison is not transitive, so `Ord` would be a lie.
+`checked_duration_since` returning `None` is the honest local comparison, and `std`
+already has it.
