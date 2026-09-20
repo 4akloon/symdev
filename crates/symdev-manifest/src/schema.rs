@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
+use crate::icons::IconContainer;
 use crate::install::InstallFile;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,6 +16,8 @@ pub struct Manifest {
     pub signing: Signing,
     /// `[[install]]`: extra files the package carries.
     pub install: Vec<InstallFile>,
+    /// `[[icons]]`: icon containers built by the native `mifconv`.
+    pub icons: Vec<IconContainer>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,6 +100,8 @@ pub(crate) struct RawManifest {
     pub(crate) signing: Option<RawSigning>,
     #[serde(default)]
     pub(crate) install: Vec<crate::install::RawInstall>,
+    #[serde(default)]
+    pub(crate) icons: Vec<crate::icons::RawIconContainer>,
 }
 
 #[derive(Deserialize)]

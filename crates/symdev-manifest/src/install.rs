@@ -43,7 +43,7 @@ impl InstallFile {
     /// `\resource\apps\x.mbm` and `!:\resource\apps\x.mbm` both mean the user's drive;
     /// forward slashes are accepted for the operator's comfort. A fixed drive letter is
     /// not accepted: no package we have recorded uses one.
-    fn dest(dest: &str) -> Result<String> {
+    pub(crate) fn dest(dest: &str) -> Result<String> {
         let dest = dest.trim().replace('/', "\\");
         let path = match dest.strip_prefix("!:") {
             Some(rest) => rest,

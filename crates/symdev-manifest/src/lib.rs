@@ -1,9 +1,11 @@
 mod error;
+mod icons;
 mod install;
 mod schema;
 mod validate;
 
 pub use error::{Error, Result};
+pub use icons::{IconContainer, IconSource};
 pub use install::InstallFile;
 pub use schema::{
     Compiler, Device, Language, Manifest, Package, Platform, Signing, SigningMode, Symbian, Target,

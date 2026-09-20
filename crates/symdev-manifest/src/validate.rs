@@ -41,6 +41,7 @@ pub(crate) fn validate(raw: RawManifest) -> Result<Manifest> {
             .into_iter()
             .map(crate::install::InstallFile::validate)
             .collect::<Result<Vec<_>>>()?,
+        icons: crate::icons::IconContainer::validate_all(raw.icons)?,
     })
 }
 
