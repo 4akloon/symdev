@@ -18,8 +18,12 @@ Replace `symbian_runtime::entry!(main)` with `#[symbian_std::main]` on a plain `
 - `IntoExitCode` gains `Result<T, E>` (generic) in `symbian-runtime`, `SymbianError` there (new `symbian-core` dependency, runtime is the top layer) and `io::Error` in `symbian-std`.
 - `symbian_std::io::Result` gains a defaulted error parameter so the prelude can export `Result` without taking `Result<T, E>` away from a file that globs it.
 
+- Verified end to end: `symdev new hello --language rust && symdev build && symdev package && symdev run` from an empty directory → `build/hello.exe` 3 187 B, `[Service.Notifier]: Trying to display: Hello from Rust SDK (19 chars)`, emulator exited on its own. `examples/files` through `symdev test --emulator`: `filesdemo: 16 passed`, exit 0.
+- E32 sizes: hello 3 187 (=), hello-raw 752 (=), alloc 4 320 (=), files 10 423 (=), shim 4 474 vs 4 475 (−1). The shim ELF `.text` went 6 596 → 6 604 (+8 B: the `Result` conversion now happens in the exported wrapper instead of the example's own `fn main() -> i32`); the E32 is deflate-compressed, hence the −1.
+- `__rt` was dropped: `ExitCode`/`IntoExitCode` are re-exported at the `symbian_std` root, so a wrong return type reads ``the trait bound `&str: IntoExitCode` is not satisfied`` and an application can implement the trait for its own error type.
+
 ## Dead ends
 
 ## Next step
 
-Capture the failure messages for the wrong shapes; then the host side (scaffold, `RustSdk::HELLO_MAIN` test), then the end-to-end run and the sizes. Old: read the spec (§6a, §5, §9, §11), experiments 65/69/79, and `symbian-rs/`.
+Backlog entry 81, spec §9, fold this note in and delete it. Old: read the spec (§6a, §5, §9, §11), experiments 65/69/79, and `symbian-rs/`.
