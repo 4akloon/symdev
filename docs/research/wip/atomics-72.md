@@ -22,10 +22,19 @@ Task: survey what atomics and blocking primitives Symbian OS 9.3 on ARMv5TE actu
 - **Link proof:** an `int E32Main()` doing `__atomic_fetch_add`/`__atomic_compare_exchange_n`/seq_cst load on a `volatile u32`, linked with the recorded `link.rs` argv, fails:
   `undefined reference to '__atomic_fetch_add_4' / '__atomic_compare_exchange_4' / '__sync_synchronize' (x2)`. So even an *acquire load* is a link failure today.
 
+
+### 3. Rust / LLVM (nightly-2026-09-19, rustc 1.100.0-nightly)
+- Scratch copy of the target JSON with `max-atomic-width: 32`, `atomic-cas: true`. `core`/`alloc`/`compiler_builtins` build fine with `-Zbuild-std`; the probe crate compiles.
+- **LLVM is stricter than GCC:** it lowers EVERY atomic op to a libcall, including a RELAXED load and store. `librprobe.a`'s undefined list is exactly `__atomic_load_4`, `__atomic_store_4`, `__atomic_exchange_1`, `__atomic_fetch_add_4`, `__atomic_compare_exchange_4`. Disassembly confirms `probe_load_relaxed` is `bl __atomic_load_4` with `r1 = 0` (memorder).
+- `compiler_builtins` (the build-std member) defines NONE of them.
+- Linking that archive with the recorded `link.rs` argv fails with seven `undefined reference to '__atomic_*'` lines. -> raising `max-atomic-width` today just converts a compile error into a link error.
+- At `max-atomic-width: 0` the types do not exist at all: `no AtomicU32/AtomicU8/AtomicUsize in sync::atomic`, and `cannot find sync in alloc` (no `Arc`). At 32/true `alloc::sync::Arc` exists.
+- **Decision: do NOT change the target JSON in this experiment.** Evidence: nothing on the link line defines the libcalls, so the change would only move the failure later.
+
 ## Decisions
 
 ## Dead ends
 
 ## Next step
 
-- Rust side: raise max-atomic-width to 32 in a scratch copy of the target JSON and see what rustc/LLVM emits.
+- Observe `User::LockedInc/Dec`/`SafeInc/Dec` return values on EKA2L1; then prove a lock-backed `__atomic_*` shim links and runs.
