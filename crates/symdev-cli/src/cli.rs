@@ -12,9 +12,11 @@ pub enum Commands {
     New {
         #[arg(value_parser = package_name)]
         name: String,
-        #[arg(long)]
+        /// The only device profile today.
+        #[arg(long, default_value = "nokia-e52")]
         target: Target,
-        #[arg(long, default_value = "cpp")]
+        /// `cpp` (an MMP project) or `rust` (a Cargo project on the Rust SDK).
+        #[arg(long, alias = "language", default_value = "cpp")]
         lang: Lang,
         /// `console` (econs text app) or `gui` (Avkon app with resources).
         #[arg(long, default_value = "console")]
@@ -41,9 +43,10 @@ pub enum Template {
     Gui,
 }
 
-#[derive(Clone, ValueEnum)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum Lang {
     Cpp,
+    Rust,
 }
 
 fn package_name(s: &str) -> Result<String, String> {

@@ -7,14 +7,16 @@ mod model;
 mod package;
 mod project;
 mod resources;
+mod rust_sdk;
 mod toolchain;
 
 pub use bld::ParseError;
-pub use driver::GcceBuild;
 pub use driver::{CompileFlags, CompileIncludes, GcceCompat, Module, SourceLanguage};
+pub use driver::{E32MAIN, GcceBuild, RustBuild};
 pub use exports::{DllExports, FrozenExports};
 pub use icons::{AppIcon, IconOutputs};
 pub use model::{BldExport, BldInf, Mmp, MmpBitmap, MmpBitmapSource, MmpOption, MmpResource};
 pub use package::SisPackage;
 pub use resources::{AppTarget, BuildOutputs, GeneratedCaseFold, MmpPath, SdkIncludeCaseFold};
+pub use rust_sdk::RustSdk;
 pub use toolchain::{Epocroot, Toolchain};

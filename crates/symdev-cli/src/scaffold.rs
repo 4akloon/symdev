@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use symdev_core::Error;
 
-use crate::cli::Template;
+use crate::cli::{Lang, Template};
 
 pub fn uid3_for_name(name: &str) -> u32 {
     let mut h: u32 = 0x811c9dc5;
@@ -17,10 +17,18 @@ pub fn uid3_hex(name: &str) -> String {
     format!("0x{:08x}", uid3_for_name(name))
 }
 
-pub fn create_project(cwd: &Path, name: &str, template: Template) -> Result<PathBuf, Error> {
+pub fn create_project(
+    cwd: &Path,
+    name: &str,
+    template: Template,
+    lang: Lang,
+) -> Result<PathBuf, Error> {
     let root = cwd.join(name);
     if root.exists() {
         return Err(Error::Other(format!("directory `{name}` already exists")));
+    }
+    if lang == Lang::Rust {
+        return crate::scaffold_rust::write_rust(&root, name, template);
     }
     std::fs::create_dir_all(root.join("group")).map_err(io_err)?;
     std::fs::create_dir_all(root.join("src")).map_err(io_err)?;
@@ -117,7 +125,7 @@ fn write_gui(root: &Path, name: &str, uid3: &str) -> Result<(), Error> {
     Ok(())
 }
 
-fn io_err(e: std::io::Error) -> Error {
+pub(crate) fn io_err(e: std::io::Error) -> Error {
     Error::Other(e.to_string())
 }
 
@@ -148,7 +156,7 @@ mod tests {
     #[test]
     fn create_project_writes_hello_tree() {
         let dir = scratch();
-        let root = create_project(&dir, "hello", Template::Console).unwrap();
+        let root = create_project(&dir, "hello", Template::Console, Lang::Cpp).unwrap();
         assert_eq!(root, dir.join("hello"));
         let toml = std::fs::read_to_string(root.join("symdev.toml")).unwrap();
         assert!(toml.contains("name = \"hello\""));
@@ -174,7 +182,7 @@ mod tests {
     #[test]
     fn examples_hello_matches_scaffold() {
         let dir = scratch();
-        let root = create_project(&dir, "hello", Template::Console).unwrap();
+        let root = create_project(&dir, "hello", Template::Console, Lang::Cpp).unwrap();
         let example: [(&str, &str); 5] = [
             (
                 "symdev.toml",
@@ -206,7 +214,7 @@ mod tests {
     #[test]
     fn examples_gui_matches_scaffold() {
         let dir = scratch();
-        let root = create_project(&dir, "gui", Template::Gui).unwrap();
+        let root = create_project(&dir, "gui", Template::Gui, Lang::Cpp).unwrap();
         let example: [(&str, &str); 7] = [
             (
                 "symdev.toml",
@@ -249,7 +257,7 @@ mod tests {
     #[test]
     fn create_gui_project_fills_name_and_uid3() {
         let dir = scratch();
-        let root = create_project(&dir, "notes", Template::Gui).unwrap();
+        let root = create_project(&dir, "notes", Template::Gui, Lang::Cpp).unwrap();
         let uid = uid3_hex("notes");
         let mmp = std::fs::read_to_string(root.join("group/notes.mmp")).unwrap();
         assert!(mmp.contains("TARGET notes.exe"));
@@ -271,7 +279,7 @@ mod tests {
     fn create_project_existing_dir_errors() {
         let dir = scratch();
         std::fs::create_dir(dir.join("hello")).unwrap();
-        let err = create_project(&dir, "hello", Template::Console).unwrap_err();
+        let err = create_project(&dir, "hello", Template::Console, Lang::Cpp).unwrap_err();
         assert_eq!(err.to_string(), "directory `hello` already exists");
     }
 }

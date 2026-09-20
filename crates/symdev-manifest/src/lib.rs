@@ -147,6 +147,12 @@ fn reject_unknown_device() {
 }
 
 #[test]
+fn accept_rust_language() {
+    let m = symdev_manifest::parse(&HELLO.replace(r#"name = "cpp""#, r#"name = "rust""#)).unwrap();
+    assert_eq!(m.language, symdev_manifest::Language::Rust);
+}
+
+#[test]
 fn reject_java_language() {
     reject(&HELLO.replace(r#"name = "cpp""#, r#"name = "java""#));
 }

@@ -1,13 +1,15 @@
 mod artifacts;
+mod build_cmd;
 mod cli;
 mod scaffold;
+mod scaffold_rust;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser};
-use symdev_build::{AppTarget, Epocroot, FrozenExports, GcceBuild, SisPackage, Toolchain};
-use symdev_core::{BuildBackend, Error, LocalEnv, PackageBackend, Project};
+use symdev_build::{AppTarget, Epocroot, FrozenExports, SisPackage};
+use symdev_core::{Error, PackageBackend, Project};
 
 use artifacts::package_artifacts;
 use cli::{Cli, Commands};
@@ -18,10 +20,15 @@ fn main() -> ExitCode {
             let _ = Cli::command().print_help();
             ExitCode::SUCCESS
         }
-        Some(Commands::New { name, template, .. }) => {
+        Some(Commands::New {
+            name,
+            template,
+            lang,
+            ..
+        }) => {
             match std::env::current_dir()
                 .map_err(|e| Error::Other(e.to_string()))
-                .and_then(|cwd| scaffold::create_project(&cwd, &name, template))
+                .and_then(|cwd| scaffold::create_project(&cwd, &name, template, lang))
             {
                 Ok(root) => {
                     println!("{}", root.display());
@@ -34,7 +41,7 @@ fn main() -> ExitCode {
             }
         }
         Some(Commands::Build) => match symdev_manifest::load(Path::new("symdev.toml")) {
-            Ok(m) => match build_project(m) {
+            Ok(m) => match build_cmd::build_project(m) {
                 Ok(code) => code,
                 Err(e) => {
                     eprintln!("error: {e}");
@@ -95,44 +102,6 @@ fn main() -> ExitCode {
     }
 }
 
-fn build_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
-    let uid3 = m
-        .symbian
-        .uid3
-        .ok_or_else(|| Error::Other("uid3 required for build (set symbian.uid3)".into()))?;
-    let tools = Toolchain::from_env()?;
-    let epocroot = tools.epocroot.clone();
-    let artifacts = pollster::block_on(async {
-        GcceBuild {
-            env: LocalEnv,
-            tools,
-            uid3,
-            capabilities: m.symbian.capabilities,
-            icon: m.symbian.icon,
-            icons: m.icons,
-        }
-        .build(&Project {
-            root: std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?,
-        })
-    })?;
-    for artifact in artifacts {
-        println!("{}", artifact.path.display());
-    }
-    for dll in FrozenExports::of(&current_project()?, &epocroot)? {
-        if !dll.unfrozen.is_empty() {
-            eprintln!(
-                "warning: {}: {} export(s) not frozen in {} ({}); run `symdev freeze` \
-                 before shipping so their ordinals stay fixed",
-                dll.dll,
-                dll.unfrozen.len(),
-                dll.frozen_def.display(),
-                dll.unfrozen.join(", ")
-            );
-        }
-    }
-    Ok(ExitCode::SUCCESS)
-}
-
 /// The SDK root, which only a project with a `bld.inf` needs: reading one runs the
 /// preprocessor, and that wants the SDK include directory and the variant header.
 fn epocroot_for(project: &Project) -> Result<PathBuf, Error> {
@@ -142,7 +111,7 @@ fn epocroot_for(project: &Project) -> Result<PathBuf, Error> {
     Ok(PathBuf::new())
 }
 
-fn current_project() -> Result<Project, Error> {
+pub(crate) fn current_project() -> Result<Project, Error> {
     Ok(Project {
         root: std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?,
     })

@@ -11,6 +11,7 @@ mod gcce_compat;
 mod language;
 mod link;
 mod resolve_source;
+mod rust_build;
 
 /// An SDK skeleton with just what preprocessing a project file needs: the variant
 /// configuration, the header it names and an include directory.

@@ -48,6 +48,9 @@ pub struct Platform {
 pub enum Language {
     #[serde(rename = "cpp")]
     Cpp,
+    /// A `no_std` Rust application built by `RustBuild` (experiment 65).
+    #[serde(rename = "rust")]
+    Rust,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
