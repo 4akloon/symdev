@@ -92,3 +92,29 @@ std's exact shapes. `Instant` carries the period it was taken with (8 bytes).
 total order; RFC 1982 serial comparison is not transitive, so `Ord` would be a lie.
 `checked_duration_since` returning `None` is the honest local comparison, and `std`
 already has it.
+
+### 2026-09-20, the example passes and the sizes
+
+- `symdev test --emulator` on `examples/time`: **29 passed**, exit 0. A 1 000 ms sleep
+  measures 1 000 ms and a 500 ms one 500 ms exactly (64 and 32 ticks); a 100 ms sleep
+  measures 93.75 or 109.375 ms — `User::After` rounds to a tick boundary — inside the
+  stated ±32.25 ms (two ticks plus a millisecond).
+- 20 000 instants over 218 ms: **0 backwards**, and the counter really moved **14**
+  times. The first version of this test took its 20 000 samples inside a single tick
+  and proved nothing, so "the counter moved" is now a case of its own.
+- **A clock change is proven**: `User::SetUTCTime` works in EKA2L1, `SystemTime`
+  jumped the full hour and the `Instant` measured 0 across it. Step 76's criterion.
+- **Host skew**: the emulator's last `SystemTime` reading landed **50 ms and 51 ms**
+  before the host's clock at the moment `symdev test` returned, on two back-to-back
+  runs — and those 50 ms are the report write plus the emulator's shutdown, so the
+  true skew is smaller and does not drift. EKA2L1's wall clock is the host's.
+- Sizes: `hello` 3 187, `hello-raw` 752, `alloc` 4 320, `shim` **4 474**, `files`
+  10 423, `time` **20 479**. Every one unchanged by this work; `shim` measures 4 474
+  here with the change stashed as well, so the backlog's 4 475 is older, not this.
+- **`time` costs 6.5 kB of soft float it never calls.** `Duration` arithmetic needs
+  u64 division, `u64_div_rem` pulls the one `compiler_builtins` object, and that
+  object brings `__adddf3`/`__divdf3`/`__muldf3` and their `sf` siblings with it —
+  nothing in the image calls them but each other. Experiment 77's one-codegen-unit
+  problem again. `files` has 0 `compiler_builtins` symbols, `time` has 22.
+- Using `Duration::as_micros`/`as_millis` (`u128`) in the example cost a further
+  **1 081 bytes**: 21 560 → 20 479 after switching to `as_secs`/`subsec_micros`.

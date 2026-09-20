@@ -9,7 +9,7 @@
 //! different periods, different origins and, for [`FastCounter`], a direction that is
 //! a property of the board.
 use symbian_sys::time::{
-    TTime, TTime_HomeTime, TTime_UniversalTime, User_FastCounter, User_NTickCount,
+    TTime, TTime_HomeTime, TTime_UniversalTime, User_FastCounter, User_NTickCount, User_SetUTCTime,
     User_TickCount, UserHal_TickPeriod,
 };
 
@@ -18,12 +18,16 @@ use crate::error::{Result, check};
 /// The **nanokernel** tick counter, `User::NTickCount()`.
 ///
 /// A free-running `TUint32` that counts up and wraps at 2^32 ticks; nothing resets it
-/// while the machine is up, and a device clock change does not touch it. It is the
-/// counter `symbian_std::time::Instant` is built on.
+/// while the machine is up, and a device clock change does not touch it. Measured at
+/// **1 000 µs** inside EKA2L1, which is finer than [`SystemTicks`].
 ///
-/// The header states no period. `HALData::ENanoTickPeriod` would, but it lives in
-/// `hal.dll`, which is not on this SDK's link line, so the period is **measured**
-/// instead (experiment 85) and must be measured again on a device.
+/// **`symbian_std::time::Instant` is not built on this**, for one reason: the header
+/// states no period, and the attribute that would — `HALData::ENanoTickPeriod` — lives
+/// in `hal.dll`, which is not on this SDK's link line, while euser's own
+/// `UserSvr::HalGet` answers `KErrNotSupported` for every attribute inside EKA2L1
+/// (experiment 85). Writing 1 kHz into the SDK would be an emulator measurement
+/// standing in for a device fact. This type is here for a program that knows its own
+/// board and wants the resolution.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NanoTicks(u32);
 
@@ -47,18 +51,15 @@ impl NanoTicks {
     pub const fn ticks_since(self, earlier: Self) -> u32 {
         self.0.wrapping_sub(earlier.0)
     }
-
-    /// The tick `ticks` after this one.
-    pub const fn advanced_by(self, ticks: u32) -> Self {
-        Self(self.0.wrapping_add(ticks))
-    }
 }
 
 /// The **system** tick counter, `User::TickCount()`, whose period
 /// [`SystemTicks::period_micros`] reports.
 ///
-/// Coarser than [`NanoTicks`] — it is the tick the kernel's timer queues run on — and
-/// also a `TUint` that wraps at 2^32.
+/// Coarser than [`NanoTicks`] — it is the tick the kernel's timer queues run on, and
+/// measured **15 625 µs** (1/64 s) inside EKA2L1 — and also a `TUint` that wraps at
+/// 2^32, which at that period is 776.7 days. It backs `symbian_std::time::Instant`,
+/// because it is the only counter whose period the platform will state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SystemTicks(u32);
 
@@ -78,6 +79,12 @@ impl SystemTicks {
     /// Ticks from `earlier` to `self`, modulo 2^32.
     pub const fn ticks_since(self, earlier: Self) -> u32 {
         self.0.wrapping_sub(earlier.0)
+    }
+
+    /// The tick `ticks` after this one, modulo 2^32. `ticks.wrapping_neg()` steps
+    /// backwards.
+    pub const fn advanced_by(self, ticks: u32) -> Self {
+        Self(self.0.wrapping_add(ticks))
     }
 
     /// The period of this counter in microseconds (`UserHal::TickPeriod`), which is
@@ -148,6 +155,22 @@ impl Ttime {
         // SAFETY: as `Ttime::universal`.
         unsafe { TTime_HomeTime(&mut time) };
         Self(time)
+    }
+
+    /// Sets the device's UTC clock (`User::SetUTCTime`).
+    ///
+    /// **Needs the `WriteDeviceData` capability**, which a self-signed SIS cannot
+    /// grant on a phone; the `Err` on a device without it is `KErrPermissionDenied`.
+    /// Every `symbian_std::time::SystemTime` in the process jumps when this succeeds,
+    /// and no `Instant` moves — that is the difference between the two types, and
+    /// experiment 85 proves it by calling this.
+    pub fn set_universal(self) -> Result<()> {
+        let time = self.0;
+        // SAFETY: `User::SetUTCTime(const TTime&)` is a euser static member; `&time`
+        // is a valid, aligned, borrowed `TTime` for the whole call, which only reads
+        // it and returns a `TInt`. It cannot leave.
+        let code = unsafe { User_SetUTCTime(&time) };
+        check(code).map(|_| ())
     }
 
     /// Wraps a raw `TTime` value.

@@ -43,6 +43,12 @@ unsafe extern "C" {
     #[link_name = "_ZN7UserHal10TickPeriodER27TTimeIntervalMicroSeconds32"]
     pub fn UserHal_TickPeriod(period: *mut i32) -> i32;
 
+    /// `0000208c T _ZN4User10SetUTCTimeERK5TTime` —
+    /// `User::SetUTCTime(const TTime&)`: sets the device's UTC clock, returning a
+    /// system-wide error code. Needs the `WriteDeviceData` capability.
+    #[link_name = "_ZN4User10SetUTCTimeERK5TTime"]
+    pub fn User_SetUTCTime(time: *const TTime) -> i32;
+
     /// `00000d68 T _ZN5TTime8HomeTimeEv` — `TTime::HomeTime()`: sets `*this` to the
     /// current **local** time, the one the phone's clock and time-zone setting show.
     #[link_name = "_ZN5TTime8HomeTimeEv"]

@@ -78,6 +78,7 @@ pub mod prelude;
 #[allow(unsafe_code)]
 pub mod sync;
 pub mod test_report;
+pub mod time;
 
 pub use symbian_macros::main;
 /// What a `fn main` may return, and the `TInt` it becomes. An application implements

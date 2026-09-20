@@ -1,13 +1,14 @@
-//! Throwaway HAL probe for experiment 85 — NOT the finished example.
+//! Time, in `std`'s shape (design spec §6a, §11 step 76).
 //!
-//! `HAL::Get` lives in `hal.dll`, which is not on this SDK's link line, but euser
-//! exports `_ZN7UserSvr6HalGetEiPv` — `UserSvr::HalGet(TInt, TAny*)` — which is what
-//! `HAL::Get` calls. If that works, the nanokernel tick period and the fast counter's
-//! frequency and direction are readable from any board instead of hard-coded.
+//! The cases are in [`checks`], and almost every name in them is `std`'s: `Duration`,
+//! `Instant`, `SystemTime`, `UNIX_EPOCH`, `duration_since`, `elapsed`, `checked_add`.
+//! The Symbian-shaped types appear only where `std` has no name for the thing at all —
+//! to pace a measurement (`User::After`), to read the counters the SDK deliberately
+//! does not build on, and to set the device clock.
 //!
-//! The self-check that says the attribute numbering is right and not a guess:
-//! attribute 14 (`ESystemTickPeriod`) must come back as 15 625, the number
-//! `UserHal::TickPeriod` already gave.
+//! It reports through [`symbian_std::test_report`], and writes every raw number it
+//! took to `E:\symdev\time76\measured.txt` so the host can compare its own clock with
+//! the emulated one.
 #![no_std]
 
 extern crate alloc;
@@ -15,54 +16,74 @@ extern crate alloc;
 use alloc::string::String;
 use core::fmt::Write as _;
 
-use symbian_core::time::SystemTicks;
+use symbian_core::time::{NanoTicks, SystemTicks};
 use symbian_std::fs;
 use symbian_std::io::Result;
 use symbian_std::test_report::Report;
+use symbian_std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+mod checks;
 
 const DIR: &str = "E:\\symdev\\time76";
-const PROBE: &str = "E:\\symdev\\time76\\hal.txt";
+const NOTES: &str = "E:\\symdev\\time76\\measured.txt";
 
-/// `HALData::TAttribute` ordinals, counted out of `hal_data.h`'s enum.
-const ATTRIBUTES: [(&str, i32); 5] = [
-    ("ESystemTickPeriod", 14),
-    ("EMemoryRAM", 15),
-    ("ENanoTickPeriod", 92),
-    ("EFastCounterFrequency", 93),
-    ("EFastCounterCountsUp", 94),
-];
+/// A window the wall clock has to be inside for anything to be believable:
+/// 2020-01-01 to 2100-01-01, in Unix seconds.
+pub(crate) const NOT_BEFORE: u64 = 1_577_836_800;
+pub(crate) const NOT_AFTER: u64 = 4_102_444_800;
 
-unsafe extern "C" {
-    #[link_name = "_ZN7UserSvr6HalGetEiPv"]
-    fn UserSvr_HalGet(attribute: i32, value: *mut i32) -> i32;
-}
+/// How many `Instant`s to take when checking that the clock never goes backwards.
+pub(crate) const SAMPLES: usize = 20_000;
 
-fn probe() -> Result<()> {
-    let mut out = String::new();
+/// How many of those samples to take between one short sleep and the next. Without
+/// the sleeps the whole loop finishes inside a single 15 625 µs tick — 20 000 readings
+/// of a counter that never moved prove nothing at all, which is what the first run of
+/// this example measured.
+pub(crate) const SAMPLES_PER_SLEEP: usize = 200;
+
+fn run(report: &mut Report, notes: &mut String) {
     let _ = writeln!(
-        out,
-        "userhal_tick_period={:?}",
-        SystemTicks::period_micros().map_err(|e| e.code())
+        notes,
+        "tick_period={:?} first_tick={} first_nano={}",
+        SystemTicks::period_micros().map_err(|e| e.code()),
+        SystemTicks::now().raw(),
+        NanoTicks::now().raw()
     );
-    fs::create_dir_all(DIR)?;
-    fs::write(PROBE, out.as_bytes())?;
-
-    for (name, attribute) in ATTRIBUTES {
-        let mut value: i32 = i32::MIN;
-        // SAFETY (probe): `UserSvr::HalGet(TInt, TAny*)` per the mangled name; the
-        // out-pointer is a valid, aligned, exclusively borrowed `i32` for the call.
-        let code = unsafe { UserSvr_HalGet(attribute, &mut value) };
-        let _ = writeln!(out, "{name}({attribute}) code={code} value={value}");
-        // One attribute at a time, so a call that takes the process down still leaves
-        // everything before it on the drive.
-        fs::write(PROBE, out.as_bytes())?;
-    }
-    Ok(())
+    // One tick of slack for `User::After`'s own rounding and one for the reading, at
+    // the 15 625 µs period the platform reports.
+    let slack = Duration::from_micros(2 * 15_625 + 1_000);
+    checks::measure_sleep(report, notes, 1_000_000, slack);
+    checks::measure_sleep(report, notes, 500_000, slack);
+    checks::measure_sleep(report, notes, 100_000, slack);
+    checks::never_goes_backwards(report, notes);
+    checks::arithmetic(report);
+    checks::wall_clock(report, notes);
+    checks::a_clock_change(report, notes);
+    // The last thing read, so that the host — which takes its own clock the moment
+    // `symdev test` returns — has a reading to compare against with only the report
+    // write and the emulator's shutdown in between.
+    let _ = writeln!(
+        notes,
+        "unix_micros_at_end={}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs().saturating_mul(1_000_000) + d.subsec_micros() as u64)
+            .unwrap_or(0)
+    );
 }
 
 #[symbian_std::main]
 fn main() -> Result<i32> {
     let mut report = Report::new("time");
-    report.checked("HAL probe wrote its measurements", probe());
+    let mut notes = String::new();
+    run(&mut report, &mut notes);
+    report.checked("the measurements are written out", write_notes(&notes));
     Ok(if report.finish()? { 0 } else { 1 })
+}
+
+/// Leaves every raw number on the drive, where the host can read it and compare its
+/// own clock with the emulated one.
+fn write_notes(notes: &str) -> Result<()> {
+    fs::create_dir_all(DIR)?;
+    fs::write(NOTES, notes.as_bytes())
 }
