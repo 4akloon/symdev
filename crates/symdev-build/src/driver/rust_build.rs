@@ -8,7 +8,7 @@ use std::process::Command;
 
 use symdev_core::{Artifact, BuildBackend, Error, Project, RemotePath, Result};
 
-use super::{GcceBuild, arg, io};
+use super::{CompileIncludes, GcceBuild, arg, io};
 use crate::rust_sdk::RustSdk;
 
 /// The C++-mangled `E32Main()` that `eexe.lib`'s startup calls. The reference to it comes
@@ -65,6 +65,48 @@ impl RustBuild {
             .join(format!("lib{}.a", self.name))
     }
 
+    /// Where the shim object for `source` goes: `build/shims/<stem>.o`, under the
+    /// project's `build/` like everything else cargo and the linker produce.
+    pub fn shim_object(&self, project: &Project, source: &Path) -> PathBuf {
+        let stem = source.file_stem().unwrap_or_default();
+        project
+            .root
+            .join("build/shims")
+            .join(Path::new(stem).with_extension("o"))
+    }
+
+    /// The shim is compiled with **`GcceBuild`'s own C++ argv**, so it sees `gcce.h`,
+    /// the GCC-12 varargs repair, `-D__PRODUCT_INCLUDE__` and every define a C++ project
+    /// gets. That is the whole point: the shim is ordinary S60 C++, and the day the
+    /// recorded compile line changes the shim moves with it.
+    ///
+    /// The source directory is the shim directory, so `#include "symrs_shim.h"` finds
+    /// its neighbour, and nothing of the user's project is on the include path — the
+    /// shim belongs to the SDK.
+    pub fn shim_compile_args(&self, source: &Path, obj: &Path) -> Result<Vec<String>> {
+        self.gcce.compile_args(
+            &self.sdk.shim_dir(),
+            &CompileIncludes::default(),
+            source,
+            obj,
+        )
+    }
+
+    /// Compiles every SDK shim source into `build/shims/` and returns the objects in the
+    /// order they go on the link line.
+    fn build_shims(&self, project: &Project, cwd: &RemotePath) -> Result<Vec<PathBuf>> {
+        let dir = project.root.join("build/shims");
+        std::fs::create_dir_all(&dir).map_err(io)?;
+        let mut objects = Vec::new();
+        for source in self.sdk.shim_sources()? {
+            let obj = self.shim_object(project, &source);
+            self.gcce
+                .run_tool(&self.shim_compile_args(&source, &obj)?, cwd)?;
+            objects.push(obj);
+        }
+        Ok(objects)
+    }
+
     /// `GcceBuild::link_args` with `-u _Z7E32Mainv` after `-u _E32Startup`,
     /// `--gc-sections`, and the two runtime DSOs that define the compiler's helpers
     /// placed *before* the Rust archive.
@@ -86,8 +128,22 @@ impl RustBuild {
     /// `--gc-sections` stays: it still drops what a Rust program does not reach, and it
     /// covers helpers the DSOs do not define. Both are added for Rust only; the recorded
     /// C++ link line, byte-verified against the SDK's own, is untouched.
-    pub fn link_args(&self, archive: &Path, elf: &Path, map: &Path) -> Vec<String> {
-        let mut args = self.gcce.link_args(&self.name, archive, elf, map, &[]);
+    ///
+    /// The shim objects follow the Rust archive: they are objects, so the linker takes
+    /// them whole and the archive's references to `symrs_*` resolve regardless of
+    /// order, while the euser and drtaeabi lines must stay in front of the archive.
+    /// [`RustSdk::LIBRARIES`] adds the DSOs the SDK's own code imports.
+    pub fn link_args(
+        &self,
+        archive: &Path,
+        shims: &[PathBuf],
+        elf: &Path,
+        map: &Path,
+    ) -> Vec<String> {
+        let libraries: Vec<String> = RustSdk::LIBRARIES.iter().map(|l| (*l).into()).collect();
+        let mut args = self
+            .gcce
+            .link_args(&self.name, archive, elf, map, &libraries);
         let after = args
             .windows(2)
             .position(|w| w[0] == "-u" && w[1] == "_E32Startup")
@@ -109,6 +165,13 @@ impl RustBuild {
         .enumerate()
         {
             args.insert(at + i, flag);
+        }
+        let after_archive = args
+            .iter()
+            .position(|a| a == &arg(archive))
+            .map_or(args.len(), |i| i + 1);
+        for (i, obj) in shims.iter().enumerate() {
+            args.insert(after_archive + i, arg(obj));
         }
         args
     }
@@ -148,10 +211,11 @@ impl BuildBackend for RustBuild {
                 self.name
             )));
         }
+        let shims = self.build_shims(project, &cwd)?;
         let elf = build_dir.join(format!("{}.elf", self.name));
         let map = build_dir.join(format!("{}.exe.map", self.name));
         self.gcce
-            .run_tool(&self.link_args(&archive, &elf, &map), &cwd)?;
+            .run_tool(&self.link_args(&archive, &shims, &elf, &map), &cwd)?;
         let out = build_dir.join(format!("{}.exe", self.name));
         self.gcce
             .run_elf2e32(&self.gcce.elf2e32_args(&self.name, &elf, &out), &cwd)?;

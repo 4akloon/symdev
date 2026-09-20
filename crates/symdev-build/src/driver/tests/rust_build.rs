@@ -54,8 +54,9 @@ fn link_args_add_e32main_gc_sections_and_the_helper_dsos_before_the_archive() {
         Path::new("/p/build/hello.elf"),
         Path::new("/p/build/hello.exe.map"),
     );
-    let got = b.link_args(a, elf, map);
-    let mut want = b.gcce.link_args("hello", a, elf, map, &[]);
+    let got = b.link_args(a, &[], elf, map);
+    let libraries: Vec<String> = RustSdk::LIBRARIES.iter().map(|l| (*l).into()).collect();
+    let mut want = b.gcce.link_args("hello", a, elf, map, &libraries);
     let at = want.iter().position(|x| x == "_E32Startup").unwrap();
     assert_eq!(want[at - 1], "--entry");
     assert_eq!(&want[at + 1..at + 3], &s(&["-u", "_E32Startup"])[..]);
@@ -101,4 +102,54 @@ fn link_args_add_e32main_gc_sections_and_the_helper_dsos_before_the_archive() {
         .position(|x| x == "/p/build/cargo/arm-symbian-e32/release/libhello.a")
         .unwrap();
     assert!(!cpp[..cpp_archive].contains(&"-l:drtaeabi.dso".to_string()));
+    assert!(!cpp.contains(&"-l:bafl.dso".to_string()));
+}
+
+#[test]
+fn shim_objects_follow_the_archive_and_keep_the_dso_ordering() {
+    let b = rust();
+    let (a, elf, map) = (
+        Path::new("/p/build/cargo/arm-symbian-e32/release/libhello.a"),
+        Path::new("/p/build/hello.elf"),
+        Path::new("/p/build/hello.exe.map"),
+    );
+    let shims = [PathBuf::from("/p/build/shims/symrs_f32.o")];
+    let got = b.link_args(a, &shims, elf, map);
+    let archive = got.iter().position(|x| x == &a.display().to_string());
+    let shim = got.iter().position(|x| x == "/p/build/shims/symrs_f32.o");
+    let euser = got.iter().position(|x| x == "-l:euser.dso");
+    assert_eq!(shim, archive.map(|i| i + 1));
+    assert!(euser < archive);
+}
+
+#[test]
+fn the_sdk_owns_the_shim_sources_and_compiles_them_with_the_cpp_argv() {
+    let b = rust();
+    let sources = b.sdk.shim_sources().unwrap();
+    assert!(
+        sources.iter().any(|s| s.ends_with("symrs_f32.cpp")),
+        "{sources:?}"
+    );
+    let project = Project {
+        root: PathBuf::from("/p"),
+    };
+    let obj = b.shim_object(&project, &sources[0]);
+    assert!(obj.starts_with("/p/build/shims"));
+    assert_eq!(obj.extension().unwrap(), "o");
+
+    // The same argv a C++ project's source gets, with the shim directory as the source
+    // directory and nothing of the user's project on the include path.
+    let got = b.shim_compile_args(&sources[0], &obj).unwrap();
+    let want = b
+        .gcce
+        .compile_args(
+            &b.sdk.shim_dir(),
+            &crate::driver::CompileIncludes::default(),
+            &sources[0],
+            &obj,
+        )
+        .unwrap();
+    assert_eq!(got, want);
+    assert!(got.contains(&"-include".to_string()));
+    assert!(got.iter().any(|x| x.ends_with("gcce/gcce.h")));
 }

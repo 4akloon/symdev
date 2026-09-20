@@ -22,6 +22,16 @@ impl RustSdk {
     /// The hello application (`symbian-rs/examples/hello`), the scaffold's `src/main.rs`.
     pub const HELLO_MAIN: &'static str =
         include_str!("../../../symbian-rs/examples/hello/src/main.rs");
+    /// The import libraries the SDK's own crates and C++ shim need beyond the runtime
+    /// set of the recorded link line: `efsrv.dso` for `RFs`, `bafl.dso` for the trapped
+    /// `BaflUtils::EnsurePathExistsL`.
+    ///
+    /// They are named for every Rust application, because the SDK and not the project
+    /// decides what the shim calls (design spec §7, step 70). An unused one costs
+    /// nothing: the post-linker emits an import only for a symbol that is actually
+    /// referenced, which is why the recorded C++ line has carried four unused DSOs since
+    /// experiment 5 and still produces a 746-byte hello.
+    pub const LIBRARIES: &'static [&'static str] = &["efsrv.dso", "bafl.dso"];
 
     pub fn from_env() -> Result<Self> {
         let root = match std::env::var_os("SYMDEV_RUST_SDK") {
@@ -60,6 +70,35 @@ impl RustSdk {
     /// `crates/<name>` inside the SDK, for a path dependency.
     pub fn crate_dir(&self, name: &str) -> PathBuf {
         self.root.join("crates").join(name)
+    }
+
+    /// `shims/common`: the C++ the SDK compiles into every Rust application so that a
+    /// leaving Symbian call is `TRAP`ped before it can reach a Rust frame (design spec
+    /// §7, step 70). `shims/s60` is reserved for the Avkon subclasses of step 75, which
+    /// need their own libraries and cannot be forced onto a console application.
+    pub fn shim_dir(&self) -> PathBuf {
+        self.root.join("shims").join("common")
+    }
+
+    /// Every `.cpp` under [`Self::shim_dir`], sorted, so the object list and therefore
+    /// the link line are the same on every host.
+    ///
+    /// The application names none of them: the shim is part of the SDK.
+    pub fn shim_sources(&self) -> Result<Vec<PathBuf>> {
+        let dir = self.shim_dir();
+        let mut sources: Vec<PathBuf> = std::fs::read_dir(&dir)
+            .map_err(|e| {
+                Error::Other(format!(
+                    "Rust SDK at {} has no readable {} ({e}); the C++ shim is part of the SDK",
+                    self.root.display(),
+                    dir.display()
+                ))
+            })?
+            .filter_map(|entry| entry.ok().map(|e| e.path()))
+            .filter(|p| p.extension().is_some_and(|e| e == "cpp"))
+            .collect();
+        sources.sort();
+        Ok(sources)
     }
 }
 
