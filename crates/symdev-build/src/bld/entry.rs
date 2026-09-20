@@ -10,32 +10,33 @@ use crate::project::ProjectLine;
 const QUALIFIERS: &[&str] = &["TIDY", "IGNORE", "BUILD_AS_ARM", "MANUAL", "SUPPORT"];
 
 /// The external-makefile hand-off forms, which are an escape into `nmake`/GNU `make`
-/// with SDK-specific goals and cannot be honoured here (§4.6).
+/// with SDK-specific goals (§4.6). symdev runs no makefile: the line is skipped with a
+/// warning, and what the makefile would have produced is declared in `symdev.toml`.
 const MAKEFILES: &[&str] = &["MAKEFILE", "NMAKEFILE", "GNUMAKEFILE"];
 
 /// One line of a project or export section.
 pub struct BldEntry;
 
 impl BldEntry {
-    /// A `PRJ_MMPFILES` line: the `.mmp` it names, or `None` when `IGNORE` discards it.
-    pub fn mmp(line: &ProjectLine) -> Result<Option<PathBuf>, ParseError> {
+    /// A `PRJ_MMPFILES` line: the `.mmp` it names, or `None` when `IGNORE` discards it
+    /// or the line hands off to a makefile (then `warnings` says so).
+    pub fn mmp(
+        line: &ProjectLine,
+        warnings: &mut Vec<String>,
+    ) -> Result<Option<PathBuf>, ParseError> {
         let [path, qualifiers @ ..] = line.tokens.as_slice() else {
             return Ok(None);
         };
         let first = path.to_ascii_uppercase();
-        if let Some(kind) = MAKEFILES.iter().find(|m| **m == first) {
+        if MAKEFILES.contains(&first.as_str()) {
             let named = line.tokens.get(1).cloned().unwrap_or_default();
-            return Err(ParseError(format!(
-                "{}: {kind} {named}: an external makefile is built by {} with the SDK's own \
-                 build stages as goals; symdev has no makefile stage, so move what it does \
-                 into the project or build it yourself before `symdev build`",
-                line.at(),
-                if first == "GNUMAKEFILE" {
-                    "GNU make"
-                } else {
-                    "nmake"
-                }
-            )));
+            warnings.push(format!(
+                "{}: {path} {named}: symdev does not run makefiles, so this line is skipped; \
+                 declare what {named} produces in symdev.toml ([[icons]] for a mifconv call, \
+                 [[install]] for a file it copies)",
+                line.at()
+            ));
+            return Ok(None);
         }
         let mut ignore = false;
         for qualifier in qualifiers {

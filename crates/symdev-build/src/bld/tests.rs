@@ -89,22 +89,26 @@ fn each_section_comes_from_its_own_pass() {
     assert_eq!(b.mmp_files, [std::path::PathBuf::from("a.mmp")]);
 }
 
-/// Gap 5: a `gnumakefile` line must not be collected as an MMP path.
+/// Gap 5: a `gnumakefile` line is not an MMP path. It is skipped with a warning that
+/// names the file and the line, since symdev runs no makefile: what the makefile would
+/// have produced is declared in `symdev.toml` instead.
 #[test]
-fn a_makefile_hand_off_is_refused_by_name() {
+fn a_makefile_hand_off_is_skipped_with_a_warning() {
     for line in [
         "gnumakefile Icons_scalable_dc.mk",
         "makefile build.mak",
         "nmakefile build.mak",
     ] {
-        let err = parse(&format!("PRJ_MMPFILES\n{line}\n"))
-            .unwrap_err()
-            .to_string();
-        assert!(
-            err.contains("makefile") || err.contains("MAKEFILE"),
-            "{err}"
-        );
-        assert!(err.to_lowercase().contains("make"), "{err}");
+        let b = parse(&format!("PRJ_MMPFILES\n{line}\nhello.mmp\n")).unwrap();
+        assert_eq!(b.mmp_files, [std::path::PathBuf::from("hello.mmp")]);
+        let [warning] = b.warnings.as_slice() else {
+            panic!("one warning, got {:?}", b.warnings);
+        };
+        let file = line.split(' ').nth(1).unwrap();
+        assert!(warning.contains(file), "{warning}");
+        assert!(warning.contains(":2:"), "{warning}");
+        assert!(warning.contains("does not run makefiles"), "{warning}");
+        assert!(warning.contains("symdev.toml"), "{warning}");
     }
 }
 
