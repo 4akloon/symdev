@@ -33,7 +33,7 @@ fn the_wrapper_exports_the_mangled_e32main_and_calls_main() {
         "{out}"
     );
     assert!(
-        out.contains("::symbian_std::__rt::ExitCode::from_main(main())"),
+        out.contains("::symbian_std::ExitCode::from_main(main())"),
         "{out}"
     );
 }

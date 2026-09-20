@@ -67,10 +67,7 @@ pub mod prelude;
 pub mod test_report;
 
 pub use symbian_macros::main;
-
-/// What [`macro@main`]'s expansion names. Not an API: the attribute writes these
-/// paths so that an application needs no dependency but this crate.
-#[doc(hidden)]
-pub mod __rt {
-    pub use symbian_runtime::{ExitCode, IntoExitCode};
-}
+/// What a `fn main` may return, and the `TInt` it becomes. An application implements
+/// [`IntoExitCode`] for its own error type to return it from `main`; `()`, `i32`,
+/// `SymbianError`, [`io::Error`] and any `Result` of those are already covered.
+pub use symbian_runtime::{ExitCode, IntoExitCode};

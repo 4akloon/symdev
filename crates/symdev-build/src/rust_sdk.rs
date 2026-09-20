@@ -19,7 +19,10 @@ impl RustSdk {
     /// the project builds with the same pinned nightly as the SDK.
     pub const TOOLCHAIN_FILE: &'static str =
         include_str!("../../../symbian-rs/rust-toolchain.toml");
-    /// The hello application (`symbian-rs/examples/hello`), the scaffold's `src/main.rs`.
+    /// The hello application (`symbian-rs/examples/hello`), the scaffold's `src/main.rs`:
+    /// `#![no_std]`, `#[symbian_std::main]` and a `fn main` returning a `Result`
+    /// (experiment 81). No `#![no_main]`: the crate is a `staticlib`, so rustc never
+    /// looks for a `main` of its own.
     pub const HELLO_MAIN: &'static str =
         include_str!("../../../symbian-rs/examples/hello/src/main.rs");
     /// The import libraries the SDK's own crates and C++ shim need beyond the runtime
@@ -110,13 +113,11 @@ mod tests {
     fn checkout_sdk_is_found_and_has_the_target() {
         let sdk = RustSdk::from_env().unwrap();
         assert!(sdk.target_spec().ends_with("targets/arm-symbian-e32.json"));
-        assert!(
-            sdk.crate_dir("symbian-runtime")
-                .join("Cargo.toml")
-                .is_file()
-        );
+        assert!(sdk.crate_dir("symbian-std").join("Cargo.toml").is_file());
         assert!(RustSdk::TOOLCHAIN_FILE.contains("channel = \"nightly-"));
-        assert!(RustSdk::HELLO_MAIN.contains("symbian_runtime::entry!(main);"));
+        assert!(RustSdk::HELLO_MAIN.contains("#[symbian_std::main]"));
+        assert!(RustSdk::HELLO_MAIN.contains("fn main() -> Result<()>"));
+        assert!(!RustSdk::HELLO_MAIN.contains("no_main"));
     }
 
     #[test]

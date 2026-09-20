@@ -107,7 +107,7 @@ impl Entry {
             Shape::Console => format!(
                 "#[unsafe(export_name = \"{E32MAIN}\")]\n\
                  pub extern \"C\" fn __symbian_e32main() -> i32 {{\n    \
-                 ::symbian_std::__rt::ExitCode::from_main({}())\n\
+                 ::symbian_std::ExitCode::from_main({}())\n\
                  }}\n",
                 Self::NAME
             ),

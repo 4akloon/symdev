@@ -82,8 +82,8 @@ impl core::error::Error for Error {}
 
 /// `fn main() -> io::Result<()>`: the process ends with the `TInt` the call failed
 /// with, exactly as [`Error::raw_os_error`] reports it.
-impl symbian_runtime::IntoExitCode for Error {
-    fn into_exit_code(self) -> symbian_runtime::ExitCode {
-        symbian_runtime::IntoExitCode::into_exit_code(self.0)
+impl crate::IntoExitCode for Error {
+    fn into_exit_code(self) -> crate::ExitCode {
+        crate::IntoExitCode::into_exit_code(self.0)
     }
 }

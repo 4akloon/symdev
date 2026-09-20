@@ -58,6 +58,11 @@ fn manifest(name: &str) -> String {
 /// A `staticlib` named after the package (`RustBuild` looks for `lib<name>.a`); the SDK
 /// crates by absolute path; the same profile as the SDK workspace (size, one object,
 /// no unwinder).
+///
+/// `symbian-std` and not `symbian-runtime`: the entry point is `#[symbian_std::main]`
+/// (experiment 81), and the runtime underneath it — the panic handler, the heap and
+/// the older `entry!` — comes with it, so the template names one crate for the road
+/// and one (`symbian-core`) for the descriptors the escape hatch still needs.
 fn cargo_manifest(name: &str, sdk: &RustSdk) -> String {
     format!(
         "[package]\n\
@@ -73,7 +78,7 @@ fn cargo_manifest(name: &str, sdk: &RustSdk) -> String {
          \n\
          [dependencies]\n\
          symbian-core = {{ path = \"{}\" }}\n\
-         symbian-runtime = {{ path = \"{}\" }}\n\
+         symbian-std = {{ path = \"{}\" }}\n\
          \n\
          [profile.release]\n\
          opt-level = \"s\"\n\
@@ -85,7 +90,7 @@ fn cargo_manifest(name: &str, sdk: &RustSdk) -> String {
          [profile.dev]\n\
          panic = \"abort\"\n",
         sdk.crate_dir("symbian-core").display(),
-        sdk.crate_dir("symbian-runtime").display()
+        sdk.crate_dir("symbian-std").display()
     )
 }
 
@@ -135,7 +140,7 @@ mod tests {
         let cargo = read("Cargo.toml");
         assert!(cargo.contains("crate-type = [\"staticlib\"]"));
         assert!(cargo.contains(&sdk.crate_dir("symbian-core").display().to_string()));
-        assert!(cargo.contains(&sdk.crate_dir("symbian-runtime").display().to_string()));
+        assert!(cargo.contains(&sdk.crate_dir("symbian-std").display().to_string()));
         assert!(read(".cargo/config.toml").contains(&sdk.target_spec().display().to_string()));
         assert_eq!(read("rust-toolchain.toml"), RustSdk::TOOLCHAIN_FILE);
         assert_eq!(read("src/main.rs"), RustSdk::HELLO_MAIN);
