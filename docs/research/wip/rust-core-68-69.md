@@ -23,6 +23,25 @@ rewritten, `unsafe`-free `examples/hello` proving both in EKA2L1's notifier log.
   `e32cmn.inl`, which show `RHeap::Align(a) = _ALIGN_UP(a, iAlign)` — alignment is a
   per-heap field, so it must be measured, not read).
 
+- **Heap cell alignment measured on the real euser in EKA2L1** (scratch probe, two runs,
+  32 cells): every `User::Alloc` payload address has its low 3 bits clear. Run 1, sizes
+  1..64: `P0=007000a0`, `addr & 0x1f` = 00 08 10 18 repeating, stride 0x28 = 40 for every
+  size <= 33. Run 2, sizes 36..257: `addr & 0x1f` = 00 08 18 08 18 08 18 00 08 10 18 00 08
+  10 18 00 — all multiples of 8. `User::AllocLen` = 36, 44, 68, 100, 132, 260 (always
+  4 mod 8) and the strides 0x28/0x30/0x48/0x68/0x88 are always multiples of 8: the cell
+  size is rounded to 8 and the 4-byte cell header sits *before* an 8-aligned payload.
+  Minimum payload on this ROM is 36 bytes. => alignment guarantee to trust: **8**.
+- `User::AllocLen` exists (`00000a4c T _ZN4User8AllocLenEPKv`) and is what measured the
+  cell lengths; `User::AllocZ`/`User::AllocSize` are exported too.
+- **`mem*` resolution observed** (probe map): the Rust object referenced `__aeabi_memclr4`,
+  which pulled `libaprobe.a(compiler_builtins-….rcgu.o)`; `memcpy`, `memset`, `__aeabi_mem*`
+  all resolve to **compiler_builtins**, never to euser's `memcpy/memset/memmove/memclr` or
+  drtaeabi's `__aeabi_mem*` — the Rust archive sits before the DSOs on the recorded link
+  line. No duplicate-definition conflict arises; the DSO copies are simply unused.
+- **The cost of pulling that member is the whole crate**: compiler_builtins is one codegen
+  unit, so one reference dragged 0x2b338 of `.text` in. Probe ELF 351016 B, E32 101611 B.
+  Re-linking the same archive with `--gc-sections` added gives ELF 35520 B.
+
 ## Decisions
 
 ## Dead ends
