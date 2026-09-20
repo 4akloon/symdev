@@ -7,10 +7,18 @@ preprocessor under Wine. The engineer who implements the native front end did no
 nor any scratch notes; this document is the only handover artefact. It contains prose, tables and
 observed command lines only — no code from the sources, no identifiers from them.
 
+Revised 2026-09-20 after experiment 63, which got the SDK's own generator running on this Linux
+host and captured the makefile it produces for four projects. Sections marked **(exp 63)** were
+re-measured against those captures; §14.8 and §15 say what that does and does not settle.
+
 Facts below are marked:
 
 * **(read)** — derived by reading the SDK's build programs. Deterministic, but not re-run.
 * **(exp)** — confirmed by running a real SDK tool on crafted input; the run is recorded in §14.
+* **(exp 63)** — confirmed against a makefile the SDK's own generator produced on this Linux host,
+  in experiment 63 of [experiment-backlog.md](experiment-backlog.md). That experiment made the
+  SDK's two generator programs run under Linux perl and captured the makefile for four projects;
+  §14.8 says what it covers and where it cannot be trusted.
 * **unknown** — the sources leave it open and no cheap experiment settled it. Never guess these.
 
 ---
@@ -58,7 +66,7 @@ preprocessor.
 
 ### 1.2 The command line
 
-The invocation is, in order **(read, confirmed exp)**:
+The invocation is, in order **(read, confirmed exp, confirmed exp 63)**:
 
 ```
 cpp -undef -nostdinc -+ \
@@ -86,13 +94,18 @@ Notes:
 * On Windows the absolute paths are prefixed with the drive letter of the current directory and
   quoted. On a Linux host there is no drive letter; a native implementation resolves paths itself
   and never needs this.
+* Details the captured invocations add **(exp 63)**: the program is named `cpp.EXE` with the
+  extension in capitals; the third `-I` keeps the trailing separator of the project-file directory
+  while the first two do not; `-D` and its argument are two separate arguments, so the spelling is
+  `-D NAME=_____NAME`; and the whole quoted-path style is `"…"` around each absolute path, which
+  under `cmd.exe` leaves a trailing separator harmless and under a POSIX shell does not.
 
 ### 1.3 The macros defined for this configuration
 
 The macro set is derived from the platform, and it is **not** the same set the compiler later sees.
 
 For **GCCE** the six macros passed to the preprocessor of a `.mmp` (and of the second pass over
-`bld.inf`) are, in this order **(read)**:
+`bld.inf`) are, in this order **(read, confirmed exp 63)**:
 
 | Macro | Where it comes from |
 |---|---|
@@ -112,8 +125,19 @@ Not passed, and therefore **undefined inside a `.mmp`**: `UREL`, `UDEB`, `NDEBUG
 * `#ifdef ARMV5` is false on a GCCE build even though the ABI is ARMV5; the spelling that is
   defined is `MARM_ARMV5`.
 
-The macro name for a BSF-customised platform would additionally be defined **(read)**; there are no
-BSF files in this SDK, so that case does not arise here.
+The macro name for a BSF-customised platform would additionally be defined **(read)**; no BSF
+platform in this SDK survives validation, so that case does not arise here. **Correction
+(exp 63):** this previously said there are no BSF files at all. There are three, and the generator
+rejects each of them by name on every run with a warning that the specification is incomplete, so
+the effect is the same but the noise is not — a native builder that mirrors this SDK will see those
+three names and should not be surprised by them.
+
+The other platforms' macro sets were visible in the same capture **(exp 63)**, and one of them is
+worth recording because it is easy to guess wrong: the `ARMV5` pass defines `GCC32`, not `ARMCC`.
+`ARMCC` is the `OPTION` key for the RVCT platforms (§8.5), not a preprocessor macro. The four
+platforms this SDK iterates are `WINSCW` (`CW32`, `WINS`, `WINSCW`), `GCCXML`
+(`GCC32`, `EPOC32`, `MARM`, `GCCXML`, `GENERIC_MARM`, `MARM_ARM4`), `ARMV5`
+(`GCC32`, `EPOC32`, `MARM`, `GENERIC_MARM`, `MARM_ARMV5`) and `GCCE`.
 
 ### 1.4 Restoring the macro text
 
@@ -144,7 +168,8 @@ the platform named `ARMV5` here means the RVCT ABIv1 platform and the ABIv2 RVCT
 
 ### 1.6 Difference between `bld.inf` and `.mmp`
 
-`bld.inf` is preprocessed **twice** **(read)**:
+`bld.inf` is preprocessed **twice** **(read, confirmed exp 63 — one pass with no `-D` at all,
+then one pass per platform, five in total for this SDK's four platforms)**:
 
 1. **Platform pass** — with the variant header but with **no `-D` macros at all**. This pass reads
    only `PRJ_PLATFORMS`, `PRJ_EXPORTS` and `PRJ_TESTEXPORTS`. So a `#ifdef GCCE` around a
@@ -285,6 +310,12 @@ device path for later packaging.
 | Generated resource headers (`.rsg`) and bitmap headers (`.mbg`) | *EPOCPATH*`/include/` |
 | Compiled resources and bitmaps | *EPOCPATH*`/data/` + the `z\…\` target path |
 | Intermediate objects | *EPOCPATH*`/build/<group dir>/<mmp base>/<platform>/<urel\|udeb>/` |
+
+`<group dir>` there is the **whole absolute path** of the directory holding `bld.inf`, drive letter
+removed, not just its last component **(exp 63)** — a project in `\work\gui\group` builds into
+*EPOCPATH*`/build/work/gui/group/GUI/GCCE/urel/`. The `epoc32/build` part of the path is written in
+capitals by the generator and the rest in the case the project used, which matters only on a
+case-sensitive host.
 
 Note the asymmetry: the **platform** name selects the binary directory, but the **ABI** name selects
 the library directories. GCCE links against exactly the same `armv5` import libraries as an RVCT
@@ -651,14 +682,14 @@ Two resources resolving to the same device path are a fatal error.
 
 The generated header, if `HEADER` or `HEADERONLY` was given, is always
 *EPOCPATH*`/include/` + `B` + `.rsg` — **one** file, independent of language, overwritten by each
-language's build **(read)**.
+language's build **(read, confirmed exp 63)**.
 
 The compiled resource lands on the host at *EPOCPATH*`/data/` + the device path.
 
 ### 6.4 The resource compiler call
 
 For each (resource, language) pair the SDK runs its resource-compilation wrapper with, in order
-**(read)**:
+**(read, confirmed exp 63)**:
 
 * three suppressed message numbers: `-m045,046,047`;
 * `-I <directory of the .rss>`;
@@ -678,6 +709,21 @@ For each (resource, language) pair the SDK runs its resource-compilation wrapper
 * `-preinclude"<variant header>"`.
 
 The `.rsg` is written to a temporary directory first and copied to *EPOCPATH*`/include/` afterwards.
+The temporary directory is the project's own build directory (§3.2), and the copy is a second
+recipe line, not something the resource wrapper does **(exp 63)**.
+
+The captured rule, with the paths shortened, is one line of the form
+
+```
+<resource wrapper> -m045,046,047 -I "<rss dir>" -I "<USERINCLUDE>"… -I- -I "<SYSTEMINCLUDE>"…
+    -I "<variant dir>" -DLANGUAGE_SC -u "<source.rss>" -o<output .rsc>
+    -h"<build dir>\<base>.rsg" -t"<build dir>"
+    -l"<device directory>:<directory holding the .mmp>" -preinclude"<variant header>"
+```
+
+Note that the arguments the SDK quotes and the ones it does not are not consistent: `-I` takes a
+quoted argument, `-o` takes `$@` unquoted, and `-h`, `-t`, `-l` and `-preinclude` are written with
+no space and a quoted value **(exp 63)**.
 
 `symdev` already has a native resource compiler; this section exists so the front end feeds it the
 right macro set — in particular **`-DLANGUAGE_SC`** and the user's `MACRO` values, and **not** the
@@ -755,6 +801,21 @@ depth token (so `/c8/home/…/a.bmp`-style concatenation with no separator). `/q
 `/h` is present only when `HEADER` was given. The wrapper does **not** quote the output path, so a
 target path containing a space breaks — a real limitation of the SDK, not a rule to reproduce.
 
+That `bmconv` line is still a **reading**: experiment 63 captured the makefile but did not run it,
+so it saw the *wrapper's* arguments, not the ones the wrapper passes on. Those were **(exp 63)**:
+
+```
+<bitmap wrapper> -h"<build dir>\<base>.mbg" -o"<output .mbm>"
+    -l"<device directory>:<directory holding the .mmp>"
+    -b"\ /<depth><source1> /<depth><source2>…"
+    -l"<device directory>:<directory holding the .mmp>"
+```
+
+with one `-l` before the `-b` and an identical one after it, the sources concatenated into a single
+`-b` value, and each `/<depth><path>` written with no separator — which is where §7.6's `bmconv`
+argument shape comes from. As with the resource wrapper, the `.mbg` is written to the build
+directory and copied to *EPOCPATH*`/include/` by a separate recipe line.
+
 `symdev` has a native bitmap compiler; the front end must give it: the ordered list of
 `(source path, depth)` pairs, the output `.mbm` path, and optionally the `.mbg` path.
 
@@ -776,7 +837,7 @@ They overlap but are **not** the same list, and neither is visible in the other 
 ### 8.2 The compilation macro list, in order
 
 For **GCCE / ARMV5 / UREL / `TARGETTYPE EXE`**, the `-D` arguments are emitted in exactly this order
-**(read)**:
+**(read, confirmed exp 63 in full, item 6 included)**:
 
 1. `-DNDEBUG` and `-D_UNICODE` — the UREL build-variant macros. (UDEB would be `-D_DEBUG -D_UNICODE`.)
 2. `-D__GCCE__` — from the GCCE configuration file's compiler-identification setting.
@@ -792,11 +853,16 @@ For **GCCE / ARMV5 / UREL / `TARGETTYPE EXE`**, the `-D` arguments are emitted i
 
 Two things surprise people here: `__GCCE__` and `__MARM_ARMV5__` really are passed **twice**, and
 `__GENERIC_MARM__` is **never** defined for the compiler even though `GENERIC_MARM` is defined for
-the `.mmp`.
+the `.mmp`. Both were visible in the captured makefile **(exp 63)**, as was item 6: a `.mmp`
+carrying `MACRO MY_FIRST_MACRO` and `MACRO MY_SECOND_MACRO=7` produced
+`-DMY_FIRST_MACRO -DMY_SECOND_MACRO=7` between `-D__EXE__` and `-D__SUPPORT_CPP_EXCEPTIONS__`,
+in source order and with the `=value` form passed through untouched.
+
+For basic type `DLL` item 5 is `-D__DLL__` **(exp 63)**.
 
 ### 8.3 The include list
 
-The compiler's include arguments are, in order **(read)**:
+The compiler's include arguments are, in order **(read, confirmed exp 63 for items 1–4 and 6)**:
 
 1. `-I <directory of the source file being compiled>`
 2. `-I <each USERINCLUDE>`, in `.mmp` order
@@ -810,7 +876,20 @@ The compiler's include arguments are, in order **(read)**:
 
 `-nostdinc` is always passed, so this list is the whole search path. **The SDK include directory is
 not added implicitly** — an `.mmp` that omits `SYSTEMINCLUDE \epoc32\include` genuinely cannot find
-`e32base.h`.
+`e32base.h`. This is the sharpest confirmation the capture gives **(exp 63)**: `examples/gui` has
+no `SYSTEMINCLUDE`, its generated compile line has no `-I` for the SDK include directory, and the
+generator warns by name that it cannot find `aknapp.h`, `eikenv.h`, `eikstart.h` and the rest.
+`symdev` builds that same project today, so `symdev` supplies an include path the SDK would not —
+worth keeping in mind before treating a `symdev` build as evidence about the SDK.
+
+Item 6, the tool-chain include directory, is obtained by asking `arm-none-symbianelf-g++` where its
+`libgcc` is and appending `include` to the directory part. With no such compiler on `PATH` the
+generator silently emits `-I "\include"` **(exp 63)**; it neither warns nor fails.
+
+The whole include list, plus the source directory and the source file, is wrapped in a make
+function that turns backslashes into forward slashes whenever the configuration says the compiler
+wants POSIX separators for absolute paths, which the GCCE configuration does **(exp 63)**. The
+`-o` argument and the source path go through the same wrapping.
 
 `USERINCLUDE` and `SYSTEMINCLUDE` end up as the same kind of `-I`; the distinction survives only in
 the resource-compiler call (§6.4), where a `-I-` separates them.
@@ -823,9 +902,24 @@ text, and an implementer may read it directly; the effective flags are reproduce
 not have to.
 
 Compiler driver: `arm-none-symbianelf-g++` — for **every** source extension, including assembler.
-There is no separate C driver and no separate assembler driver in the compile rules.
+There is no separate C driver and no separate assembler driver in the compile rules. Confirmed for
+`.cpp` and `.c` **(exp 63)**: a project with two `.c` sources got the same driver and the same flag
+set as a C++ one, differing only in the language option of §8.6.
 
-Flags, in the order the SDK emits them, for a UREL compile:
+Flags, in the order the SDK emits them, for a UREL compile. The whole table was reproduced from a
+generated makefile and its configuration file in experiment 63 **(exp 63)**; the resulting UREL
+line, with the empty positions collapsed, is
+
+```
+arm-none-symbianelf-g++ -O2 -fno-unit-at-a-time -fexceptions
+  -Wall -Wno-ctor-dtor-privacy -Wno-unknown-pragmas
+  -march=armv5t -mapcs -pipe -nostdinc -c -msoft-float
+  -DNDEBUG -D_UNICODE -D__GCCE__ -D__SYMBIAN32__ -D__S60_32__ -D__S60_3X__ -D__SERIES60_3X__
+  -D__GCCE__ -D__EPOC32__ -D__MARM__ -D__EABI__ -D__MARM_ARMV5__ -D__EXE__
+  -D__SUPPORT_CPP_EXCEPTIONS__ -D__MARM_ARMV5__ -D__PRODUCT_INCLUDE__=\"<variant header>\"
+  -x c++ -include <EPOCROOT>EPOC32/INCLUDE/GCCE/GCCE.h
+  -I <source dir> -I <include list> -o <object> <source>
+```
 
 | Position | Flags | Origin |
 |---|---|---|
@@ -855,10 +949,20 @@ For UDEB the only differences are: position 1 becomes `-g`, position 2 becomes e
 optimisation level is unset), and the build-variant macros become `-D_DEBUG -D_UNICODE`.
 
 **The SDK does not pass `-mthumb` or `-mthumb-interwork` on GCCE.** Both the Thumb instruction-set
-setting and the interworking define setting are empty in this SDK's GCCE configuration **(read)**.
+setting and the interworking define setting are empty in this SDK's GCCE configuration
+**(read, confirmed exp 63)**. In the captured makefile the only instruction-set reference anywhere
+in a compile rule is the Thumb setting, alongside the floating-point setting and the two define
+settings; three of those four are empty in the GCCE configuration and the fourth is `-msoft-float`.
+Nothing expands to `-mthumb`, `-mthumb-interwork`, `-D__MARM_THUMB__` or `-D__MARM_INTERWORK__`.
+
+`ALWAYS_BUILD_AS_ARM` swaps the Thumb instruction-set reference for the ARM one and drops the Thumb
+defines **(exp 63)**, so on GCCE — where both instruction-set settings are empty — **the directive
+changes the compile line not at all**. It is meaningful only to the RVCT platforms.
+
 This contradicts several public write-ups (and `symdev`'s current recorded compile flags, which came
-from one of them). Before changing anything in `symdev`, confirm which of the two produces a binary
-the device accepts — that is a build experiment, not a spec question, and it is listed in §15.
+from one of them). The capture settles what the SDK *does*; it does not settle what an E52 accepts.
+Before changing anything in `symdev`, confirm which of the two produces a binary the device runs —
+that is a build experiment, not a spec question. It is experiment 62, and §15 item 1.
 
 ### 8.5 `OPTION`
 
@@ -872,14 +976,17 @@ wrong table) does not.
 The key that matters is the **platform name**, upper-cased — for GCCE that is `GCCE`. The RVCT
 platforms look up `ARMCC` instead. An `OPTION` whose key matches no platform is stored and never
 read; it is not an error. So `OPTION ARMCC --diag_suppress 1234` in a GCCE build is silently inert,
-which is exactly how portable `.mmp` files are written.
+which is exactly how portable `.mmp` files are written. Both halves were confirmed in one capture
+**(exp 63)**: a `.mmp` carrying `OPTION GCCE -fmy-option` and `OPTION ARMCC --diag_suppress 1234`
+put `-fmy-option` at position 12 of §8.4 and nothing at all from the `ARMCC` line.
 
 `OPTION_REPLACE` uses the same syntax and the same key convention but, as §5.5 says, is only read by
 the RVCT back end.
 
 ### 8.6 Per-extension language options and force-includes
 
-Determined by the source file's extension, after the file name has been lower-cased **(read)**:
+Determined by the source file's extension, after the file name has been lower-cased
+**(read; the `.cpp` and `.c` rows confirmed exp 63)**:
 
 | Extension | Added before the includes | Notes |
 |---|---|---|
@@ -891,6 +998,12 @@ Determined by the source file's extension, after the file name has been lower-ca
 The force-include file is `epoc32/include/gcce/gcce.h` on disk; the configuration file spells the
 path in upper case. That file's first act is to `#include` whatever `__PRODUCT_INCLUDE__` names —
 which is how the variant header reaches the compiler (§8.2 item 9).
+
+Two spellings of that one path appear in the generated makefile, and they differ **(exp 63)**: the
+compile command line carries the forward-slash form (the generator rewrites the configuration's
+value for GCCE specifically, and `EPOCROOT` inside it is rewritten too), while the same file is
+listed as a *prerequisite* of every object in its backslash form. An implementer needs only the
+command-line form; the difference is noted so nobody treats one of them as a typo.
 
 The object file for a `.cia` source is named `<base>_.o`, not `<base>.o` **(read)**. Everything else
 is `<base>.o`, all of them in one flat build directory, so **two sources with the same basename in
@@ -1087,7 +1200,8 @@ rewritten to the `{%04x%04x}` form; a malformed group warns **(read)**.
 Included so the front end's outputs have somewhere to go. Authoritative detail for the post-linker
 is [elf2e32-options-spec.md](elf2e32-options-spec.md).
 
-Link, for basic type `EXE`, UREL, GCCE **(read)**:
+Link, for basic type `EXE`, UREL, GCCE **(read, confirmed exp 63 except where the item says
+otherwise)**:
 
 * linker `arm-none-symbianelf-ld`;
 * two `-L` search paths, derived by asking the compiler where its `libgcc` is: the toolchain's
@@ -1101,10 +1215,16 @@ Link, for basic type `EXE`, UREL, GCCE **(read)**:
 * the entry-point static library from *EPOCPATH*`/release/armv5/urel/` — for basic type `EXE` that
   is `EEXE.LIB`. Other toolchains name one archive member here; the GCCE configuration leaves that
   setting empty, so the whole archive is passed;
-* `-o <intermediate ELF>`;
-* `-Map <map file>` — only if the compiler is new enough (the SDK probes the compiler version and
-  drops the option below 3.4.3);
-* the object files, passed through a linker script fragment listing them;
+* `-o <intermediate ELF>`, in the project's build directory — **not** the release directory; the
+  post-linker is what writes the release directory;
+* `-Map <map file>`, the map going straight to the release directory next to the finished binary.
+  **Correction (exp 63):** in the generated makefile this is not a compiler-version probe; the
+  option is present whenever the configuration file defines a map-file option, which the GCCE
+  configuration does, and the rule deletes any previous map file first. The version probe, if it
+  exists, is not what the makefile shows;
+* the object files, passed through a linker script fragment listing them. **(exp 63)** For GCCE the
+  configuration's "response file" option is empty, so the fragment's path is passed as a bare
+  argument with no option in front of it;
 * the static libraries, wrapped in `-( … -)`, with the C++ runtime support library `usrt2_2.lib`
   prepended;
 * the import libraries: every `LIBRARY` name with its extension replaced by `.dso`, from
@@ -1116,15 +1236,46 @@ Link, for basic type `EXE`, UREL, GCCE **(read)**:
 * `-lsupc++ -lgcc`, last;
 * a make-level linker-flags hook, **not** reachable from the `.mmp`.
 
-For UDEB the only difference is that `DEBUGLIBRARY` names are added to the import library list.
+For UDEB the differences are that `DEBUGLIBRARY` names are added to the import library list, that
+the configuration's linker debug option is inserted after the `-soname` value, and that the
+intermediate ELF is copied to the release directory as `<target>.sym` after the link and before the
+post-link **(exp 63)**.
 
-Post-link converts the ELF to an E32 image with, in order **(read)**:
+Post-link converts the ELF to an E32 image with, in order **(read, order and the always-present
+options confirmed exp 63)**:
 `--sid=`, optionally `--version=<major>.<minor>`, optionally `--dlldata`, optionally
 `--datalinkaddress=`, optionally `--fixedaddress`, optionally `--heap=<min>,<max>`, optionally
 `--priority=<name>`, optionally `--stack=<n>`, then `--uid1=`, `--uid2=`, `--uid3=`, optionally
 `--vid=`, then `--capability=<text>`, `--fpu=softvfp|vfpv2`, `--targettype=<name>`, `--output=`,
-and for exporting types `--definput=`/`--dso=`/`--defoutput=`/`--ignorenoncallable`, plus
-`--compressionmethod inflate|bytepair` and `--paged`/`--unpaged` where the `.mmp` asked for them.
+and for exporting types `--ignorenoncallable` then `--definput=`/`--dso=`/`--defoutput=`, then
+**`--elfinput=`, `--linkas=` and `--libpath=`**, then for a target with a system definition
+`--sysdef=<symbol>,<ordinal>`, plus `--compressionmethod inflate|bytepair` and `--paged`/`--unpaged`
+where the `.mmp` asked for them.
+
+**Correction (exp 63):** the previous list stopped at `--defoutput=`/`--ignorenoncallable` and
+omitted `--elfinput=`, `--linkas=`, `--libpath=` and `--sysdef=`. They are not optional extras:
+`--elfinput=` names the ELF the link just produced, `--linkas=` carries the decorated name of
+§11.2, and `--libpath=` points at *EPOCPATH*`/release/armv5/lib/`. `--ignorenoncallable` sits
+immediately after `--output=`, before `--dso=`. The two captured shapes were:
+
+```
+<post-linker> --sid=<uid3> --version=10.0 --uid1= --uid2= --uid3=
+    --capability=none --fpu=softvfp --targettype=EXE --output="<release>\gui.exe"
+    --elfinput="<build>\gui.exe" --linkas=gui{000a0000}[e7351c20].exe
+    --libpath="<EPOCPATH>\release\armv5\LIB"
+```
+
+```
+<post-linker> --sid=<uid3> --version=10.0 --uid1= --uid2= --uid3= --vid=0x00000000
+    --capability=<ten names joined with +> --fpu=softvfp --targettype=PLUGIN --output="…"
+    --ignorenoncallable --dso=<build>\NPBitmap{000a0000}.dso
+    --defoutput=<build>\NPBitmap{000a0000}.def --elfinput="…" --linkas=…
+    --libpath="…" --sysdef=<mangled proxy symbol>,1
+```
+
+with a further recipe line copying the generated `.def` up out of the variant's build directory.
+`VENDORID 0` really does produce `--vid=0x00000000` rather than omitting the option **(exp 63)**,
+and a `.mmp` with no `VENDORID` at all produces no `--vid`.
 
 ---
 
@@ -1233,26 +1384,55 @@ Running the preprocessor in "dump macros" mode on
 directory on the search path) listed **79** `#define`s. Every one of them is visible to `#ifdef`
 inside a `.mmp`, because that header is force-included (§1.5).
 
-### 14.7 Not attempted
+### 14.7 Not attempted at the time this was written
 
 Running the SDK's project-file and makefile stages end to end. They are Perl programs that require a
 Windows Perl (absent here), a drive-lettered working directory, a `Path` environment variable in
 Windows form, and a preprocessor reachable under a Windows-shaped path. Reproducing that would have
 meant patching copies of SDK modules, which is a larger experiment than the questions it would
-settle. Everything in §5–§12 is therefore **(read)** and should be confirmed against a real
-generated makefile the first time one is available.
+settle. Everything in §5–§12 was therefore **(read)** and needed confirming against a real
+generated makefile. §14.8 is that confirmation.
+
+### 14.8 The generator, run on this host (experiment 63)
+
+Both stages **do** run on Linux, under the host's own perl, and the makefile they produce has been
+captured. The recipe is `sdk-generator.sh` beside this file; the full account, including every
+stand-in and the one patched SDK module, is experiment 63 in
+[experiment-backlog.md](experiment-backlog.md). A drive letter turned out not to be needed: the
+generator's path code strips one if present and is otherwise indifferent. What was needed was an
+`EPOCROOT` in Windows shape, a stand-in for the `cmd.exe` `set` builtin, a preprocessor and a `make`
+reachable under the names the generator uses, and a preload that translates paths and command-line
+quoting at the libc boundary.
+
+Four projects were captured for GCCE: `examples/gui`, and from the SDK's own examples a plugin with
+a bitmap block and a console application with two `.c` sources, plus a purpose-built `.mmp` for
+`MACRO`, `OPTION` and `ALWAYS_BUILD_AS_ARM`. Everything in this document now marked **(exp 63)**
+comes from those makefiles.
+
+Two caveats travel with every **(exp 63)** mark:
+
+* The makefiles were **not run**. Anything a recipe would have done at build time — what the
+  resource and bitmap wrappers pass on to the compilers they front, whether the link succeeds —
+  is still **(read)**.
+* Two behaviours of the SDK's GCC 2.x preprocessor had to be reproduced by hand in the stand-in:
+  the space it inserts after a macro expansion, and its habit of emitting a backslash-continued
+  statement on one output line. Both were already **(exp)** here from the Wine runs of §14.1–§14.6,
+  so the reproduction was checked against this document rather than the other way round. A reader
+  who doubts either should trust §14.1–§14.6, not §14.8.
 
 ---
 
 ## 15. What is unknown, and what to confirm before trusting this
 
-1. **`-mthumb` / `-mthumb-interwork`.** This SDK's GCCE configuration passes neither (§8.4), yet
-   `symdev`'s current recorded compile line and several public write-ups do. One of the two is
-   wrong for the E52. Settle it by building the same source both ways and comparing the resulting
-   E32 images and device behaviour — not by reading anything.
-2. **The exact generated makefile.** Every ordering claim in §8 is read from the generator, not from
-   a produced file. The first time a real makefile is available (from a Windows machine, or from a
-   patched harness), diff it against §8.2 and §8.4.
+1. **`-mthumb` / `-mthumb-interwork`.** This SDK's GCCE configuration passes neither (§8.4) — now
+   confirmed from a generated makefile, not only from a reading — yet `symdev`'s current recorded
+   compile line and several public write-ups do. One of the two is wrong for the E52. Settle it by
+   building the same source both ways and comparing the resulting E32 images and device behaviour
+   — not by reading anything, and not by capturing anything either.
+2. ~~**The exact generated makefile.**~~ **Settled** by experiment 63 (§14.8): the generator was
+   made to run on this host and its makefile matched §8.2, §8.3, §8.4, §8.5 and §8.6 item by item.
+   What remains open is what happens when those recipes are *executed*, which the experiment
+   deliberately did not do.
 3. **`EPOCSTACKSIZE`/`EPOCHEAPSIZE` limits.** The front end imposes none beyond the number format of
    §11.1. Whether the post-linker or the device rejects extreme values is **unknown** here.
 4. **Behaviour of `START <platform> … END` on GCCE.** The block is captured and then nothing reads

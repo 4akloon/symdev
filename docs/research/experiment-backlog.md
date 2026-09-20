@@ -1071,3 +1071,44 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 - **Why:** [mmp-frontend-spec.md](mmp-frontend-spec.md) §8.4 records that this SDK's `epoc32/tools/compilation_config/gcce.mk` passes **neither** `-mthumb` nor `-mthumb-interwork` — both the instruction-set and the interworking settings are empty in the GCCE configuration — and defines neither `__MARM_THUMB__` nor `__MARM_INTERWORK__`. symdev's `driver/compile.rs` passes all four, from a public write-up rather than from the SDK. The spec also has `-Wall -Wno-ctor-dtor-privacy -Wno-unknown-pragmas -pipe -fno-unit-at-a-time` where symdev has `-fpermissive -Wno-narrowing`.
 - **Why it was not settled here:** it is a build experiment, not a spec question (§15 item 1). symdev's current flags produce an app that installs and plays in EKA2L1; changing them needs a device or emulator run to compare, which the front-end work neither needed nor provided.
 - **Procedure when it is run:** build `examples/gui` and the Puzzles port both ways, diff the E32 images and the disassembly around every interworking call site, install both on EKA2L1 and, for the answer that matters, on a stock E52.
+
+## 63. Running the SDK's own build-file generator on Linux, and the makefile it produces (T5)
+
+- **Why:** [mmp-frontend-spec.md](mmp-frontend-spec.md) was written by reading the SDK's Perl. Nothing in it above §6 had been checked against a run of the generator, so the compile command line, its flag order and the generated rule set were unverified — including the Thumb question of experiment 62.
+- **Procedure:** make the SDK's `bldmake` and `makmake` run under Linux perl 5.40.1, then generate the GCCE makefile for four projects and read the command lines out of it. Recipe: `docs/research/sdk-generator.sh` (with `sdk-generator-winpath.c`, `sdk-generator-cpp.py`, `sdk-generator-File-Path.pm`).
+- **Outcome:** pass. The generator runs; four makefiles captured; one SDK module patched, in a way that cannot reach the output.
+- **Evidence:** 2026-09-20. Captures under `/tmp/claude-1000/sdk-generator-work/out/` (outside git, SDK tree verified unchanged by `find ~/sdk -newer <timestamp>` after every run).
+
+### The shim
+
+Nothing in the SDK is mutated; it is mirrored into a scratch directory whose `epoc32/build` is the only writable part. `EPOCROOT` is set to that mirror in the shape the generator wants — drive-less, backslash-separated, with a trailing separator — which is what defeats both of the errors an obvious attempt hits (`EPOCROOT must end with a backslash` / `must be capitalised`).
+
+| Shim | What it stands in for | Why it cannot change the generated output |
+|---|---|---|
+| `winpath.so`, preloaded | the kernel's view of a path | Rewrites backslashes to slashes and resolves spelling case-insensitively inside libc, so the strings perl builds and prints are untouched. Also turns cmd.exe quoting into sh quoting for `/bin/sh -c` command lines (in cmd a backslash inside quotes is an ordinary character), and forces mode `0700` on `mkdir` (Windows ignores the mode; one module asks for mode 2 and then cannot enter the directory it made). |
+| `bin/set` | the `cmd.exe` `set NAME` builtin | The environment module checks that `EPOCROOT` is spelled in capitals by reading `set EPOCROOT`. The stand-in prints matching environment entries; perl execs it directly because the command has no shell metacharacters. |
+| `bin/make` | the SDK's Windows GNU make | Runs the real make with `SHELL=/bin/bash`. The generator reads the tool-chain settings out of the `.mk` configuration by running `echo VAR=$(VAR)`; under `/bin/sh` the backslashes of every path in those values are eaten. |
+| `gccbin/gcc/bin/cpp.exe` | the SDK's Cygwin `cpp.exe` (GNU cpp 2.9x) | Runs the host `g++ -E -x c++`. Three differences are papered over: `-+` is spelled `-x c++`; backslash separators are turned into slashes, because gcc composes a search-path prefix itself before it ever calls `open` so the preload cannot reach it; and the space GNU cpp 2.x inserted after a macro expansion is put back, because the generator's un-expansion step eats one space and would otherwise glue `OPTION GCCE -O3` into one token. It also joins backslash-continued lines of a `.mmp`/`bld.inf` and pads with blank lines, which is what cpp 2.x emitted and what the line-oriented project-file parser expects; the temporary file this needs is substituted back out of the line markers. |
+| `perl-overlay/Win32.pm` | the core `Win32` module | The source checker calls only `GetLongPathName`, which expands an 8.3 short name. Linux names have no short form, so the stand-in is the identity. |
+| `perl-overlay/File/Path.pm` | the core `File::Path` | On Windows it splits on `\`; on Linux it does not, so an SDK path arrives as one component and `mkpath` degenerates to a single `mkdir`. The stand-in normalises the separator and does the same job. |
+| `perl-overlay/SdkWin.pm` | — | Loaded through `PERL5OPT` so it also reaches spawned perls. Puts `File::Basename` into its Windows mode; without it a resource basename comes back as the whole absolute path. |
+
+**The one patched SDK module** is `e32plat.pm`: two occurrences of `defined` applied to a hash, removed from perl in 5.22. Both guard a duplicate-definition warning for `.bsf`/`.assp` platform specifications, and this SDK ships no `.bsf` that survives validation, so dropping `defined` leaves a plain truth test on the same hash and cannot reach the makefile.
+
+### What was captured
+
+`examples/gui` (EXE, two `START RESOURCE`), the SDK's own `npbitmap` (PLUGIN, `START BITMAP` with `HEADER`, `START RESOURCE`, four `SYSTEMINCLUDE`, ten capabilities), the SDK's own `consoleapp` (EXE, two `.c` sources, `STATICLIBRARY`), and a purpose-built `.mmp` carrying `MACRO`, `OPTION GCCE`, `OPTION ARMCC` and `ALWAYS_BUILD_AS_ARM`. The makefile was not run; the flag variables it leaves to the `.mk` configuration were expanded with a three-line makefile that includes that configuration and prints them.
+
+### Findings
+
+- **Thumb, settled as far as a capture can settle it.** The generated makefile's only instruction-set reference is `$(THUMB_INSTRUCTION_SET)`, and with `ALWAYS_BUILD_AS_ARM` it becomes `$(ARM_INSTRUCTION_SET)`; the GCCE configuration defines both as empty, along with the Thumb and interworking define settings. The expanded UREL compile line therefore carries **no `-mthumb`, no `-mthumb-interwork`, no `__MARM_THUMB__`, no `__MARM_INTERWORK__`** — and `ALWAYS_BUILD_AS_ARM` changes nothing at all on GCCE. Experiment 62's question is unchanged: this says what the SDK does, not which binary an E52 accepts. No Rust was touched.
+- §1.2, §1.3 and §1.6 hold exactly, now from a run rather than a reading. `bld.inf` really is preprocessed once with no `-D` at all and then once per platform; this SDK's platform list is `WINSCW`, `GCCXML`, `ARMV5`, `GCCE`, and the `ARMV5` pass defines `GCC32`, not `ARMCC`.
+- §8.2, §8.3, §8.4 and §8.6 hold in full, including `__GCCE__` and `__MARM_ARMV5__` appearing twice, `MACRO` landing between `-D__EXE__` and `-D__SUPPORT_CPP_EXCEPTIONS__`, `OPTION GCCE` landing at position 12, and `OPTION ARMCC` staying inert.
+- **The SDK include directory really is not implicit.** `examples/gui` has no `SYSTEMINCLUDE`, and its generated compile line has no `-I …/epoc32/include`: the generator warns that it cannot find `aknapp.h`, `eikenv.h` and the rest. symdev builds that same project, so symdev adds an include path the SDK would not.
+- §6.4 and §7.6 describe the wrapper calls correctly; the captures add the wrappers' own argument lists, and §7.6's `bmconv` line remains a reading, since the makefile was not run.
+- §12 was extended: the post-link's `--elfinput`, `--linkas`, `--libpath` and `--sysdef` were missing, `--ignorenoncallable` sits between `--output` and `--dso`, and the map file is switched by the configuration variable rather than by a compiler-version probe.
+- **A gap in the SDK, not in the shim:** the tool-chain install path is derived by splitting the compiler's `libgcc` path on `/../`. GCC 12.1.0 prints a path with no `/../` in it, so the split keeps the trailing newline and the generated makefile breaks across two lines. The CSL toolchain the SDK was written for prints `…/bin/../lib/…`.
+
+### Known limits of the shim
+
+Two things a modern preprocessor does differently are papered over rather than reproduced (the expansion space and the continued-line layout); both are listed above with what they do. The tool-chain include directory and the linker's two `-L` paths reflect whichever GCCE toolchain is on `PATH`, and are empty without one. Dependency lists in the captured makefiles are as complete as the project's own `SYSTEMINCLUDE` lines allow, which for `examples/gui` is not very.
