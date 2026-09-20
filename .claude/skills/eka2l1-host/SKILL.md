@@ -50,7 +50,7 @@ git -C ~/src/EKA2L1 diff origin/master symdev-fixes > ~/src/EKA2L1-econs-heap.pa
 
 `symdev run` installs `build/<name>.sisx` and launches UID3, writing `build/eka2l1.pid` and `build/eka2l1.log`. Or directly: `~/.local/bin/eka2l1 --install <sisx> --run 0x<uid3>`; with no arguments the Qt window shows the app list (that list, not the S60 menu, is where a MIF icon is visible).
 
-Verification loop that works here: launch, `sleep ~25`, screenshot the window that belongs to *your* PID, then close it like a user and check the process exited. Helper scripts are scratch, not in git — rebuild them under the session scratchpad when needed: a screenshot script that resolves the X11 window via `xwininfo -root -tree` plus `xprop _NET_WM_PID` (filter on `GRAB_PID`, capture with `XGetImage`), and a close script that sends `WM_DELETE_WINDOW` to the windows of `CLOSE_PID`.
+Verification loop that works here: launch, `sleep ~25`, screenshot the window that belongs to *your* PID, then close it like a user and check the process exited. Throwaway probes are scratch, not in git; a driver that took real work to derive is not (the key sender lives in `docs/research/acceptance/`) — rebuild them under the session scratchpad when needed: a screenshot script that resolves the X11 window via `xwininfo -root -tree` plus `xprop _NET_WM_PID` (filter on `GRAB_PID`, capture with `XGetImage`), and a close script that sends `WM_DELETE_WINDOW` to the windows of `CLOSE_PID`.
 
 There is no ImageMagick here. Read the `XImage` with ctypes and hand it to PIL:
 `Image.frombytes("RGB", (w, h), raw, "raw", "BGRX", bytes_per_line)`.

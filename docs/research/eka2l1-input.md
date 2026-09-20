@@ -138,3 +138,20 @@ Clean `symdev-fixes` build, no probes, 2026-09-20.
 - [avkon-rust-spec.md](avkon-rust-spec.md) §5.2 — what a key looks like on the guest side
 - `.claude/skills/eka2l1-host/SKILL.md` — running, screenshotting and killing the emulator
 - Backlog [experiment 83](experiment-backlog.md)
+
+## The driver, in the repository
+
+`docs/research/acceptance/emukey.py` (with `x11util.py` beside it):
+
+```
+emukey.py keys  <pid> Down Left Left
+emukey.py shot  <pid> out.png
+emukey.py focus <pid>
+```
+
+It is committed rather than left in a scratch directory, against the skill's usual rule
+for helper scripts, because it took a full investigation to derive and because the UI
+acceptance test of step 75 will call it. Independently reproduced 2026-09-20: three
+arrows into `examples/gui` with a counting `OfferKeyEventL` drew
+`keys 3 code f807 scan 0e` — `EKeyLeftArrow` / `EStdKeyLeftArrow`, the last key of
+`Down Left Left`.
