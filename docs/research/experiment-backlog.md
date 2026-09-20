@@ -997,3 +997,11 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
   - `symdev build` compiles `START RESOURCE` natively; `examples/gui` `gui.rsc`, `gui.rsg`, `gui_reg.rsc` are byte-equal to the Wine tools' output.
   - Wine `rcomp` crashes (page fault, `winedbg`) on some probe inputs (a `WORD` initialised from an unnamed `enum`, forward `LINK`, `TEXT`); none of these occur in the corpus.
 
+## 57. Native icon encoder: SVG Tiny → SVGB → MIF (T5)
+
+- **Requires:** experiment 55 (Wine `mifconv` goldens) and the clean-room [svgb-mif-spec.md](svgb-mif-spec.md).
+- **Procedure:** Implement `symdev-mif` (SVG parser, SVGB encoder, MIF container, `.mbg` header) from the spec, then compare its output with Wine `mifconv.exe` for the shipped icon template and for a hand-written `<circle>` document; build and install `examples/gui` and look for the icon in EKA2L1's app list.
+- **Outcome:** pass (emulator only; **not** E52 support)
+- **Evidence:** 2026-09-20. `gui.svg` → 193-byte `.svgb`, 257-byte `.mif`, 164-byte `.mbg`, all three **byte-equal** to `mifconv.exe` under Wine; the `<circle cx cy r fill>` document likewise (the spec's §8 snippet for it drops one byte of the `fill` record — the real tool writes the flag byte, and so do we). Pinned in the crate's tests: the file header and tree markers, the whole template, the circle, number truncation toward zero, the `|v| > 32765` drop, the `#rgb` expansion bug, `none`/`rgb()`/`url()` paint, the version-1 float and byte-reversed colour, the container and the `.mbg` naming rules.
+  With this, `symdev build` no longer runs Wine at all: resources (experiment 56) and icons are native, and `SYMDEV_WINE` is gone from the toolchain. Elements beyond `svg`, `g`, `rect` and `circle`, and attributes outside the icon subset, are refused with a `TODO: … (not observed)` error rather than silently dropped as the SDK tool does.
+

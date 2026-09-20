@@ -847,6 +847,7 @@ dependencies = [
  "symdev-core",
  "symdev-elf2e32",
  "symdev-makekeys",
+ "symdev-mif",
  "symdev-rcomp",
  "symdev-sis",
  "tempfile",
@@ -912,6 +913,13 @@ dependencies = [
  "serde",
  "thiserror",
  "toml",
+]
+
+[[package]]
+name = "symdev-mif"
+version = "0.1.0"
+dependencies = [
+ "symdev-core",
 ]
 
 [[package]]

@@ -39,6 +39,6 @@ Use the `superpowers:*` skills actively: brainstorming before design, test-drive
 
 This Linux machine is the host: build here, no Windows VM. Never commit or download SDK, ROM, `.sis`, `.sisx`, `.cer`, `.key`. Do not invent tool argv — only flags observed from the real tools. Do not claim E52 support until a stock device installs and launches the app; the emulator is not a device.
 
-SDK and toolchain come from the environment: `SYMDEV_EPOCROOT`, `SYMDEV_GXX`, `SYMDEV_LD`, `SYMDEV_GCC_LIB`, `SYMDEV_GCC_TARGET_LIB`, `SYMDEV_WINE` (only `mifconv` for icons), `SYMDEV_EKA2L1`, `SYMDEV_SIGN_PASSWORD`.
+SDK and toolchain come from the environment: `SYMDEV_EPOCROOT`, `SYMDEV_GXX`, `SYMDEV_LD`, `SYMDEV_GCC_LIB`, `SYMDEV_GCC_TARGET_LIB`, `SYMDEV_EKA2L1`, `SYMDEV_SIGN_PASSWORD`. A build needs no Wine: resources, icons, E32 images, SIS packaging and signing are all native.
 
 EKA2L1 runs as a separate process (it is GPL-3.0; never copy its source in). It ignores SIGTERM: stop only instances you started, with `kill -9 <pid>`, and never blanket-kill — the user may have one open. Emulator source, patches, rebuild and the screenshot loop: the `eka2l1-host` skill.
