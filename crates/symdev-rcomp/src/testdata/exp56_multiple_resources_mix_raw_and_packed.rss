@@ -1,0 +1,6 @@
+NAME TEST
+STRUCT S { BYTE b; WORD w; LONG l; }
+STRUCT T { LTEXT t; }
+RESOURCE S r_one { b = 1; w = 0x203; l = 0x4050607; }
+RESOURCE T r_two { t = "Hi"; }
+RESOURCE S r_three { b = 9; }

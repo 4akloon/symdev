@@ -1,0 +1,6 @@
+#define R_LONG                                    0x6120e001
+#define R_BUF                                     0x6120e002
+#define R_MIX                                     0x6120e003
+#define R_EMPTY                                   0x6120e004
+#define R_ONE                                     0x6120e005
+#define R_LATIN                                   0x6120e006

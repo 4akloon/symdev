@@ -307,15 +307,16 @@ impl GcceBuild {
         Ok(())
     }
 
+    /// `.rss` → `.rsc` (and `.rsg` with `HEADER`) by the native preprocessor and
+    /// compiler (experiment 56: byte-equal to the SDK `cpp.exe` + `rcomp.exe` on the SDK
+    /// examples).
     fn compile_resource(
         &self,
         res: &MmpResource,
         mmp_dir: &Path,
         mmp: &Mmp,
         build_dir: &Path,
-        cwd: &RemotePath,
     ) -> Result<()> {
-        use symdev_rcomp::{RcompTool, RssCppTool};
         let rss = res.source(mmp_dir);
         if !rss.is_file() {
             return Err(Error::Other(format!(
@@ -324,9 +325,6 @@ impl GcceBuild {
             )));
         }
         let stem = res.stem()?;
-        let rpp = build_dir.join(format!("{stem}.rpp"));
-        let rsc = build_dir.join(format!("{stem}.rsc"));
-        let rsg = build_dir.join(format!("{stem}.rsg"));
         let epoc = self.tools.epocroot.join("epoc32");
         let mut includes = vec![
             rss.parent().unwrap_or(mmp_dir).to_path_buf(),
@@ -343,34 +341,15 @@ impl GcceBuild {
                 .iter()
                 .map(|d| Self::mmp_dir_path(mmp_dir, d)),
         );
-        let wine_env = [
-            ("WINEPATH", arg(&epoc.join("tools"))),
-            ("WINEDEBUG", "-all".into()),
-        ];
-        let cpp = RssCppTool::new(&self.tools.wine, &epoc.join("gcc/bin/cpp.exe"));
-        self.run_tool_env(
-            &cpp.args(
-                &includes,
-                &RssCppTool::wine_path(&rss),
-                &RssCppTool::wine_path(&rpp),
-            ),
-            cwd,
-            &wine_env,
-        )?;
-        let rcomp = RcompTool::new(&self.tools.wine, &epoc.join("tools/rcomp.exe"));
-        let (o, s, i) = (
-            RssCppTool::wine_path(&rsc),
-            RssCppTool::wine_path(&rpp),
-            RssCppTool::wine_path(&rss),
-        );
-        let args = if res.header {
-            rcomp.args_with_header(&o, &RssCppTool::wine_path(&rsg), &s, &i)
-        } else {
-            rcomp.args(&o, &s, &i)
-        };
-        self.run_tool_env(&args, cwd, &wine_env)?;
-        if !rsc.is_file() {
-            return Err(Error::Other(format!("rcomp wrote no {}", rsc.display())));
+        let rpp = symdev_rcomp::RssPreprocessor::new(&includes).run(&rss)?;
+        let compiled = symdev_rcomp::Rcomp::compile(&rpp, &rss.display().to_string())?;
+        let rsc = build_dir.join(format!("{stem}.rsc"));
+        std::fs::write(&rsc, compiled.rsc_bytes()?)
+            .map_err(|e| Error::Other(format!("write {}: {e}", rsc.display())))?;
+        if res.header {
+            let rsg = build_dir.join(format!("{stem}.rsg"));
+            std::fs::write(&rsg, compiled.rsg_text())
+                .map_err(|e| Error::Other(format!("write {}: {e}", rsg.display())))?;
         }
         Ok(())
     }
@@ -550,7 +529,7 @@ impl BuildBackend for GcceBuild {
             let module = Module::of(mmp, self.uid3)?;
             // Resources first: sources include the generated `.rsg` headers.
             for res in &mmp.resource {
-                self.compile_resource(res, mmp_dir, mmp, &build_dir, &cwd)?;
+                self.compile_resource(res, mmp_dir, mmp, &build_dir)?;
             }
             let mut includes = CompileIncludes {
                 user: vec![build_dir.clone()],
