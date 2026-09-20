@@ -25,6 +25,11 @@
 
 - **Probe 76 stage A negative case:** with the leave taken *raw* (`User::Leave` called straight from the shim while a Rust frame is on the stack), the emulator log stops at `Rust: about to let a leave cross this frame` and the process dies with **no diagnostic at all** — no panic line, no KERN-EXEC, nothing after it. `readelf --unwind` on the same image shows every Rust function as `0x1 [cantunwind]` while every shim function has `__gxx_personality_v0`. So the rule is not a style preference: a leave across a Rust frame is a silent process death.
 
+- **Probe 76 stage B: an Avkon application whose Draw is Rust runs in EKA2L1.** `/tmp/claude-1000/ui-spec-work/uiprobe/` (203-line C++ shim: CAknApplication/CAknDocument/CAknAppUi/CCoeControl subclasses forwarding to a Rust vtable) plus `/tmp/claude-1000/ui-spec-work/uirust/` (174-line `#![no_std]` staticlib). Screenshot `/tmp/claude-1000/ui-spec-work/uiprobe-1.png`: the S60 title pane says `uiprobe`, the Exit softkey is there, and the client area shows the three coloured bars, the baseline and the axis the **Rust** `draw` callback painted through the host table. shim.o = 30 996 bytes, 185 undefined symbols; E32 = 107 028 bytes.
+- **Not observed: key delivery.** No key reached the emulated device in this session: neither the arrow keys nor the stock Exit softkey (F2, bound to `EStdKeyDevice1` in `~/.local/share/EKA2L1/bindings/default.yml`) changed anything, and the shim's `User::InfoPrint` at the top of `OfferKeyEventL` never fired. XTest with the window activated (`_NET_ACTIVE_WINDOW`, `XGetInputFocus` confirms) and the pointer warped over the screen still delivers nothing. So key forwarding is proven only structurally (compiles, links, is on the vtable), not at runtime.
+- EKA2L1 default keybinds (`~/.local/share/EKA2L1/bindings/default.yml`): Qt F1/F2 -> 164/165 (`EStdKeyDevice0`/`1`, the two softkeys), Enter -> 167 (`EStdKeyDevice3`, selection), arrows -> 16/17/14/15 (`EStdKeyUp/Down/Left/RightArrow`), F3/F4 -> 180/181 (`EStdKeyApplication0/1`).
+- Drawing origin not isolated: the probe drew once with `Rs(Rect())` and once with `Rs(TRect(TPoint(0,0), Size()))` and produced identical pixels. Which is the general rule is an open point for the implementation.
+
 ## Decisions
 
 ## Dead ends
