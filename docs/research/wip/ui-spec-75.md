@@ -23,6 +23,8 @@
 - **Size:** adding one C++ shim object pulls the whole `compiler_builtins` CGU (a single object, no per-function split): the E32 grew from 752 bytes (exp 65 hello) to 104 268 bytes. The C++-only control of the same shim is 3591 bytes.
 - The first `symdev run` of the probe printed `Installation done!` and then `Installation of SIS failed`; an identical second run installed and ran. Transient, not reproducible; noted, not diagnosed.
 
+- **Probe 76 stage A negative case:** with the leave taken *raw* (`User::Leave` called straight from the shim while a Rust frame is on the stack), the emulator log stops at `Rust: about to let a leave cross this frame` and the process dies with **no diagnostic at all** — no panic line, no KERN-EXEC, nothing after it. `readelf --unwind` on the same image shows every Rust function as `0x1 [cantunwind]` while every shim function has `__gxx_personality_v0`. So the rule is not a style preference: a leave across a Rust frame is a silent process death.
+
 ## Decisions
 
 ## Dead ends
