@@ -40,3 +40,7 @@ Same split for the DSO `.hash` bucket rule: [dso-hash-spec.md](dso-hash-spec.md)
 ### Clean-room record: rcomp (2026-09-19)
 
 The repository owner approved disassembling the SDK's `rcomp.exe` (8.1, build 004) to pin the parts black-box goldens leave open (compressed-Unicode encoder choices, when text stays uncompressed, defaults). Same two-role split: a separate agent disassembled the binary and wrote [rcomp-spec.md](rcomp-spec.md) in prose and tables; the native compiler in `crates/symdev-rcomp` is written from that spec, the experiment-56 golden corpus and black-box probes, and its author did not read the disassembly or the spec writer's scratch files.
+
+### Clean-room record: the remaining SDK tools (2026-09-20)
+
+Same two-role split, approved by the repository owner, for the tools symdev still shells out to or refuses cases of: separate agents disassembled `bmconv.exe`, `svgtbinencode.exe` + `mifconv.exe`, `makesis.exe` and `elf2e32.exe` (for the latter they could also read the EPL-1.0 `elf2e32_next` sources) and wrote prose specifications — [bmconv-spec.md](bmconv-spec.md), [svgb-mif-spec.md](svgb-mif-spec.md), [makesis-spec.md](makesis-spec.md), [elf2e32-options-spec.md](elf2e32-options-spec.md). The native implementations are written from those specs and the golden bytes only; their author read neither the disassembly nor the spec writers' scratch work.
