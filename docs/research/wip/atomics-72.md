@@ -31,10 +31,26 @@ Task: survey what atomics and blocking primitives Symbian OS 9.3 on ARMv5TE actu
 - At `max-atomic-width: 0` the types do not exist at all: `no AtomicU32/AtomicU8/AtomicUsize in sync::atomic`, and `cannot find sync in alloc` (no `Arc`). At 32/true `alloc::sync::Arc` exists.
 - **Decision: do NOT change the target JSON in this experiment.** Evidence: nothing on the link line defines the libcalls, so the change would only move the failure later.
 
+
+### 4. Observed on EKA2L1 (C++ probes built with `symdev build/package/run`, `/tmp/claude-1000/atomics-work/`)
+Return values are the OLD value in every case; the predicate differs:
+- `User::LockedInc(v)`: 0->1 r=0, 5->6 r=5, -1->0 r=-1. Unconditional increment, returns old.
+- `User::LockedDec(v)`: 0->-1 r=0, 5->4 r=5, 1->0 r=1. Unconditional decrement, returns old.
+- `User::SafeInc(v)`:  0->0 r=0, 5->6 r=5, -1->-1 r=-1, -5->-5 r=-5. Increments ONLY when the old value is > 0.
+- `User::SafeDec(v)`:  0->0 r=0, 5->4 r=5, 1->0 r=1, -5->-5 r=-5, -1->-1 r=-1. Decrements ONLY when the old value is > 0.
+- **Atomicity observed.** Two threads (`RThread::Create` + `Logon`/`Resume`), 20000 iterations each, each iteration doing `LockedInc(gShared)` and a hand-rolled `x = gPlain; User::After(0) every 64; gPlain = x+1`: result `LockedInc=40000 plain=20000 lost=20000`. The plain read-modify-write lost exactly half its updates while `LockedInc` lost none. Without the forced yield neither lost anything (EKA2L1 did not preempt the tight loop), so the yield is what makes the test meaningful.
+- Creation: `RFastLock/RMutex/RSemaphore/RCriticalSection/RCondVar::CreateLocal` all returned `KErrNone`; handles 196610 / 262147 / 327684 (a kernel object each). `sizeof`: `RFastLock` 8, `RMutex` 4, `RCriticalSection` 8.
+- `RMutex`: `IsHeld()` 0 before `Wait`, 1 after; **`Wait` twice from the owning thread returns** -> recursive/re-entrant.
+- `RFastLock`: `Wait` twice from the same thread **blocks forever** (the probe never printed past the second `Wait`; run killed on timeout) -> NOT recursive; it is a counting semaphore initialised to 1.
+- `RSemaphore::Wait(50000)` on an empty semaphore returns **-33 = KErrTimedOut**; with a token available it returns 0. This is the only try-lock/timeout-shaped primitive in the set (`RFastLock`/`RMutex` have no timed wait).
+- `RCriticalSection::IsBlocked()` is 1 inside the critical section.
+- **Emulator caveats:** `RCondVar::CreateLocal()` returns `KErrNone` but `Handle()` is 0 - EKA2L1 quirk or a real handle-less object, UNKNOWN. After a worker `RThread` has run and exited, the main thread takes an `Access violation reading address 0x8000A4` at the next few instructions on every probe; single-threaded probes never fault. Emulator artefact, UNKNOWN on a device.
+- Operational note: EKA2L1 refuses to install a package whose executable is already on drive E (`Installation of SIS failed` after `Installation done!`), so each probe run needs a fresh app name AND a fresh UID3.
+
 ## Decisions
 
 ## Dead ends
 
 ## Next step
 
-- Observe `User::LockedInc/Dec`/`SafeInc/Dec` return values on EKA2L1; then prove a lock-backed `__atomic_*` shim links and runs.
+- Prove (or refute) that a lock-backed `__atomic_*` shim makes Rust atomics link and run; then write the deliverable.
