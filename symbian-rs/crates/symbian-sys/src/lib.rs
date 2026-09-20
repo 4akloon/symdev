@@ -13,6 +13,7 @@
 
 pub mod des;
 pub mod des16;
+pub mod des8;
 pub mod efsrv;
 pub mod euser;
 pub mod shim;

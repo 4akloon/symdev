@@ -37,3 +37,11 @@ Task: build `symbian-std` (`io`/`fs`/`prelude` in `std` shape) over `RFs`/`RFile
   `EFileStream 0`, `EFileStreamText 0x100`, `EFileRead 0`, `EFileWrite 0x200`,
   `EFileReadAsyncAll 0x400`; `ESeekAddress 0 / Start 1 / Current 2 / End 3`;
   `KEntryAttDir = 0x0010` (`f32file.h`).
+- Measured with a compile probe (recorded GCCE argv, `-S`, read the immediates):
+  `sizeof(TDesC8) 4`, `sizeof(TDes8) 8`, `sizeof(TPtrC8) 8`, `sizeof(TPtr8) 12`,
+  `sizeof(RFile) 8`, `sizeof(TEntry) 552` (`movs r0,#138; lsls r0,r0,#2`),
+  `__alignof__(TEntry) 8`, `offsetof(TEntry, iAtt/iSize/iModified/iType/iName)
+  = 0/4/8/16/28`. Probe: `scratchpad/files71/layout.cpp`.
+- `symbian-sys` gained `des8` and an `efsrv/` module (`rfs`, `rfile`, `entry`);
+  `symbian-core` gained `des8` (`PtrC8`/`Ptr8`) and an `fs/` module
+  (`server`, `file`, `entry`, `session`). Builds clean for the phone target.
