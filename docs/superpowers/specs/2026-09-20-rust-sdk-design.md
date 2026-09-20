@@ -266,7 +266,10 @@ is why `alloc` must not assume one global heap. Record in the memory-model note 
 5. Everything Symbian^3 / N8: no SDK, no ROM, no device on this host.
 6. Hardware M0: stock E52 install of *any* symdev output.
 7. Whether `compiler_builtins`' `mem` symbols collide with `-lgcc`/`usrt2_2` at link (§4 item 4).
-8. `c-enum-min-bits` / any other ABI field where the SDK's GCC 3.4.3 default might differ from EABI's — settle by compiling a tiny C++ probe with the observed argv and reading its DWARF.
+8. ~~`c-enum-min-bits`~~ — settled by experiment 65: a probe compiled with the observed GCCE argv gives `sizeof(enum) == 4`, so the target sets 32.
+
+Numbers 66 and 67 went to the `SECUREID` override and the no-edit third-party build; the Rust
+track resumes at 68.
 
 ## 11. Order of work, with pass criteria
 
@@ -274,10 +277,12 @@ is why `alloc` must not assume one global heap. Record in the memory-model note 
 |---|---|---|
 | 65a | Spike: no_std hello by hand (stand-in target, prebuilt `core`) → recorded link → native elf2e32 → SIS → EKA2L1 | **passed 2026-09-20**: notifier log line identical to the C++ control; EKA2L1 halts on `InfoPrint` rendering for both (emulator issue, filed) |
 | 65 | The same through `symdev build/package/run` with `language = "rust"`, custom target JSON, pinned nightly + `build-std` | **passed 2026-09-20**: the one-liner from an empty directory, same notifier line, E32 752 bytes; corpus `symbian-rs/corpus/65-hello/` |
-| 66 | `alloc` over euser; a `Vec` and a `String` in hello | heap used and freed; alignment hypothesis settled |
-| 67 | First shim + `symbian-core` file API; hello writes and reads a file | file content visible in the emulator's drive directory |
-| 68 | Atomics / locks survey on 9.3 | table of what euser offers, with `nm` evidence |
-| 69 | `symdev test --emulator` result protocol | a failing test is reported as failing from the emulator run |
+| 68 | `alloc` over euser (`User::Alloc`/`Free`/`ReAlloc`); a `Vec` and a `String` in hello | heap used and freed; cell alignment settled; `memcpy`/`memcmp` resolution observed |
+| 69 | `symbian-core`: `SymbianError` from `e32err.h`, the descriptor family (`Des16` view, `Buf16<N>`, `HBuf16`), `&str` ↔ UTF-16 without a heap round-trip | hello writes its text with `write!` into a `Buf16` and no `unsafe` at the call site |
+| 70 | The C++ shim mechanism: a static library built by the existing GCCE argv, one `extern "C"` `TRAP` wrapper per leaving call, and the rule for which calls need one | a leaving API called from Rust returns `Err`, and the process survives |
+| 71 | Files: `RFs`/`RFile` behind `FileServer`/`File` with `Drop` closing the handle | hello writes and re-reads a file; the bytes are visible in the emulator's drive directory |
+| 72 | Atomics / locks survey on 9.3 | table of what euser offers, with `nm` evidence |
+| 73 | `symdev test --emulator` result protocol | a failing test is reported as failing from the emulator run |
 | — | Threads, async, UI, networking, N8 | after the above, each with its own spec |
 
 Each experiment gets a backlog entry with the bytes and the argv; the first passing E32 for
