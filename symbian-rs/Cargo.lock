@@ -16,7 +16,6 @@ version = "0.1.0"
 dependencies = [
  "symbian-core",
  "symbian-runtime",
- "symbian-std",
  "symbian-sys",
 ]
 
@@ -60,6 +59,13 @@ dependencies = [
 
 [[package]]
 name = "symbian-core"
+version = "0.1.0"
+dependencies = [
+ "symbian-sys",
+]
+
+[[package]]
+name = "symbian-libcalls"
 version = "0.1.0"
 dependencies = [
  "symbian-sys",

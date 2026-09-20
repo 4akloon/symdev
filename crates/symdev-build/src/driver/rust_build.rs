@@ -55,6 +55,49 @@ impl RustBuild {
         ]
     }
 
+    /// The second cargo invocation: the SDK's compiler-runtime crate, built as its own
+    /// archive rather than as a dependency of the application.
+    ///
+    /// It has to be separate. Its entry points are `#[unsafe(no_mangle)]`, so they are
+    /// global symbols, and every global symbol is a `--gc-sections` root in a `-shared`
+    /// link — as a dependency they survived into every program and cost `hello` 756
+    /// bytes for code it never calls. From an archive the member is pulled only by a
+    /// program that really performs an atomic operation or compares two byte slices.
+    ///
+    /// `--profile libcalls` exists only to turn LTO off: under the workspace's
+    /// `lto = true` the rlib holds LLVM bitcode, which `ld` cannot read.
+    pub fn libcalls_cargo_args(&self) -> Vec<String> {
+        vec![
+            arg(&self.cargo),
+            "build".into(),
+            "--profile".into(),
+            RustSdk::LIBCALLS_PROFILE.into(),
+            "-p".into(),
+            RustSdk::LIBCALLS_CRATE.into(),
+            "--manifest-path".into(),
+            arg(&self.sdk.libcalls_manifest()),
+            "--target".into(),
+            arg(&self.sdk.target_spec()),
+            "-Zbuild-std=core,alloc".into(),
+            "-Zjson-target-spec".into(),
+            "--target-dir".into(),
+            "build/cargo".into(),
+        ]
+    }
+
+    /// Where cargo leaves the compiler-runtime archive.
+    pub fn libcalls_archive(&self, project: &Project) -> PathBuf {
+        project
+            .root
+            .join("build/cargo")
+            .join(RustSdk::TARGET)
+            .join(RustSdk::LIBCALLS_PROFILE)
+            .join(format!(
+                "lib{}.rlib",
+                RustSdk::LIBCALLS_CRATE.replace('-', "_")
+            ))
+    }
+
     /// Where cargo leaves the static library.
     pub fn archive(&self, project: &Project) -> PathBuf {
         project
@@ -167,6 +210,7 @@ impl RustBuild {
         &self,
         archive: &Path,
         shim: Option<&Path>,
+        libcalls: Option<&Path>,
         elf: &Path,
         map: &Path,
     ) -> Vec<String> {
@@ -193,13 +237,16 @@ impl RustBuild {
         {
             args.insert(at + i, flag);
         }
-        if let Some(shim) = shim {
-            let after_archive = args
-                .iter()
-                .position(|a| a == &arg(archive))
-                .map_or(args.len(), |i| i + 1);
-            args.insert(after_archive, arg(shim));
-        }
+        // The archives follow the Rust archive in the order their references run:
+        // the application refers to the shim, and both may refer to a compiler-runtime
+        // routine, so the libcall archive is searched last. An archive is searched only
+        // for what is still undefined where it appears.
+        let after = args
+            .iter()
+            .position(|a| a == &arg(archive))
+            .map_or(args.len(), |i| i + 1);
+        let extras: Vec<String> = [shim, libcalls].into_iter().flatten().map(arg).collect();
+        args.splice(after..after, extras);
         let at = args
             .iter()
             .position(|a| a == "-lsupc++")
@@ -222,7 +269,10 @@ impl RustBuild {
     }
 
     fn run_cargo(&self, cwd: &RemotePath) -> Result<()> {
-        let args = self.cargo_args();
+        self.run_cargo_args(&self.cargo_args(), cwd)
+    }
+
+    fn run_cargo_args(&self, args: &[String], cwd: &RemotePath) -> Result<()> {
         let mut cmd = Command::new(&args[0]);
         cmd.args(&args[1..]);
         // A symdev started through a rustup proxy carries the host toolchain in
@@ -261,10 +311,22 @@ impl BuildBackend for RustBuild {
             )));
         }
         let shim = self.build_shims(project, &cwd)?;
+        self.run_cargo_args(&self.libcalls_cargo_args(), &cwd)?;
+        let libcalls = self.libcalls_archive(project);
+        if !libcalls.is_file() {
+            return Err(Error::Other(format!(
+                "cargo produced no {}: the Rust SDK's {} crate is what defines the \
+                 __atomic_* family and memcmp for this target",
+                libcalls.display(),
+                RustSdk::LIBCALLS_CRATE
+            )));
+        }
         let elf = build_dir.join(format!("{}.elf", self.name));
         let map = build_dir.join(format!("{}.exe.map", self.name));
-        self.gcce
-            .run_tool(&self.link_args(&archive, shim.as_deref(), &elf, &map), &cwd)?;
+        self.gcce.run_tool(
+            &self.link_args(&archive, shim.as_deref(), Some(&libcalls), &elf, &map),
+            &cwd,
+        )?;
         let out = build_dir.join(format!("{}.exe", self.name));
         self.gcce
             .run_elf2e32(&self.gcce.elf2e32_args(&self.name, &elf, &out), &cwd)?;

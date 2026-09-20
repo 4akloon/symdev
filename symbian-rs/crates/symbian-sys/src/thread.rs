@@ -151,6 +151,18 @@ unsafe extern "C" {
     #[link_name = "_ZN10RAllocator4OpenEv"]
     pub fn RAllocator_Open(this: *mut RAllocator) -> i32;
 
+    /// `000009a4 T _ZN4User15SwitchAllocatorEP10RAllocator` —
+    /// `User::SwitchAllocator(RAllocator*)`: makes `allocator` the **calling thread's**
+    /// heap and returns the one it replaced.
+    ///
+    /// This is how a spawned thread joins the heap its creator is using. It has to be
+    /// done from inside the new thread, and the thread has to have been created with
+    /// the own-heap overload, because passing the creator's allocator to
+    /// `RThread::Create` makes the worker's exit take the creator's heap down with it
+    /// (observed; see `docs/research/eka2-concurrency.md`).
+    #[link_name = "_ZN4User15SwitchAllocatorEP10RAllocator"]
+    pub fn User_SwitchAllocator(allocator: *mut RAllocator) -> *mut RAllocator;
+
     /// `0000007c T _ZN10RAllocator5CloseEv` — `RAllocator::Close()`: one reference
     /// fewer; the last one destroys the heap's chunk.
     #[link_name = "_ZN10RAllocator5CloseEv"]

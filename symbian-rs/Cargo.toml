@@ -6,6 +6,7 @@ resolver = "3"
 members = [
     "crates/symbian-sys",
     "crates/symbian-alloc",
+    "crates/symbian-libcalls",
     "crates/symbian-core",
     "crates/symbian-std",
     "crates/symbian-runtime",
@@ -30,6 +31,20 @@ lto = true
 codegen-units = 1
 panic = "abort"
 debug = false
+
+# The SDK's compiler-runtime crate is linked as its own archive, not compiled into the
+# application, so that a program which performs no atomic operation and compares no
+# bytes carries none of it. `lto = false` is what makes that possible: under the
+# workspace's `lto = true` an rlib holds LLVM bitcode, which `ld` cannot read, and
+# `staticlib` would need its own `#[panic_handler]` and collide with the application's.
+[profile.libcalls]
+inherits = "release"
+lto = false
+# One codegen unit per module, so the archive has one member per concern and a program
+# that only compares bytes does not also pull the atomics in. With the workspace's
+# `codegen-units = 1` everything shared one object and `examples/files`, which uses
+# `memcmp` and no atomic, grew 714 bytes for code it never calls.
+codegen-units = 16
 
 [profile.dev]
 panic = "abort"

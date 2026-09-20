@@ -70,6 +70,27 @@ impl RustSdk {
             .join(format!("{}.json", Self::TARGET))
     }
 
+    /// The SDK crate that defines what rustc's own code generation calls and this
+    /// platform does not provide: the `__atomic_*` family over an `RFastLock`,
+    /// `__sync_synchronize`, `memcmp` and `bcmp`.
+    ///
+    /// It is **not** a dependency of the application. It is built separately and put on
+    /// the link line as its own archive, so that a program which performs no atomic
+    /// operation and compares no bytes carries none of it: a `#[unsafe(no_mangle)]`
+    /// symbol is a global in a `-shared` link and therefore a `--gc-sections` root, so
+    /// as an ordinary dependency it cost every program 756 bytes (measured on `hello`).
+    pub const LIBCALLS_CRATE: &'static str = "symbian-libcalls";
+
+    /// The cargo profile the libcall crate is built under. It exists only to turn LTO
+    /// off: under the workspace's `lto = true` an rlib holds LLVM bitcode, which `ld`
+    /// cannot read.
+    pub const LIBCALLS_PROFILE: &'static str = "libcalls";
+
+    /// `crates/symbian-libcalls/Cargo.toml`.
+    pub fn libcalls_manifest(&self) -> PathBuf {
+        self.crate_dir(Self::LIBCALLS_CRATE).join("Cargo.toml")
+    }
+
     /// `crates/<name>` inside the SDK, for a path dependency.
     pub fn crate_dir(&self, name: &str) -> PathBuf {
         self.root.join("crates").join(name)

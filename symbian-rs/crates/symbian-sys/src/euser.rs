@@ -48,6 +48,25 @@ unsafe extern "C" {
     #[link_name = "_ZN4User4FreeEPv"]
     pub fn User_Free(cell: *mut u8);
 
+    /// `00000a78 T _ZN4User9LockedIncERi` — `User::LockedInc(TInt&)`, declared in
+    /// `e32std.h` line 4519 under the comment `// Atomic operations`.
+    ///
+    /// **The only genuinely atomic primitive euser exports** (with its three
+    /// neighbours): an unconditional +1 that returns the **old** value. Observed on
+    /// this ROM in EKA2L1: `0→1 r=0`, `5→6 r=5`, `−1→0 r=−1`, and two threads doing
+    /// 20000 each gave exactly 40000 while a hand-rolled read-modify-write beside it
+    /// lost half its updates (experiment 72).
+    ///
+    /// It needs no lock and no initialisation, which is what makes it the right thing
+    /// to bootstrap a lock with. The headers state **no memory ordering** for it and
+    /// nothing on this host can settle that (UNKNOWN, experiment 72).
+    #[link_name = "_ZN4User9LockedIncERi"]
+    pub fn User_LockedInc(value: *mut i32) -> i32;
+
+    /// `00000a74 T _ZN4User9LockedDecERi` — `User::LockedDec(TInt&)`: the same, −1.
+    #[link_name = "_ZN4User9LockedDecERi"]
+    pub fn User_LockedDec(value: *mut i32) -> i32;
+
     /// `00000a3c T _ZN4User7ReAllocEPvii` — `User::ReAlloc(TAny*, TInt, TInt)`; the third
     /// argument is the mode (0 = default: the cell may move, the common prefix is kept,
     /// failure returns null and leaves the old cell alone — experiment 68).
