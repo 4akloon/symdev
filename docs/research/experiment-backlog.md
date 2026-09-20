@@ -1005,3 +1005,14 @@ WINEPATH=/home/genius/sdk/S60_3rd_FP2/epoc32/tools \
 - **Evidence:** 2026-09-20. `gui.svg` → 193-byte `.svgb`, 257-byte `.mif`, 164-byte `.mbg`, all three **byte-equal** to `mifconv.exe` under Wine; the `<circle cx cy r fill>` document likewise (the spec's §8 snippet for it drops one byte of the `fill` record — the real tool writes the flag byte, and so do we). Pinned in the crate's tests: the file header and tree markers, the whole template, the circle, number truncation toward zero, the `|v| > 32765` drop, the `#rgb` expansion bug, `none`/`rgb()`/`url()` paint, the version-1 float and byte-reversed colour, the container and the `.mbg` naming rules.
   With this, `symdev build` no longer runs Wine at all: resources (experiment 56) and icons are native, and `SYMDEV_WINE` is gone from the toolchain. Elements beyond `svg`, `g`, `rect` and `circle`, and attributes outside the icon subset, are refused with a `TODO: … (not observed)` error rather than silently dropped as the SDK tool does.
 
+## 58. Native `bmconv`: BMP → `.mbm` and `.mbg` (T5)
+
+- **Requires:** the clean-room [bmconv-spec.md](bmconv-spec.md) and Wine for the goldens.
+- **Procedure:** Implement `symdev-mbm` (BMP reader, depth conversion with the two built-in palettes, the four RLE encoders, the file store and the `/h` header) from the spec. Generate 32 BMPs (sizes 1×1 … 32×8, solid / noise / bands / two-tone) and compile each at all nine depths with Wine `bmconv.exe`, once with `/n` and once with compression, comparing every byte.
+- **Outcome:** pass
+- **Evidence:** 2026-09-20, `$HOME/src/symdev-experiment-58/` (generator, goldens, comparison script; outside git). **288 of 288 uncompressed and 288 of 288 compressed files byte-equal**, covering the bytewise, 12-bit, 16-bit and 24-bit encoders, the `0xFF` row padding, the odd 12- and 24-bpp strides, the twips formula and the colour substitutions. `bmconv /h` output reproduced byte for byte.
+  - The 512- and 4096-entry lookup tables are **generated** from the two palettes by city-block nearest with the first index on a tie, exactly as the spec describes; no table is embedded.
+  - Depth options attach to the file name (`/8icon.bmp`), not as separate arguments.
+  - Pinned in the crate: eight golden `.mbm` files across all depths, the recorded bytewise streams of spec §7.2, the grey and colour conversion table of §4.1/§4.3 and the `.mbg` text of §9.2.
+  - Not implemented yet: the ROM stores (`/r`, `/s`), `/u` decompile, `/v`, `/p` custom palettes, `/m` and command files; a `.mbm` still has to be wired into `symdev build` (a project needs a way to declare bitmap sources).
+

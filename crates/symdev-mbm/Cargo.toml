@@ -1,0 +1,8 @@
+[package]
+name = "symdev-mbm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+symdev-core = { path = "../symdev-core" }
