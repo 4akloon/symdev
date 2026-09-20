@@ -42,7 +42,7 @@ struct Case {
 /// The result of one example run, built case by case and written out at the end.
 ///
 /// ```ignore
-/// let mut report = Report::new("files", 0xe000_0691);
+/// let mut report = Report::new("files");
 /// report.check("write", written == BYTES.len());
 /// report.finish()?;
 /// ```
@@ -53,9 +53,17 @@ pub struct Report {
 }
 
 impl Report {
-    /// A report for `app` (a short name, only for a human reading the file) and the
-    /// application's UID3, which is what names the file.
-    pub fn new(app: &str, uid3: u32) -> Self {
+    /// A report for `app` (a short name, only for a human reading the file), taking the
+    /// application's UID3 — which names the file — from `SYMDEV_UID3`, the manifest value
+    /// `symdev build` puts in cargo's environment. Prefer this to [`Report::with_uid3`]:
+    /// writing the UID a second time in the source is how it drifts from `symdev.toml`,
+    /// and the only symptom is `symdev test` waiting for a file nobody writes.
+    pub fn new(app: &str) -> Self {
+        Self::with_uid3(app, uid3_from_env())
+    }
+
+    /// A report for an application that names its own UID3.
+    pub fn with_uid3(app: &str, uid3: u32) -> Self {
         Self {
             app: String::from(app),
             uid3,
@@ -191,4 +199,34 @@ fn escape_into(out: &mut String, text: &str) {
             c => out.push(c),
         }
     }
+}
+
+/// `SYMDEV_UID3` as `symdev build` sets it, parsed at compile time. A build that did not
+/// set it (a hand `cargo build`) gets 0, which makes the missing value obvious in the
+/// file name rather than silently writing somebody else's report.
+const fn uid3_from_env() -> u32 {
+    match option_env!("SYMDEV_UID3") {
+        Some(text) => parse_hex_u32(text.as_bytes()),
+        None => 0,
+    }
+}
+
+/// `0x` followed by hex digits, at compile time. Anything else is 0.
+const fn parse_hex_u32(bytes: &[u8]) -> u32 {
+    if bytes.len() < 3 || bytes[0] != b'0' || (bytes[1] != b'x' && bytes[1] != b'X') {
+        return 0;
+    }
+    let mut value: u32 = 0;
+    let mut i = 2;
+    while i < bytes.len() {
+        let digit = match bytes[i] {
+            b'0'..=b'9' => bytes[i] - b'0',
+            b'a'..=b'f' => bytes[i] - b'a' + 10,
+            b'A'..=b'F' => bytes[i] - b'A' + 10,
+            _ => return 0,
+        };
+        value = value * 16 + digit as u32;
+        i += 1;
+    }
+    value
 }

@@ -228,6 +228,10 @@ impl RustBuild {
         // A symdev started through a rustup proxy carries the host toolchain in
         // `RUSTUP_TOOLCHAIN`, which would override the project's pinned nightly.
         cmd.env_remove("RUSTUP_TOOLCHAIN");
+        // The application's own UID3, so a crate can name a per-application path
+        // without the manifest value being written a second time in the source, where
+        // the two then drift apart (it cost a confused emulator run to find that out).
+        cmd.env("SYMDEV_UID3", format!("0x{:08x}", self.gcce.uid3));
         let out = self.gcce.env.run_blocking(cmd, cwd)?;
         if out.status != 0 {
             return Err(Error::Other(format!(

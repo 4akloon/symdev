@@ -17,14 +17,15 @@ use symbian_std::fs::{self, File};
 use symbian_std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
 use symbian_std::test_report::Report;
 
-/// The application's own UID3 (`symdev.toml`), which names the result file.
-const UID3: u32 = 0xe000_0685;
 
 /// Symbian paths: a drive letter and backslashes, which is why the literals are
 /// escaped. There is no POSIX root above `E:`.
 const DIR: &str = "E:\\symdev\\files71";
 const PATH: &str = "E:\\symdev\\files71\\roundtrip.bin";
 const RENAMED: &str = "E:\\symdev\\files71\\renamed.bin";
+/// Left behind on purpose, so the bytes can be checked from the host afterwards
+/// (`~/.local/share/EKA2L1/data/drives/e/symdev/files71/kept.bin`).
+const KEPT: &str = "E:\\symdev\\files71\\kept.bin";
 
 /// Something with a non-ASCII byte in it, so the round trip is not just ASCII, and
 /// long enough that a truncated write would show.
@@ -98,6 +99,10 @@ fn run(report: &mut Report) {
         }
     }
 
+    // One file is written with the whole-file helper and left in place, so that what
+    // landed on the drive can be compared byte for byte from outside the emulator.
+    report.checked("fs::write leaves a file behind", fs::write(KEPT, BYTES));
+
     report.checked("rename", fs::rename(PATH, RENAMED));
     report.checked("remove_file", fs::remove_file(RENAMED));
     report.check(
@@ -107,7 +112,7 @@ fn run(report: &mut Report) {
 }
 
 fn main() -> i32 {
-    let mut report = Report::new("files", UID3);
+    let mut report = Report::new("files");
     run(&mut report);
     match report.finish() {
         Ok(true) => 0,

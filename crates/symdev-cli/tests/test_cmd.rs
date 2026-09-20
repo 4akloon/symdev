@@ -21,8 +21,11 @@ fn project() -> tempfile::TempDir {
 
 #[test]
 fn test_without_emulator_says_there_is_no_other_backend() {
+    // Bind the temporary: `current_dir(project())` drops it, and the directory with it,
+    // before the command is spawned.
+    let dir = project();
     bin()
-        .current_dir(project())
+        .current_dir(&dir)
         .arg("test")
         .assert()
         .failure()
@@ -32,8 +35,9 @@ fn test_without_emulator_says_there_is_no_other_backend() {
 
 #[test]
 fn test_without_sisx_asks_for_package() {
+    let dir = project();
     bin()
-        .current_dir(project())
+        .current_dir(&dir)
         .env("SYMDEV_EKA2L1", "/emu/eka2l1")
         .args(["test", "--emulator"])
         .assert()
