@@ -15,6 +15,7 @@ pub mod des;
 pub mod des16;
 pub mod des8;
 pub mod efsrv;
+pub mod esock;
 pub mod euser;
 pub mod libcalls;
 pub mod shim;

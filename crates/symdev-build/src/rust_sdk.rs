@@ -27,14 +27,16 @@ impl RustSdk {
         include_str!("../../../symbian-rs/examples/hello/src/main.rs");
     /// The import libraries the SDK's own crates and C++ shim need beyond the runtime
     /// set of the recorded link line: `efsrv.dso` for `RFs`, `bafl.dso` for the trapped
-    /// `BaflUtils::EnsurePathExistsL`.
+    /// `BaflUtils::EnsurePathExistsL`, `esock.dso` for `RSocketServ`, `RSocket` and
+    /// `RHostResolver`, `insock.dso` for `TInetAddr` (step 74).
     ///
     /// They are named for every Rust application, because the SDK and not the project
     /// decides what the shim calls (design spec §7, step 70). An unused one costs
     /// nothing: the post-linker emits an import only for a symbol that is actually
     /// referenced, which is why the recorded C++ line has carried four unused DSOs since
     /// experiment 5 and still produces a 746-byte hello.
-    pub const LIBRARIES: &'static [&'static str] = &["efsrv.dso", "bafl.dso"];
+    pub const LIBRARIES: &'static [&'static str] =
+        &["efsrv.dso", "bafl.dso", "esock.dso", "insock.dso"];
 
     pub fn from_env() -> Result<Self> {
         let root = match std::env::var_os("SYMDEV_RUST_SDK") {
