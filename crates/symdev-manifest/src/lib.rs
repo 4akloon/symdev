@@ -266,3 +266,26 @@ fn install_entries_are_optional_and_normalised() {
 fn install_entry_without_a_destination_is_rejected() {
     reject(&format!("{HELLO}\n[[install]]\nsource = \"a.mbm\"\n"));
 }
+
+#[test]
+fn secure_id_is_optional_and_range_checked() {
+    assert!(
+        symdev_manifest::parse(HELLO)
+            .unwrap()
+            .symbian
+            .secure_id
+            .is_none()
+    );
+    let m = symdev_manifest::parse(&HELLO.replace(
+        "capabilities = []",
+        "uid3 = \"0xA000EF77\"\nsecure_id = \"0xE000EF77\"\ncapabilities = []",
+    ))
+    .unwrap();
+    assert_eq!(m.symbian.uid3, Some(0xA000_EF77));
+    assert_eq!(m.symbian.secure_id, Some(0xE000_EF77));
+    // A protected-range secure id will not install from a self-signed package.
+    reject(&HELLO.replace(
+        "capabilities = []",
+        "secure_id = \"0x10003A3F\"\ncapabilities = []",
+    ));
+}

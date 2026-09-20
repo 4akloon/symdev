@@ -51,6 +51,7 @@ fn fake_at(epocroot: PathBuf) -> GcceBuild {
         capabilities: Vec::new(),
         icon: None,
         icons: Vec::new(),
+        secure_id: None,
     }
 }
 

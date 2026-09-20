@@ -9,7 +9,7 @@ fn dll_module_uses_the_sdk_dll_recipe() {
     let mmp =
         Mmp::parse("TARGET mathlib.dll\nTARGETTYPE DLL\nUID 0x1000008d 0xe5d1b001\nSOURCE m.cpp\n")
             .unwrap();
-    let module = Module::of(&mmp, 0xe79e_4cf9).unwrap();
+    let module = Module::of(&mmp, 0xe79e_4cf9, None).unwrap();
     assert!(module.dll);
     let args = d.elf2e32_args_for(
         &module,
@@ -67,5 +67,34 @@ fn dll_module_uses_the_sdk_dll_recipe() {
 #[test]
 fn dll_module_needs_uid_line() {
     let mmp = Mmp::parse("TARGET m.dll\nTARGETTYPE DLL\nSOURCE m.cpp\n").unwrap();
-    assert!(Module::of(&mmp, 1).is_err());
+    assert!(Module::of(&mmp, 1, None).is_err());
+}
+
+/// Experiment 66: the manifest's `secure_id` wins over the MMP's `SECUREID`, and an
+/// absent one leaves the post-linker to default it to UID3.
+#[test]
+fn manifest_secure_id_overrides_the_mmp_one() {
+    let mmp = Mmp::parse(
+        "TARGET x.exe\nTARGETTYPE EXE\nSECUREID 0xA000EF77\nSOURCE a.cpp\nSYSTEMINCLUDE \\epoc32\\include\n",
+    )
+    .unwrap();
+    assert_eq!(mmp.secureid, Some(0xA000_EF77));
+    assert_eq!(
+        Module::of(&mmp, 0xe000_0001, Some(0xE000_EF77))
+            .unwrap()
+            .secureid,
+        Some(0xE000_EF77)
+    );
+    assert_eq!(
+        Module::of(&mmp, 0xe000_0001, None).unwrap().secureid,
+        Some(0xA000_EF77)
+    );
+    let bare = Mmp::parse("TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\n").unwrap();
+    assert_eq!(Module::of(&bare, 0xe000_0001, None).unwrap().secureid, None);
+    assert_eq!(
+        Module::of(&bare, 0xe000_0001, Some(0xE000_EF77))
+            .unwrap()
+            .secureid,
+        Some(0xE000_EF77)
+    );
 }

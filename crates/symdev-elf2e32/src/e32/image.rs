@@ -36,13 +36,17 @@ impl E32Image {
         ordinals: &E32Ordinals,
         time: E32Time,
     ) -> Result<Self> {
-        Self::new(elf, uid, caps, ordinals, time, None)
+        Self::new(elf, uid, uid.uid3, caps, ordinals, time, None)
     }
 
+    /// `secure_id`: the image's secure identity (`--sid`), UID3 unless the MMP or the
+    /// manifest names another (experiment 66: only this field and the header CRC move).
     /// `dll`: `Some` for a DLL (export directory and description), `None` for an EXE.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         elf: &ElfImage,
         uid: E32Uid,
+        secure_id: u32,
         caps: symdev_core::Capabilities,
         ordinals: &E32Ordinals,
         time: E32Time,
@@ -55,7 +59,6 @@ impl E32Image {
         let data = E32DataSection::from_elf(elf, &elf_layout)?;
         let imports = E32ImportSection::from_elf(elf, elf_layout.code_base)?;
         let mut layout = elf_layout;
-        let secure_id = uid.uid3;
         let mut v = E32ImageHeaderV {
             secure_id,
             vendor_id: 0,

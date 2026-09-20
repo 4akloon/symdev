@@ -70,6 +70,9 @@ pub enum Compiler {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Symbian {
     pub uid3: Option<u32>,
+    /// `secure_id`: the image's secure identity. Overrides an MMP `SECUREID`; when
+    /// neither names one the post-linker defaults it to UID3.
+    pub secure_id: Option<u32>,
     pub capabilities: Vec<String>,
     pub vendor: String,
     /// App icon SVG, relative to the project root (built into `<app>_aif.mif`).
@@ -145,6 +148,7 @@ pub(crate) struct RawToolchain {
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawSymbian {
     pub(crate) uid3: Option<String>,
+    pub(crate) secure_id: Option<String>,
     #[serde(default)]
     pub(crate) capabilities: Vec<String>,
     pub(crate) vendor: Option<String>,

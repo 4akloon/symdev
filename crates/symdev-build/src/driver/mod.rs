@@ -36,6 +36,8 @@ pub struct GcceBuild {
     pub icon: Option<PathBuf>,
     /// `[[icons]]`: the containers built before any MMP, since sources include their headers.
     pub icons: Vec<IconContainer>,
+    /// `[symbian] secure_id`: overrides an MMP `SECUREID` (experiment 66).
+    pub secure_id: Option<u32>,
 }
 
 fn arg(path: &Path) -> String {

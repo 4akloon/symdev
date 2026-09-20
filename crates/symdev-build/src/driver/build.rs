@@ -40,7 +40,16 @@ impl BuildBackend for GcceBuild {
         }
         for (mmp_dir, mmp) in &mmps.mmps {
             let name = mmp.name();
-            let module = Module::of(mmp, self.uid3)?;
+            let module = Module::of(mmp, self.uid3, self.secure_id)?;
+            if let (Some(manifest), Some(from_mmp)) = (self.secure_id, mmp.secureid)
+                && manifest != from_mmp
+            {
+                eprintln!(
+                    "warning: {}: SECUREID 0x{from_mmp:08x} overridden by \
+                     `[symbian] secure_id = \"0x{manifest:08x}\"`",
+                    mmp.target
+                );
+            }
             let flags = CompileFlags::of(mmp);
             let caps = MmpCapabilities::of(mmp)?;
             caps.check(&self.capabilities, &mmp.target)?;

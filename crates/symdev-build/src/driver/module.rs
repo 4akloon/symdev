@@ -18,7 +18,13 @@ pub struct Module {
 impl Module {
     /// DLL UIDs come from the MMP `UID <uid2> <uid3>` line; EXEs keep the recorded
     /// experiment-6 UIDs (UID2 omitted, UID3 from the manifest).
-    pub fn of(mmp: &Mmp, manifest_uid3: u32) -> Result<Self> {
+    ///
+    /// `manifest_secure_id` wins over the MMP's `SECUREID`: symdev's manifest is the
+    /// project's identity, and a third-party MMP often names a secure id the operator
+    /// cannot sign for. The caller reports the override; the post-linker defaults an
+    /// absent secure id to UID3 (spec §10.2).
+    pub fn of(mmp: &Mmp, manifest_uid3: u32, manifest_secure_id: Option<u32>) -> Result<Self> {
+        let secureid = manifest_secure_id.or(mmp.secureid);
         if mmp.is_dll() {
             let [uid2, uid3] = mmp.uid[..] else {
                 return Err(Error::Other(format!(
@@ -31,7 +37,7 @@ impl Module {
                 uid2,
                 uid3,
                 allow_data: mmp.epocallowdlldata,
-                secureid: mmp.secureid,
+                secureid,
             });
         }
         Ok(Self {
@@ -39,7 +45,7 @@ impl Module {
             uid2: 0,
             uid3: manifest_uid3,
             allow_data: false,
-            secureid: mmp.secureid,
+            secureid,
         })
     }
 

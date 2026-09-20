@@ -19,6 +19,7 @@ pub fn build_project(m: Manifest) -> Result<ExitCode, Error> {
         capabilities: m.symbian.capabilities,
         icon: m.symbian.icon,
         icons: m.icons,
+        secure_id: m.symbian.secure_id,
     };
     let project = crate::current_project()?;
     let artifacts = match m.language {

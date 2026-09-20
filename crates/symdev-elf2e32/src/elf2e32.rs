@@ -251,11 +251,6 @@ impl Elf2E32 {
         time: E32Time,
         exports: Option<&E32Exports>,
     ) -> Result<Vec<u8>> {
-        if self.sid.is_some_and(|sid| sid != self.uid3) {
-            return Err(Error::Other(
-                "TODO: --sid other than --uid3 (not observed)".into(),
-            ));
-        }
         if self.fpu != "softvfp" {
             return Err(Error::Other(format!(
                 "TODO: native elf2e32 --fpu={} (only softvfp observed)",
@@ -272,7 +267,8 @@ impl Elf2E32 {
             exports,
             allow_data: self.dlldata,
         });
-        let image = E32Image::new(elf, self.uid(), caps, ordinals, time, dll)?;
+        let secure_id = self.sid.unwrap_or(self.uid3);
+        let image = E32Image::new(elf, self.uid(), secure_id, caps, ordinals, time, dll)?;
         if self.uncompressed {
             Ok(image.uncompressed())
         } else {

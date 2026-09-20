@@ -146,6 +146,7 @@ fn symbian(raw: Option<crate::schema::RawSymbian>) -> Result<Symbian> {
     let Some(raw) = raw else {
         return Ok(Symbian {
             uid3: None,
+            secure_id: None,
             capabilities: Vec::new(),
             vendor: "symdev".into(),
             icon: None,
@@ -156,6 +157,10 @@ fn symbian(raw: Option<crate::schema::RawSymbian>) -> Result<Symbian> {
             Some(s) => Some(parse_uid3(&s)?),
             None => None,
         },
+        secure_id: match raw.secure_id {
+            Some(s) => Some(parse_uid_field(&s, "symbian.secure_id")?),
+            None => None,
+        },
         capabilities: capabilities(raw.capabilities)?,
         vendor: vendor(raw.vendor)?,
         icon: nonempty_path(raw.icon, "symbian.icon")?,
@@ -163,19 +168,27 @@ fn symbian(raw: Option<crate::schema::RawSymbian>) -> Result<Symbian> {
 }
 
 fn parse_uid3(s: &str) -> Result<u32> {
+    parse_uid_field(s, "symbian.uid3")
+}
+
+/// A UID-shaped manifest field. The self-sign ranges are the recorded policy
+/// ([uids-capabilities-signing.md]): the `0xA…` range needs an explicit value, the
+/// `0xE…` test range is the default, and anything below `0x80000000` is protected and
+/// will not install from a self-signed package.
+fn parse_uid_field(s: &str, field: &str) -> Result<u32> {
     let rest = s.as_bytes();
     if rest.len() != 10 || !s.starts_with("0x") || !s[2..].bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(Error::Invalid(format!(
-            "symbian.uid3 `{s}` must match 0x + 8 hex digits"
+            "{field} `{s}` must match 0x + 8 hex digits"
         )));
     }
     let uid = u32::from_str_radix(&s[2..], 16)
-        .map_err(|_| Error::Invalid(format!("symbian.uid3 `{s}` must match 0x + 8 hex digits")))?;
+        .map_err(|_| Error::Invalid(format!("{field} `{s}` must match 0x + 8 hex digits")))?;
     let in_a = (0xA000_0000..=0xAFFF_FFFF).contains(&uid);
     let in_e = (0xE000_0000..=0xEFFF_FFFF).contains(&uid);
     if !(in_a || in_e) {
         return Err(Error::Invalid(format!(
-            "symbian.uid3 `{s}` is outside the self-sign ranges"
+            "{field} `{s}` is outside the self-sign ranges"
         )));
     }
     Ok(uid)

@@ -67,9 +67,9 @@ SDK accepts, so each is a gap below, not a property of the app.
    plus a sibling `.mbm`, and its own `bmconv` call is broken under Wine
    (`\epoc32\tools\BMCONV.exe\bmconv …`), so `bmconv` was run directly. (Experiment 64:
    the call works once `/B<tools>` and `/S<tools>` are both given.)
-9. Changed `_UID3` in `inc/Puzzles.hrh` from `0xA000EF77` to `0xE000EF77` so the registration
-   resource matches a self-signable UID. Not a symdev gap — a protected-range UID cannot be
-   self-signed.
+9. Changed `_UID3` in `inc/Puzzles.hrh` from `0xA000EF77` to `0xE000EF77`. **Unnecessary
+   (2026-09-20):** `0xA0000000–0xAFFFFFFF` is a self-sign range in the recorded policy;
+   only `< 0x80000000` is protected. The project's own UID works as it is.
 
 `games.mbm` (34 bitmaps, 209 743 bytes), `games.mif`, `puzzles.mif` and the `.mbg` from this run
 are usable as goldens for a native `bmconv`; they were produced under Wine from the repository's
@@ -85,6 +85,12 @@ own `gfx/*.bmp` and `gfx/app.svg`.
 4. Packaging: one name for the EXE, extra install files in the manifest (gaps 11, 12).
 5. Icons: `bmconv` from the existing spec, `.mbg`, a wider icon model, a wider SVG subset
    (gaps 13–15).
+
+## Acceptance met, 2026-09-20
+
+`git clone` of the unmodified project plus one `symdev.toml` → `symdev build && symdev package
+&& symdev run` → **Cube plays in EKA2L1**. `diff -rq` against the pristine clone shows no change
+inside the project. Recorded as experiment 67. Still emulator-only: not a claim about an E52.
 
 ## Closing the gaps
 
@@ -105,6 +111,8 @@ plus one `symdev.toml`, no edit inside the project.
 | 11 | closed 2026-09-20 | `AppTarget`: the packaged binary and the registration resource follow the MMP `TARGET` |
 | 12 | closed 2026-09-20 | manifest `[[install]]`; a packaged file no longer has to sit next to the EXE |
 | 13 | closed 2026-09-20 | manifest `[[icons]]` — one entry per `mifconv` call (experiment 64): `games.mif` + `games.mbm` + `puzzles_0xa000ef77.mbg` and `puzzles.mif` are built natively, byte-equal to the SDK tools (4/4), and installed where `dest` says; `START BITMAP` covers the `.mmp` form |
+| 13 | closed 2026-09-20 | `[[icons]]`: one entry is one `mifconv` call (experiment 64) |
+| 15 | closed 2026-09-20 | the SVG encoder takes real Illustrator icons (experiment 60) |
 | 14 | closed 2026-09-20 | `symdev-mbm` (experiment 58), byte-equal to `bmconv`; reachable from a project since experiment 61 |
 | 15 | closed 2026-09-20 | `506d366` widened the SVGB encoder; the project's own `gfx/app.svg` now encodes byte-equal to `mifconv` (experiment 64) |
 
