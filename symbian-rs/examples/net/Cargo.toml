@@ -1,0 +1,14 @@
+[package]
+name = "netdemo"
+version.workspace = true
+edition.workspace = true
+# `src/main.rs` is a library: rustc never links, symdev does (design spec §3).
+autobins = false
+
+[lib]
+path = "src/main.rs"
+crate-type = ["staticlib"]
+
+[dependencies]
+symbian-core = { path = "../../crates/symbian-core" }
+symbian-std = { path = "../../crates/symbian-std" }

@@ -44,6 +44,17 @@ Step 74 of the Rust SDK: `symbian_std::net` — blocking TCP/UDP/resolver in `st
   `INET_UDP_PROTOCOL_ID`, families `{INET_ADDRESS_FAMILY, INET6_ADDRESS_FAMILY}`), over
   libuv on the host; no config flag to turn on.
 
+- **End to end in the emulator on the first run** (`examples/net` smoke cut, notifier
+  line): `net74 session=0 resolver=0 lookup=2130706433 tcp=0 connect=0 send=0 recv=10
+  b0=80 alive`. So `RSocketServ::Connect`, `RHostResolver::Open`, the synchronous
+  `GetByName` into a hand-built `TNameEntry` (2130706433 = 0x7f000001 = 127.0.0.1 for
+  `localhost`), `RSocket::Open`, `Connect`, `Send` and `RecvOneOrMore` all work, and the
+  `TRequestStatus` + `User::WaitForRequest` pair is enough — **no executor**.
+- **The guest reaches the host's loopback directly.** A Python server bound to
+  `0.0.0.0:18974` on this host saw `connection from ('127.0.0.1', …)` from the emulated
+  app connecting to `127.0.0.1:18974`. No port mapping, no special address.
+- `examples/net` E32 at the smoke cut: **2 646** bytes (no `core::fmt`, no files).
+
 ## Decisions
 
 - **No C++ shim for this step.** Nothing on the path leaves and nothing is sret, so
