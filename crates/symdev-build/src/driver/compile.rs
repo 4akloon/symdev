@@ -1,6 +1,9 @@
 //! `GcceBuild`: compiler argv (`arm-none-symbianelf-g++`).
 use std::path::{Path, PathBuf};
 
+use symdev_core::Result;
+
+use super::language::SourceLanguage;
 use super::module::Module;
 use super::{GcceBuild, arg};
 
@@ -19,7 +22,7 @@ impl GcceBuild {
         includes: &CompileIncludes,
         source: &Path,
         obj: &Path,
-    ) -> Vec<String> {
+    ) -> Result<Vec<String>> {
         self.compile_args_for(&self.exe_module(), source_dir, includes, source, obj)
     }
 
@@ -31,8 +34,9 @@ impl GcceBuild {
         includes: &CompileIncludes,
         source: &Path,
         obj: &Path,
-    ) -> Vec<String> {
+    ) -> Result<Vec<String>> {
         let epoc = &self.tools.epocroot;
+        let language = SourceLanguage::of(source)?;
         let mut args = vec![
             arg(&self.tools.gxx),
             "-O2".into(),
@@ -42,10 +46,11 @@ impl GcceBuild {
             "-mthumb-interwork".into(),
             "-mthumb".into(),
             "-msoft-float".into(),
-            // SDK headers predate GCC 12 (extra member qualification, narrowing UIDs):
-            // accept them as older compilers did (experiment 51).
-            "-fpermissive".into(),
-            "-Wno-narrowing".into(),
+        ];
+        // C++ keeps the leniency flags the GCC-12-era SDK headers need (experiment 51);
+        // `.c` goes through the C front end instead (experiment 59).
+        args.extend(language.args());
+        args.extend([
             "-D__SYMBIAN32__".into(),
             "-D__EPOC32__".into(),
             "-D__MARM__".into(),
@@ -71,7 +76,7 @@ impl GcceBuild {
             "-D__SUPPORT_CPP_EXCEPTIONS__".into(),
             "-I".into(),
             arg(source_dir),
-        ];
+        ]);
         for dir in &includes.user {
             args.extend(["-I".into(), arg(dir)]);
         }
@@ -91,6 +96,6 @@ impl GcceBuild {
             arg(obj),
             arg(source),
         ]);
-        args
+        Ok(args)
     }
 }

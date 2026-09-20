@@ -58,10 +58,9 @@ impl BuildBackend for GcceBuild {
                     .and_then(|s| s.to_str())
                     .unwrap_or(src.as_str());
                 let obj = build_dir.join(format!("{stem}.o"));
-                self.run_tool(
-                    &self.compile_args_for(&module, source_dir, &includes, &source, &obj),
-                    &cwd,
-                )?;
+                let compile =
+                    self.compile_args_for(&module, source_dir, &includes, &source, &obj)?;
+                self.run_tool(&compile, &cwd)?;
                 objs.push(obj);
             }
             let obj = objs

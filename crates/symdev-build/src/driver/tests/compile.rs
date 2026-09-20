@@ -14,7 +14,8 @@ fn compile_includes_wrap_the_sdk_include_dir() {
         &inc,
         Path::new("/p/src/gui.cpp"),
         Path::new("/p/build/gui.o"),
-    );
+    )
+    .unwrap();
     let at = |v: &str| args.iter().position(|a| a == v).unwrap();
     assert!(at("/p/src") < at("/p/build"));
     assert!(at("/p/build") < at("/sdk/epoc32/include"));
@@ -29,7 +30,8 @@ fn compile_args_match_recorded_experiment_5() {
         &CompileIncludes::default(),
         Path::new("/proj/hello.cpp"),
         Path::new("/proj/build/hello.o"),
-    );
+    )
+    .unwrap();
     assert_eq!(
         args,
         s(&[

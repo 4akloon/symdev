@@ -56,7 +56,8 @@ fn dll_module_uses_the_sdk_dll_recipe() {
         &CompileIncludes::default(),
         Path::new("/p/m.cpp"),
         Path::new("/p/build/m.o"),
-    );
+    )
+    .unwrap();
     assert!(compile.iter().any(|a| a == "-D__DLL__"));
     assert!(!compile.iter().any(|a| a == "-D__EXE__"));
 }
