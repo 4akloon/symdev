@@ -167,7 +167,7 @@ Hypotheses experiment 65 must also settle (each is a yes/no with bytes as eviden
 1. `.ARM.exidx` / `.ARM.extab` — **settled by 65:** rustc emits `.ARM.exidx` (`CANTUNWIND` entries) even with `panic=abort` and `default-uwtable=false`; the linked ELF carries `.ARM.exidx`/`.ARM.extab` as a C++ EXE does and the native post-linker accepts it.
 2. Symbol versioning on DSO imports (`--default-symver` on the link): a Rust object's undefined symbol `_ZN4User9InfoPrintERK7TDesC16` binds to `euser.dso`'s versioned export exactly as a C++ object's does — expected yes, it is the linker's job, not the compiler's.
 3. Archive pull-in — **settled by 65a:** the reference to `_Z7E32Mainv` comes from `usrt2_2.lib` in the `-( -)` group *after* the object position, so a `.a` there is not pulled; `-u _Z7E32Mainv` before it is the fix (`--whole-archive` not needed).
-4. `compiler_builtins` vs the link line — **partly settled by 65:** build-std's `compiler_builtins` member defines `__aeabi_*`, libm and `mem*` as *weak* symbols and is not pulled for hello; `memcpy`/`memset`/`memmove` are strong exports of `euser.dso`, `__aeabi_mem*` of `drtaeabi.dso`, nothing exports `memcmp`. A program that references one pulls the weak member first (the archive precedes the DSOs) — observe in 66.
+4. `compiler_builtins` vs the link line — **settled by 68** (see §10 item 7); partly settled by 65: build-std's `compiler_builtins` member defines `__aeabi_*`, libm and `mem*` as *weak* symbols and is not pulled for hello; `memcpy`/`memset`/`memmove` are strong exports of `euser.dso`, `__aeabi_mem*` of `drtaeabi.dso`, nothing exports `memcmp`. A program that references one pulls the weak member first (the archive precedes the DSOs) — observe in 66.
 5. Size of the E32 for hello: **752 bytes** (exp 65; 65a's stand-in build was 755).
 6. **Exp 65:** cargo on this nightly needs `-Zjson-target-spec` for a `.json` target; `-Zbuild-std=core,alloc` also builds `compiler_builtins` and locks its crates.io dependencies in `symbian-rs/Cargo.lock`. Pinned: `nightly-2026-09-19` in `symbian-rs/rust-toolchain.toml`.
 
@@ -259,13 +259,13 @@ is why `alloc` must not assume one global heap. Record in the memory-model note 
 
 ## 10. UNKNOWN list (each becomes an experiment before it becomes code)
 
-1. Heap cell alignment and the over-alignment story for `User::Alloc` (§6).
+1. ~~Heap cell alignment and the over-alignment story for `User::Alloc` (§6)~~ — settled by experiment 68: measured 8 bytes on this ROM's heap (32 cells, sizes 1…257, cell sizes always a multiple of 8, `User::AllocLen` always `4 (mod 8)`), and `RHeap` is not even declared in this SDK's headers, so the allocator trusts 8 and pads anything larger by hand.
 2. User-mode atomics on EKA2 9.3 / ARMv5TE: what euser exports (`User::LockedInc/Dec`, anything `__e32_atomic_*`), and whether `RFastLock` is an acceptable fallback for `Mutex`.
 3. Whether `--check-cfg` accepts `symbian_capability = …` values from a custom target without warnings.
 4. Entropy: what `Math::Random` is seeded from; whether the crypto DLLs expose a real RNG.
 5. Everything Symbian^3 / N8: no SDK, no ROM, no device on this host.
 6. Hardware M0: stock E52 install of *any* symdev output.
-7. Whether `compiler_builtins`' `mem` symbols collide with `-lgcc`/`usrt2_2` at link (§4 item 4).
+7. ~~Whether `compiler_builtins`' `mem` symbols collide with `-lgcc`/`usrt2_2` at link (§4 item 4)~~ — settled by experiment 68: no collision. `memcpy`/`memset`/`__aeabi_mem*` all resolve to `compiler_builtins`, because the Rust archive precedes the DSOs; euser's and drtaeabi's copies are simply unused. The cost is that `compiler_builtins` is one codegen unit, so one reference pulls the whole crate (104 560-byte E32) — `--gc-sections` on the Rust link line brings it back to 11 499.
 8. ~~`c-enum-min-bits`~~ — settled by experiment 65: a probe compiled with the observed GCCE argv gives `sizeof(enum) == 4`, so the target sets 32.
 
 Numbers 66 and 67 went to the `SECUREID` override and the no-edit third-party build; the Rust
@@ -290,8 +290,8 @@ Three channels, in order of cost:
 
 | # | Slice | Passes when |
 |---|---|---|
-| 68 | `alloc` over euser (`User::Alloc`/`Free`/`ReAlloc`); `examples/alloc` | a `Vec` and a `String` live and die; cell alignment settled; `memcpy`/`memcmp` resolution observed (spec §4 item 4) |
-| 69 | `symbian-core`: `SymbianError` from `e32err.h`; the descriptor family (`Des16` borrowed view, `Buf16<N>` on the stack, `HBuf16` on the heap), `&str` ↔ UTF-16 with no heap round-trip, `core::fmt::Write` | `examples/hello` rewritten with `write!` into a `Buf16` and **no `unsafe` at the call site** |
+| 68 | `alloc` over euser (`User::Alloc`/`Free`/`ReAlloc`); `examples/alloc` | **done** (2026-09-20): a `Vec` and a `String` live and die; alignment measured at 8; `mem*` resolve to `compiler_builtins`; `--gc-sections` added to the Rust link line |
+| 69 | `symbian-core`: `SymbianError` from `e32err.h`; the descriptor family (`Des16` borrowed view, `Buf16<N>` on the stack, `HBuf16` on the heap), `&str` ↔ UTF-16 with no heap round-trip, `core::fmt::Write` | **done** (2026-09-20): `examples/hello` rewritten with `write!` into a `Buf16`, no `unsafe` anywhere in it; the descriptor type nibbles observed on the device's euser |
 | 70 | The C++ shim: a static library built by the existing GCCE argv, one `extern "C"` `TRAP` wrapper per leaving call, and the rule for which calls need one | a leaving API called from Rust returns `Err` and the process survives; a non-leaving one still needs no shim |
 | 71 | Files: `RFs`/`RFile` as `FileServer`/`File` with `Drop` closing the handle; the result-file harness and `symdev test --emulator` | `examples/files` writes and re-reads a file, and a deliberately failing test is *reported* as failing |
 | 72 | Atomics and locks on 9.3: what euser exports, whether `RFastLock` can back a `Mutex` | a table with `nm` evidence; `max-atomic-width` in the target revisited |
