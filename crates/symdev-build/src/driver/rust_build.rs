@@ -65,17 +65,27 @@ impl RustBuild {
             .join(format!("lib{}.a", self.name))
     }
 
-    /// `GcceBuild::link_args` with `-u _Z7E32Mainv` right after `-u _E32Startup`, and
-    /// `--gc-sections`.
+    /// `GcceBuild::link_args` with `-u _Z7E32Mainv` after `-u _E32Startup`,
+    /// `--gc-sections`, and the two runtime DSOs that define the compiler's helpers
+    /// placed *before* the Rust archive.
     ///
-    /// The garbage collection is what keeps a Rust program small. `compiler_builtins` is
-    /// built as **one** codegen unit, so the first reference to any `__aeabi_*` helper —
-    /// and `__aeabi_memclr4` appears as soon as a program has a local array — pulls the
-    /// whole crate into the link: experiment 68 measured 0x2b338 bytes of `.text` and a
-    /// 104 560-byte E32 for an example whose own code is under a kilobyte. rustc gives
-    /// every function its own `.text.<symbol>` section, so `--gc-sections` drops what
-    /// nothing reaches. It is added for Rust only; the recorded C++ link line, which is
-    /// byte-verified against the SDK's own, is untouched.
+    /// Both additions exist to keep a Rust program small, and only the second one gets
+    /// at the cause. `compiler_builtins` is built as one codegen unit, so pulling any
+    /// member of it pulls all of it: soft-float, 64-bit division, `mem*`, about 0x2b338
+    /// bytes of `.text` for a program whose own code is under a kilobyte. What pulls it
+    /// is a single reference — `__aeabi_memclr4`, which appears as soon as a function
+    /// has a local array (experiment 77 read it out of the link map).
+    ///
+    /// But the phone already has those routines: `euser.dso` exports `memcpy`, `memset`,
+    /// `memmove` and `memclr`, and `drtaeabi.dso` the whole `__aeabi_mem*` family. The
+    /// linker was reaching for the archive only because the archive came first. Naming
+    /// those two DSOs ahead of it resolves the helpers from ROM, the archive member is
+    /// never pulled, and the code is the platform's own rather than a second copy
+    /// shipped in every application.
+    ///
+    /// `--gc-sections` stays: it still drops what a Rust program does not reach, and it
+    /// covers helpers the DSOs do not define. Both are added for Rust only; the recorded
+    /// C++ link line, byte-verified against the SDK's own, is untouched.
     pub fn link_args(&self, archive: &Path, elf: &Path, map: &Path) -> Vec<String> {
         let mut args = self.gcce.link_args(&self.name, archive, elf, map, &[]);
         let after = args
@@ -85,6 +95,21 @@ impl RustBuild {
         args.insert(after, E32MAIN.into());
         args.insert(after, "-u".into());
         args.insert(after, "--gc-sections".into());
+        let lib = self.gcce.tools.epocroot.join("epoc32/release/armv5/lib");
+        let at = args
+            .iter()
+            .position(|a| a == &arg(archive))
+            .unwrap_or(args.len());
+        for (i, flag) in [
+            format!("-L{}", lib.display()),
+            "-l:euser.dso".into(),
+            "-l:drtaeabi.dso".into(),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            args.insert(at + i, flag);
+        }
         args
     }
 

@@ -47,7 +47,7 @@ fn archive_is_under_build_cargo() {
 }
 
 #[test]
-fn link_args_are_gcce_link_args_plus_undefined_e32main_and_gc_sections() {
+fn link_args_add_e32main_gc_sections_and_the_helper_dsos_before_the_archive() {
     let b = rust();
     let (a, elf, map) = (
         Path::new("/p/build/cargo/arm-symbian-e32/release/libhello.a"),
@@ -62,13 +62,43 @@ fn link_args_are_gcce_link_args_plus_undefined_e32main_and_gc_sections() {
     want.insert(at + 3, "--gc-sections".into());
     want.insert(at + 4, "-u".into());
     want.insert(at + 5, E32MAIN.into());
+    let lib = format!(
+        "-L{}",
+        b.gcce
+            .tools
+            .epocroot
+            .join("epoc32/release/armv5/lib")
+            .display()
+    );
+    let archive = want
+        .iter()
+        .position(|x| x == "/p/build/cargo/arm-symbian-e32/release/libhello.a")
+        .unwrap();
+    want.splice(
+        archive..archive,
+        [lib.clone(), "-l:euser.dso".into(), "-l:drtaeabi.dso".into()],
+    );
     assert_eq!(got, want);
     assert_eq!(got.iter().filter(|x| *x == "-u").count(), 2);
-    // The C++ line never gets it (experiment 68: it is `compiler_builtins`' single
-    // codegen unit that makes it necessary, and only Rust links that archive).
-    assert!(
-        !b.gcce
-            .link_args("hello", a, elf, map, &[])
-            .contains(&"--gc-sections".to_string())
-    );
+
+    // Experiment 77: the point of the two DSOs is that they come *before* the archive,
+    // so `__aeabi_memclr4` and friends resolve from ROM and compiler_builtins is never
+    // pulled. An ordering regression here costs ~7 kB in every Rust binary.
+    let euser = got.iter().position(|x| x == "-l:euser.dso").unwrap();
+    let drt = got.iter().position(|x| x == "-l:drtaeabi.dso").unwrap();
+    let archive = got
+        .iter()
+        .position(|x| x == "/p/build/cargo/arm-symbian-e32/release/libhello.a")
+        .unwrap();
+    assert!(euser < archive && drt < archive);
+    assert_eq!(got[euser - 1], lib);
+
+    // The C++ line gets neither: it is byte-verified against the SDK's own.
+    let cpp = b.gcce.link_args("hello", a, elf, map, &[]);
+    assert!(!cpp.contains(&"--gc-sections".to_string()));
+    let cpp_archive = cpp
+        .iter()
+        .position(|x| x == "/p/build/cargo/arm-symbian-e32/release/libhello.a")
+        .unwrap();
+    assert!(!cpp[..cpp_archive].contains(&"-l:drtaeabi.dso".to_string()));
 }
