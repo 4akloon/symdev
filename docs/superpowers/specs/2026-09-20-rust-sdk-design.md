@@ -146,29 +146,30 @@ recorded C++ pipeline already relies on, "hypothesis" means experiment 65 decide
 | `llvm-target` | `armv5te-none-eabi` | ARMv5TE, EABI, no OS — observed: the SDK compiles `-march=armv5t`, and the makefile (exp 63) passes neither `-mthumb` nor interworking; Rust emits ARM code here |
 | `arch` / `data-layout` / `target-pointer-width` / `target-endian` | from `armv5te-none-eabi` | same CPU, same layout |
 | `abi` | `eabi` | soft-float calling convention: observed `-msoft-float` |
-| `features` | `+soft-float,+strict-align,+v5te` | observed `-msoft-float`; ARMv5 faults on unaligned access |
+| `features` | `+soft-float,+strict-align` | observed `-msoft-float`; ARMv5 faults on unaligned access. **Exp 65:** kept as derived; `+v5te` is implied by `llvm-target` |
 | `os` | `symbian` | so that `cfg(target_os = "symbian")` exists; nothing in `core` keys on it |
 | `env` | `e32` | names the executable model; documentation value |
 | `panic-strategy` | `abort` | rule in §3; no unwinder is linked |
 | `relocation-model` | `static` | observed: the SDK never uses `-fPIC`; ELF carries `R_ARM_ABS32`, the post-linker rewrites them into E32 relocations. PIC would need a GOT that E32 has no notion of — **hypothesis** that rustc `static` output post-links cleanly (experiment 65) |
-| `linker-flavor` / `linker` | unset / n/a | rustc does not link (§3). If cargo insists on a linker for `bin` crates, point it at `/bin/false` and use `staticlib` only |
+| `linker-flavor` / `linker` | as derived (`gnu-lld` / `rust-lld`) | rustc does not link (§3): never run for a `staticlib`. **Exp 65:** `executables: false` makes cargo refuse `bin` targets, so a `src/main.rs` library needs `autobins = false`; no `/bin/false` trick needed |
 | `executables` | `false` for the SDK crates | we build static libraries |
 | `has-thread-local` | `false` | Symbian TLS is `Dll::Tls()`/`UserSvr` calls, not an ELF TLS segment |
 | `max-atomic-width` | `0` in Stage 1 | ARMv5TE has no `LDREX`; whether to expose atomics through euser helpers is experiment 68. `core` and `alloc` build without atomics (`Arc` is gated on `target_has_atomic`) |
 | `atomic-cas` | `false` in Stage 1 | same |
 | `emit-debug-gdb-scripts` | `false` | no gdb on the target |
 | `eh-frame-header` | `false` | no unwinder |
-| `c-enum-min-bits` | 32? | UNKNOWN — check `-fshort-enums` in the observed argv (it is not there, so GCC default for EABI: enums are `int` unless `-fshort-enums`) |
+| `c-enum-min-bits` | `32` | **settled, exp 65:** the derived JSON says 8 (AAPCS short enums) but a probe compiled with the observed GCCE argv has `sizeof(enum) == 4`; override to 32 |
 | `frame-pointer` | as `armv5te-none-eabi` | |
-| default `opt-level` | `s` | prompt §43; observed SDK uses `-O2`, size matters more for us |
+| default `opt-level` | `s` | prompt §43; observed SDK uses `-O2`, size matters more for us. **Exp 65:** a `[profile.release]` setting (`opt-level = "s"`, `lto = true`, `codegen-units = 1`, `panic = "abort"`), not a target field |
 
 Hypotheses experiment 65 must also settle (each is a yes/no with bytes as evidence):
 
-1. `.ARM.exidx` / `.ARM.extab`: rustc with `panic=abort` and `-C force-unwind-tables=no` emits none; if it emits some, does our post-linker accept them as the C++ path's do? (The C++ objects carry them and post-link fine.)
+1. `.ARM.exidx` / `.ARM.extab` — **settled by 65:** rustc emits `.ARM.exidx` (`CANTUNWIND` entries) even with `panic=abort` and `default-uwtable=false`; the linked ELF carries `.ARM.exidx`/`.ARM.extab` as a C++ EXE does and the native post-linker accepts it.
 2. Symbol versioning on DSO imports (`--default-symver` on the link): a Rust object's undefined symbol `_ZN4User9InfoPrintERK7TDesC16` binds to `euser.dso`'s versioned export exactly as a C++ object's does — expected yes, it is the linker's job, not the compiler's.
 3. Archive pull-in — **settled by 65a:** the reference to `_Z7E32Mainv` comes from `usrt2_2.lib` in the `-( -)` group *after* the object position, so a `.a` there is not pulled; `-u _Z7E32Mainv` before it is the fix (`--whole-archive` not needed).
-4. No reference from Rust code to `__aeabi_*` helpers that `-lgcc` does not provide (division, memcpy/memset via `compiler_builtins` — build-std provides `compiler_builtins` with `mem` feature; check for duplicate `memcpy` against `-lgcc`/`usrt`).
-5. Size of the E32 for hello: baseline for the size report of prompt §43.
+4. `compiler_builtins` vs the link line — **partly settled by 65:** build-std's `compiler_builtins` member defines `__aeabi_*`, libm and `mem*` as *weak* symbols and is not pulled for hello; `memcpy`/`memset`/`memmove` are strong exports of `euser.dso`, `__aeabi_mem*` of `drtaeabi.dso`, nothing exports `memcmp`. A program that references one pulls the weak member first (the archive precedes the DSOs) — observe in 66.
+5. Size of the E32 for hello: **752 bytes** (exp 65; 65a's stand-in build was 755).
+6. **Exp 65:** cargo on this nightly needs `-Zjson-target-spec` for a `.json` target; `-Zbuild-std=core,alloc` also builds `compiler_builtins` and locks its crates.io dependencies in `symbian-rs/Cargo.lock`. Pinned: `nightly-2026-09-19` in `symbian-rs/rust-toolchain.toml`.
 
 Spike stand-in, before nightly is available: `armv5te-unknown-linux-gnueabi` is Tier 2 with a prebuilt `core`. Its `core` object code is CPU-identical (soft-float EABI, ARMv5TE); only `cfg(target_os)` lies, which a `#![no_std] #![no_main]` crate never consults. It is acceptable for experiment 65 *only*, and the experiment record must say so.
 
@@ -250,9 +251,9 @@ is why `alloc` must not assume one global heap. Record in the memory-model note 
 | Piece | Change |
 |---|---|
 | Manifest | `language.name = "rust"`; `[rust] target = "arm-symbian-e32"` optional (only one value exists); `[symbian] sdk = "s60-3rd-fp2"` optional (only one value exists) |
-| Scaffold | `symdev new hello --language rust`: `symdev.toml`, `Cargo.toml` (`staticlib`), `src/main.rs`, `rust-toolchain.toml`, `.cargo/config.toml` pointing at the target JSON symdev ships; **no** `bld.inf`, no `.mmp` |
-| Build backend | `RustBuild: BuildBackend` beside `GcceBuild`: runs cargo (nightly, `build-std`), compiles the shim with `GcceBuild`'s compile argv, then reuses `link_args_for` / `elf2e32_args_for` / resources / icons unchanged |
-| Toolchain | `SYMDEV_CARGO` (or `rustup run <pinned>`); the nightly version pinned in `symbian-rs/rust-toolchain.toml` and echoed in `symdev doctor` when that exists |
+| Scaffold | `symdev new hello --language rust`: `symdev.toml`, `Cargo.toml` (`staticlib`, `autobins = false`, `symbian-runtime` by absolute path), `src/main.rs`, `rust-toolchain.toml`, `.cargo/config.toml` pointing at the target JSON symdev ships; **no** `bld.inf`, no `.mmp`. **Exp 65:** the SDK is found through `SYMDEV_RUST_SDK` or the checkout's `symbian-rs/` (`RustSdk`); the two SDK files are `include_str!` copies. Stopgap until an installed layout exists |
+| Build backend | `RustBuild: BuildBackend` beside `GcceBuild`: runs cargo (nightly, `build-std`), compiles the shim with `GcceBuild`'s compile argv, then reuses `link_args_for` / `elf2e32_args_for` / resources / icons unchanged. **Exp 65:** `cargo build --release --target <json> -Zbuild-std=core,alloc -Zjson-target-spec --target-dir build/cargo`, then `GcceBuild::link_args` + `-u _Z7E32Mainv`, then `GcceBuild::elf2e32_args`; no shim, resources or icon yet |
+| Toolchain | **Exp 65:** `SYMDEV_CARGO`, else `cargo` on `PATH` (the rustup proxy), with the project's `rust-toolchain.toml` (a copy of `symbian-rs/`'s) choosing the nightly; `RUSTUP_TOOLCHAIN` is removed from cargo's environment so a proxied symdev cannot override it. Echo in `symdev doctor` when that exists |
 | `symdev test --emulator` | Stage 3+: the test binary writes a JSON result file (prompt §34 shape) to `E:\symdev\results\<uid3>.json`; symdev reads it from `~/.local/share/EKA2L1/data/drives/e/` after the process exits. Host tests are plain `cargo test` on the crates' portable parts |
 | Size report | `symdev size`: E32 header fields (code/data/bss sizes) our reader already parses |
 
@@ -272,7 +273,7 @@ is why `alloc` must not assume one global heap. Record in the memory-model note 
 | # | Experiment / slice | Passes when |
 |---|---|---|
 | 65a | Spike: no_std hello by hand (stand-in target, prebuilt `core`) → recorded link → native elf2e32 → SIS → EKA2L1 | **passed 2026-09-20**: notifier log line identical to the C++ control; EKA2L1 halts on `InfoPrint` rendering for both (emulator issue, filed) |
-| 65 | The same through `symdev build/package/run` with `language = "rust"`, custom target JSON, pinned nightly + `build-std` | same, from a scaffolded project; E32 size recorded |
+| 65 | The same through `symdev build/package/run` with `language = "rust"`, custom target JSON, pinned nightly + `build-std` | **passed 2026-09-20**: the one-liner from an empty directory, same notifier line, E32 752 bytes; corpus `symbian-rs/corpus/65-hello/` |
 | 66 | `alloc` over euser; a `Vec` and a `String` in hello | heap used and freed; alignment hypothesis settled |
 | 67 | First shim + `symbian-core` file API; hello writes and reads a file | file content visible in the emulator's drive directory |
 | 68 | Atomics / locks survey on 9.3 | table of what euser offers, with `nm` evidence |
