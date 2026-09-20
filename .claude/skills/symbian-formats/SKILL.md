@@ -1,6 +1,6 @@
 ---
-description: How we reimplement Symbian tool formats byte-for-byte — goldens, experiments, TODO-not-observed, clean-room.
-alwaysApply: true
+name: symbian-formats
+description: Use when implementing or changing any Symbian binary or text format in symdev (E32 images, SIS packages, .rsc resources, .dso/.def, MIF icons, signing) — how we derive bytes from goldens and experiments, where fixtures and records live, and the clean-room rule.
 ---
 
 # Byte-exact reimplementation
@@ -52,3 +52,15 @@ Reimplementations are written from specs and goldens. When a spec was written by
 ## Errors say what to do next
 
 An error names the file or member that failed and, when the fix is known, the fix: `"DLL contains initialized writable data; add EPOCALLOWDLLDATA to the MMP (elf2e32 --dlldata)"`.
+
+## Rust API shape for a format type
+
+A format is a type with methods, not a module of functions: `UidCrc::checked`, `SisField::bytes`, `E32Image::new`, `RscCompiled::rsc_bytes`. Parsing returns the type; encoding is a method on it. Repeated SIS KIND + payload goes through `SisEncode`, not copy-paste. Crate-root `pub use` is append-only and alphabetical where it already is.
+
+Adapters carry the host: `UidCrcTool::args`, `MifConvTool::args`, `Toolchain::from_env`. A value type never learns about Wine, EPOCROOT or argv.
+
+## Where things live
+
+- Experiment records and format notes: `docs/research/experiment-backlog.md`, `docs/research/*-spec.md`, `docs/research/hardcoded-values.md`.
+- Golden fixtures: `crates/<crate>/src/testdata/`.
+- Comparison scripts against the real tools and their corpora: outside git, under `~/src/symdev-experiment-NN/`.
