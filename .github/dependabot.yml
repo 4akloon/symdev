@@ -10,25 +10,33 @@ updates:
       time: "06:00"
       timezone: Europe/Kyiv
     open-pull-requests-limit: 5
+    # dsa 0.7 dropped the L=1024/N=224 keys Symbian signs with, and der,
+    # x509-cert, pkcs8, sha1 and rand are locked to that same generation.
+    # See docs/research/rustcrypto-dsa-0.7-blocked.md; drop this once dsa can
+    # decode those keys again.
+    ignore:
+      - dependency-name: dsa
+        update-types: ["version-update:semver-major"]
+      - dependency-name: der
+        update-types: ["version-update:semver-major"]
+      - dependency-name: x509-cert
+        update-types: ["version-update:semver-major"]
+      - dependency-name: pkcs8
+        update-types: ["version-update:semver-major"]
+      - dependency-name: sha1
+        update-types: ["version-update:semver-major"]
+      - dependency-name: rand
+        update-types: ["version-update:semver-major"]
     groups:
-      # The RustCrypto stack has to move as one piece: der/x509-cert/spki and
-      # the digest traits are version-locked to each other, so a lone major
-      # bump cannot compile (PRs #2, #4, #5 proved it).
+      # Their minors and patches still have to land together.
       rustcrypto:
         patterns:
-          - cbc
           - der
-          - des
           - dsa
-          - md-5
           - pkcs8
           - rand
           - sha1
           - x509-cert
-        update-types:
-          - major
-          - minor
-          - patch
       # One PR for the routine bumps, separate PRs for majors that need a look.
       cargo-minor-and-patch:
         update-types:
