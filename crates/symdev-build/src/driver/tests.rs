@@ -6,6 +6,8 @@ mod build;
 mod compile;
 mod dll;
 mod elf2e32_args;
+mod gcce_compat;
+mod language;
 mod link;
 mod resolve_source;
 

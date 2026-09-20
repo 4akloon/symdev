@@ -8,7 +8,9 @@ use crate::toolchain::Toolchain;
 mod build;
 mod compile;
 mod elf2e32_args;
+mod gcce_compat;
 mod icon;
+mod language;
 mod link;
 mod module;
 mod resource;
@@ -16,6 +18,8 @@ mod source;
 mod tool;
 
 pub use compile::CompileIncludes;
+pub use gcce_compat::GcceCompat;
+pub use language::SourceLanguage;
 pub use module::Module;
 
 pub struct GcceBuild {

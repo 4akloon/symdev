@@ -50,13 +50,15 @@ fn dll_module_uses_the_sdk_dll_recipe() {
     let l = link.iter().position(|a| a == "-L/p/build").unwrap();
     let euser = link.iter().position(|a| a == "-l:euser.dso").unwrap();
     assert!(l < euser);
-    let compile = d.compile_args_for(
-        &module,
-        Path::new("/p"),
-        &CompileIncludes::default(),
-        Path::new("/p/m.cpp"),
-        Path::new("/p/build/m.o"),
-    );
+    let compile = d
+        .compile_args_for(
+            &module,
+            Path::new("/p"),
+            &CompileIncludes::default(),
+            Path::new("/p/m.cpp"),
+            Path::new("/p/build/m.o"),
+        )
+        .unwrap();
     assert!(compile.iter().any(|a| a == "-D__DLL__"));
     assert!(!compile.iter().any(|a| a == "-D__EXE__"));
 }

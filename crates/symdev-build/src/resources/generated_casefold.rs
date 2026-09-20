@@ -99,7 +99,11 @@ mod tests {
         std::fs::create_dir_all(&build).unwrap();
         std::fs::write(build.join("Puzzles_0xa000ef77.rsg"), b"#define R 1\n").unwrap();
         let src = dir.path().join("main.cpp");
-        std::fs::write(&src, b"#include <puzzles_0xa000ef77.rsg>\n#include <e32base.h>\n").unwrap();
+        std::fs::write(
+            &src,
+            b"#include <puzzles_0xa000ef77.rsg>\n#include <e32base.h>\n",
+        )
+        .unwrap();
         let out = build.join("generated-casefold");
         let overlay = GeneratedCaseFold::ensure(&build, &[src], &out).unwrap();
         assert_eq!(overlay, out);

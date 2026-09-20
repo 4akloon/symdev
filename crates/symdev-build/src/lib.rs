@@ -10,7 +10,7 @@ mod toolchain;
 
 pub use bld::ParseError;
 pub use driver::GcceBuild;
-pub use driver::{CompileIncludes, Module};
+pub use driver::{CompileIncludes, GcceCompat, Module, SourceLanguage};
 pub use exports::{DllExports, FrozenExports};
 pub use icons::AppIcon;
 pub use model::{BldInf, Mmp, MmpResource};
