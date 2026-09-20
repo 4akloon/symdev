@@ -10,8 +10,26 @@ updates:
       time: "06:00"
       timezone: Europe/Kyiv
     open-pull-requests-limit: 5
-    # One PR for the routine bumps, separate PRs for majors that need a look.
     groups:
+      # The RustCrypto stack has to move as one piece: der/x509-cert/spki and
+      # the digest traits are version-locked to each other, so a lone major
+      # bump cannot compile (PRs #2, #4, #5 proved it).
+      rustcrypto:
+        patterns:
+          - cbc
+          - der
+          - des
+          - dsa
+          - md-5
+          - pkcs8
+          - rand
+          - sha1
+          - x509-cert
+        update-types:
+          - major
+          - minor
+          - patch
+      # One PR for the routine bumps, separate PRs for majors that need a look.
       cargo-minor-and-patch:
         update-types:
           - minor
