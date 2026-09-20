@@ -8,7 +8,7 @@ use std::process::Command;
 
 use symdev_core::{Artifact, BuildBackend, Error, Project, RemotePath, Result};
 
-use super::{CompileIncludes, GcceBuild, arg, io};
+use super::{CompileIncludes, GcceBuild, LibcallArchive, arg, io};
 use crate::rust_sdk::RustSdk;
 
 /// The C++-mangled `E32Main()` that `eexe.lib`'s startup calls. The reference to it comes
@@ -55,47 +55,11 @@ impl RustBuild {
         ]
     }
 
-    /// The second cargo invocation: the SDK's compiler-runtime crate, built as its own
-    /// archive rather than as a dependency of the application.
-    ///
-    /// It has to be separate. Its entry points are `#[unsafe(no_mangle)]`, so they are
-    /// global symbols, and every global symbol is a `--gc-sections` root in a `-shared`
-    /// link — as a dependency they survived into every program and cost `hello` 756
-    /// bytes for code it never calls. From an archive the member is pulled only by a
-    /// program that really performs an atomic operation or compares two byte slices.
-    ///
-    /// `--profile libcalls` exists only to turn LTO off: under the workspace's
-    /// `lto = true` the rlib holds LLVM bitcode, which `ld` cannot read.
-    pub fn libcalls_cargo_args(&self) -> Vec<String> {
-        vec![
-            arg(&self.cargo),
-            "build".into(),
-            "--profile".into(),
-            RustSdk::LIBCALLS_PROFILE.into(),
-            "-p".into(),
-            RustSdk::LIBCALLS_CRATE.into(),
-            "--manifest-path".into(),
-            arg(&self.sdk.libcalls_manifest()),
-            "--target".into(),
-            arg(&self.sdk.target_spec()),
-            "-Zbuild-std=core,alloc".into(),
-            "-Zjson-target-spec".into(),
-            "--target-dir".into(),
-            "build/cargo".into(),
-        ]
-    }
-
-    /// Where cargo leaves the compiler-runtime archive.
-    pub fn libcalls_archive(&self, project: &Project) -> PathBuf {
-        project
-            .root
-            .join("build/cargo")
-            .join(RustSdk::TARGET)
-            .join(RustSdk::LIBCALLS_PROFILE)
-            .join(format!(
-                "lib{}.rlib",
-                RustSdk::LIBCALLS_CRATE.replace('-', "_")
-            ))
+    /// The SDK's compiler-runtime archive: the `__atomic_*` family, `__sync_synchronize`,
+    /// `memcmp` and `bcmp`, built separately so a program that uses none of them
+    /// carries none of them ([`LibcallArchive`]).
+    pub fn libcalls(&self) -> LibcallArchive<'_> {
+        LibcallArchive::new(&self.cargo, &self.sdk)
     }
 
     /// Where cargo leaves the static library.
@@ -311,8 +275,8 @@ impl BuildBackend for RustBuild {
             )));
         }
         let shim = self.build_shims(project, &cwd)?;
-        self.run_cargo_args(&self.libcalls_cargo_args(), &cwd)?;
-        let libcalls = self.libcalls_archive(project);
+        self.run_cargo_args(&self.libcalls().cargo_args(), &cwd)?;
+        let libcalls = self.libcalls().path(project);
         if !libcalls.is_file() {
             return Err(Error::Other(format!(
                 "cargo produced no {}: the Rust SDK's {} crate is what defines the \

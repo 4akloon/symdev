@@ -155,8 +155,8 @@ recorded C++ pipeline already relies on, "hypothesis" means experiment 65 decide
 | *(the linker symdev runs)* | GNU ld **2.29.1**, not lld | **Exp 82:** lld rejects 428 of the SDK's import libraries as malformed (`.dynstr` not NUL-terminated), refuses the absolute relocations the E32 model is built on, and does not define the RVCT section symbols `eexe.lib` references. The fields above name what *rustc* would use and never does |
 | `executables` | `false` for the SDK crates | we build static libraries |
 | `has-thread-local` | `false` | Symbian TLS is `Dll::Tls()`/`UserSvr` calls, not an ELF TLS segment |
-| `max-atomic-width` | `0` in Stage 1 | ARMv5TE has no `LDREX`. **Settled, exp 72:** raise to `32` *only* in the change that also puts a `__atomic_*` shim on the link line — on its own the raise turns a compile error into seven undefined `__atomic_*` references. `core` and `alloc` build without atomics; at `0` there is no `AtomicU32` and no `alloc::sync`, hence no `Arc` |
-| `atomic-cas` | `false` in Stage 1 | same; `true` together with the shim. euser exports no CAS at all, so the shim's lock is the only compare-exchange on 9.3 |
+| `max-atomic-width` | **`32`** (exp 80; `0` before it) | ARMv5TE has no `LDREX`. **Settled, exp 72:** raise to `32` *only* in the change that also puts a `__atomic_*` shim on the link line — on its own the raise turns a compile error into seven undefined `__atomic_*` references. **Done in exp 80**, together with `crates/symbian-libcalls`. Not 64: at 32 no `_8` libcall is ever emitted, which is what keeps `AtomicU64` out of dependency code that would silently get a lock |
+| `atomic-cas` | **`true`** (exp 80; `false` before it) | same; `true` together with the archive. euser exports no CAS at all, so the lock is the only compare-exchange on 9.3 |
 | `emit-debug-gdb-scripts` | `false` | no gdb on the target |
 | `eh-frame-header` | `false` | no unwinder |
 | `c-enum-min-bits` | `32` | **settled, exp 65:** the derived JSON says 8 (AAPCS short enums) but a probe compiled with the observed GCCE argv has `sizeof(enum) == 4`; override to 32 |
@@ -353,9 +353,16 @@ The DSOs the SDK itself may import (`efsrv.dso`, `bafl.dso`) go on the line unde
 - `symbian-runtime`: generated `_Z7E32Mainv` that sets up the panic hook, calls the user's
   `fn main() -> Result<(), SymbianError>` (or `()`), maps the result to `E32Main`'s `TInt`.
   A `CActiveScheduler` is installed only when the app asks for async.
-- Threads: `RThread::Create` with an explicit stack size and heap choice; no POSIX semantics.
-  Atomics: experiment 72 settled them — a `__atomic_*` shim over one `RFastLock`; `Mutex` on
-  `RFastLock`, `try_lock` on `RSemaphore`'s timeout, `Once` on the shim's `compare_exchange`.
+- Threads and atomics: **shipped, experiment 80.** `crates/symbian-libcalls` defines the 31
+  `__atomic_*`/`__sync_synchronize` entry points LLVM emits, over one process-wide
+  `RFastLock` created on first use by `User::LockedInc`; it is linked as its own archive, so
+  a program that performs no atomic operation carries none of it. `symbian_std::sync::Mutex`
+  is a one-token `RSemaphore` — **not** the `RFastLock` experiment 72 proposed, because
+  `RSemaphore` is the only primitive in 9.3 with a timed wait and a mutex cannot have `lock`
+  and `try_lock` on two different kernel objects. `Once` is the three-state word with a
+  yielding spin. `symbian_std::thread::spawn` uses `RThread::Create`'s **own-heap** overload
+  and switches the new thread onto the creator's heap with `User::SwitchAllocator`; the
+  shared-allocator overload destroys the creator's heap when the worker exits.
 - Async: a shim `CActive` subclass whose `RunL` calls a Rust `extern "C"` waker; the Rust
   executor is single-threaded and lives on the active scheduler. Not before Stage 3 is solid.
 
@@ -408,6 +415,8 @@ Three channels, in order of cost:
 | 70 | The C++ shim: a static library built by the existing GCCE argv, one `extern "C"` `TRAP` wrapper per leaving call, and the rule for which calls need one | **done** (2026-09-20, experiment 78): `User::LeaveIfError(-12)` through the shim returns `Err(KErrNotFound)` and the process prints four more fields after it; `RFs::MkDirAll` and euser's `TDes16` members are non-static members called directly, because the member ABI was observed rather than guessed. `hello` is still 3 187 bytes and still has six `NEEDED`. `examples/shim`, `corpus/78-shim/` |
 | 71 | Files and the `symbian-std` facade (`fs`, `io`, `prelude`); the result protocol and `symdev test --emulator` | **done** (2026-09-20, experiment 79): `examples/files` reports 16 passing cases from inside the emulator and `symdev test` exits 0; two deliberate failures are reported as `2 failed, 16 passed` with exit 1, and a missing report is a failure too. The facade landed here rather than as a late step, per §6a. |
 | 72 | **Atomics, `Mutex`, `Once`, `Arc`**: `__atomic_*` over an `RFastLock`, `max-atomic-width: 32`, `atomic-cas: true` | the survey is done ([eka2-concurrency.md](../../research/eka2-concurrency.md): nothing is atomic inline on ARMv5TE, euser offers only `TInt` ±1, and nothing on the link line defines the libcalls); the implementation is in progress. Passes when two threads agree on an exact count and `Arc` compiles |
+
+| 72 | **done** (2026-09-20, experiment 80): the target now says `max-atomic-width: 32` / `atomic-cas: true`, so `AtomicU32`, `AtomicPtr`, `fence` and — for the first time — `alloc::sync`'s `Arc` exist. The 31 `__atomic_*`/`__sync_synchronize` entry points they lower to are defined in `crates/symbian-libcalls` over one process-wide `RFastLock`, created on first use by `User::LockedInc`, and linked as their own archive so a program that uses no atomic carries none of it. `symbian_std::sync` has `Mutex` (a one-token `RSemaphore`, because that is the only primitive with a timed wait, so `try_lock` is possible), `MutexGuard`, `Once` and `Arc`; `symbian_std::thread` has `spawn`, `JoinHandle::join`, `sleep` and `yield_now`. `examples/atomics` reports 23 passing cases: `fetch_add` from two threads is 4000 of 4000 and a load-then-store beside it is about half that. The survey's unexplained access violation turned out to be the shared-allocator `RThread::Create` overload destroying the creator's heap; a worker now gets its own heap and switches. Sizes: `hello` 3 187, `hello-raw` 752 and `shim` 4 475 unchanged; `alloc` 4 320 → 4 474 and `files` 10 423 → 10 552, both the heap's new lock and neither the atomics; `atomics` 11 582. `symbian-rs/corpus/80-atomics/` | [eka2-concurrency.md](../../research/eka2-concurrency.md) is the survey it implements, annotated **[80]** where the implementation contradicted it |
 | 73 | **Async**: a `CActive` subclass in the shim whose `RunL` wakes a Rust waker, a single-threaded executor on `CActiveScheduler`; `examples/async` awaits an `RTimer` | two timers awaited concurrently finish in the right order, reported through the result file, with no extra thread |
 | 74 | **Networking**: `RSocketServ`, `RHostResolver`, `RSocket` over the async bridge; `examples/net` resolves a name and does one TCP round trip | the bytes come back; the example declares `NetworkServices` and the manifest/capability check passes. EKA2L1 has a real host-socket backend (`src/emu/services/src/internet/protocols/`, `AF_INET`/`getaddrinfo`), so this is verifiable here |
 | 75 | **UI**: the Avkon app framework — `CAknApplication`/`CAknDocument`/`CAknAppUi`/`CCoeControl` are C++ classes with virtual methods, so the shim must *define the subclasses* and forward each virtual to a Rust function pointer; `examples/ui` draws and handles a key | a PID-bound screenshot shows the drawn view and a key press changes it |

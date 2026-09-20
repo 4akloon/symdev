@@ -93,6 +93,12 @@ pub fn is_serialised() -> bool {
 pub(crate) struct HeapGuard(bool);
 
 impl HeapGuard {
+    /// `#[inline(never)]` on both halves, for size. Inlined into all four `GlobalAlloc`
+    /// methods the guard cost `examples/alloc` 183 bytes; as one out-of-line copy it
+    /// costs 154 (experiment 80). That 154 is the price of not corrupting the heap the
+    /// moment a program has two threads, and it is paid only by a program that
+    /// allocates — `hello` and `hello-raw` are unchanged.
+    #[inline(never)]
     pub(crate) fn enter() -> Self {
         let on = is_serialised();
         if on {
@@ -105,6 +111,7 @@ impl HeapGuard {
 }
 
 impl Drop for HeapGuard {
+    #[inline(never)]
     fn drop(&mut self) {
         if self.0 {
             // SAFETY: this guard exists only after a successful `Wait` on the same lock.

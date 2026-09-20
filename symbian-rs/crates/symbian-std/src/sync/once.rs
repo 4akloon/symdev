@@ -52,12 +52,10 @@ impl Once {
         if self.state.load(Ordering::Acquire) == COMPLETE {
             return;
         }
-        match self.state.compare_exchange(
-            INCOMPLETE,
-            RUNNING,
-            Ordering::Acquire,
-            Ordering::Acquire,
-        ) {
+        match self
+            .state
+            .compare_exchange(INCOMPLETE, RUNNING, Ordering::Acquire, Ordering::Acquire)
+        {
             Ok(_) => {
                 f();
                 self.state.store(COMPLETE, Ordering::Release);

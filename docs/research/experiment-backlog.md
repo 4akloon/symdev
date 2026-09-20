@@ -1361,3 +1361,103 @@ Numbers 68–75 are the Rust SDK steps of the [design spec](../superpowers/specs
   - **Acceptance:** `symdev new hello --language rust && symdev build && symdev package && symdev run` from an empty directory: `build/hello.exe` **3 187** bytes, `build/hello.sisx` 4 528, and `build/eka2l1.log` `[Service.Notifier]: Trying to display: Hello from Rust SDK (19 chars)`; the emulator exited on its own. `examples/files` through `symdev test --emulator`: `filesdemo: 16 passed`, exit 0.
   - **Sizes, against experiments 77 and 79.** `hello` **3 187** (=), `hello-raw` **752** (=), `alloc` **4 320** (=), `files` **10 423** (=), `shim` **4 474** against 4 475 — one byte less. Measured both ways from the same tree: the shim ELF's `.text` went 6 596 → 6 604, eight bytes *more*, because the `Result` is now converted inside the exported `E32Main` instead of in the example's own `fn main() -> i32`; the E32 body is deflate-compressed, so eight bytes of ARM text came out one byte shorter. An entry-point change moving nothing else is what the other four confirm.
   - What this does not show: the GUI entry (step 75), an `async` one (step 73), `trybuild`-style compile-fail tests in CI (the messages above were produced by hand, by building a deliberately broken `examples/hello`), a device.
+
+## 80. Atomics, `Arc`, `Mutex`, `Once` and threads made real (T5, Rust SDK)
+
+- **Requires:** experiments 65, 68, 69, 72, 77, 78, 79. Governed by [the design spec](../superpowers/specs/2026-09-20-rust-sdk-design.md) §4, §6a, §8, §11 step 72. Implements the survey [eka2-concurrency.md](eka2-concurrency.md).
+- **Procedure:** (1) raise `max-atomic-width` to 32 and `atomic-cas` to true and read the undefined symbols off the resulting archive with `nm -u`; (2) define exactly that set over one process-wide `RFastLock`, first in C++ and then in Rust, and link it as its own archive; (3) settle the access violation the survey recorded after a worker thread exits, in Rust and then in pure C++; (4) build `symbian_std::sync` (`Mutex`, `MutexGuard`, `Once`, `Arc`) and `symbian_std::thread` (`spawn`, `JoinHandle::join`, `sleep`, `yield_now`); (5) `examples/atomics` through `symdev test --emulator`, with a deliberately racy counter beside the atomic one as the control.
+- **Outcome:** pass (emulator only; no device)
+- **Evidence:** 2026-09-20, `symbian-rs/corpus/80-atomics/` (the 11 582-byte E32); source is `symbian-rs/examples/atomics`.
+
+  - **The exact libcall set is 31 symbols, measured and not guessed.** `nm -u` over the static library of a probe that touches every operation `core::sync::atomic` offers at every width the target allows gives `__atomic_{load,store,exchange,fetch_add,fetch_sub,fetch_and,fetch_or,fetch_xor,fetch_nand,compare_exchange}_{1,2,4}` plus `__sync_synchronize`. **No `_8` at any point**, which is the evidence that `max-atomic-width: 32` really does keep 64-bit atomics out of dependency code. `fetch_max`, `fetch_min` and `compare_exchange_weak` emit no libcall of their own: they lower to a `__atomic_compare_exchange_N` loop.
+  - **The target JSON now says `max-atomic-width: 32` and `atomic-cas: true`**, in the same commit as the shim, as experiment 72 required. What that makes exist: `AtomicBool`/`AtomicU8`/`U16`/`U32`/`Usize`/`Isize`/`AtomicPtr`, `core::sync::atomic::fence`, and **`alloc::sync`, so `Arc` and `Weak`** — none of which compiled at all before.
+  - **The shim is Rust, not C++, and the two `TRAP`s are the only C++ left.** The rule in `shims/common/symrs_shim.h` is now explicit: a file belongs in the C++ shim when it needs `TRAP` (or, from step 75, a C++ subclass), and nothing else. `symrs_atomic.cpp` and `symrs_cstring.cpp` are gone; `crates/symbian-libcalls` has both, `symrs_leave.cpp` and `symrs_f32.cpp` remain.
+  - **Three traps in the Rust port, two of which bit.**
+    1. *Self-recursion.* `core::sync::atomic::compiler_fence` inside `__sync_synchronize` compiled to `bl __sync_synchronize` — a call to itself — because LLVM lowers even a single-threaded fence to a libcall on this target. `objdump -dr` over the object found it; an empty `asm!("")` with neither `nomem` nor `readonly` is the barrier that emits no instruction. Every other body uses `read_volatile`/`write_volatile`, and the check that they do is `objdump -dr` over the archive: the only call relocations are 30 to `AtomicLock::acquire`, 31 to `RFastLock::Signal`, and one each to `Wait`, `CreateLocal`, `User::LockedInc`, `User::Panic` and `User::After`.
+    2. *Signatures.* rustc's own `suspicious_runtime_symbol_definitions` lint prints the expected signature of `memcmp`/`bcmp` for this target (`*const c_void`, not `*const u8`), so the ABI came from the compiler rather than from a reading of the C standard.
+    3. *Bootstrapping the lock.* Solved twice, and the second way is better — see below.
+  - **A C++ static constructor is the wrong way to create the lock, and the reason is worth keeping.** The first version used `__attribute__((constructor))`. GCC emits that as its **own** `.init_array` slot, ahead of the slot holding the translation unit's C++ static initialiser, so the lock was created first and `RFastLock`'s own inline constructor then ran over it and zeroed `iHandle` again. Observed: `rc=0 h=196610` inside the creating function, `h=0` by the time `E32Main` read it, the same address (0x400008) both times, and a plain `.bss` sentinel written beside it surviving intact; the first atomic then hit the guard and the process died silently. A static object *defined after* the lock fixes it, because C++ orders a translation unit's statics by definition. Confirmed on the way: the linker script does `PROVIDE (SHT$$INIT_ARRAY$$Base/Limit)` around `.init_array`, `--gc-sections` does not drop it, and `usrt2_2.lib`'s `__cpp_initialize__aeabi_` walks exactly that range before `E32Main` (traced with `User::InfoPrint` from inside the constructor).
+  - **The Rust version needs no constructor at all: `User::LockedInc` is a once.** `if LockedInc(&claim) == 0 { create the lock; publish } else { spin on the published flag with User::After(0) }` — built from the one primitive the platform really has, which needs no lock and no initialisation of its own. Observed from inside the program: `no atomic lock before the first atomic` (status 0), then after one `store`, status 1 and handle 196610. If the lock cannot be created the shim panics with category `symrs-atomic` rather than returning a value that is quietly not atomic.
+  - **Size: the port costs nothing, but only because the crate is its own archive.** A `#[unsafe(no_mangle)]` symbol is a global in a `-shared` link and therefore a `--gc-sections` root, so as an ordinary dependency of `symbian-runtime` the 32 entry points survived into every program: `hello` went **3 187 → 3 943**. `-Zdefault-visibility=hidden` does not help — `no_mangle` items stay `GLOBAL DEFAULT`. Built separately and placed after the application archive, the member is pulled only by a program that really uses it, and `hello` is 3 187 again. One more step was needed: at the workspace's `codegen-units = 1` the whole crate was one object, so `examples/files`, which uses `memcmp` and no atomic, grew **10 423 → 11 137**; `codegen-units = 16` for that profile gives one member per module and `files` is 10 423 again. The profile also needs `lto = false`, because under `lto = true` the rlib holds LLVM bitcode, which `ld` cannot read.
+
+    | Program | before | after | what moved |
+    |---|---|---|---|
+    | `hello` | 3 187 | **3 187** | — |
+    | `hello-raw` | 752 | **752** | — |
+    | `examples/shim` | 4 475 | **4 475** | — |
+    | `examples/alloc` | 4 320 | **4 474** | +154: the heap's lock |
+    | `examples/files` | 10 423 | **10 552** | +129: the heap's lock |
+    | `examples/atomics` | — | **11 582** | new |
+
+    **The atomics archive itself costs a program that does not use it nothing**, which
+    is the whole point of the separate archive. The two programs that did move are the
+    two that allocate, and what they pay for is [`symbian_alloc::serialise`]: one
+    out-of-line guard around each `GlobalAlloc` method, so that two threads sharing one
+    heap cannot corrupt it. Inlined into all four methods that guard cost `alloc` 183
+    bytes instead of 154, which is why both halves are `#[inline(never)]`.
+
+  - **The access violation is settled, and it was never about code.** The survey's `Access violation reading address 0x8000A4` is a **heap** address, not `.text` + 0xA4: the process heap sits at 0x800000 (or 0x700000 — it moves) and `User::Alloc` hands back base + 0xa0. The fault is the main thread's next allocation after a worker thread exits. It is specific to `RThread::Create(name, fn, stack, RAllocator* aHeap, ptr, owner)`, the overload that shares the creator's heap; with the `(heapMin, heapMax)` overload the main thread allocates happily after the join and the program runs to the end. `RAllocator::Open()` on the shared heap before the create does **not** help. Reproduced in **pure Symbian C++ with no Rust in the picture**, one `#define` apart: `repro alloc while it runs = 7340192`, `repro joined, exit type = 0`, `Access violation reading address 0x700000 in thread Main`; with the define flipped, `repro alloc after join`, `repro alloc after close`, `repro still alive`. EKA2L1 hand-writes the thread entry routine (`src/emu/kernel/src/libmanager.cpp`, `thread_entry_routine_`) — given an allocator it calls euser's heap-switch export, given sizes it calls the chunk-heap export and then switches — bypassing the SDK's own thread heap setup, which is where a supplied allocator's reference counting would live. **No device here, so "the emulator is wrong and a phone is right" stays unproven**, but the fault is certainly not ours; the reproducer is 60 lines of euser-only C++ and is worth sending upstream.
+  - **The reproducer, in full**, because the scratchpad it was written in does not
+    survive and this is worth sending upstream. One `symdev` C++ project, `euser.lib`
+    only, `CAPABILITY None`; flip `SHARE_THE_HEAP` to 0 for the control.
+
+    ```cpp
+    #include <e32base.h>
+    #include <e32std.h>
+
+    #define SHARE_THE_HEAP 1
+
+    LOCAL_C void Say(const TDesC& aText, TInt aValue)
+        {
+        TBuf<128> b;
+        b.Append(aText); b.Append(_L(" ")); b.AppendNum((TInt64)aValue);
+        User::InfoPrint(b);
+        }
+
+    LOCAL_C void Probe(const TDesC& aWhere)
+        {
+        TAny* cell = User::Alloc(64);
+        Say(aWhere, (TInt)cell);
+        if (cell) User::Free(cell);
+        }
+
+    LOCAL_C TInt Worker(TAny*) { return 0; }   // does nothing at all
+
+    GLDEF_C TInt E32Main()
+        {
+        Probe(_L("repro alloc before create ="));
+        Say(_L("repro allocator ="), (TInt)&User::Allocator());
+
+        RThread t;
+        TInt rc;
+    #if SHARE_THE_HEAP
+        rc = t.Create(_L("repro-worker"), Worker, KDefaultStackSize,
+            &User::Allocator(), NULL);
+    #else
+        rc = t.Create(_L("repro-worker"), Worker, KDefaultStackSize,
+            0x1000, 0x10000, NULL);
+    #endif
+        Say(_L("repro create rc ="), rc);
+        if (rc != KErrNone) return rc;
+
+        TRequestStatus s;
+        t.Logon(s);
+        t.Resume();
+        Probe(_L("repro alloc while it runs ="));
+        User::WaitForRequest(s);
+        Say(_L("repro joined, exit type ="), t.ExitType());
+
+        Probe(_L("repro alloc after join ="));    // <-- faults with SHARE_THE_HEAP 1
+        t.Close();
+        Probe(_L("repro alloc after close ="));
+        User::InfoPrint(_L("repro still alive"));
+        return KErrNone;
+        }
+    ```
+
+  - **The way out, measured.** Create the worker with the own-heap overload and have it call `User::SwitchAllocator(creator_heap)` as its **first** instruction. Observed: the worker's allocator becomes the creator's heap, 400 interleaved alloc/free pairs on each thread with forced yields all succeed, and after the join the main thread allocates again including a 16 kB block that walks the whole free list. That is what `symbian_std::thread::spawn` does, so a `Box` or an `Arc` really can cross threads.
+  - **The allocator takes a lock from the moment a thread exists.** Whether the process heap is internally locked is not observable from outside — `RAllocator::TFlags` has an `ESingleThreaded` bit, the field is protected, and `RHeap` is not declared in this SDK at all — so `spawn` turns on `symbian_alloc::serialise_across_threads` before creating the first thread rather than trusting the test above. It is a plain `TInt` flag and not an `AtomicBool` on purpose: an atomic would pull the libcall archive into every program that allocates and make every allocation take the atomics' global lock as well.
+  - **`RSemaphore::Wait(0)` blocks for ever.** 0 means "no timeout", not "do not wait" — a probe printed `about to Wait(0) on an empty semaphore` and never came back. `Wait(1)` on an empty semaphore returns **−33 `KErrTimedOut`** at once, `Wait(1000)` likewise, and with a token both return 0. That is what `Mutex::try_lock` uses.
+  - **`Mutex` is a one-token `RSemaphore`, which contradicts the survey's recommendation and has to.** Experiment 72 proposed `RFastLock` for `lock` and `RSemaphore`'s timeout for `try_lock`; those are two different kernel objects, so that is not one mutex. Neither `RFastLock` nor `RMutex` has a timed wait, `RSemaphore` is the only primitive in 9.3 that does, and a one-token semaphore is non-recursive — exactly Rust's deadlock-not-UB contract. `Mutex::new` stays `const` (so a `Mutex` can be a `static`) by creating the handle on first use through `Once`.
+  - **The counts, from inside the emulator.** 2 000 iterations on each of two threads: `fetch_add` **4000 of 4000**, a `static Mutex` **4000 of 4000**, an `Arc<Mutex<u32>>` **4000 of 4000**, `Once` **1 run**; and the control, a load-then-store on a third counter in the same loop with the same yields, **2000 of 4000** on one run and **2008 of 4000** on the next — about half lost, and varying between runs, which is what says the threads really interleaved rather than the number being an artefact. `symdev test --emulator` exits 0 with `atomicsdemo: 23 passed`, and `examples/files` still reports its 16.
+  - What this does not show: a device; whether the four euser atomics or a plain aligned load are atomic on real hardware; whether `__sync_synchronize` must be more than a compiler barrier there; whether the access violation is the emulator or the SDK contract; `RCondVar`, which still returns `KErrNone` from `CreateLocal()` with `Handle()` 0 and which nothing in this slice needed.

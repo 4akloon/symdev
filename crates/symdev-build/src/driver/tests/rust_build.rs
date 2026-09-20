@@ -149,7 +149,7 @@ fn the_libcall_archive_is_searched_last() {
     let project = Project {
         root: PathBuf::from("/p"),
     };
-    let libcalls = b.libcalls_archive(&project);
+    let libcalls = b.libcalls().path(&project);
     assert_eq!(
         libcalls,
         PathBuf::from("/p/build/cargo/arm-symbian-e32/libcalls/libsymbian_libcalls.rlib")
@@ -178,7 +178,8 @@ fn the_libcall_archive_is_searched_last() {
 /// bitcode, which `ld` cannot read.
 #[test]
 fn the_libcall_crate_is_built_without_lto() {
-    let args = rust().libcalls_cargo_args();
+    let build = rust();
+    let args = build.libcalls().cargo_args();
     assert!(args.contains(&"--profile".to_string()));
     assert!(args.contains(&RustSdk::LIBCALLS_PROFILE.to_string()));
     assert!(args.contains(&"-p".to_string()));

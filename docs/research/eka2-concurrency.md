@@ -7,6 +7,22 @@ Every claim below is either **observed** on this host (a `nm` output, a compiler
 in EKA2L1) or marked **UNKNOWN** with what would settle it. Nothing here is recollection.
 Scratch: `/tmp/claude-1000/atomics-work/` (outside git). SDK: `~/sdk/S60_3rd_FP2`.
 
+> **Implemented by experiment 80** (`docs/research/experiment-backlog.md` §80). The
+> recommendations below were carried out, and three of them did not survive contact with
+> the code. Each place is marked **[80]** inline; in summary:
+>
+> 1. **`Mutex` is a one-token `RSemaphore`, not an `RFastLock`.** §5's recommendation
+>    splits `lock` and `try_lock` across two different kernel objects, which is not one
+>    mutex. `RSemaphore` is the only primitive with a timed wait, so it has to be both.
+> 2. **`RSemaphore::Wait(0)` blocks for ever** — 0 is "no timeout", not "do not wait".
+>    §4 left that untested; `Wait(1)` is the smallest real timeout.
+> 3. **The access violation of §4 is a heap address, not a code address**, and its cause
+>    is now known: see the rewritten bullet there.
+>
+> Confirmed unchanged: the four euser atomics and their semantics, the libcall ABI, the
+> whole-set-is-a-libcall finding, the exact-40000 result, and the recommendation to raise
+> `max-atomic-width` to 32 (not 64) only alongside the shim.
+
 ## 0. The short answer
 
 ARMv5TE has no `LDREX`/`STREX`, so no compiler can generate a lock-free atomic
@@ -203,6 +219,9 @@ and **none of them leave**; `Wait`/`Signal`/`Close` return `void` except where n
   **−33 = `KErrTimedOut`** (`e32err.h`); with a token available it returns 0. `RFastLock` and
   `RMutex` have **no** timed or trying variant, so a Rust `Mutex::try_lock` must be built on
   `RSemaphore` (or on the shim's atomics), not on `RMutex`.
+  **[80]** `Wait(0)` is **not** a zero timeout: on an empty semaphore it never returns, so 0
+  means "no timeout". `Wait(1)` returns `KErrTimedOut` immediately, and that is the smallest
+  usable try-lock.
 - **Uncontended cost**, 100 000 iterations, `User::FastCounter()` at 32768 Hz
   (`HAL::Get(EFastCounterFrequency)`), inside EKA2L1 — **ratios only, this is not device
   timing**:
@@ -228,11 +247,20 @@ and **none of them leave**; `Wait`/`Signal`/`Close` return `void` except where n
 
 ### Emulator caveats to carry forward
 
-- After a worker `RThread` has run and exited, the main thread takes an
-  `Access violation reading address 0x8000A4` within the next few instructions, on every
-  probe that creates a thread; single-threaded probes never fault. The probe's own output is
-  produced first, so the data above is intact. Cause unidentified — EKA2L1 or a real
-  teardown bug, **UNKNOWN**.
+- **[80: solved]** After a worker `RThread` has run and exited, the main thread takes an
+  `Access violation reading address 0x8000A4`. That address is a **heap cell, not code**:
+  the process heap sits at 0x800000 (0x700000 in another run — it moves) and `User::Alloc`
+  returns base + 0xa0. The fault is the main thread's next *allocation* after the worker
+  exits, and it happens only with `RThread::Create(name, fn, stack, RAllocator* aHeap, ptr,
+  owner)`, the overload that shares the creator's heap. With the `(heapMin, heapMax)`
+  overload the main thread allocates happily after the join. `RAllocator::Open()` on the
+  shared heap beforehand does not help. Reproduced in pure C++ with no Rust involved, one
+  `#define` apart. EKA2L1 hand-writes the thread entry routine and, given an allocator,
+  only calls euser's heap-switch export — bypassing the SDK's own thread heap setup, where
+  a supplied allocator's reference counting would live. Whether a device behaves the same
+  is still **UNKNOWN** (no device), but it is not our code. The workaround, measured: create
+  the worker with its own heap and have it `User::SwitchAllocator` onto the creator's heap
+  as its first instruction.
 - `RCondVar::CreateLocal()` returns `KErrNone` but `Handle()` is 0, unlike every other
   primitive (196610 / 262147 / 327684). Suspect EKA2L1 does not implement `RCondVar`;
   **UNKNOWN**, and a `Wait`/`Signal` round trip was not probed.
@@ -284,13 +312,24 @@ Two refinements worth knowing:
   cannot use it — build `try_lock` on `RSemaphore::Wait(0 or small timeout)` (`KErrTimedOut`
   observed) or on the shim's `compare_exchange`. Revisit on real hardware if the cost table
   above reproduces there, since `RMutex` measured cheaper in the emulator.
+  **[80: superseded]** This does not work as written: `lock` on an `RFastLock` and `try_lock`
+  on a *different* `RSemaphore` are two kernel objects and therefore not one mutex. The
+  shipped `symbian_std::sync::Mutex` is a **one-token `RSemaphore`** for both — the only
+  primitive in 9.3 with a timed wait, still process-local and still non-recursive.
 - **`Once`** → the shim's `AtomicU32` `compare_exchange` for the state word plus one
   `RFastLock` for the waiters, i.e. the ordinary three-state `Once`. A lock-only `Once`
   (take the global lock, check a `bool`) also works and is simpler, but it serialises every
   `Once::call_once` in the process against every atomic in the process, because the shim has
   a single global lock. If that matters, give `Once` its own `RFastLock`.
+  **[80]** Shipped without the extra lock: a waiter spins on the state word with
+  `User::After(0)`. Giving `Once` a kernel handle would need a `Once` to create it, and the
+  yield is a real reschedule point on this OS.
 - **Threads** → `RThread::Create` with an explicit stack size; join with
   `Logon` + `User::WaitForRequest`. No detached/`JoinHandle`-style semantics come for free.
+  **[80]** Shipped, with two things this survey could not know: the thread must be created
+  with a heap of *its own* and switch to the creator's with `User::SwitchAllocator`, and the
+  `JoinHandle` cannot detach, because the thread writes its result into a heap block the
+  handle owns.
 - **`Arc` and `core::sync::atomic` stand or fall with the shim.** Today they do not exist:
   `alloc::sync` is not compiled at all, so `Arc` is unavailable and a large part of the
   ecosystem (anything with an `Arc`, a `OnceLock`, a `lazy_static`, most channel and logging
@@ -310,7 +349,9 @@ Two refinements worth knowing:
 5. Whether `RCondVar` works at all (EKA2L1 gives it handle 0).
 6. The real uncontended cost of `RFastLock` vs `RMutex` (the emulator's ordering is
    suspicious).
-7. The `Access violation` after a worker thread exits — emulator or real.
+7. ~~The `Access violation` after a worker thread exits~~ — **[80]** cause identified (the
+   shared-allocator `RThread::Create` overload; the address is the heap chunk, not code) and
+   worked around; whether a device does the same is still open.
 
 Each of 2, 3, 6 and 7 is settled by the same thing: running these probes on a stock E52.
 Number 1 is settled by the Symbian Foundation source or a disassembly of a device

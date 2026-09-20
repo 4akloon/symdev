@@ -14,6 +14,7 @@ mod elf2e32_args;
 mod gcce_compat;
 mod icon;
 mod language;
+mod libcalls;
 mod link;
 mod module;
 mod resource;
@@ -24,6 +25,7 @@ mod tool;
 pub use compile::{CompileFlags, CompileIncludes};
 pub use gcce_compat::GcceCompat;
 pub use language::SourceLanguage;
+pub use libcalls::LibcallArchive;
 pub use module::Module;
 pub use rust_build::{E32MAIN, RustBuild};
 

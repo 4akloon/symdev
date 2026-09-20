@@ -137,7 +137,10 @@ fn check_mutex(report: &mut Report) {
             );
         }
     }
-    report.check("try_lock on a free Mutex succeeds", SHARED.try_lock().is_ok());
+    report.check(
+        "try_lock on a free Mutex succeeds",
+        SHARED.try_lock().is_ok(),
+    );
     if let Ok(mut value) = SHARED.lock() {
         *value = 0;
     }
