@@ -12,6 +12,12 @@
 - CEikAppUi::ConstructL, HandleCommandL(TInt), Exit() are IMPORT_C virtual with defaults; CAknAppUi::BaseConstructL(TInt aAppUiFlags = EStandardApp). CCoeAppUi::HandleKeyEventL(const TKeyEvent&, TEventCode) -> TKeyResponse is IMPORT_C virtual.
 - CCoeControl has NO pure virtuals. `Draw(const TRect&) const` is a PRIVATE IMPORT_C virtual; SizeChanged/PositionChanged/FocusChanged are protected virtuals; OfferKeyEventL, CountComponentControls, ComponentControl, HandlePointerEventL are public virtuals.
 
+- Key codes probed (host g++ over `e32keys.h`, values are header constants): EKeyLeftArrow 0xf807, Right 0xf808, Up 0xf809, Down 0xf80a, EKeyDevice0 0xf842 (LSK), EKeyDevice1 0xf843 (RSK), EKeyDevice3 0xf845 (selection), EKeyYes 0xf862, EKeyNo 0xf863, EKeyMenu 0xf836; scan codes EStdKeyDevice0 0xa4, Device1 0xa5, Device3 0xa7, arrows 0x0e/0x0f/0x10/0x11, EStdKeyYes 0xc4, EStdKeyNo 0xc5. TKeyEvent = { TUint iCode; TInt iScanCode; TUint iModifiers; TInt iRepeats; } (16 bytes, POD). TKeyResponse { EKeyWasNotConsumed=0, EKeyWasConsumed=1 }. TEventCode: EEventNull=0, EEventKey=1, EEventKeyUp=2, EEventKeyDown=3.
+- Built examples/gui with the worktree's symdev: gui.o has **182 undefined symbols** for four subclasses (every inherited virtual the emitted vtables reference), incl. `__gxx_personality_v0`, `__cxa_end_cleanup`, `__aeabi_unwind_cpp_pr0`.
+- Import split in gui.elf: cone 67, eikcore 58, avkon 38, drtaeabi 19, euser 11, apparc 6, scppnwdl 1, gdi 1. `EikStart::RunApplication` -> eikcore; `TApaApplicationFactory(TFunction)` ctor -> apparc; `CFont::AscentInPixels` -> gdi (the only gdi import); `CEikonEnv::TitleFont` -> eikcore; `CCoeEnv::Static` -> cone.
+- **Drawing needs no extra library:** every `CWindowGc` call in the example (Clear, SetPenColor, UseFont, DrawText, DiscardFont) is a pure virtual of `CGraphicsContext`, dispatched through the vtable — ws32.lib is absent from the LIBRARY line and ws32 absent from NEEDED.
+- The observed GCCE compile argv passes `-mthumb` and `-mthumb-interwork` (`crates/symdev-build/src/driver/compile.rs`), so shim C++ is **Thumb** while rustc on `arm-symbian-e32` emits **ARM** — interworking across the Rust/shim boundary is a real risk to probe.
+
 ## Decisions
 
 ## Dead ends
