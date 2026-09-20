@@ -15,6 +15,7 @@ members = [
     "examples/alloc",
     "examples/shim",
     "examples/files",
+    "examples/atomics",
 ]
 
 [workspace.package]

@@ -35,3 +35,19 @@ unsafe extern "C" {
     /// check that the harness is really there on the machine in hand.
     pub fn symrs_leave_if_error(reason: i32) -> i32;
 }
+
+unsafe extern "C" {
+    /// What the atomic shim's static constructor recorded (`shims/common/symrs_atomic.cpp`).
+    ///
+    /// `KErrNone` once the process-wide `RFastLock` behind every `__atomic_*` libcall
+    /// exists, `1` if the constructor never ran at all — a value `RFastLock::CreateLocal`
+    /// can never return — and otherwise the error it returned.
+    ///
+    /// Reading it is how an application checks on the machine in hand that the lock was
+    /// created before its own first instruction, rather than trusting that `.init_array`
+    /// is walked before `E32Main`.
+    pub fn symrs_atomic_init_status() -> i32;
+
+    /// The atomic lock's kernel handle, `0` if there is none.
+    pub fn symrs_atomic_lock_handle() -> i32;
+}

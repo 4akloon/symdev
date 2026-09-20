@@ -1,0 +1,16 @@
+[package]
+name = "atomicsdemo"
+version.workspace = true
+edition.workspace = true
+# `src/main.rs` is a library: rustc never links, symdev does (design spec §3).
+autobins = false
+
+[lib]
+path = "src/main.rs"
+crate-type = ["staticlib"]
+
+[dependencies]
+symbian-runtime = { path = "../../crates/symbian-runtime" }
+symbian-std = { path = "../../crates/symbian-std" }
+symbian-sys = { path = "../../crates/symbian-sys" }
+symbian-core = { path = "../../crates/symbian-core" }

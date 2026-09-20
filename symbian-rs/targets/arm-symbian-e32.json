@@ -6,7 +6,7 @@
     "-march=armv5te",
     "-mlittle-endian"
   ],
-  "atomic-cas": false,
+  "atomic-cas": true,
   "c-enum-min-bits": 32,
   "crt-objects-fallback": "false",
   "data-layout": "e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64",
@@ -23,7 +23,7 @@
   "linker-flavor": "gnu-lld",
   "llvm-floatabi": "soft",
   "llvm-target": "armv5te-none-eabi",
-  "max-atomic-width": 0,
+  "max-atomic-width": 32,
   "metadata": {
     "description": "Symbian OS 9.3 EKA2 (S60 3rd FP2) user-side E32 code, ARMv5TE soft-float EABI; symdev links, rustc never does",
     "host_tools": false,

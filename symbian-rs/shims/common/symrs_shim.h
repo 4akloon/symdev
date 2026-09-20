@@ -50,13 +50,16 @@
 // with `this` prepended as argument 0, and Rust declares it as
 // `extern "C" fn(this: *mut T, ...)`. Evidence: experiment 78.
 //
-// ONE DOCUMENTED EXCEPTION, in symrs_cstring.cpp: the C runtime routines LLVM emits
-// calls to and this platform does not export. euser exports memcpy/memset/memmove/
-// memclr and drtaeabi the __aeabi_mem* family, but nothing on the link line defines
-// memcmp or bcmp, and LLVM emits one of them for `a == b` on two byte slices. They are
-// plain C with no Symbian call in them, they live in this archive because that is the
-// one archive every Rust application already links, and they are pulled only by a
-// program that really compares bytes.
+// TWO DOCUMENTED EXCEPTIONS, in symrs_cstring.cpp and symrs_atomic.cpp: the C runtime
+// routines LLVM emits calls to and this platform does not export. euser exports
+// memcpy/memset/memmove/memclr and drtaeabi the __aeabi_mem* family, but nothing on
+// the link line defines memcmp or bcmp, and LLVM emits one of them for `a == b` on
+// two byte slices. They are plain C with no Symbian call in them, they live in this
+// archive because that is the one archive every Rust application already links, and
+// they are pulled only by a program that really compares bytes. symrs_atomic.cpp is
+// the same case one step larger: LLVM lowers every core::sync::atomic operation on
+// ARMv5TE to an __atomic_* libcall, nothing on the link line defines one, and euser's
+// four TInt counters are not a substitute. That file states its own argument in full.
 //
 // A panic is NOT a leave and a TRAP does not catch it: e32panic.h line 131 documents
 // ETDes16Overflow = 11 (category USER) for "any of the copying, appending or formatting
@@ -84,5 +87,14 @@ SYMRS_EXPORT TInt symrs_bafl_ensure_path_exists(RFs* aFs, const TDesC16* aPath);
 // User::LeaveIfError(TInt) from euser.dso, TRAPped: the shim's own self-check.
 // Returns aReason for a negative aReason, KErrNone otherwise.
 SYMRS_EXPORT TInt symrs_leave_if_error(TInt aReason);
+
+// symrs_atomic.cpp: what the atomic lock's static constructor recorded. KErrNone once
+// the lock exists, 1 if the constructor never ran, otherwise the CreateLocal error.
+// An application can read this to prove, on the machine in hand, that the lock was in
+// place before its own first instruction.
+SYMRS_EXPORT TInt symrs_atomic_init_status();
+
+// symrs_atomic.cpp: the atomic lock's kernel handle, 0 if there is none.
+SYMRS_EXPORT TInt symrs_atomic_lock_handle();
 
 #endif // SYMRS_SHIM_H
