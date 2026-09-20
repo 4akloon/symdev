@@ -1,18 +1,29 @@
-//! Hello: the experiment-65 application. Shows a note through `User::InfoPrint`, waits
-//! five seconds so it can be seen, and exits 0.
+//! Hello (experiment 69): the note is built with `write!` into a stack descriptor and
+//! shown through a safe wrapper. No `unsafe` block, no raw C function, no `_LIT` static —
+//! `examples/hello-raw` keeps the pre-`symbian-core` version for comparison.
 #![no_std]
 #![no_main]
 
-use symbian_runtime::symbian_sys::des::Lit16;
-use symbian_runtime::symbian_sys::euser::{User_After, User_InfoPrint};
+use core::fmt::Write;
 
-static HELLO: Lit16<19> = Lit16::ascii(b"Hello from Rust SDK");
+use symbian_core::{Buf16, ErrorKind, Result, SymbianError, user};
 
-fn main() {
-    // SAFETY: `HELLO` has the observed `_LIT16` layout and lives for the whole process.
-    unsafe {
-        User_InfoPrint(HELLO.as_desc());
-        User_After(5_000_000);
+const GREETING: &str = "Hello from Rust SDK";
+
+fn run() -> Result<()> {
+    let mut note = Buf16::<64>::new();
+    if write!(note, "{GREETING} ({} chars)", GREETING.len()).is_err() {
+        return Err(SymbianError::of(ErrorKind::Overflow));
+    }
+    user::info_print(&note)?;
+    user::after(5_000_000);
+    Ok(())
+}
+
+fn main() -> i32 {
+    match run() {
+        Ok(()) => 0,
+        Err(e) => e.code(),
     }
 }
 

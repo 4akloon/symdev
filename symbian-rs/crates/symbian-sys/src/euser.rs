@@ -28,17 +28,29 @@ unsafe extern "C" {
     pub fn User_Panic(category: *const TDesC16, reason: i32) -> !;
 
     /// `00000a14 T _ZN4User5AllocEi` — `User::Alloc(TInt)`, the non-leaving variant.
-    /// Returns null on failure. Cell alignment: not observed yet (experiment 66).
+    /// Returns null on failure. The cell is 8-byte aligned and its size is rounded up to
+    /// a multiple of 8 with a 36-byte minimum payload (experiment 68, measured on the
+    /// ROM's own heap inside EKA2L1).
     #[link_name = "_ZN4User5AllocEi"]
     pub fn User_Alloc(size: i32) -> *mut u8;
+
+    /// `00000a2c T _ZN4User6AllocZEi` — `User::AllocZ(TInt)`: `Alloc` with the cell
+    /// zero-filled.
+    #[link_name = "_ZN4User6AllocZEi"]
+    pub fn User_AllocZ(size: i32) -> *mut u8;
+
+    /// `00000a4c T _ZN4User8AllocLenEPKv` — `User::AllocLen(const TAny*)`: the usable
+    /// length of a cell, which is how experiment 68 measured the heap's granularity.
+    #[link_name = "_ZN4User8AllocLenEPKv"]
+    pub fn User_AllocLen(cell: *const u8) -> i32;
 
     /// `00000a0c T _ZN4User4FreeEPv` — `User::Free(TAny*)`.
     #[link_name = "_ZN4User4FreeEPv"]
     pub fn User_Free(cell: *mut u8);
 
     /// `00000a3c T _ZN4User7ReAllocEPvii` — `User::ReAlloc(TAny*, TInt, TInt)`; the third
-    /// argument is the mode (0 = default). Semantics beyond that: not observed yet
-    /// (experiment 66).
+    /// argument is the mode (0 = default: the cell may move, the common prefix is kept,
+    /// failure returns null and leaves the old cell alone — experiment 68).
     #[link_name = "_ZN4User7ReAllocEPvii"]
     pub fn User_ReAlloc(cell: *mut u8, size: i32, mode: i32) -> *mut u8;
 }

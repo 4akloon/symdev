@@ -1,0 +1,11 @@
+[package]
+name = "symbian-alloc"
+version.workspace = true
+edition.workspace = true
+description = "A Rust GlobalAlloc over the current thread's Symbian heap (User::Alloc / Free / ReAlloc)"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+symbian-sys = { path = "../symbian-sys" }

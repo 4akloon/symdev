@@ -1,5 +1,5 @@
 [package]
-name = "hello"
+name = "helloraw"
 version.workspace = true
 edition.workspace = true
 # `src/main.rs` is a library: rustc never links, symdev does (design spec §3).
@@ -10,5 +10,4 @@ path = "src/main.rs"
 crate-type = ["staticlib"]
 
 [dependencies]
-symbian-core = { path = "../../crates/symbian-core" }
 symbian-runtime = { path = "../../crates/symbian-runtime" }

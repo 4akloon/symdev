@@ -8,4 +8,5 @@ description = "The E32 process entry point and panic handler for Rust applicatio
 crate-type = ["rlib"]
 
 [dependencies]
+symbian-alloc = { path = "../symbian-alloc" }
 symbian-sys = { path = "../symbian-sys" }

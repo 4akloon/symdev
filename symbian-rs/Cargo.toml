@@ -5,8 +5,12 @@
 resolver = "3"
 members = [
     "crates/symbian-sys",
+    "crates/symbian-alloc",
+    "crates/symbian-core",
     "crates/symbian-runtime",
     "examples/hello",
+    "examples/hello-raw",
+    "examples/alloc",
 ]
 
 [workspace.package]

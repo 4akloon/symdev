@@ -1,5 +1,5 @@
 [package]
-name = "hello"
+name = "allocdemo"
 version.workspace = true
 edition.workspace = true
 # `src/main.rs` is a library: rustc never links, symdev does (design spec §3).
