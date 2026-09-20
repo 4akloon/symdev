@@ -9,6 +9,7 @@ use std::process::Command;
 use symdev_core::{Artifact, BuildBackend, Error, Project, RemotePath, Result};
 
 use super::{CompileIncludes, GcceBuild, LibcallArchive, arg, io};
+use crate::required_capability::RequiredCapability;
 use crate::rust_sdk::RustSdk;
 
 /// The C++-mangled `E32Main()` that `eexe.lib`'s startup calls. The reference to it comes
@@ -291,6 +292,9 @@ impl BuildBackend for RustBuild {
             &self.link_args(&archive, shim.as_deref(), Some(&libcalls), &elf, &map),
             &cwd,
         )?;
+        // Before the E32 exists, so a missing capability is a build error naming the
+        // manifest key rather than a bare -46 on a phone with no console.
+        RequiredCapability::check(&elf, &self.gcce.capabilities, &format!("{}.exe", self.name))?;
         let out = build_dir.join(format!("{}.exe", self.name));
         self.gcce
             .run_elf2e32(&self.gcce.elf2e32_args(&self.name, &elf, &out), &cwd)?;

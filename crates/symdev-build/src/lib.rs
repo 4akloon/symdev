@@ -6,6 +6,7 @@ mod mmp;
 mod model;
 mod package;
 mod project;
+mod required_capability;
 mod resources;
 mod rust_sdk;
 mod toolchain;

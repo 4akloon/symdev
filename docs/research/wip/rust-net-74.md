@@ -55,6 +55,18 @@ Step 74 of the Rust SDK: `symbian_std::net` — blocking TCP/UDP/resolver in `st
   app connecting to `127.0.0.1:18974`. No port mapping, no special address.
 - `examples/net` E32 at the smoke cut: **2 646** bytes (no `core::fmt`, no files).
 
+- **EKA2L1 does not enforce `NetworkServices`.** The same example, rebuilt with
+  `capabilities = []`, still printed `session=0 … recv=10`. So the capability cannot be
+  verified here and what a device does is untested — which is why the check moved to
+  build time.
+- **The SDK header is the authority for the capability**, not recall: `in_sock.h` lines
+  66 and 74, `@capability NetworkServices Required for opening 'tcp' sockets.
+  @ref RSocket::Open()` (and the same for 'udp'). The requirement is on `RSocket::Open`,
+  not on `RSocketServ::Connect`.
+- Adding `esock.dso`/`insock.dso` to `RustSdk::LIBRARIES` costs **nothing**: `hello` is
+  still **3 187** and `files` still **10 423**, because `--as-needed` drops a DSO no
+  symbol references (experiment 78's mechanism, unchanged).
+
 ## Decisions
 
 - **No C++ shim for this step.** Nothing on the path leaves and nothing is sret, so
