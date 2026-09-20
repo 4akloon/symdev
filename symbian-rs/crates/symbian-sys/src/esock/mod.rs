@@ -66,6 +66,6 @@ pub use rsocketserv::{
 };
 pub use sockaddr::{
     KAF_INET, KAF_INET6, KAF_UNSPEC, TInetAddr_Address, TInetAddr_ConvertToV4,
-    TInetAddr_IsV4Mapped, TInetAddr_SetAddress, TInetAddr_ctor, TSockAddr, TSockAddr_Family,
-    TSockAddr_Port, TSockAddr_SetFamily, TSockAddr_SetPort, TSockAddrStorage,
+    TInetAddr_IsV4Mapped, TInetAddr_SetAddress, TInetAddr_ctor, TInetAddr_default_ctor, TSockAddr,
+    TSockAddr_Family, TSockAddr_Port, TSockAddr_SetFamily, TSockAddr_SetPort, TSockAddrStorage,
 };

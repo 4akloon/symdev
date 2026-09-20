@@ -18,6 +18,7 @@ use symbian_sys::esock::{
 use super::addr::InetAddr;
 use super::request::blocking;
 use super::server::SocketServer;
+use crate::ErrorKind;
 use crate::des8::{DesC8, Ptr8, PtrC8};
 use crate::error::{Result, check};
 
@@ -171,9 +172,15 @@ impl Socket {
     /// was (`RSocket::RecvOneOrMore`).
     ///
     /// `RecvOneOrMore` and not `Recv`: `Recv` does not complete until the descriptor is
-    /// full, which is not what `std::io::Read` promises. Zero bytes with `KErrNone` is
-    /// the peer having closed its end, and `KErrEof` is the same thing said the other
-    /// way — both are end of input.
+    /// full, which is not what `std::io::Read` promises.
+    ///
+    /// **End of input is `KErrEof` (-25), and that is observed**: reading from a peer
+    /// that had closed its end completed the request with `KErrEof` and not with zero
+    /// bytes (`examples/net`, 2026-09-20, where it first arrived as a failed
+    /// `read_to_end`). Since `KErrEof` says only "no more will come", it is reported
+    /// here as the bytes that did arrive — which is `0` when none did. That is the same
+    /// statement `RFile::Read` makes for end of file, so the two ends of this crate say
+    /// end of input the same way, and no byte the stack delivered alongside it is lost.
     pub fn recv(&mut self, buf: &mut [u8]) -> Result<usize> {
         let mut des = Ptr8::new(buf)?;
         let mut xfr = TSockXfrLengthStorage::zeroed();
@@ -192,15 +199,19 @@ impl Socket {
         let socket = &raw mut self.socket;
         let buf_des = des.as_tdes8();
         let xfr_des = xfr.as_tdes8();
-        blocking(|status| {
+        let outcome = blocking(|status| {
             // SAFETY: `this` in argument 0; `buf_des` is a real `TPtr8` over the
             // caller's slice with `iMaxLength` equal to its length, so every byte the
             // stack writes is inside it; `xfr_des` is the packaged `TInt` the client
             // stub carries the flags in and writes the count back to. Both stay alive
             // until `blocking` returns, which is after the request completed.
             unsafe { RSocket_RecvOneOrMore(socket, buf_des, 0, status, xfr_des) };
-        })?;
-        Ok(des.len())
+        });
+        match outcome {
+            Ok(_) => Ok(des.len()),
+            Err(e) if e.kind() == ErrorKind::Eof => Ok(des.len()),
+            Err(e) => Err(e),
+        }
     }
 
     /// Sends one datagram to `addr` (`RSocket::SendTo`).

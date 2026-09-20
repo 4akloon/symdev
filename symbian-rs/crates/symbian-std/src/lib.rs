@@ -74,6 +74,7 @@ extern crate alloc;
 
 pub mod fs;
 pub mod io;
+pub mod net;
 pub mod prelude;
 #[allow(unsafe_code)]
 pub mod sync;

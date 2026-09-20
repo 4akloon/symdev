@@ -69,6 +69,19 @@ impl TSockAddrStorage {
 }
 
 unsafe extern "C" {
+    /// `00000030 T _ZN9TInetAddrC1Ev` — `TInetAddr::TInetAddr()`, insock.dso: an
+    /// unspecified (`KAFUnspec`) address.
+    ///
+    /// This is what an address a *call* fills in has to be built with, and the reason is
+    /// observed rather than theoretical. `TSockAddr` is a `TBuf8<KMaxSockAddrSize>`, so
+    /// `RSocket::LocalName`, `RemoteName` and `RecvFrom` write into it **as a
+    /// descriptor** — the socket server checks `iMaxLength` and sets `iLength`. Handed
+    /// zeroed storage instead, they write nothing: `examples/net` reported
+    /// `peer_addr`, `local_addr` and the UDP port as failures until this constructor was
+    /// called first.
+    #[link_name = "_ZN9TInetAddrC1Ev"]
+    pub fn TInetAddr_default_ctor(this: *mut TSockAddrStorage);
+
     /// `00000000 T _ZN9TInetAddrC1Emj` — `TInetAddr::TInetAddr(TUint32 aAddr, TUint
     /// aPort)`, insock.dso. Builds a `KAfInet` address in `this` from a host-order IPv4
     /// address and a port, so Rust never writes the descriptor header word.

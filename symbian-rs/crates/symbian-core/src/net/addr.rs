@@ -1,7 +1,8 @@
 //! `InetAddr`: a `TInetAddr`, the address every socket call takes.
 use symbian_sys::esock::{
     KAF_INET, KAF_INET6, TInetAddr_Address, TInetAddr_ConvertToV4, TInetAddr_IsV4Mapped,
-    TInetAddr_ctor, TSockAddr, TSockAddr_Family, TSockAddr_Port, TSockAddrStorage,
+    TInetAddr_ctor, TInetAddr_default_ctor, TSockAddr, TSockAddr_Family, TSockAddr_Port,
+    TSockAddrStorage,
 };
 
 use crate::error::Result;
@@ -44,14 +45,21 @@ impl InetAddr {
         Self::v4(0, port)
     }
 
-    /// Zeroed storage that a call such as `RSocket::RemoteName` will fill in.
+    /// An unspecified address (`TInetAddr()`), for a call that will fill it in.
     ///
-    /// It is not a valid address until something writes one: reading
-    /// [`InetAddr::family`] from it gives `0` (`KAFUnspec`).
-    pub(crate) const fn blank() -> Self {
-        Self {
-            storage: TSockAddrStorage::zeroed(),
-        }
+    /// It has to be **constructed** and not merely zeroed, and that was learned the
+    /// expensive way: `TSockAddr` is a `TBuf8<KMaxSockAddrSize>`, so `RSocket::LocalName`,
+    /// `RemoteName` and `RecvFrom` write into it as a descriptor and honour its
+    /// `iMaxLength`. Zeroed storage has `iMaxLength == 0`, the socket server writes
+    /// nothing into it, and the caller reads back `KAFUnspec` with no diagnostic
+    /// anywhere — which is exactly what `examples/net` reported before this called the
+    /// constructor.
+    pub(crate) fn blank() -> Self {
+        let mut storage = TSockAddrStorage::zeroed();
+        // SAFETY: as [`Self::v4`], with the no-argument constructor. `TInetAddr()` only
+        // writes its own 40 bytes and cannot leave.
+        unsafe { TInetAddr_default_ctor(&mut storage) };
+        Self { storage }
     }
 
     /// The address family (`TSockAddr::Family`): `KAfInet`, `KAfInet6` or `KAFUnspec`.
