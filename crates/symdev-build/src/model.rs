@@ -2,9 +2,27 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BldInf {
+    /// `PRJ_PLATFORMS`, expanded and with GCCE appended. Diagnostics only: GCCE is an
+    /// optional platform the SDK adds to every component, so the list never vetoes a
+    /// build (mmp-frontend-spec.md §4.2, §4.6).
+    pub platforms: Vec<String>,
     pub mmp_files: Vec<PathBuf>,
     pub test_mmp_files: Vec<PathBuf>,
-    pub exports: Vec<String>,
+    pub exports: Vec<BldExport>,
+    pub test_exports: Vec<BldExport>,
+    /// Lines the front end parsed and did not act on, one sentence each.
+    pub warnings: Vec<String>,
+}
+
+/// One `PRJ_EXPORTS` / `PRJ_TESTEXPORTS` line (§4.3).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BldExport {
+    /// The file to copy, relative to the `bld.inf`'s directory.
+    pub source: String,
+    /// The destination as written; `None` means the section's default directory.
+    pub dest: Option<String>,
+    /// `:zip <archive>`: the archive is unpacked at the SDK root instead.
+    pub zip: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

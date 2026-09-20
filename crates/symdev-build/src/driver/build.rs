@@ -8,7 +8,7 @@ use super::source::resolve_source;
 use super::{GcceBuild, arg, io};
 use crate::icons::AppIcon;
 use crate::mmp::MmpCapabilities;
-use crate::resources::{GeneratedCaseFold, ProjectMmps, SdkIncludeCaseFold};
+use crate::resources::{GeneratedCaseFold, ProjectExports, ProjectMmps, SdkIncludeCaseFold};
 
 impl BuildBackend for GcceBuild {
     fn build(&self, project: &Project) -> Result<Vec<Artifact>> {
@@ -21,6 +21,12 @@ impl BuildBackend for GcceBuild {
             &build_dir.join("sdk-include-casefold"),
         )?;
         let compat = GcceCompat::ensure(&build_dir)?;
+        for warning in ProjectExports::stage(&mmps.bld.exports, &mmps.bld_dir, &build_dir)?
+            .iter()
+            .chain(mmps.bld.warnings.iter())
+        {
+            eprintln!("warning: {warning}");
+        }
 
         let mut artifacts = Vec::new();
         if let Some(source) = &self.icon {

@@ -100,3 +100,49 @@ fn casefold_links_wrong_case_includes() {
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// §4.3/§4.6: an export bound for `epoc32/include` is staged in the build directory,
+/// which is already the first `-I`; anything else is named in a warning.
+#[test]
+fn exports_are_staged_into_the_build_directory() {
+    use crate::model::BldExport;
+    use crate::resources::ProjectExports;
+
+    let dir = std::env::temp_dir().join(format!("symdev-exports-{}", std::process::id()));
+    let group = dir.join("group");
+    let inc = dir.join("inc");
+    let build = dir.join("build");
+    std::fs::create_dir_all(&group).unwrap();
+    std::fs::create_dir_all(&inc).unwrap();
+    std::fs::create_dir_all(&build).unwrap();
+    std::fs::write(inc.join("api.h"), "x").unwrap();
+    std::fs::write(inc.join("deep.h"), "y").unwrap();
+    std::fs::write(group.join("icon.mif"), "z").unwrap();
+
+    let exports = [
+        BldExport {
+            source: "..\\inc\\api.h".into(),
+            dest: None,
+            zip: false,
+        },
+        BldExport {
+            source: "..\\inc\\deep.h".into(),
+            dest: Some("\\epoc32\\include\\sub\\deep.h".into()),
+            zip: false,
+        },
+        BldExport {
+            source: "icon.mif".into(),
+            dest: Some("z:\\resource\\apps\\icon.mif".into()),
+            zip: false,
+        },
+    ];
+    let warnings = ProjectExports::stage(&exports, &group, &build).unwrap();
+    assert_eq!(std::fs::read_to_string(build.join("api.h")).unwrap(), "x");
+    assert_eq!(
+        std::fs::read_to_string(build.join("sub/deep.h")).unwrap(),
+        "y"
+    );
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("icon.mif"), "{warnings:?}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}

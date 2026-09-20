@@ -9,6 +9,9 @@ use crate::{BldInf, Mmp};
 /// The MMPs a project's `bld.inf` lists, parsed, with the directory each lives in.
 pub(crate) struct ProjectMmps {
     pub(crate) mmps: Vec<(PathBuf, Mmp)>,
+    pub(crate) bld: BldInf,
+    /// The directory the `bld.inf` lives in; every path in it is relative to this.
+    pub(crate) bld_dir: PathBuf,
 }
 
 impl ProjectMmps {
@@ -40,7 +43,7 @@ impl ProjectMmps {
             let dir = path.parent().unwrap_or(&bld_dir).to_path_buf();
             mmps.push((dir, mmp));
         }
-        Ok(Self { mmps })
+        Ok(Self { mmps, bld, bld_dir })
     }
 
     /// The `.mmp` a `PRJ_MMPFILES` line names: `.mmp` supplied when missing (§4.4), and
