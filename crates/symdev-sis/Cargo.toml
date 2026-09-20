@@ -20,7 +20,7 @@ sha1 = "0.10"
 dsa = "0.6"
 pkcs8 = { version = "0.10", default-features = false, features = ["alloc", "pem"] }
 x509-cert = "0.2"
-der = { version = "0.7", features = ["derive", "alloc", "pem"] }
+der = { version = "0.8", features = ["derive", "alloc", "pem"] }
 des = "0.8"
 cbc = { version = "0.1", features = ["alloc"] }
 md-5 = "0.10"
