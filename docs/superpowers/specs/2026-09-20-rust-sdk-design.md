@@ -261,8 +261,11 @@ stays available and documented for a program that deliberately wants no formatte
   framework owns an active scheduler and calls into the app (`avkon-rust-spec.md`).
 - **Leaves.** Hidden by the shim — correctly, because a leave reaching Rust is undefined
   behaviour, and a `Result` is the honest translation.
-- **No `std::net` semantics for free.** Even once sockets work, choosing an access point is a
-  Symbian concept with no std equivalent.
+- **No `std::net` semantics for free.** Sockets work (step 74) and they wear `std`'s names,
+  but choosing an access point — `RSocket::Open`'s `RConnection` overload — is a Symbian
+  concept with no std equivalent, and `symbian_std::net` says so in its own documentation
+  rather than picking one silently. Written out in
+  [net-access-points.md](../../research/net-access-points.md).
 
 The end state this points at is a real `symbian-std` (§27 of the master prompt, step 79
 below): a facade mirroring `std`'s module tree so that porting a crate is changing a `use`,
@@ -416,7 +419,7 @@ Three channels, in order of cost:
 | 71 | Files and the `symbian-std` facade (`fs`, `io`, `prelude`); the result protocol and `symdev test --emulator` | **done** (2026-09-20, experiment 79): `examples/files` reports 16 passing cases from inside the emulator and `symdev test` exits 0; two deliberate failures are reported as `2 failed, 16 passed` with exit 1, and a missing report is a failure too. The facade landed here rather than as a late step, per §6a. |
 | 72 | **done** (2026-09-20, experiment 80): the target now says `max-atomic-width: 32` / `atomic-cas: true`, so `AtomicU32`, `AtomicPtr`, `fence` and — for the first time — `alloc::sync`'s `Arc` exist. The 31 `__atomic_*`/`__sync_synchronize` entry points they lower to are defined in `crates/symbian-libcalls` over one process-wide `RFastLock`, created on first use by `User::LockedInc`, and linked as their own archive so a program that uses no atomic carries none of it. `symbian_std::sync` has `Mutex` (a one-token `RSemaphore`, because that is the only primitive with a timed wait, so `try_lock` is possible), `MutexGuard`, `Once` and `Arc`; `symbian_std::thread` has `spawn`, `JoinHandle::join`, `sleep` and `yield_now`. `examples/atomics` reports 23 passing cases: `fetch_add` from two threads is 4000 of 4000 and a load-then-store beside it is about half that. The survey's unexplained access violation turned out to be the shared-allocator `RThread::Create` overload destroying the creator's heap; a worker now gets its own heap and switches. Sizes: `hello` 3 187, `hello-raw` 752 and `shim` 4 475 unchanged; `alloc` 4 320 → 4 474 and `files` 10 423 → 10 552, both the heap's new lock and neither the atomics; `atomics` 11 582. `symbian-rs/corpus/80-atomics/` | [eka2-concurrency.md](../../research/eka2-concurrency.md) is the survey it implements, annotated **[80]** where the implementation contradicted it |
 | 73 | **Async**: a `CActive` subclass in the shim whose `RunL` wakes a Rust waker, a single-threaded executor on `CActiveScheduler`; `examples/async` awaits an `RTimer` | two timers awaited concurrently finish in the right order, reported through the result file, with no extra thread |
-| 74 | **Networking**: `RSocketServ`, `RHostResolver`, `RSocket` over the async bridge; `examples/net` resolves a name and does one TCP round trip | the bytes come back; the example declares `NetworkServices` and the manifest/capability check passes. EKA2L1 has a real host-socket backend (`src/emu/services/src/internet/protocols/`, `AF_INET`/`getaddrinfo`), so this is verifiable here |
+| 74 | **Networking**: `RSocketServ`, `RHostResolver`, `RSocket` in `std`'s shape — **blocking, and it needed no async bridge**; `examples/net` | **done** (2026-09-21, experiment 84): `symbian_std::net` with `TcpStream`, `TcpListener`, `UdpSocket`, `ToSocketAddrs` over `core::net`'s address types; `examples/net` reports **22 passing** cases through `symdev test --emulator`, resolving `localhost`, doing TCP round trips in both directions against a Python peer on this host's loopback, and binding UDP. No shim (nothing in `es_sock.h`/`in_sock.h` leaves) and **no executor**: every `TRequestStatus` is waited for with `User::WaitForRequest`, which is the blocking form `std::net` means. `corpus/84-net/`, 13 183 bytes |
 | 75 | **UI**: the Avkon app framework — `CAknApplication`/`CAknDocument`/`CAknAppUi`/`CCoeControl` are C++ classes with virtual methods, so the shim must *define the subclasses* and forward each virtual to a Rust function pointer; `examples/ui` draws and handles a key | a PID-bound screenshot shows the drawn view and a key press changes it |
 | 76 | **TLS and time**: `Dll::Tls`/`UserSvr` behind `thread_local!`; `Instant`, `SystemTime`, with monotonic-versus-wall-clock stated honestly | **time: done** (2026-09-20, experiment 85): `symbian_std::time` gives `Duration`, `Instant`, `SystemTime`, `UNIX_EPOCH` and `SystemTimeError`, and `examples/time` reports 29 passing cases from inside the emulator — including the criterion, a `User::SetUTCTime` hour that moves `SystemTime` and leaves the `Instant` at 0. `Instant` is `User::TickCount` + `UserHal::TickPeriod` and **not** `NTickCount`, whose period no call on this link line will state; `SystemTime` is `UniversalTime` and not `HomeTime`, at an epoch measured from euser's own calendar because the computed one is 12 days wrong. **TLS still open**: `thread_local!` over `Dll::Tls` has to hold a value per `RThread`, and it is what step 77 waits on. |
 | 77 | **`std` for `target_os = "symbian"`** — the owner's decision, 2026-09-20. Fork `rust-src`, add `library/std/src/sys/pal/symbian` over the crates below, build it with `-Zbuild-std=std`. The facade's `fs`/`io`/`sync`/`thread` are re-hosted there rather than rewritten, and `#[symbian_std::main]` becomes std's `lang_start`. | an application drops `#![no_std]`, writes `use std::fs::File`, and builds; then a crate from crates.io that needs only `std` compiles unchanged |
@@ -431,15 +434,20 @@ attribute — it is that a crate which needs only `std` starts compiling. A chea
 five minutes first: in a `no_std` crate the name `std` is free, so `use symbian_std as std;` may
 already make `std::fs::File` resolve; test it before assuming the port is the only route.
 
-Dependencies that fix the order: 73 before 74 (every socket operation is `TRequestStatus`-based)
-and before a real 75 (the app framework runs an active scheduler). 70 before all three (almost
-every Avkon and esock entry point leaves).
+Dependencies that fix the order: 73 before a real 75 (the app framework runs an active
+scheduler). **73 before 74 was wrong, and step 74 disproved it**: every socket operation is
+indeed `TRequestStatus`-based, but `std::net` is blocking and the blocking form of a Symbian
+asynchronous call is the request followed by `User::WaitForRequest` — no `CActive`, no
+scheduler, no executor. Step 73 now sits *beside* `symbian_std::net` on the same `symbian-sys`
+declarations rather than underneath it. **70 before 75**, where almost every Avkon entry point
+leaves; esock turned out to declare no leaving member at all, so 74 needed no shim either.
 
 Each step gets a backlog entry with the argv and the bytes; each passing example joins
 `symbian-rs/corpus/`.
 
 ## 12. Non-goals for this phase
 
-Full `std`; Avkon UI; networking/TLS; any Symbian^3 work; any physical-device transport;
+Full `std`; Avkon UI; TLS (plain sockets landed in step 74, `securesocket.dso` did
+not); any Symbian^3 work; any physical-device transport;
 `symdev doctor`/toolchain manager (tracked, not here); replacing EPOCROOT (product C —
 never for this phone).
