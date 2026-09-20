@@ -17,6 +17,10 @@ input shown, on this host. Anything that could not be established is marked
 
 ## 1. Confidence map
 
+Sections marked **confirmed by experiment 59** were re-measured on 2026-09-20
+while widening the native encoder to real application icons; where they
+contradict the original text, the experiment wins.
+
 | Area | Status |
 | --- | --- |
 | `.mif` container, `.mbg` header, depth codes | fully pinned; a byte-exact rebuild of a one-icon and a two-icon file was verified |
@@ -240,6 +244,24 @@ A number is 4 bytes, little-endian:
 * versions 2 and 3: signed 16.16 fixed point, i.e. the value times 65536;
 * versions 1 and 4: IEEE-754 single precision.
 
+**Confirmed by experiment 59: every number in the file is 16.16 internally.**
+A literal is read as a `float`, multiplied by 65536 and truncated toward zero,
+and versions 1 and 4 convert *that* back to a `float` when writing. So
+`<rect x="0.1"/>` at `-v 1` is `00 c8 cc 3d`, the float `6553/65536`, not
+`cd cc cc 3d` (0.1); `x="12.059"` is `a0 f1 40 41` = `790298/65536`. The
+conversion back truncates the bits a `float` cannot hold rather than rounding
+them, so the saturated `0x7FFFFFFF` becomes 32767.998046875 (`ff ff ff 46`),
+not 32768.
+
+**A leading `+` is not accepted in an attribute** (it is in path data):
+`<rect x="+5"/>` and `<rect width="+5"/>` drop the attribute,
+`<rect stroke-width="+2"/>` writes 0. `x="-.5"` is fine.
+
+**The opacity attributes have their own, weaker parser.** A value written
+without its leading zero is not read: `opacity=".25"`, `fill-opacity=".25"`
+and `stroke-opacity=".5"` all come out as 1.0, and `stop-opacity=".5"` as 0.
+`opacity="0.25"` is correct.
+
 Conversion rules, all verified on `<rect x="…">` at `-v 3` (the value bytes
 shown are the four that follow the id `31 00`):
 
@@ -318,9 +340,17 @@ The top byte carries a paint keyword instead of a colour:
 | `currentColor` | `0x02FFFFFF` | `ff ff ff 02` |
 
 Accepted colour syntaxes: `#rrggbb` (`#aabbcc` → `cc bb aa 00`),
-`rgb(r,g,b)` (`rgb(1,2,3)` → `03 02 01 00`), `rgb(p%,p%,p%)`
-(`rgb(50%,0%,0%)` → `00 00 7f 00`, so 50 % becomes 127) and the SVG colour
-keyword list (`red` → `00 00 ff 00`). An unrecognised keyword or a malformed hex
+`rgb(r,g,b)` (`rgb(1,2,3)` → `03 02 01 00`), `rgb(p%,p%,p%)` and the SVG colour
+keyword list (`red` → `00 00 ff 00`).
+
+Confirmed by experiment 59: a percentage is scaled by the **`float` constant
+2.55**, a shade under 255/100, and truncated — so 100 % is **254**, 50 % is
+127, 1 % is 2 and 33 % is 84. A percentage over 100 is clamped to 255; a
+negative one is not clamped and wraps (`-5%` → 244). The keyword table is the
+SVG 1.1 list **minus five `grey` spellings**: `grey`, `dimgrey`,
+`darkslategrey`, `lightslategrey` and `slategrey` are absent and encode as
+black, while `darkgrey` and `lightgrey` are present. Matching is
+case-insensitive (`RED` works). An unrecognised keyword or a malformed hex
 value silently becomes black: `fill="bogus"` and `fill="#GG0000"` both give
 `00 00 00 00`.
 
@@ -457,7 +487,7 @@ byte.
 | `0x000d` | `stroke-dashoffset` | number |
 | `0x000e` | `stroke-miterlimit` | number |
 | `0x000f` | `color` | colour |
-| `0x0010` | `text-anchor` | enum32 (mapping **unknown**) |
+| `0x0010` | `text-anchor` | enum32; `middle` → 1 (experiment 59), the rest **unknown** |
 | `0x0011` | `text-decoration` | enum32 (mapping **unknown**) |
 | `0x0016` | `fill-opacity`, and `solid-opacity` on `<solidColor>` | number, clamped 0…1 |
 | `0x0017` | `stroke-opacity` | number, clamped 0…1 |
@@ -496,10 +526,10 @@ byte.
 | `0x0055` | `spreadMethod` | enum8: `pad`/unrecognised 0, `reflect` 1, `repeat` 2 |
 | `0x0056` | `gradientUnits` | enum8: `userSpaceOnUse` 0, `objectBoundingBox` 1 |
 | `0x0057` | `stop-opacity` | number |
-| `0x0058` | `viewBox` | 4 numbers, min-x min-y width height, no count |
+| `0x0058` | `viewBox` | 4 numbers, min-x min-y width height, no count. Whitespace-separated only: a comma anywhere in the value makes the tool **drop the attribute** (experiment 59) |
 | `0x0059` | `baseProfile` | string |
 | `0x005a` | `zoomAndPan` | enum8; `disable` → `00`. Only accepted on `<svg>` |
-| `0x005b` | `preserveAspectRatio` | 2 bytes; **only the value `none` is emitted**, as `00 02`. Every other value, including `xMidYMid meet`, `xMinYMin meet` and `xMaxYMax slice`, is dropped |
+| `0x005b` | `preserveAspectRatio` | per element (experiment 59): on `<svg>` 2 bytes and **only for `none`**, as `00 02`, every other value dropped; on `<image>` an ordinary string, any value; on `<rect>` the tool leaves a truncated file behind |
 | `0x005c` | `id` | string |
 | `0x005d` | `xml:base` | string |
 | `0x005e` | `xml:lang` | string |
@@ -525,7 +555,8 @@ byte.
 | `0x03E8` | — | reserved: the end-of-attribute-list marker |
 
 Ids not listed are **unknown**. Attributes not in the table produce no bytes:
-`class`, `style` (see below), `pathLength`, `color-rendering`,
+`class`, `style` (see below), `pathLength`, `enable-background`, `overflow`,
+`color-rendering`,
 `color-interpolation`, `letter-spacing`, `word-spacing`, `rotate`, `type`,
 `lang`, `unicode`, `glyph-name`, `u1`, `u2`, `g1`, `g2`, `end`, `additive`,
 `accumulate`, `keyTimes`, `focusable`, `initialVisibility`,
@@ -537,8 +568,26 @@ Two oddities that must be reproduced for byte identity:
 
 * `style` is **parsed** and turned into the corresponding property records:
   `<rect style="fill:red"/>` encodes exactly like `<rect fill="red"/>`
-  (`21 00 00 00 00 00 ff 00 e8 03 fe`).
-* `xlink:href` is written **twice** on `<use>` and once on `<a>` and `<image>`:
+  (`21 00 00 00 00 00 ff 00 e8 03 fe`). The records appear at the position the
+  `style` attribute itself occupies, in declaration order, and a `fill`
+  attribute and a `fill` property both emit their own record. Experiment 59
+  pinned the property list: `fill`, `stroke`, `stroke-width`, `visibility`,
+  `font-family`, `font-size`, `font-style`, `font-weight`, `stroke-dasharray`,
+  `display`, `fill-rule`, `stroke-linecap`, `stroke-linejoin`,
+  `stroke-dashoffset`, `stroke-miterlimit`, `color`, `fill-opacity`,
+  `stroke-opacity`, `opacity` and `text-anchor` work; an unknown property
+  (`foo:bar`, `enable-background:…`) carries no bytes; `stop-color` is
+  dropped and `stop-opacity` written as 0; `transform` yields an identity
+  matrix with kind 0; and **`style="d:M0 0"` crashes the tool** with a page
+  fault after a truncated write. `text-anchor:middle` is enum32 1.
+* `xlink:href` is followed by a **second string** on `<use>` — not a second
+  copy of the record — and is written once on `<a>` and `<image>`. Experiment
+  59: that second string is the fragment with the `#` stripped when an element
+  carrying that `id` has already been written, and the reference again when it
+  has not (which is why the no-target example below looks like a duplicate).
+  `<rect id="a"/><use xlink:href="#a"/>` gives
+  `1a 6d 00 04 23 00 61 00 02 61 00`; defining the `<rect>` *after* the
+  `<use>` gives the duplicate form.
 
   ```
   <use xlink:href="#a"/>    →  1a  6d 00 04 23 00 61 00  04 23 00 61 00  e8 03 fe
@@ -608,8 +657,34 @@ path, including the commands before it (`M0 0 L1 1 A 1 2 3 0 1 4 5` gives
 `4f 00 00 00 00 00`). A `<path>` with no `d` attribute emits no attribute at
 all (`1e e8 03`).
 
+**Confirmed by experiment 59, and this is what byte identity turns on:** the
+whole path pipeline is 16.16 integer arithmetic. Each literal is truncated to
+fixed point on the way in and relative coordinates are then added as integers,
+so `d="M84 0 l-8.059 0"` gives 4976870 — one more than truncating the exact
+75.941 (4976869), because the tool truncates the delta to −528154 and adds.
+Out-of-range coordinates **saturate** here instead of dropping the attribute
+(`L 40000 1` → `0x7FFFFFFF`, `L -40000` → `0x80000000`); the `|v| > 32765`
+rule of §4.4 applies to ordinary attributes only.
+
+Three more path rules, all from experiment 59:
+
+* **An implicit repeat after `M`/`m` stays a move.** `d="M 1 2 3 4"` is two
+  move commands (`02 00` `00 00`), not a move and a line as SVG prescribes.
+* **`S` and `T` share one reflection point.** It starts at the origin and is
+  updated by every command except `M` and `Z`: a curve leaves
+  `2·endpoint − last control`, a plain `L`/`H`/`V` leaves `2·new − old`. So
+  `S` will happily reflect a quadratic control point, `T` a cubic one, an `L`
+  between two curves changes what the next `S` reflects
+  (`M0 0 C1 2 3 4 5 6 L 7 7 S 1 1 2 2` → first control `(9,8)`), a `Z` leaves
+  it untouched (`M0 0 Q1 2 3 4 Z T 5 6` → control `(5,6)`), and an `S`
+  straight after a move reflects the origin (`M5 5 S 1 2 3 4` → `(0,0)`, not
+  `(5,5)`).
+* A coordinate must be followed by a separator or a command: `1e1` is read as
+  0 and `0.5.5` empties the whole path. A leading `+` *is* accepted here.
+
 `points` is converted to the same representation: `<polyline>` becomes a move
-plus lines, `<polygon>` additionally gets a close.
+plus lines, `<polygon>` additionally gets a close. An odd number of
+coordinates, like `points="1,2 3,4 5"`, empties it.
 
 ```
 <polyline points="1,2 3,4 5,6"/>  →  20  4e 00  03 00  00 01 01  06 00  + 1,2,3,4,5,6
@@ -626,6 +701,15 @@ All transform functions are multiplied into a single 2×3 matrix and written as
 six numbers in the order **a, c, e, b, d, f** (the two matrix rows: `a c e`
 then `b d f`), followed by a 4-byte little-endian kind word.
 
+Experiment 59: the kind word is the OR of what each function contributes, and
+`matrix()` is the only one that looks at its values — the identity contributes
+0, anything else sets bit 2, plus bit 1 when `e` or `f` is non-zero and bit 4
+when `b` or `c` is. So `matrix(1,0,0,1,0,0)` → 0, `matrix(2,0,0,2,0,0)` → 2,
+`matrix(1,0,0,1,5,0)` → 3 and `matrix(1,0,1,1,0,0)` → 6. `translate` always
+contributes 1, `scale` always 2, `rotate(a)` 6, `rotate(a,cx,cy)` 7 and
+`skewX`/`skewY` 4, whatever their arguments — `scale(1)` is still 2 and
+`rotate(0)` is still 6.
+
 | Input | Six numbers | Kind |
 | --- | --- | --- |
 | `translate(5)` | 1, 0, 5, 0, 1, 0 | `01 00 00 00` |
@@ -636,9 +720,17 @@ then `b d f`), followed by a 4-byte little-endian kind word.
 | `rotate(90)` | 0, −1, 0, 1, 0, 0 | `06 00 00 00` |
 | `matrix(1,2,3,4,5,6)` | 1, 3, 5, 2, 4, 6 | `07 00 00 00` |
 
-The kind word is a bit set: 1 = the matrix has a translation, 2 = it has a
-scale, 4 = it has a rotation/skew. `matrix()` always sets all three. `skewX`
-and `skewY` were not measured, so their exact kind value is **unknown**.
+The kind word is a bit set: 1 = translation, 2 = scale, 4 = rotation/skew.
+(The line "`matrix()` always sets all three" was wrong; see above.
+`skewX(30)`/`skewY(30)` were measured in experiment 59 and give kind 4.)
+
+**The sines are not reproducible.** `rotate(90)` and `rotate(-90)` come out
+exact, but `rotate(45)` gives a = d = 46341/65536 and b = −c = 46339/65536 —
+either side of the 46340 a double-precision cosine truncates to, and not equal
+in magnitude to each other. `rotate(180)`, `rotate(270)` and `rotate(360)`
+carry a ±1/65536 residue, and `skewX(30)` a −1/65536 one. No double- or
+single-precision formula tried reproduces them, so a byte-equal encoder has to
+refuse `rotate`, `skewX` and `skewY` and ask for `matrix()` instead.
 
 Full bytes for `<rect transform="translate(1,2)"/>` at `-v 3`:
 
@@ -654,7 +746,17 @@ Full bytes for `<rect transform="translate(1,2)"/>` at `-v 3`:
 
 `<text>` (and only `<text>`, as far as was tested) may be followed, after its
 `E8 03`, by a text block: the marker `FD`, one length byte in bytes, then
-UTF-16LE. An empty `<text/>` still emits `fd 00`.
+UTF-16LE. An empty `<text/>` still emits `fd 00`. Confirmed by experiment 59:
+`<title>` and `<desc>` are written as bare tokens (`07 e8 03 fe`,
+`04 e8 03 fe`) and their text never reaches the file.
+
+**`xml:space="preserve"` on the `<text>` element itself** turns the
+whitespace collapsing of §4.7 off: every whitespace character is kept and
+written as a space, so `<text xml:space="preserve">  a\n\tb  </text>` gives
+the 8-character string `"  a  b  "`. The attribute is **not** inherited — the
+same `<text>` inside `<g xml:space="preserve">` collapses as usual. Character
+data after a child element is lost
+(`<text xml:space="preserve">a<tspan/>b</text>` writes only `a`).
 
 ```
 <text x="1">Hi</text>
@@ -932,6 +1034,7 @@ e8 03  fe  fe  ff
 ## 9. Left unspecified
 
 * Element tokens `0x05`, `0x06`, `0x0e`, `0x2b`, `0x2c`.
+* The exact arithmetic behind `rotate`, `skewX` and `skewY` (§4.11).
 * Attribute ids not listed in §4.9, and the value layouts marked unknown there
   — chiefly the animation attributes (`begin`, `end`, `restart`, `calcMode`,
   `keyTimes`, `keySplines`, `values`, `from`/`to`/`by`), `attributeName`, and

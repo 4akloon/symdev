@@ -19,7 +19,14 @@ fn reads_elements_and_attributes_in_document_order() {
 }
 
 #[test]
-fn rejects_text_and_unterminated_markup() {
-    assert!(SvgElement::parse("<svg><text>hi</text></svg>").is_err());
+fn reads_character_data_and_collapses_its_whitespace() {
+    let doc = SvgElement::parse("<svg><text>  a &amp;\n  b  </text></svg>").unwrap();
+    assert_eq!(doc.children[0].text(), "a & b");
+    assert_eq!(SvgElement::parse("<svg><g/></svg>").unwrap().text(), "");
+}
+
+#[test]
+fn rejects_unterminated_markup() {
     assert!(SvgElement::parse("<svg>").is_err());
+    assert!(SvgElement::parse("<svg><g></svg>").is_err());
 }
