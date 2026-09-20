@@ -53,7 +53,7 @@ fn the_result_file_is_where_the_device_put_it() {
     let data = EmulatorData::at(Path::new("/home/u/.local/share/EKA2L1"));
     assert_eq!(
         data.result_file(0xe000_0685),
-        Path::new("/home/u/.local/share/EKA2L1/drives/e/symdev/results/e0000685.json")
+        Path::new("/home/u/.local/share/EKA2L1/data/drives/e/symdev/results/e0000685.json")
     );
 }
 

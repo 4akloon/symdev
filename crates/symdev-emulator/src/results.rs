@@ -20,7 +20,8 @@ pub const SCHEMA: i64 = 1;
 ///
 /// `SYMDEV_EKA2L1_DATA` overrides it; the default is the path EKA2L1 itself uses on
 /// Linux, `$XDG_DATA_HOME/EKA2L1` (`~/.local/share/EKA2L1`), which is where `symdev
-/// run` has been installing since experiment 48.
+/// run` has been installing since experiment 48. The drives are one level further in,
+/// under `data/` — verified against the tree on this host, not assumed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmulatorData {
     root: PathBuf,
@@ -57,9 +58,11 @@ impl EmulatorData {
         }
     }
 
-    /// `<data>/drives/e`: the host side of the emulated drive E:.
+    /// `<data>/data/drives/e`: the host side of the emulated drive E:, as the tree on
+    /// this host really is — `~/.local/share/EKA2L1/data/drives/e/` holds `sys/bin`,
+    /// `private` and everything a SIS installs.
     pub fn drive_e(&self) -> PathBuf {
-        self.root.join("drives").join("e")
+        self.root.join("data").join("drives").join("e")
     }
 
     /// Where the example's report lands, the host spelling of
