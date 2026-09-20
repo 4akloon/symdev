@@ -221,6 +221,54 @@ Thread heap: `User::Alloc` uses the *current thread's* heap; a second thread cre
 `RThread::Create` gets its own unless told otherwise — this matters for Stage 4 threads and
 is why `alloc` must not assume one global heap. Record in the memory-model note (prompt §42).
 
+## 6a. The API principle (owner's direction, 2026-09-20)
+
+**An application developer should almost never touch a Symbian-specific API.** Where Rust
+already has a name and a shape for something, the SDK uses that name and that shape; where
+Symbian genuinely differs, the SDK says so plainly instead of hiding it behind a pretend
+abstraction.
+
+Concretely:
+
+| The developer writes | Not |
+|---|---|
+| `&str`, `String`, `format!`, `write!` | descriptors — `TDesC16`, `Buf16`, `HBuf16` are a boundary detail |
+| `fs::File::create(path)?.write_all(b"…")` | `RFs`, `RFile`, `TDes8` |
+| an error with `kind()` like `std::io::ErrorKind`, `?` across the app | a bare `TInt` |
+| `Duration`, `Instant`, `SystemTime` | `TTimeIntervalMicroSeconds32`, `TTime` |
+| `Vec`, `String`, `BTreeMap` | Symbian's array and buffer classes |
+| `thread::spawn`, `Mutex`, `mpsc` (after step 72's shim) | `RThread`, `RFastLock`, `RMsgQueue` |
+
+The descriptor-typed and handle-typed entry points stay, in a clearly lower-level module
+(`raw`/`des`/`sys`), because the shim and the crates below need them and because an
+application that must reach further should be able to. They are the escape hatch, not the
+road.
+
+**Size does not outrank ergonomics here.** `core::fmt` costs about 2.4 kB (experiment 77) on
+a device with ~128 MB of user RAM; that is the feature working, not waste. The 10 kB and
+107 kB figures that experiment 77 fixed were a *duplicate* of routines already in ROM, which
+is a different thing. A zero-cost path (euser's own `Append`/`AppendNum` through the shim)
+stays available and documented for a program that deliberately wants no formatter.
+
+**What must not be hidden**, because pretending would be a lie the first crash exposes:
+
+- **Capabilities and platform security.** There is no std analogue; an app declares them in
+  `symdev.toml` and the SIS, the certificate and the device each get a say.
+- **Drives and data caging.** `Path` can carry `C:`/`E:`/`Z:`, but `\private\<uid>` and the
+  caging rules are real and different from a POSIX mount.
+- **The event loop.** An Avkon application is not `fn main()` running to completion; the
+  framework owns an active scheduler and calls into the app (`avkon-rust-spec.md`).
+- **Leaves.** Hidden by the shim — correctly, because a leave reaching Rust is undefined
+  behaviour, and a `Result` is the honest translation.
+- **No `std::net` semantics for free.** Even once sockets work, choosing an access point is a
+  Symbian concept with no std equivalent.
+
+The end state this points at is a real `symbian-std` (§27 of the master prompt, step 79
+below): a facade mirroring `std`'s module tree so that porting a crate is changing a `use`,
+and eventually a genuine `std` for `target_os = "symbian"`. The layering already built —
+`symbian-sys` → shim → `symbian-core` → `symbian-runtime` — is exactly what such a std sits
+on, so nothing here is thrown away.
+
 ## 7. Stage 3: `symbian-sys`, the shim, `symbian-core`
 
 - `symbian-sys`: raw `extern "C"` declarations, one module per DLL (`euser`, `efsrv`, …),
@@ -298,6 +346,7 @@ Three channels, in order of cost:
 | 72 | **done** — atomics and locks on 9.3 | [eka2-concurrency.md](../../research/eka2-concurrency.md): the four euser counters, the unresolvable libcalls, the `RFastLock`-backed shim that makes Rust atomics link and run, and the recommendation to raise `max-atomic-width` to 32 only alongside that shim |
 | 73 | **Async**: a `CActive` subclass in the shim whose `RunL` wakes a Rust waker, a single-threaded executor on `CActiveScheduler`; `examples/async` awaits an `RTimer` | two timers awaited concurrently finish in the right order, reported through the result file, with no extra thread |
 | 74 | **Networking**: `RSocketServ`, `RHostResolver`, `RSocket` over the async bridge; `examples/net` resolves a name and does one TCP round trip | the bytes come back; the example declares `NetworkServices` and the manifest/capability check passes. EKA2L1 has a real host-socket backend (`src/emu/services/src/internet/protocols/`, `AF_INET`/`getaddrinfo`), so this is verifiable here |
+| 79 | **`symbian-std`**: a facade crate mirroring `std`'s module tree (`fs`, `io`, `time`, `sync`, `thread`, `prelude`) over the crates below, with an `io::Error` carrying `kind()` and `raw_os_error()` | an example ported from a host Rust program by changing only its `use` lines and its entry point |
 | 75 | **UI**: the Avkon app framework — `CAknApplication`/`CAknDocument`/`CAknAppUi`/`CCoeControl` are C++ classes with virtual methods, so the shim must *define the subclasses* and forward each virtual to a Rust function pointer; `examples/ui` draws and handles a key | a PID-bound screenshot shows the drawn view and a key press changes it |
 
 Dependencies that fix the order: 73 before 74 (every socket operation is `TRequestStatus`-based)
