@@ -56,15 +56,35 @@ impl Eka2l1Backend {
         args
     }
 
-    /// Whether EKA2L1 already holds an executable of this name on drive E. The emulator
-    /// refuses to install over one, so `run` uninstalls first when it does. A data
-    /// directory we cannot read means "not installed": the worst case is the refusal
-    /// that happened before this existed, never a wrong uninstall.
-    pub fn installed(exe: Option<&str>) -> bool {
-        let (Some(exe), Ok(data)) = (exe, crate::results::EmulatorData::from_env()) else {
+    /// Whether EKA2L1 has a package with this UID installed.
+    ///
+    /// Keyed by UID and not by the executable's name, because that is the key
+    /// `--remove` takes: an earlier application can leave `sys\\bin\\hello.exe` behind
+    /// under a *different* UID, and then removing by name-derived guesswork asks the
+    /// emulator to uninstall something that was never installed. `--remove` fails, and a
+    /// failing option aborts the whole invocation before `--install` is reached — the
+    /// run dies with `Failed to remove package.` and nothing is installed at all.
+    ///
+    /// The registry is a directory per UID under `sys/install/sisregistry` on the system
+    /// drive (observed: 274 entries on `c`, none on `e`, although packages install to E).
+    /// Every drive is searched, so a differently configured emulator still works.
+    pub fn installed(uid3: u32) -> bool {
+        let Ok(data) = crate::results::EmulatorData::from_env() else {
             return false;
         };
-        data.drive_e().join("sys").join("bin").join(exe).is_file()
+        let Ok(drives) = std::fs::read_dir(data.drives()) else {
+            return false;
+        };
+        let uid = format!("{uid3:08x}");
+        drives.flatten().any(|drive| {
+            drive
+                .path()
+                .join("sys")
+                .join("install")
+                .join("sisregistry")
+                .join(&uid)
+                .is_dir()
+        })
     }
 
     /// PID recorded by an earlier `run` if that process still exists (Linux `/proc`).
@@ -84,7 +104,7 @@ impl Eka2l1Backend {
 
     /// Start the emulator in the background; its output goes to `log`.
     pub fn run(&self, sisx: &Path, uid3: u32, log: &Path) -> Result<u32> {
-        let replace = Self::installed(exe_name(sisx).as_deref());
+        let replace = Self::installed(uid3);
         let args = self.run_args_replacing(sisx, uid3, replace);
         let out =
             std::fs::File::create(log).map_err(|e| Error::Other(format!("create {log:?}: {e}")))?;
@@ -177,18 +197,6 @@ mod tests {
     }
 }
 
-/// `<name>.sisx` names `<name>.exe` only when the package name is the binary's name.
-/// It is not, whenever an MMP's `TARGET` differs from the manifest's `package.name`, so
-/// the real name is read out of the `.pkg` symdev writes beside the SIS.
-fn exe_name(sisx: &Path) -> Option<String> {
-    let pkg = std::fs::read_to_string(sisx.with_extension("pkg")).ok()?;
-    let line = pkg
-        .lines()
-        .find(|l| l.to_ascii_lowercase().contains("\\sys\\bin\\"))?;
-    let (_, after) = line.rsplit_once("\\sys\\bin\\")?;
-    Some(after.trim_end_matches(['"', '\r']).to_string())
-}
-
 #[cfg(test)]
 mod reinstall_tests {
     use super::*;
@@ -215,8 +223,8 @@ mod reinstall_tests {
                 "0xef9f2cab",
             ]
         );
-        // Not passed otherwise: `--remove` fails when nothing is installed, and a
-        // failing option aborts the invocation before `--install` is reached.
+        // Not passed otherwise: `--remove` fails when the package is not installed, and
+        // a failing option aborts the invocation before `--install` is reached.
         assert_eq!(
             backend().run_args_replacing(Path::new("/p/build/hello.sisx"), 0xef9f_2cab, false),
             backend().run_args(Path::new("/p/build/hello.sisx"), 0xef9f_2cab)
@@ -224,19 +232,23 @@ mod reinstall_tests {
     }
 
     #[test]
-    fn the_exe_name_comes_from_the_pkg_not_from_the_sisx_name() {
+    fn installed_is_keyed_by_uid_the_way_remove_is() {
         let dir = tempfile::tempdir().unwrap();
-        let sisx = dir.path().join("puzzles.sisx");
-        std::fs::write(
-            dir.path().join("puzzles.pkg"),
-            "&EN\r\n\"Puzzles_0xa000ef77.exe\"\t\t-\"!:\\sys\\bin\\Puzzles_0xa000ef77.exe\"\r\n",
-        )
-        .unwrap();
-        assert_eq!(
-            exe_name(&sisx).as_deref(),
-            Some("Puzzles_0xa000ef77.exe"),
-            "the package name and the binary's name differ whenever an MMP TARGET does"
-        );
-        assert_eq!(exe_name(&dir.path().join("missing.sisx")), None);
+        let reg = dir
+            .path()
+            .join("data/drives/c/sys/install/sisregistry/e0000685");
+        std::fs::create_dir_all(&reg).unwrap();
+        // An executable of the same name left by a *different* package is not this
+        // package. Keying off the name would ask the emulator to remove a UID it does
+        // not have; `--remove` would fail and the run would die before installing.
+        let bin = dir.path().join("data/drives/e/sys/bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("hello.exe"), b"").unwrap();
+
+        // SAFETY: single-threaded test; `EmulatorData::from_env` reads this variable.
+        unsafe { std::env::set_var("SYMDEV_EKA2L1_DATA", dir.path()) };
+        assert!(Eka2l1Backend::installed(0xe000_0685));
+        assert!(!Eka2l1Backend::installed(0xe000_0812));
+        unsafe { std::env::remove_var("SYMDEV_EKA2L1_DATA") };
     }
 }

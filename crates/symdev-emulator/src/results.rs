@@ -61,6 +61,11 @@ impl EmulatorData {
     /// `<data>/data/drives/e`: the host side of the emulated drive E:, as the tree on
     /// this host really is — `~/.local/share/EKA2L1/data/drives/e/` holds `sys/bin`,
     /// `private` and everything a SIS installs.
+    /// `<data>/data/drives`: every emulated drive.
+    pub fn drives(&self) -> PathBuf {
+        self.root.join("data").join("drives")
+    }
+
     pub fn drive_e(&self) -> PathBuf {
         self.root.join("data").join("drives").join("e")
     }

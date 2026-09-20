@@ -69,8 +69,13 @@ debugging sessions here.
 No emulator change is needed: `--remove <uid>` (`thread.cpp` registers it beside
 `--install`) uninstalls the package. It **fails when nothing is installed**, and a failing
 option aborts the whole invocation before `--install` is reached, so it must only be
-passed when the package really is there. `Eka2l1Backend::run` checks for
-`<data>/drives/e/sys/bin/<exe>.exe` and prepends `--remove` only then. The executable's
-name comes from the `.pkg` beside the SIS, not from the SIS's own name: the two differ
-whenever an MMP's `TARGET` is not the manifest's `package.name`.
+passed when the package really is there. `Eka2l1Backend::run` prepends `--remove` only when a package with that UID is installed.
+
+**Keyed by UID, not by the executable's name** — the first attempt here used the name and
+broke a working run. An earlier application leaves `sys\\bin\\hello.exe` on drive E under
+its *own* UID; a new project with the same binary name and a fresh UID then looked
+"installed", `--remove <new uid>` failed because that package was never there, and the
+invocation aborted before `--install` with `Failed to remove package.` — so nothing was
+installed at all. The registry is a directory per UID under `sys/install/sisregistry` on
+the **system** drive: 274 entries on `c` and none on `e`, although packages install to E.
 
