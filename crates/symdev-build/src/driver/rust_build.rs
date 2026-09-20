@@ -65,7 +65,17 @@ impl RustBuild {
             .join(format!("lib{}.a", self.name))
     }
 
-    /// `GcceBuild::link_args` with `-u _Z7E32Mainv` right after `-u _E32Startup`.
+    /// `GcceBuild::link_args` with `-u _Z7E32Mainv` right after `-u _E32Startup`, and
+    /// `--gc-sections`.
+    ///
+    /// The garbage collection is what keeps a Rust program small. `compiler_builtins` is
+    /// built as **one** codegen unit, so the first reference to any `__aeabi_*` helper —
+    /// and `__aeabi_memclr4` appears as soon as a program has a local array — pulls the
+    /// whole crate into the link: experiment 68 measured 0x2b338 bytes of `.text` and a
+    /// 104 560-byte E32 for an example whose own code is under a kilobyte. rustc gives
+    /// every function its own `.text.<symbol>` section, so `--gc-sections` drops what
+    /// nothing reaches. It is added for Rust only; the recorded C++ link line, which is
+    /// byte-verified against the SDK's own, is untouched.
     pub fn link_args(&self, archive: &Path, elf: &Path, map: &Path) -> Vec<String> {
         let mut args = self.gcce.link_args(&self.name, archive, elf, map, &[]);
         let after = args
@@ -74,6 +84,7 @@ impl RustBuild {
             .map_or(args.len(), |i| i + 2);
         args.insert(after, E32MAIN.into());
         args.insert(after, "-u".into());
+        args.insert(after, "--gc-sections".into());
         args
     }
 
