@@ -61,9 +61,16 @@ pub struct MmpResource {
     pub file: String,
     /// `SOURCEPATH` in effect where the block starts (the `.rss` is relative to it).
     pub sourcepath: Option<String>,
+    /// `TARGET` inside the block: the basename the compiled resource and its `.rsg`
+    /// take, instead of the `.rss` name (§6.2). Only a basename; a directory or an
+    /// extension written here is discarded.
+    pub target: Option<String>,
     /// `TARGETPATH` inside the block (install directory of the `.rsc`).
     pub targetpath: Option<String>,
-    /// `HEADER`: also generate `<stem>.rsg` for C++ sources.
+    /// `HEADER`: also generate `<basename>.rsg` for C++ sources.
     pub header: bool,
+    /// `HEADERONLY`: the `.rsg` and no compiled resource at all.
+    pub headeronly: bool,
+    /// `LANG` inside the block, overriding the file-level one (§6.3).
     pub lang: Vec<String>,
 }

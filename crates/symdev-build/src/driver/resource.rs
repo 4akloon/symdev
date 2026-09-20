@@ -25,7 +25,6 @@ impl GcceBuild {
                 rss.display()
             )));
         }
-        let stem = res.stem()?;
         let epoc = self.tools.epocroot.join("epoc32");
         let mut includes = vec![
             rss.parent().unwrap_or(mmp_dir).to_path_buf(),
@@ -42,19 +41,24 @@ impl GcceBuild {
                 .iter()
                 .map(|d| self.mmp_dir_path(mmp_dir, d)),
         );
-        // §6.4: the `.mmp`'s own `MACRO` list and the language code, not the platform
-        // macros.
-        let mut defines = mmp.macros.clone();
-        defines.push(format!("LANGUAGE_{}", res.language()));
-        let rpp = symdev_rcomp::CPreprocessor::for_rss(&includes, &defines).run(&rss)?;
-        let compiled = symdev_rcomp::Rcomp::compile(&rpp, &rss.display().to_string())?;
-        let rsc = build_dir.join(format!("{stem}.rsc"));
-        std::fs::write(&rsc, compiled.rsc_bytes()?)
-            .map_err(|e| Error::Other(format!("write {}: {e}", rsc.display())))?;
-        if res.header {
-            let rsg = build_dir.join(format!("{stem}.rsg"));
-            std::fs::write(&rsg, compiled.rsg_text())
-                .map_err(|e| Error::Other(format!("write {}: {e}", rsg.display())))?;
+        // §6.3: one compiled resource per language, one `.rsg` whatever the list is.
+        for language in res.languages(&mmp.lang) {
+            // §6.4: the `.mmp`'s own `MACRO` list and the language code, not the
+            // platform macros.
+            let mut defines = mmp.macros.clone();
+            defines.push(format!("LANGUAGE_{language}"));
+            let rpp = symdev_rcomp::CPreprocessor::for_rss(&includes, &defines).run(&rss)?;
+            let compiled = symdev_rcomp::Rcomp::compile(&rpp, &rss.display().to_string())?;
+            if !res.headeronly {
+                let rsc = build_dir.join(res.output(&language)?);
+                std::fs::write(&rsc, compiled.rsc_bytes()?)
+                    .map_err(|e| Error::Other(format!("write {}: {e}", rsc.display())))?;
+            }
+            if res.header || res.headeronly {
+                let rsg = build_dir.join(res.header_name()?);
+                std::fs::write(&rsg, compiled.rsg_text())
+                    .map_err(|e| Error::Other(format!("write {}: {e}", rsg.display())))?;
+            }
         }
         Ok(())
     }

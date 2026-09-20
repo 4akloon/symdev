@@ -30,9 +30,18 @@ impl MmpParser {
                     self.mmp.resource.push(block);
                 }
             }
+            "TARGET" => block.target = args.first().cloned(),
             "HEADER" => block.header = true,
+            "HEADERONLY" => block.headeronly = true,
             "TARGETPATH" => block.targetpath = args.first().cloned(),
             "LANG" => block.lang.extend(args.iter().cloned()),
+            "UID" => {
+                return Err(ParseError(format!(
+                    "{}: TODO: UID inside START RESOURCE (symdev's rcomp has no \
+                     -uid2/-uid3 yet, so the resource's UIDs would be lost)",
+                    line.at()
+                )));
+            }
             other => {
                 return Err(ParseError(format!(
                     "{}: TODO: START RESOURCE directive {other} (not observed)",

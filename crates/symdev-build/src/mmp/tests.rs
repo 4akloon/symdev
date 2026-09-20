@@ -55,7 +55,7 @@ fn start_resource_block_is_typed() {
             sourcepath: Some("..\\data".into()),
             targetpath: Some("\\resource\\apps".into()),
             header: true,
-            lang: Vec::new(),
+            ..MmpResource::default()
         }]
     );
     assert!(m.targetpath.is_none());
@@ -65,10 +65,33 @@ fn start_resource_block_is_typed() {
 fn start_resource_rejects_unobserved_directive() {
     assert!(
         Mmp::parse(
-            "TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\nSTART RESOURCE a.rss\nUID 1 2\nEND\n"
+            "TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\nSTART RESOURCE a.rss\nWHAT 1\nEND\n"
         )
         .is_err()
     );
+}
+
+#[test]
+fn start_resource_inner_directives_are_parsed() {
+    let m = Mmp::parse(
+        "TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\n         START RESOURCE Puzzles.rss\nTARGET Puzzles_0xa000ef77\nHEADER\nLANG SC 01\n         TARGETPATH \\resource\\apps\nEND\n         START RESOURCE only.rss\nHEADERONLY\nEND\n",
+    )
+    .unwrap();
+    assert_eq!(m.resource[0].target.as_deref(), Some("Puzzles_0xa000ef77"));
+    assert_eq!(m.resource[0].lang, ["SC", "01"]);
+    assert!(m.resource[1].headeronly);
+    assert!(!m.resource[1].header);
+}
+
+/// The block's `UID` would be lost: symdev's `rcomp` has no `-uid2`/`-uid3`.
+#[test]
+fn a_resource_uid_is_refused_by_name() {
+    let err = Mmp::parse(
+        "TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\nSTART RESOURCE a.rss\nUID 0x101f 0x102f\nEND\n",
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("-uid2"), "{err}");
 }
 
 #[test]

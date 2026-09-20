@@ -9,7 +9,7 @@ fn res(file: &str, targetpath: Option<&str>) -> MmpResource {
         sourcepath: Some("..\\data".into()),
         targetpath: targetpath.map(Into::into),
         header: true,
-        lang: Vec::new(),
+        ..MmpResource::default()
     }
 }
 
@@ -17,7 +17,7 @@ fn res(file: &str, targetpath: Option<&str>) -> MmpResource {
 fn app_resource_installs_to_its_targetpath() {
     assert_eq!(
         res("gui.rss", Some("\\resource\\apps"))
-            .install_dest()
+            .install_dest("SC")
             .unwrap(),
         "!:\\resource\\apps\\gui.rsc"
     );
@@ -27,10 +27,39 @@ fn app_resource_installs_to_its_targetpath() {
 fn reg_resource_installs_to_import_apps_like_the_sdk_pkg() {
     assert_eq!(
         res("gui_reg.rss", Some("\\private\\10003a3f\\apps"))
-            .install_dest()
+            .install_dest("SC")
             .unwrap(),
         "!:\\private\\10003a3f\\import\\apps\\gui_reg.rsc"
     );
+}
+
+/// §6.2/§6.3: `TARGET` inside the block renames the `.rsc` and the `.rsg`, and the
+/// extension follows the language code.
+#[test]
+fn target_inside_the_block_renames_the_outputs() {
+    let mut r = res("Puzzles.rss", Some("\\resource\\apps"));
+    r.target = Some("Puzzles_0xa000ef77".into());
+    assert_eq!(r.stem().unwrap(), "Puzzles_0xa000ef77");
+    assert_eq!(r.output("SC").unwrap(), "Puzzles_0xa000ef77.rsc");
+    assert_eq!(r.header_name().unwrap(), "Puzzles_0xa000ef77.rsg");
+    assert_eq!(
+        r.install_dest("SC").unwrap(),
+        "!:\\resource\\apps\\Puzzles_0xa000ef77.rsc"
+    );
+    // A directory or an extension written on TARGET is discarded.
+    r.target = Some("..\\out\\other.rsc".into());
+    assert_eq!(r.stem().unwrap(), "other");
+}
+
+#[test]
+fn a_language_code_picks_the_extension() {
+    let mut r = res("gui.rss", Some("\\resource\\apps"));
+    assert_eq!(r.languages(&[]), ["SC"]);
+    assert_eq!(r.languages(&["01".to_string()]), ["01"]);
+    r.lang = vec!["02".into(), "03".into()];
+    assert_eq!(r.languages(&["01".to_string()]), ["02", "03"]);
+    assert_eq!(r.output("02").unwrap(), "gui.r02");
+    assert_eq!(r.install_dest("03").unwrap(), "!:\\resource\\apps\\gui.r03");
 }
 
 #[test]

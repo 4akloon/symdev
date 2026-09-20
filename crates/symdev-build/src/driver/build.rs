@@ -133,10 +133,15 @@ impl BuildBackend for GcceBuild {
                 Artifact::exe(out)
             });
             for res in &mmp.resource {
-                artifacts.push(Artifact::installed(
-                    build_dir.join(format!("{}.rsc", res.stem()?)),
-                    res.install_dest()?,
-                ));
+                if res.headeronly {
+                    continue;
+                }
+                for language in res.languages(&mmp.lang) {
+                    artifacts.push(Artifact::installed(
+                        build_dir.join(res.output(&language)?),
+                        res.install_dest(&language)?,
+                    ));
+                }
             }
         }
         Ok(artifacts)
