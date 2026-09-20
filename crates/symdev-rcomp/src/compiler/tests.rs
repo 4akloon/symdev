@@ -11,7 +11,7 @@ fn unhex(s: &str) -> Vec<u8> {
 /// Experiment 56 probes: our own `.rss`, compiled by SDK `rcomp.exe -u` under Wine.
 #[test]
 fn probes_match_wine_rcomp() {
-    let cases: [(&str, &str, &str, &str); 9] = [
+    let cases: [(&str, &str, &str, &str); 10] = [
         (
             "multiple_resources_mix_raw_and_packed",
             include_str!("../testdata/exp56_multiple_resources_mix_raw_and_packed.rss"),
@@ -59,6 +59,12 @@ fn probes_match_wine_rcomp() {
             include_str!("../testdata/exp56_integer_expression.rss"),
             include_str!("../testdata/exp56_integer_expression.rsc.hex"),
             include_str!("../testdata/exp56_integer_expression.rsg"),
+        ),
+        (
+            "compress_only_when_shorter",
+            include_str!("../testdata/exp56_compress_only_when_shorter.rss"),
+            include_str!("../testdata/exp56_compress_only_when_shorter.rsc.hex"),
+            include_str!("../testdata/exp56_compress_only_when_shorter.rsg"),
         ),
         (
             "double",

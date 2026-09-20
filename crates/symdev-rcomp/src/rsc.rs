@@ -73,22 +73,38 @@ impl RscCompiled {
         }
         // (compressed, bytes)
         let mut runs: Vec<(bool, Vec<u8>)> = vec![(true, Vec::new())];
-        for seg in &data.segments {
+        let mut raw_open = false;
+        for (i, seg) in data.segments.iter().enumerate() {
             match seg {
+                // A pad only exists before text kept raw, and then it is the fill byte.
                 RscSegment::Pad => {}
-                RscSegment::Raw(b) => match runs.last_mut() {
-                    Some((false, last)) => last.extend_from_slice(b),
-                    _ => runs.push((false, b.clone())),
-                },
+                RscSegment::Raw(b) => {
+                    Self::push_raw(&mut runs, b);
+                    raw_open = true;
+                }
                 RscSegment::Text(t) => {
                     let enc = RscScsu::encode(t)?;
-                    match runs.last_mut() {
-                        Some((true, last)) if last.is_empty() => *last = enc,
-                        Some((true, _)) => {
-                            runs.push((false, Vec::new()));
-                            runs.push((true, enc));
+                    let padded = data.segments.get(i.wrapping_sub(1)) == Some(&RscSegment::Pad);
+                    let more = i + 1 < data.segments.len();
+                    if Self::compress_is_shorter(enc.len(), t.len(), padded, raw_open, more) {
+                        match runs.last_mut() {
+                            Some((true, last)) if last.is_empty() => *last = enc,
+                            Some((true, _)) => {
+                                runs.push((false, Vec::new()));
+                                runs.push((true, enc));
+                            }
+                            _ => runs.push((true, enc)),
                         }
-                        _ => runs.push((true, enc)),
+                        raw_open = false;
+                    } else {
+                        let mut bytes = Vec::with_capacity(2 * t.len() + 1);
+                        if padded {
+                            bytes.push(Self::RAW_PAD);
+                        }
+                        t.iter()
+                            .for_each(|u| bytes.extend_from_slice(&u.to_le_bytes()));
+                        Self::push_raw(&mut runs, &bytes);
+                        raw_open = true;
                     }
                 }
             }
@@ -108,6 +124,36 @@ impl RscCompiled {
             out.extend_from_slice(&bytes);
         }
         Ok(Some(out))
+    }
+
+    /// Fill byte before 16-bit text that stays raw inside a packed resource
+    /// (experiment 56: `imopenapiexample`).
+    const RAW_PAD: u8 = 0xab;
+
+    fn push_raw(runs: &mut Vec<(bool, Vec<u8>)>, bytes: &[u8]) {
+        match runs.last_mut() {
+            Some((false, last)) => last.extend_from_slice(bytes),
+            _ => runs.push((false, bytes.to_vec())),
+        }
+    }
+
+    /// Text is compressed only when that makes the resource shorter; ties stay raw
+    /// (experiment 56: nine one-character texts, only the last one — with nothing after
+    /// it — is compressed). Compressing costs its run header, plus one byte to reopen a
+    /// raw run when anything follows, plus one to close an open compressed run; staying
+    /// raw costs the pad and two bytes per character, plus one byte when a raw run has
+    /// to be opened (two at the very start, after the empty compressed run).
+    fn compress_is_shorter(
+        encoded: usize,
+        chars: usize,
+        padded: bool,
+        raw_open: bool,
+        more_follows: bool,
+    ) -> bool {
+        let header = |n: usize| if n < 0x80 { 1 } else { 2 };
+        let compressed = header(encoded) + encoded + usize::from(more_follows);
+        let raw = usize::from(padded) + 2 * chars + usize::from(!raw_open);
+        compressed < raw
     }
 
     /// `rcomp -h`: `#define <NAME>` padded to column 50 (at least one space), the id
