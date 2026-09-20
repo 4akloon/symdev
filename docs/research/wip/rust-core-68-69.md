@@ -42,6 +42,17 @@ rewritten, `unsafe`-free `examples/hello` proving both in EKA2L1's notifier log.
   unit, so one reference dragged 0x2b338 of `.text` in. Probe ELF 351016 B, E32 101611 B.
   Re-linking the same archive with `--gc-sections` added gives ELF 35520 B.
 
+- **The descriptor type nibbles are now observed**, by a C++ probe run on the real euser in
+  EKA2L1 (scaffolded `symdev new` console app, `User::InfoPrint` of the raw header words):
+  `_LIT16("abc")` = `0x00000003`, `TBufC16<8>("ab")` = `0x00000002`, `TBuf16<8>("abc")` =
+  `0x30000003`, `TPtrC16("abcd")` = `0x10000004`, `TPtr16(p,3,8)` = `0x20000003`,
+  `HBufC16::New(8)` = `0x00000000`. So **EBufC = 0, EPtrC = 1, EPtr = 2, EBuf = 3**.
+- **Sizes and offsets from the same probe:** `sizeof` TDesC16 4, TPtrC16 8, TDes16 8,
+  TPtr16 12, TBufC16<8> 20, TBuf16<8> 24, TBufC16<7> 20, TBuf16<7> 24, HBufC16 8.
+  Data offsets: TBufC16 +4, TBuf16 +8, HBufC16 +4. `TPtrC16` word 1 is the data pointer;
+  `TPtr16` word 1 is `iMaxLength` and word 2 the pointer; `TBuf16` word 1 is `iMaxLength`.
+  `User::AllocLen(HBufC16::New(8))` = 36, the heap minimum again.
+
 ## Decisions
 
 ## Dead ends
