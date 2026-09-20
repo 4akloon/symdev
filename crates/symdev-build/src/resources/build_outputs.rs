@@ -33,6 +33,12 @@ impl BuildOutputs {
                     ));
                 }
             }
+            for block in &mmp.bitmap {
+                out.push(Artifact::installed(
+                    build_dir.join(block.output()?),
+                    block.install_dest()?,
+                ));
+            }
         }
         Ok(out)
     }

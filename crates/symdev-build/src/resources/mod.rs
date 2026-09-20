@@ -5,6 +5,7 @@ mod app_target;
 mod build_outputs;
 mod casefold;
 mod generated_casefold;
+mod mmp_bitmap_ext;
 mod mmp_ext;
 mod mmp_path;
 mod mmp_resource_ext;

@@ -193,3 +193,54 @@ fn capability_names_are_case_insensitive_and_all_expands() {
     let none = Mmp::parse("TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\nCAPABILITY NONE\n").unwrap();
     assert!(MmpCapabilities::of(&none).unwrap().names().is_empty());
 }
+
+#[test]
+fn start_bitmap_cycles_its_depth_list_over_the_files() {
+    let m = Mmp::parse(
+        "TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\n\
+         START BITMAP games.mbm\nTARGETPATH \\resource\\apps\nHEADER\n\
+         SOURCEPATH ..\\gfx\nSOURCE c8,1 A.bmp B.bmp C.bmp D.bmp\nSOURCE c24 e.bmp\nEND\n\
+         SOURCE b.cpp\n",
+    )
+    .unwrap();
+    let block = &m.bitmap[0];
+    assert_eq!(block.target, "games.mbm");
+    assert!(block.header);
+    assert_eq!(block.targetpath.as_deref(), Some("\\resource\\apps"));
+    let got: Vec<(&str, &str)> = block
+        .sources
+        .iter()
+        .map(|s| (s.file.as_str(), s.depth.as_str()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("a.bmp", "c8"),
+            ("b.bmp", "1"),
+            ("c.bmp", "c8"),
+            ("d.bmp", "1"),
+            ("e.bmp", "c24"),
+        ]
+    );
+    // The block's SOURCEPATH does not outlive it.
+    assert_eq!(block.sources[0].sourcepath.as_deref(), Some("..\\gfx"));
+    assert_eq!(m.source, ["a.cpp", "b.cpp"]);
+    assert_eq!(m.source_sourcepath[1], None);
+}
+
+#[test]
+fn a_bad_colour_depth_is_fatal() {
+    for depths in ["x8", "c123", "", "8,"] {
+        let text = format!(
+            "TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\n\
+             START BITMAP g.mbm\nSOURCE {depths} a.bmp\nEND\n"
+        );
+        assert!(Mmp::parse(&text).is_err(), "{depths} was accepted");
+    }
+    assert!(
+        Mmp::parse(
+            "TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\nSTART BITMAP g.mbm\nSOURCE c8 a.bmp\n"
+        )
+        .is_err()
+    );
+}

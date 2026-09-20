@@ -43,9 +43,13 @@ impl BuildBackend for GcceBuild {
             for warning in mmp.warnings.iter().chain(caps.warnings.iter()) {
                 eprintln!("warning: {warning}");
             }
-            // Resources first: sources include the generated `.rsg` headers.
+            // Resources and bitmaps first: the sources include the generated `.rsg`
+            // and `.mbg` headers.
             for res in &mmp.resource {
                 self.compile_resource(res, mmp_dir, mmp, &build_dir)?;
+            }
+            for block in &mmp.bitmap {
+                self.compile_bitmap(block, mmp_dir, &build_dir)?;
             }
             let mut includes = CompileIncludes {
                 user: vec![build_dir.clone()],
@@ -148,6 +152,12 @@ impl BuildBackend for GcceBuild {
                         res.install_dest(&language)?,
                     ));
                 }
+            }
+            for block in &mmp.bitmap {
+                artifacts.push(Artifact::installed(
+                    build_dir.join(block.output()?),
+                    block.install_dest()?,
+                ));
             }
         }
         Ok(artifacts)

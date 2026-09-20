@@ -146,3 +146,29 @@ fn exports_are_staged_into_the_build_directory() {
     assert!(warnings[0].contains("icon.mif"), "{warnings:?}");
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn bitmap_output_names_follow_the_start_bitmap_name() {
+    use crate::{MmpBitmap, MmpBitmapSource};
+
+    let block = MmpBitmap {
+        target: "games.mbm".into(),
+        targetpath: Some("\\resource\\apps\\e000ef77".into()),
+        header: true,
+        sources: vec![MmpBitmapSource {
+            file: "cube.bmp".into(),
+            sourcepath: Some("..\\gfx".into()),
+            depth: "c8".into(),
+        }],
+    };
+    assert_eq!(block.output().unwrap(), "games.mbm");
+    assert_eq!(block.header_name().unwrap(), "games.mbg");
+    assert_eq!(
+        block.install_dest().unwrap(),
+        "!:\\resource\\apps\\e000ef77\\games.mbm"
+    );
+    assert_eq!(
+        block.sources[0].path(Path::new("/p/group")),
+        PathBuf::from("/p/group/../gfx/cube.bmp")
+    );
+}

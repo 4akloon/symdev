@@ -1,6 +1,7 @@
 //! `Mmp::parse`: the `.mmp` grammar
 //! ([mmp-frontend-spec.md](../../../docs/research/mmp-frontend-spec.md) §5), over text
 //! the preprocessor has already been through (`ProjectCpp`).
+mod bitmap;
 mod capability;
 mod directives;
 
@@ -8,6 +9,7 @@ use crate::bld::ParseError;
 use crate::model::{Mmp, MmpOption, MmpResource};
 use crate::project::ProjectLine;
 
+use bitmap::MmpBitmapBlock;
 use directives::{IGNORED, number, rejected};
 
 /// The `.mmp` fields as they accumulate, one line at a time.
@@ -15,6 +17,7 @@ use directives::{IGNORED, number, rejected};
 struct MmpParser {
     mmp: Mmp,
     block: Option<MmpResource>,
+    bitmap: Option<MmpBitmapBlock>,
 }
 
 impl MmpParser {
@@ -109,6 +112,14 @@ impl MmpParser {
         if self.block.is_some() {
             return self.resource_line(line);
         }
+        if let Some(block) = self.bitmap.as_mut() {
+            if block.line(line)?
+                && let Some(block) = self.bitmap.take()
+            {
+                self.mmp.bitmap.push(block.bitmap);
+            }
+            return Ok(());
+        }
         let name = line.directive();
         let args = line.args();
         let m = &mut self.mmp;
@@ -169,6 +180,10 @@ impl MmpParser {
             .cloned()
             .unwrap_or_default()
             .to_ascii_uppercase();
+        if kind == "BITMAP" {
+            self.bitmap = Some(MmpBitmapBlock::open(line)?);
+            return Ok(());
+        }
         if kind != "RESOURCE" {
             return Err(ParseError(format!(
                 "{}: TODO: START {kind} (not observed)",
@@ -196,6 +211,9 @@ impl Mmp {
         }
         if parser.block.is_some() {
             return Err(ParseError("unclosed START RESOURCE".into()));
+        }
+        if parser.bitmap.is_some() {
+            return Err(ParseError("unclosed START BITMAP".into()));
         }
         let mmp = parser.mmp;
         let kind = &mmp.target_type;

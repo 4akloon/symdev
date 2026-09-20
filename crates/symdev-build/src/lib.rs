@@ -15,7 +15,7 @@ pub use driver::{CompileFlags, CompileIncludes, GcceCompat, Module, SourceLangua
 pub use exports::{DllExports, FrozenExports};
 pub use icons::AppIcon;
 pub use mmp::MmpCapabilities;
-pub use model::{BldExport, BldInf, Mmp, MmpOption, MmpResource};
+pub use model::{BldExport, BldInf, Mmp, MmpBitmap, MmpBitmapSource, MmpOption, MmpResource};
 pub use package::SisPackage;
 pub use project::{HostPath, ProjectCpp, ProjectLine, ProjectPass};
 pub use resources::{AppTarget, BuildOutputs, GeneratedCaseFold, MmpPath, SdkIncludeCaseFold};

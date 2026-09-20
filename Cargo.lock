@@ -891,6 +891,7 @@ dependencies = [
  "symdev-core",
  "symdev-elf2e32",
  "symdev-makekeys",
+ "symdev-mbm",
  "symdev-mif",
  "symdev-rcomp",
  "symdev-sis",

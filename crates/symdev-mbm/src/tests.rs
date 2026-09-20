@@ -14,26 +14,19 @@ fn unhex(s: &str) -> Vec<u8> {
 fn compile(bmp: &str, depth: &str, compress: bool) -> Vec<u8> {
     let image = BmpImage::parse(&unhex(bmp)).unwrap();
     let depth = MbmDepth::from_option(depth).unwrap();
-    let raw = depth.encode(&image);
-    let packed = compress
-        .then(|| match depth.bits() {
-            12 => MbmRle::twelve_bit(&raw).map(|d| (d, 2)),
-            16 => MbmRle::sixteen_bit(&raw).map(|d| (d, 3)),
-            24 => MbmRle::twenty_four_bit(&raw).map(|d| (d, 4)),
-            _ => MbmRle::bytewise(&raw).map(|d| (d, 1)),
-        })
-        .flatten();
-    let (data, compression) = packed.unwrap_or((raw, 0));
-    MbmFile::new(vec![MbmBitmap {
-        width: image.width,
-        height: image.height,
-        twips: image.twips(),
-        depth,
-        data,
-        compression,
-    }])
-    .bytes()
-    .unwrap()
+    let bitmap = if compress {
+        MbmBitmap::compile(&image, depth)
+    } else {
+        MbmBitmap {
+            width: image.width,
+            height: image.height,
+            twips: image.twips(),
+            depth,
+            data: depth.encode(&image),
+            compression: 0,
+        }
+    };
+    MbmFile::new(vec![bitmap]).bytes().unwrap()
 }
 
 #[test]

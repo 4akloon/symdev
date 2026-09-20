@@ -3,7 +3,9 @@
 
 use symdev_core::{Error, Result};
 
+use crate::bmp::BmpImage;
 use crate::depth::MbmDepth;
+use crate::rle::MbmRle;
 
 /// One bitmap of an `.mbm`: its size, depth and stored data.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,6 +21,29 @@ pub struct MbmBitmap {
 
 impl MbmBitmap {
     const HEADER: u32 = 40;
+
+    /// One source image at one depth, compressed the way `bmconv` does when neither
+    /// `/r` nor `/n` is given — which is how the `.mmp` front end always calls it
+    /// (bmconv-spec.md §5, §7). A compressor that would not shrink the data is
+    /// dropped, and the bitmap is stored uncompressed.
+    pub fn compile(image: &BmpImage, depth: MbmDepth) -> Self {
+        let raw = depth.encode(image);
+        let packed = match depth.bits() {
+            12 => MbmRle::twelve_bit(&raw).map(|d| (d, 2)),
+            16 => MbmRle::sixteen_bit(&raw).map(|d| (d, 3)),
+            24 => MbmRle::twenty_four_bit(&raw).map(|d| (d, 4)),
+            _ => MbmRle::bytewise(&raw).map(|d| (d, 1)),
+        };
+        let (data, compression) = packed.unwrap_or((raw, 0));
+        Self {
+            width: image.width,
+            height: image.height,
+            twips: image.twips(),
+            depth,
+            data,
+            compression,
+        }
+    }
 
     fn bytes(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(Self::HEADER as usize + self.data.len());

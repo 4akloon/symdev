@@ -58,6 +58,7 @@ pub struct Mmp {
     /// `NOSTRICTDEF`: no `u` suffix on the frozen `.def` name.
     pub nostrictdef: bool,
     pub resource: Vec<MmpResource>,
+    pub bitmap: Vec<MmpBitmap>,
     /// Directives the front end parsed and nothing on this path reads (§5.5), one
     /// sentence each, for the caller to print.
     pub warnings: Vec<String>,
@@ -91,4 +92,30 @@ pub struct MmpResource {
     pub headeronly: bool,
     /// `LANG` inside the block, overriding the file-level one (§6.3).
     pub lang: Vec<String>,
+}
+
+/// A `START BITMAP <target.mbm> … END` block (§7).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MmpBitmap {
+    /// The `.mbm` file name, as written after `START BITMAP`.
+    pub target: String,
+    /// `TARGETPATH` inside the block (install directory of the `.mbm`).
+    pub targetpath: Option<String>,
+    /// `HEADER`: also generate the `.mbg` enumeration the sources `#include`.
+    pub header: bool,
+    /// The sources of every `SOURCE` line, in declaration order — which is the order
+    /// of the bitmaps in the `.mbm` and therefore of the generated enumerators.
+    pub sources: Vec<MmpBitmapSource>,
+}
+
+/// One `.bmp` of a `START BITMAP` block with the depth its `SOURCE` line gave it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MmpBitmapSource {
+    /// The file name, lower-cased: the bitmap compiler derives enumerator names from
+    /// it, so the SDK folds the case itself (§7.4).
+    pub file: String,
+    /// The block's `SOURCEPATH` when this line was read.
+    pub sourcepath: Option<String>,
+    /// The colour-depth token, lower-cased: `1`, `2`, `4`, `8`, `c8`, `c12`, … (§7.3).
+    pub depth: String,
 }

@@ -5,6 +5,7 @@ use symdev_core::{Error, LocalEnv};
 
 use crate::toolchain::Toolchain;
 
+mod bitmap;
 mod build;
 mod compile;
 mod elf2e32_args;
