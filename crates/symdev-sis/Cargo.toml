@@ -17,7 +17,7 @@ symdev-core = { path = "../symdev-core" }
 symdev-uidcrc = { path = "../symdev-uidcrc" }
 flate2 = { version = "1", default-features = false, features = ["zlib"] }
 sha1 = "0.10"
-dsa = "0.6"
+dsa = "0.7"
 pkcs8 = { version = "0.10", default-features = false, features = ["alloc", "pem"] }
 x509-cert = "0.2"
 der = { version = "0.7", features = ["derive", "alloc", "pem"] }
