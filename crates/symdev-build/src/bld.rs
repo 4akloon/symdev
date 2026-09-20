@@ -86,12 +86,12 @@ impl BldParser {
                 self.bld.test_exports.push(BldEntry::export(line)?);
             }
             (Pass::PerPlatform, Section::MmpFiles) => {
-                if let Some(path) = BldEntry::mmp(line)? {
+                if let Some(path) = BldEntry::mmp(line, &mut self.bld.warnings)? {
                     self.bld.mmp_files.push(path);
                 }
             }
             (Pass::PerPlatform, Section::TestMmpFiles) => {
-                if let Some(path) = BldEntry::mmp(line)? {
+                if let Some(path) = BldEntry::mmp(line, &mut self.bld.warnings)? {
                     self.bld.test_mmp_files.push(path);
                 }
             }

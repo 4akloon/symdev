@@ -51,10 +51,12 @@ impl MifFile {
         Ok(out)
     }
 
-    /// `mifconv /H`: the icon enumeration, CRLF throughout (spec §7). Every icon takes
-    /// two values; the `_mask` enumerator appears only when a mask depth was given.
-    pub fn mbg_text(&self, mif_name: &str) -> String {
-        let mif = Self::stem(mif_name);
+    /// `mifconv /H`: the icon enumeration, CRLF throughout (spec §7). The enum and its
+    /// enumerators are named after the **header** file's stem (experiment 64:
+    /// `games.mif /Hpuzzles_0xa000ef77.mbg` gives `TMifPuzzles_0xa000ef77`). Every icon
+    /// takes two values; the `_mask` enumerator appears only when a mask depth was given.
+    pub fn mbg_text(&self, header_name: &str) -> String {
+        let mif = Self::stem(header_name);
         let mut out = format!(
             " \r\n/* This file has been generated, DO NOT MODIFY. */\r\nenum TMif{mif}\r\n\t{{\r\n"
         );

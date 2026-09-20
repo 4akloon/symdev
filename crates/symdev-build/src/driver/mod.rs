@@ -2,12 +2,14 @@
 use std::path::{Path, PathBuf};
 
 use symdev_core::{Error, LocalEnv};
+use symdev_manifest::IconContainer;
 
 use crate::toolchain::Toolchain;
 
 mod bitmap;
 mod build;
 mod compile;
+mod container;
 mod elf2e32_args;
 mod gcce_compat;
 mod icon;
@@ -30,6 +32,8 @@ pub struct GcceBuild {
     pub capabilities: Vec<String>,
     /// `[symbian] icon`, relative to the project root.
     pub icon: Option<PathBuf>,
+    /// `[[icons]]`: the containers built before any MMP, since sources include their headers.
+    pub icons: Vec<IconContainer>,
 }
 
 fn arg(path: &Path) -> String {

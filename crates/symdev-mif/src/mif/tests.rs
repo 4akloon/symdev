@@ -33,7 +33,7 @@ fn mbg_text_matches_the_recorded_header() {
         MifIcon::svg("UPPER.svg", vec![0]),
         MifIcon::svg("bB_cc.svg", vec![0]),
     ]);
-    let text = two.mbg_text("out_aif.mif");
+    let text = two.mbg_text("out_aif.mbg");
     assert!(text.contains("enum TMifOut_aif\r\n"), "{text}");
     assert!(text.contains("\tEMbmOut_aifUpper = 16384,\r\n"), "{text}");
     assert!(text.contains("\tEMbmOut_aifBb_cc = 16386,\r\n"), "{text}");
@@ -136,6 +136,23 @@ fn a_mixed_container_interleaves_in_source_order() {
     assert_eq!(bytes.len(), 64 + 32 + data.len());
     let text = mif.mbg_text("mix.mif");
     assert!(text.contains("\tEMbmMixBlackbox = 16384,\r\n\tEMbmMixA = 16386,\r\n\tEMbmMixA_mask = 16387,\r\n\tEMbmMixCube = 16388,\r\n\tEMbmMixLastElement\r\n"), "{text}");
+}
+
+/// Experiment 64: the header, not the `.mif`, names the enum — Puzzles builds
+/// `games.mif` with `/Hpuzzles_0xa000ef77.mbg` and its sources use the latter name.
+#[test]
+fn the_header_stem_names_the_enum() {
+    let mif = MifFile::new(vec![MifIcon::bitmap("blackbox.bmp", 0, None)]);
+    let text = mif.mbg_text("puzzles_0xa000ef77.mbg");
+    assert!(text.contains("enum TMifPuzzles_0xa000ef77\r\n"), "{text}");
+    assert!(
+        text.contains("\tEMbmPuzzles_0xa000ef77Blackbox = 16384,\r\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("\tEMbmPuzzles_0xa000ef77LastElement\r\n"),
+        "{text}"
+    );
 }
 
 /// Experiment 64: two SVGs at `/c32` (no mask) still step by two, without `_mask` lines.

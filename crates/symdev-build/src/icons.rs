@@ -1,3 +1,7 @@
+mod container;
+
+pub use container::IconOutputs;
+
 use std::path::{Path, PathBuf};
 
 use symdev_core::{Artifact, Error, Project, Result};

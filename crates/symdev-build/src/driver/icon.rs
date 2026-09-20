@@ -28,11 +28,11 @@ impl GcceBuild {
         std::fs::write(&mif_path, mif.bytes()?)
             .map_err(|e| Error::Other(format!("write {}: {e}", mif_path.display())))?;
         let mbg_path = icon.mbg(build_dir);
-        let mif_name = mif_path
+        let mbg_name = mbg_path
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("icon.mif");
-        std::fs::write(&mbg_path, mif.mbg_text(mif_name))
+            .unwrap_or("icon.mbg");
+        std::fs::write(&mbg_path, mif.mbg_text(mbg_name))
             .map_err(|e| Error::Other(format!("write {}: {e}", mbg_path.display())))?;
         Ok(())
     }

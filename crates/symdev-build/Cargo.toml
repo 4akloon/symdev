@@ -12,6 +12,7 @@ symdev-mbm = { path = "../symdev-mbm" }
 symdev-mif = { path = "../symdev-mif" }
 symdev-rcomp = { path = "../symdev-rcomp" }
 symdev-elf2e32 = { path = "../symdev-elf2e32" }
+symdev-manifest = { path = "../symdev-manifest" }
 thiserror = "2"
 
 [dev-dependencies]

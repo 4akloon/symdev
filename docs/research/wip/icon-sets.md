@@ -56,3 +56,9 @@ All under Wine from the short cwd `/tmp/claude-1000/icon-sets-work/mif` with rel
 
 Implement: bld warning → symdev-mif depth/bitmap/mask-less mbg → manifest `[[icons]]` → build
 driver + package → acceptance loop → docs (backlog 64, gap table) → delete this file.
+
+- (after first acceptance build) The `.mbg` enum is named after the **header** stem, not the
+  `.mif` stem: golden `games.mif /Hpuzzles_0xa000ef77.mbg` → `enum TMifPuzzles_0xa000ef77`,
+  `EMbmPuzzles_0xa000ef77Blackbox`. svgb-mif-spec.md §7 said "mif stem" (all its examples had
+  equal stems); corrected in §7. `MifFile::mbg_text` now takes the header name.
+- `cargo test --workspace`, clippy, fmt: clean after the build-side wiring (before this fix).

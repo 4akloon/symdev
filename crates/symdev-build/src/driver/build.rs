@@ -6,7 +6,7 @@ use super::gcce_compat::GcceCompat;
 use super::module::Module;
 use super::source::resolve_source;
 use super::{GcceBuild, arg, io};
-use crate::icons::AppIcon;
+use crate::icons::{AppIcon, IconOutputs};
 use crate::mmp::MmpCapabilities;
 use crate::resources::{GeneratedCaseFold, ProjectExports, ProjectMmps, SdkIncludeCaseFold};
 
@@ -33,6 +33,10 @@ impl BuildBackend for GcceBuild {
             let icon = AppIcon::of(project, source, &self.tools.epocroot)?;
             self.compile_icon(&icon, &build_dir)?;
             artifacts.push(icon.artifact(&build_dir));
+        }
+        for container in &self.icons {
+            self.compile_icon_container(container, &project.root, &build_dir)?;
+            artifacts.extend(IconOutputs::of(container, &build_dir).artifacts());
         }
         for (mmp_dir, mmp) in &mmps.mmps {
             let name = mmp.name();

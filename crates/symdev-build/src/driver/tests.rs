@@ -4,6 +4,7 @@ use super::*;
 
 mod build;
 mod compile;
+mod container;
 mod dll;
 mod elf2e32_args;
 mod gcce_compat;
@@ -48,6 +49,7 @@ fn fake_at(epocroot: PathBuf) -> GcceBuild {
         uid3: 0xe79e4cf9,
         capabilities: Vec::new(),
         icon: None,
+        icons: Vec::new(),
     }
 }
 

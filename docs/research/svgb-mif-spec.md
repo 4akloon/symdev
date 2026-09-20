@@ -932,8 +932,10 @@ Naming rules, all verified:
   `UPPER.svg` → `Upper`; `bB_cc.svg` → `Bb_cc`; `9x.svg` → `9x`;
   `My.Icon.svg` → `My.icon` (only `.svg` is stripped, and the dot survives into
   the enumerator — the tool does not sanitise identifiers).
-* The enum is named `TMif` + the transformed **mif** stem.
-* Each icon contributes `EMbm` + the transformed mif stem + the transformed
+* The enum is named `TMif` + the transformed **header** stem — not the `.mif`'s:
+  `games.mif /Hpuzzles_0xa000ef77.mbg` gives `TMifPuzzles_0xa000ef77` (experiment
+  64; every earlier example had the two stems equal).
+* Each icon contributes `EMbm` + the transformed header stem + the transformed
   **source** stem.
 * Values start at **16384** and increase by one in source order.
 * An icon contributes a second enumerator, the same name with `_mask`

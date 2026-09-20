@@ -6,7 +6,8 @@ use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser};
 use symdev_build::{
-    AppIcon, AppTarget, BuildOutputs, Epocroot, FrozenExports, GcceBuild, SisPackage, Toolchain,
+    AppIcon, AppTarget, BuildOutputs, Epocroot, FrozenExports, GcceBuild, IconOutputs, SisPackage,
+    Toolchain,
 };
 use symdev_core::{Artifact, BuildBackend, Error, LocalEnv, PackageBackend, Project};
 
@@ -109,6 +110,7 @@ fn build_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
             uid3,
             capabilities: m.symbian.capabilities,
             icon: m.symbian.icon,
+            icons: m.icons,
         }
         .build(&Project {
             root: std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?,
@@ -204,6 +206,7 @@ fn package_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
         &project,
         &e32,
         icon.as_deref(),
+        &m.icons,
         &m.install,
         &epocroot,
     )?)?;
@@ -256,13 +259,14 @@ fn run_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// The EXE, the resources the project's MMPs compile (`BuildOutputs`), the icon and the
-/// manifest's `[[install]]` files; a project without `bld.inf` packages its EXE and its
-/// `[[install]]` files alone.
+/// The EXE, the resources the project's MMPs compile (`BuildOutputs`), the icon, the
+/// `[[icons]]` containers and the manifest's `[[install]]` files; a project without
+/// `bld.inf` packages its EXE, its containers and its `[[install]]` files alone.
 fn package_artifacts(
     project: &Project,
     e32: &Path,
     icon: Option<&Path>,
+    icons: &[symdev_manifest::IconContainer],
     install: &[symdev_manifest::InstallFile],
     epocroot: &Path,
 ) -> Result<Vec<Artifact>, Error> {
@@ -279,6 +283,9 @@ fn package_artifacts(
     } else {
         vec![Artifact::exe(cwd.join(e32))]
     };
+    for container in icons {
+        outputs.extend(IconOutputs::of(container, &cwd.join("build")).artifacts());
+    }
     for file in install {
         outputs.push(Artifact::installed(
             cwd.join(&file.source),
