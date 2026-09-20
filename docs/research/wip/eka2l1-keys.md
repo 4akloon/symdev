@@ -11,11 +11,27 @@ make a reproducible way for an automated test to press a key and observe the eff
   Enter→167, arrows→14..17, digits, `*`, `#`), and `config.yml` has
   `current-keybind-profile: default`. So "a device with no bindings" is not the cause.
 
+- **The session is GNOME on Wayland**: `Xwayland` (pid 4588) + `mutter-x11-frames`,
+  `_NET_SUPPORTING_WM_CHECK` names "GNOME Shell". EKA2L1 is an X11 client under Xwayland.
+- **XTEST is the reason keys never arrived.** `XTestQueryExtension` says the extension is
+  present (2.2), `XSetInputFocus` on the emulator toplevel sticks (`XGetInputFocus` agrees
+  before and after each key), and Qt even paints a caret in its own Search box — yet
+  `XTestFakeKeyEvent` produces *nothing*, not in the guest and not in the emulator's own
+  Qt widgets. Under Xwayland synthetic XTEST input is handed to the compositor, and mutter
+  delivers it to whatever surface has *Wayland* keyboard focus; an X client that merely
+  owns the X focus never sees it. So the previous session's conclusion ("not the shim")
+  was right, and it was never EKA2L1's fault either.
+- **`XSendEvent` of a KeyPress/KeyRelease straight at the emulator's toplevel X window
+  works.** Typing `x`,`y`,`z` that way put "xyz" in EKA2L1's Search box with the window
+  neither raised nor activated. It bypasses the compositor, and Qt's xcb plugin dispatches
+  `send_event` key events like real ones.
+
 ## Decisions
 
 ## Dead ends
 
 ## Next step
 
-Read the Qt input path (`src/emu/qt/src/displaywidget.cpp` `keyPressEvent`,
-`mainwindow.cpp:1719`, `thread.cpp:144`) and find where a key is dropped.
+Launch an app in the emulator and check whether an `XSendEvent` key reaches the *guest*
+(display widget focus, `on_ui_window_key_press`, window server). Test with F2, the stock
+Exit softkey (`EStdKeyDevice1`).
