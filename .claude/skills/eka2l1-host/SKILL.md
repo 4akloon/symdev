@@ -52,6 +52,38 @@ git -C ~/src/EKA2L1 diff origin/master symdev-fixes > ~/src/EKA2L1-econs-heap.pa
 
 Verification loop that works here: launch, `sleep ~25`, screenshot the window that belongs to *your* PID, then close it like a user and check the process exited. Helper scripts are scratch, not in git — rebuild them under the session scratchpad when needed: a screenshot script that resolves the X11 window via `xwininfo -root -tree` plus `xprop _NET_WM_PID` (filter on `GRAB_PID`, capture with `XGetImage`), and a close script that sends `WM_DELETE_WINDOW` to the windows of `CLOSE_PID`.
 
+There is no ImageMagick here. Read the `XImage` with ctypes and hand it to PIL:
+`Image.frombytes("RGB", (w, h), raw, "raw", "BGRX", bytes_per_line)`.
+
+## Pressing a key
+
+**XTEST does nothing on this host and says nothing about it.** The session is GNOME on
+Wayland; EKA2L1 runs under Xwayland, and a synthetic XTEST event is routed by the
+compositor to the Wayland-focused surface, so it never reaches the emulator — not the
+guest, not even EKA2L1's own Qt widgets. `XGetInputFocus` will happily name the emulator
+window the whole time. `xdotool key` without `--window` is XTEST, so it is dead too.
+
+What works: **`XSendEvent` a `KeyPress` then a `KeyRelease` straight to the emulator's
+toplevel X window** (the largest window with your `_NET_WM_PID`, not one of its
+`WA_NativeWindow` children). Qt dispatches a `send_event` key like a real one, and it runs
+the whole path into the guest.
+
+```
+launch (symdev run, or --run 0x<uid3>)
+  -> poll build/eka2l1.log for "Status pane redrawed", then a few seconds more
+  -> toplevel = largest window whose xprop _NET_WM_PID is your pid
+  -> _NET_ACTIVE_WINDOW to the root + XSetInputFocus on it
+  -> XSendEvent KeyPress (type 2) then KeyRelease (type 3), ~80 ms apart,
+     send_event=1, same_screen=1, rising time, keycode from XKeysymToKeycode
+  -> XGetImage before and after, diff the PNGs
+```
+
+Verified end to end on a clean build: an Avkon application's `OfferKeyEventL` counted
+`Down Left Left` and drew `keys 3 code f807 scan 0e`; ROM Notes opens its Options menu on
+F1. **Softkeys (F1/F2 -> `EStdKeyDevice0`/`1`) are shipped but do nothing in our own
+applications** — test with arrows, selection and digits. Full write-up and the measured
+evidence: `docs/research/eka2l1-input.md`.
+
 ## Killing
 
 EKA2L1 ignores SIGTERM. Stop only the PIDs you started, with `kill -9`. Never `pkill`/`killall` by name, never `wineserver -k`: the user may have their own emulator or Wine programs open. When matching processes with `pgrep -f`, anchor the pattern (`pgrep -f '^winedbg'`) — an unanchored pattern also matches your own shell and kills it.
