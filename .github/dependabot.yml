@@ -1,0 +1,31 @@
+# Keeps the Rust dependencies and the CI actions current; nothing here touches
+# the SDK toolchain, which stays user-supplied and outside the repo.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Kyiv
+    open-pull-requests-limit: 5
+    # One PR for the routine bumps, separate PRs for majors that need a look.
+    groups:
+      cargo-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Kyiv
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
