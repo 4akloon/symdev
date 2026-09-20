@@ -11,6 +11,8 @@ pub struct Module {
     pub uid3: u32,
     /// `EPOCALLOWDLLDATA`: writable static data in a DLL (`--dlldata`).
     pub allow_data: bool,
+    /// `SECUREID`, when the `.mmp` set one; it defaults to UID3 (§10.2).
+    pub secureid: Option<u32>,
 }
 
 impl Module {
@@ -29,6 +31,7 @@ impl Module {
                 uid2,
                 uid3,
                 allow_data: mmp.epocallowdlldata,
+                secureid: mmp.secureid,
             });
         }
         Ok(Self {
@@ -36,6 +39,7 @@ impl Module {
             uid2: 0,
             uid3: manifest_uid3,
             allow_data: false,
+            secureid: mmp.secureid,
         })
     }
 

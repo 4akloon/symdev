@@ -46,6 +46,20 @@ impl Capabilities {
         Ok(Self { bits })
     }
 
+    /// The canonical spelling of a name written in any case: a `.mmp` matches
+    /// capability names case-insensitively and stores one canonical spelling.
+    pub fn canonical(name: &str) -> Option<&'static str> {
+        Self::BITS
+            .iter()
+            .find(|(n, _)| n.eq_ignore_ascii_case(name))
+            .map(|(n, _)| *n)
+    }
+
+    /// Every name, in bit order: what `CAPABILITY ALL` stands for.
+    pub fn all() -> Vec<&'static str> {
+        Self::BITS.iter().map(|(n, _)| *n).collect()
+    }
+
     pub fn bits(&self) -> u64 {
         self.bits
     }

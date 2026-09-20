@@ -6,6 +6,12 @@ use symdev_core::{Error, Result};
 use crate::MmpResource;
 
 impl MmpResource {
+    /// The single language this resource is built for: its own `LANG`, else the default
+    /// code `SC` (§6.3). One `.rss` per language is not implemented yet.
+    pub fn language(&self) -> &str {
+        self.lang.first().map(String::as_str).unwrap_or("SC")
+    }
+
     pub fn stem(&self) -> Result<&str> {
         Path::new(&self.file)
             .file_stem()

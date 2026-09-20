@@ -86,3 +86,30 @@ fn compile_args_match_recorded_experiment_5() {
             .any(|a| a.contains("-fPIC") || a.contains("-fPIE"))
     );
 }
+
+/// §8.2 item 6 and §8.4 position 12: `MACRO` joins the `-D` list in source order and
+/// `OPTION GCCE` lands after the architecture flags, before the instruction set.
+#[test]
+fn macro_and_option_gcce_reach_the_command_line() {
+    let d = fake();
+    let mmp = crate::Mmp::parse(
+        "TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\nMACRO COMBINED\nMACRO NO_TGZ\nOPTION GCCE -O3\n",
+    )
+    .unwrap();
+    let args = d
+        .compile_args_for(
+            &d.exe_module(),
+            &CompileFlags::of(&mmp),
+            Path::new("/proj"),
+            &CompileIncludes::default(),
+            Path::new("/proj/a.cpp"),
+            Path::new("/proj/build/a.o"),
+        )
+        .unwrap();
+    let at = |v: &str| args.iter().position(|a| a == v).unwrap();
+    assert!(at("-mapcs") < at("-O3"));
+    assert!(at("-O3") < at("-mthumb"));
+    assert!(at("-D__MARM_ARMV5__") < at("-DCOMBINED"));
+    assert!(at("-DCOMBINED") < at("-DNO_TGZ"));
+    assert!(at("-DNO_TGZ") < at("-D__SUPPORT_CPP_EXCEPTIONS__"));
+}

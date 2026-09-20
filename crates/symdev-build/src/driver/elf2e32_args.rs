@@ -30,9 +30,17 @@ impl GcceBuild {
             None => "elf2e32".into(),
         };
         let mut args = vec![argv0];
+        // An EXE keeps the recorded experiment-6 argv, which carries no `--sid`; the
+        // image's secure id then defaults to UID3 as §10.2 says. An explicit `SECUREID`
+        // is passed through, and the native post-linker refuses one that is not UID3.
+        if !module.dll
+            && let Some(sid) = module.secureid
+        {
+            args.push(format!("--sid=0x{sid:08x}"));
+        }
         if module.dll {
             args.extend([
-                format!("--sid=0x{:08x}", module.uid3),
+                format!("--sid=0x{:08x}", module.secureid.unwrap_or(module.uid3)),
                 "--uid1=0x10000079".into(),
                 format!("--uid2=0x{:08x}", module.uid2),
             ]);

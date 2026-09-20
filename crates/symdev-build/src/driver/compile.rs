@@ -6,6 +6,7 @@ use symdev_core::Result;
 use super::language::SourceLanguage;
 use super::module::Module;
 use super::{GcceBuild, arg};
+use crate::Mmp;
 
 /// Extra `-I` directories: `user` after the source directory (build dir for `.rsg`,
 /// `USERINCLUDE`), `system` after `epoc32/include` (`SYSTEMINCLUDE`, case-fold overlay).
@@ -17,6 +18,29 @@ pub struct CompileIncludes {
     pub prefix: Vec<PathBuf>,
 }
 
+/// What the `.mmp` adds to the compiler command line beside its includes: the `MACRO`
+/// arguments and the `OPTION GCCE` text (mmp-frontend-spec.md §8.2 item 6 and §8.4
+/// position 12).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CompileFlags {
+    pub macros: Vec<String>,
+    pub option: Vec<String>,
+}
+
+impl CompileFlags {
+    pub fn of(mmp: &Mmp) -> Self {
+        Self {
+            macros: mmp.macros.clone(),
+            option: mmp
+                .option("GCCE")
+                .unwrap_or_default()
+                .split_whitespace()
+                .map(str::to_string)
+                .collect(),
+        }
+    }
+}
+
 impl GcceBuild {
     pub fn compile_args(
         &self,
@@ -25,13 +49,21 @@ impl GcceBuild {
         source: &Path,
         obj: &Path,
     ) -> Result<Vec<String>> {
-        self.compile_args_for(&self.exe_module(), source_dir, includes, source, obj)
+        self.compile_args_for(
+            &self.exe_module(),
+            &CompileFlags::default(),
+            source_dir,
+            includes,
+            source,
+            obj,
+        )
     }
 
     /// `-D__EXE__` or `-D__DLL__` by module (SDK `cl_bpabi.pm`).
     pub fn compile_args_for(
         &self,
         module: &Module,
+        flags: &CompileFlags,
         source_dir: &Path,
         includes: &CompileIncludes,
         source: &Path,
@@ -45,10 +77,16 @@ impl GcceBuild {
             "-fexceptions".into(),
             "-march=armv5t".into(),
             "-mapcs".into(),
+        ];
+        // §8.4 position 12: after the architecture flags, before the instruction set and
+        // the floating-point option, so those still win over an `OPTION GCCE` that
+        // contradicts them.
+        args.extend(flags.option.iter().cloned());
+        args.extend([
             "-mthumb-interwork".into(),
             "-mthumb".into(),
             "-msoft-float".into(),
-        ];
+        ]);
         // C++ keeps the leniency flags the GCC-12-era SDK headers need (experiment 51);
         // `.c` goes through the C front end instead (experiment 59).
         args.extend(language.args());
@@ -81,6 +119,10 @@ impl GcceBuild {
             "-D__SERIES60_3X__".into(),
             "-D__EABI__".into(),
             "-D__MARM_ARMV5__".into(),
+        ]);
+        // §8.2 item 6: the `.mmp`'s own macros, verbatim and in source order.
+        args.extend(flags.macros.iter().map(|m| format!("-D{m}")));
+        args.extend([
             "-D__SUPPORT_CPP_EXCEPTIONS__".into(),
             "-I".into(),
             arg(source_dir),

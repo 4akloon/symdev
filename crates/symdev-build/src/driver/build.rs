@@ -1,12 +1,13 @@
 //! `impl BuildBackend for GcceBuild`: the whole per-MMP build pipeline.
 use symdev_core::{Artifact, BuildBackend, Error, Project, RemotePath, Result};
 
-use super::compile::CompileIncludes;
+use super::compile::{CompileFlags, CompileIncludes};
 use super::gcce_compat::GcceCompat;
 use super::module::Module;
 use super::source::resolve_source;
 use super::{GcceBuild, arg, io};
 use crate::icons::AppIcon;
+use crate::mmp::MmpCapabilities;
 use crate::resources::{GeneratedCaseFold, ProjectMmps, SdkIncludeCaseFold};
 
 impl BuildBackend for GcceBuild {
@@ -30,6 +31,12 @@ impl BuildBackend for GcceBuild {
         for (mmp_dir, mmp) in &mmps.mmps {
             let name = mmp.name();
             let module = Module::of(mmp, self.uid3)?;
+            let flags = CompileFlags::of(mmp);
+            let caps = MmpCapabilities::of(mmp)?;
+            caps.check(&self.capabilities, &mmp.target)?;
+            for warning in mmp.warnings.iter().chain(caps.warnings.iter()) {
+                eprintln!("warning: {warning}");
+            }
             // Resources first: sources include the generated `.rsg` headers.
             for res in &mmp.resource {
                 self.compile_resource(res, mmp_dir, mmp, &build_dir)?;
@@ -80,7 +87,7 @@ impl BuildBackend for GcceBuild {
                     .unwrap_or(src.as_str());
                 let obj = build_dir.join(format!("{stem}.o"));
                 let compile =
-                    self.compile_args_for(&module, source_dir, &includes, source, &obj)?;
+                    self.compile_args_for(&module, &flags, source_dir, &includes, source, &obj)?;
                 self.run_tool(&compile, &cwd)?;
                 objs.push(obj);
             }

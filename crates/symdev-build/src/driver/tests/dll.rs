@@ -53,6 +53,7 @@ fn dll_module_uses_the_sdk_dll_recipe() {
     let compile = d
         .compile_args_for(
             &module,
+            &CompileFlags::default(),
             Path::new("/p"),
             &CompileIncludes::default(),
             Path::new("/p/m.cpp"),

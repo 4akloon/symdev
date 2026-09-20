@@ -11,10 +11,11 @@ mod toolchain;
 
 pub use bld::ParseError;
 pub use driver::GcceBuild;
-pub use driver::{CompileIncludes, GcceCompat, Module, SourceLanguage};
+pub use driver::{CompileFlags, CompileIncludes, GcceCompat, Module, SourceLanguage};
 pub use exports::{DllExports, FrozenExports};
 pub use icons::AppIcon;
-pub use model::{BldInf, Mmp, MmpResource};
+pub use mmp::MmpCapabilities;
+pub use model::{BldInf, Mmp, MmpOption, MmpResource};
 pub use package::SisPackage;
 pub use project::{HostPath, ProjectCpp, ProjectLine, ProjectPass};
 pub use resources::{AppTarget, BuildOutputs, GeneratedCaseFold, MmpPath, SdkIncludeCaseFold};

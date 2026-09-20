@@ -17,7 +17,7 @@ mod resource;
 mod source;
 mod tool;
 
-pub use compile::CompileIncludes;
+pub use compile::{CompileFlags, CompileIncludes};
 pub use gcce_compat::GcceCompat;
 pub use language::SourceLanguage;
 pub use module::Module;
@@ -50,6 +50,7 @@ impl GcceBuild {
             uid2: 0,
             uid3: self.uid3,
             allow_data: false,
+            secureid: None,
         }
     }
 }

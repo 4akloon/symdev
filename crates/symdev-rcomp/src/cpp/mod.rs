@@ -50,9 +50,12 @@ impl CPreprocessor {
         }
     }
 
-    /// The `.rss` recipe: `_UNICODE` predefined, nothing else.
-    pub fn for_rss(include_dirs: &[PathBuf]) -> Self {
-        Self::new(include_dirs, &["_UNICODE".to_string()])
+    /// The `.rss` recipe: `_UNICODE` (the `-u` flag), then the `.mmp`'s own `MACRO`
+    /// list and `LANGUAGE_<code>` (mmp-frontend-spec.md §6.4).
+    pub fn for_rss(include_dirs: &[PathBuf], defines: &[String]) -> Self {
+        let mut all = vec!["_UNICODE".to_string()];
+        all.extend(defines.iter().cloned());
+        Self::new(include_dirs, &all)
     }
 
     /// `cpp -include <header>`: read before the source file itself.

@@ -91,3 +91,82 @@ fn a_line_marker_names_the_file_in_the_error() {
         .to_string();
     assert!(err.contains("gui.mmp:3"), "{err}");
 }
+
+#[test]
+fn macro_and_option_reach_the_model_in_order() {
+    let m = Mmp::parse(
+        "TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\n\
+         MACRO COMBINED\nMACRO STYLUS_BASED NO_TGZ=1\n\
+         OPTION GCCE -O3\nOPTION gcce -fno-strict-aliasing\nOPTION ARMCC --diag_suppress 1234\n",
+    )
+    .unwrap();
+    assert_eq!(m.macros, ["COMBINED", "STYLUS_BASED", "NO_TGZ=1"]);
+    assert_eq!(m.option("GCCE"), Some("-O3 -fno-strict-aliasing"));
+    assert_eq!(m.option("ARMCC"), Some("--diag_suppress 1234"));
+    assert_eq!(m.option("WINSCW"), None);
+}
+
+#[test]
+fn secureid_and_a_zero_vendorid_parse_and_a_real_one_is_refused() {
+    let m =
+        Mmp::parse("TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\nSECUREID 0xE7351C20\nVENDORID 0\n")
+            .unwrap();
+    assert_eq!(m.secureid, Some(0xe735_1c20));
+    assert_eq!(m.vendorid, Some(0));
+    let err = Mmp::parse("TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\nVENDORID 0x70000001\n")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("--vid"), "{err}");
+}
+
+#[test]
+fn lang_is_recorded_and_a_dead_directive_only_warns() {
+    let m = Mmp::parse(
+        "TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\nLANG SC 01\n\
+         DEBUGGABLE_UDEBONLY\nEPOCSTACKSIZE 0x14000\n",
+    )
+    .unwrap();
+    assert_eq!(m.lang, ["SC", "01"]);
+    assert_eq!(m.warnings.len(), 2);
+    assert!(
+        m.warnings[0].contains("DEBUGGABLE_UDEBONLY"),
+        "{:?}",
+        m.warnings
+    );
+}
+
+#[test]
+fn an_assp_directive_and_the_flat_resource_form_are_refused() {
+    for line in [
+        "ASSPLIBRARY x.lib",
+        "RESOURCE gui.rss",
+        "AIF a b c",
+        "SYSTEMRESOURCE x.rss",
+    ] {
+        let text = format!("TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\n{line}\n");
+        assert!(Mmp::parse(&text).is_err(), "{line} was accepted");
+    }
+}
+
+#[test]
+fn capability_names_are_case_insensitive_and_all_expands() {
+    use crate::MmpCapabilities;
+    let m = Mmp::parse(
+        "TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\nCAPABILITY readuserdata NetworkServices\n",
+    )
+    .unwrap();
+    let caps = MmpCapabilities::of(&m).unwrap();
+    assert_eq!(caps.names(), ["NetworkServices", "ReadUserData"]);
+    caps.check(&["ReadUserData".into(), "NetworkServices".into()], "x.exe")
+        .unwrap();
+    assert!(caps.check(&["ReadUserData".into()], "x.exe").is_err());
+
+    let all =
+        Mmp::parse("TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\nCAPABILITY ALL -TCB\n").unwrap();
+    let all = MmpCapabilities::of(&all).unwrap();
+    assert_eq!(all.names().len(), 19);
+    assert!(!all.names().contains(&"TCB"));
+
+    let none = Mmp::parse("TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\nCAPABILITY NONE\n").unwrap();
+    assert!(MmpCapabilities::of(&none).unwrap().names().is_empty());
+}
