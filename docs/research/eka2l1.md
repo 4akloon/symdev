@@ -49,3 +49,12 @@ Experiment 10 in the backlog covers EKA2L1 install + launch with user ROM and ob
 - Runbook chapter: [m0-bare-metal-runbook.md](m0-bare-metal-runbook.md) §11
 - Licensing: [licensing.md](licensing.md)
 - Spec: `docs/superpowers/specs/2026-09-16-symdev-m0-north-star-design.md` §12
+
+## "Corrupted graphics command list! Emulation halt." is a clean shutdown (2026-09-20)
+
+Seen at the end of every `symdev run` log. It is not corruption and not evidence that the
+app failed: `ogl_graphics_driver::abort()` calls `list_queue.abort()` and only then sets
+`should_stop`, so the render thread — parked in `list_queue.pop()` — gets an empty optional
+while the flag is still false, takes the error branch of `run()` and logs it. Every normal
+exit produces the line. A one-line upstream fix (test the stop flag before logging) would
+remove a permanently misleading ERROR; not yet submitted.
