@@ -19,7 +19,14 @@ EKA2L1 is GPL-3.0 and always a separate process: never copy its source into symd
 | Emulator data (installed apps) | `~/.local/share/EKA2L1/data/drives/e/` |
 | Notes | `docs/research/eka2l1-bringup.md`, `docs/research/eka2l1.md` |
 
-Our fork for pull requests: `4akloon/EKA2L1`; upstream PRs #724–#728 carry the fixes worth upstreaming (0002 and 0003 in the patch directory are local-only, they are not bug fixes).
+Our fork for pull requests: `4akloon/EKA2L1`. Upstream PRs #724–#729 carry the fixes worth
+upstreaming (0002 and 0003 in the patch directory are local-only, they are not bug fixes).
+**#725 is merged**, so `origin/master` has moved past the base `symdev-fixes` was cut from.
+
+Branch a PR off `origin/master`, never off `symdev-fixes`: a build from a bare upstream
+branch lacks our unmerged fixes, and `symdev run` then fails with "Installation of SIS
+failed" because `--install` with `--run` is still only in PR #726. Build and test from
+`symdev-fixes` with the new commit cherry-picked onto it.
 
 ## Rebuild and test
 
@@ -30,6 +37,7 @@ ninja -C ~/src/EKA2L1-build eka2l1_qt ekatests
 ```
 
 Run `ekatests` from `~/src/EKA2L1-build/src/tests`. The build rewrites `src/emu/qt/translations/*.ts` — `git checkout` them, never commit them.
+`git add -A` before a commit sweeps them in; stage the source file by name instead.
 
 After changing a fix: commit it on `symdev-fixes` (one fix per commit), then
 
