@@ -16,6 +16,12 @@ Reply in the user's language (usually Ukrainian).
 
 **Finish the previous task.** A new message does not close the last one: record the unfinished work, do what was asked, then come back.
 
+**Write findings to disk as you go.** Agents die on session limits; whatever was only in
+context is gone. From the first tool call keep `docs/research/wip/<task>.md` (facts, decisions,
+dead ends, next step), update it after every finding, commit on the work branch after every
+completed step. On start, read that file and `git log` first and resume — never start over.
+The autosave hook snapshots every edit under `~/worktrees/symdev/` to `refs/autosave/<branch>`.
+
 **Ask only about decisions that are the user's** — conflicting requirements, a `sudo` password, anything outward-facing. Otherwise keep going.
 
 Use the `superpowers:*` skills actively: brainstorming before design, test-driven-development while implementing, requesting-code-review before merging, writing-plans for multi-step work.

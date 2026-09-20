@@ -1,5 +1,11 @@
 # “Full-fledged Rust SDK”: three products, one phrase
 
+> **Status 2026-09-20:** the owner decided to start product **B**. The validated design and
+> the experiment order are in
+> [2026-09-20-rust-sdk-design.md](../superpowers/specs/2026-09-20-rust-sdk-design.md); the
+> "Do not implement B" verdicts below are history. The Hardware-M0 precondition it names is
+> still unmet and is recorded there as such.
+
 Investigation only. No implementation. Does **not** reopen Wave 0 locks.
 
 Cites: [2026-09-16-symdev-m0-north-star-design.md](../superpowers/specs/2026-09-16-symdev-m0-north-star-design.md); [legacy-sdk-leftover.md](legacy-sdk-leftover.md); [ported-tools-crates.md](ported-tools-crates.md); [pipeline-and-tools.md](pipeline-and-tools.md); [licensing.md](licensing.md); [experiment-backlog.md](experiment-backlog.md) experiments 5–6, 9–11; `GcceBuild` (`crates/symdev-build/src/driver.rs`); `LanguageBackend` (`crates/symdev-core/src/traits.rs`); hello template (`crates/symdev-cli/templates/hello.cpp`). Master Development Prompt (2026-09-16 Telegram; **not in-tree**; north-star §1: not an authority).
