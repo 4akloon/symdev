@@ -38,7 +38,7 @@ impl SdkIncludeCaseFold {
                     .entry(rel.to_lowercase())
                     .or_insert_with(|| path.clone());
                 if let Ok(bytes) = std::fs::read(&path) {
-                    Self::include_names(&bytes, &mut names);
+                    include_names(&bytes, &mut names);
                 }
             }
         }
@@ -64,31 +64,6 @@ impl SdkIncludeCaseFold {
         Ok(out.to_path_buf())
     }
 
-    fn include_names(bytes: &[u8], names: &mut BTreeSet<String>) {
-        for line in bytes.split(|&b| b == b'\n') {
-            let line = String::from_utf8_lossy(line);
-            let t = line.trim_start();
-            let Some(rest) = t.strip_prefix('#') else {
-                continue;
-            };
-            let Some(rest) = rest.trim_start().strip_prefix("include") else {
-                continue;
-            };
-            let rest = rest.trim_start();
-            let close = match rest.chars().next() {
-                Some('<') => '>',
-                Some('"') => '"',
-                _ => continue,
-            };
-            if let Some(end) = rest[1..].find(close) {
-                let name = rest[1..1 + end].replace('\\', "/");
-                if !name.is_empty() && !name.starts_with('/') && !name.contains("..") {
-                    names.insert(name);
-                }
-            }
-        }
-    }
-
     #[cfg(unix)]
     fn symlink(real: &Path, link: &Path) -> Result<()> {
         std::os::unix::fs::symlink(real, link)
@@ -98,5 +73,31 @@ impl SdkIncludeCaseFold {
     #[cfg(not(unix))]
     fn symlink(_real: &Path, _link: &Path) -> Result<()> {
         Ok(())
+    }
+}
+
+/// The names the `#include` lines in `bytes` ask for, with `\` normalised to `/`.
+pub(super) fn include_names(bytes: &[u8], names: &mut BTreeSet<String>) {
+    for line in bytes.split(|&b| b == b'\n') {
+        let line = String::from_utf8_lossy(line);
+        let t = line.trim_start();
+        let Some(rest) = t.strip_prefix('#') else {
+            continue;
+        };
+        let Some(rest) = rest.trim_start().strip_prefix("include") else {
+            continue;
+        };
+        let rest = rest.trim_start();
+        let close = match rest.chars().next() {
+            Some('<') => '>',
+            Some('"') => '"',
+            _ => continue,
+        };
+        if let Some(end) = rest[1..].find(close) {
+            let name = rest[1..1 + end].replace('\\', "/");
+            if !name.is_empty() && !name.starts_with('/') && !name.contains("..") {
+                names.insert(name);
+            }
+        }
     }
 }

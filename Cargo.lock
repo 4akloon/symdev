@@ -928,6 +928,7 @@ version = "0.1.0"
 dependencies = [
  "symdev-core",
  "symdev-uidcrc",
+ "tempfile",
 ]
 
 [[package]]

@@ -11,3 +11,6 @@ path = "src/bin/elf2e32.rs"
 [dependencies]
 symdev-core = { path = "../symdev-core" }
 symdev-uidcrc = { path = "../symdev-uidcrc" }
+
+[dev-dependencies]
+tempfile = "3"

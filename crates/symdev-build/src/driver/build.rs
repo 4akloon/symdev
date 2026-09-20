@@ -6,7 +6,7 @@ use super::module::Module;
 use super::source::resolve_source;
 use super::{GcceBuild, arg, io};
 use crate::icons::AppIcon;
-use crate::resources::{ProjectMmps, SdkIncludeCaseFold};
+use crate::resources::{GeneratedCaseFold, ProjectMmps, SdkIncludeCaseFold};
 
 impl BuildBackend for GcceBuild {
     fn build(&self, project: &Project) -> Result<Vec<Artifact>> {
@@ -39,19 +39,37 @@ impl BuildBackend for GcceBuild {
             includes.user.extend(
                 mmp.userinclude
                     .iter()
-                    .map(|d| Self::mmp_dir_path(mmp_dir, d)),
+                    .map(|d| self.mmp_dir_path(mmp_dir, d)),
             );
             includes.system.extend(
                 mmp.systeminclude
                     .iter()
-                    .map(|d| Self::mmp_dir_path(mmp_dir, d)),
+                    .map(|d| self.mmp_dir_path(mmp_dir, d)),
             );
             includes.system.push(casefold.clone());
 
-            let mut objs = Vec::new();
+            let mut sources = Vec::new();
             for (i, src) in mmp.source.iter().enumerate() {
                 let sp = mmp.source_sourcepath.get(i).cloned().flatten();
-                let source = resolve_source(sp.as_deref(), mmp_dir, &project.root, src)?;
+                sources.push(resolve_source(sp.as_deref(), mmp_dir, &project.root, src)?);
+            }
+            // The generated `.rsg`/`.mbg` carry the resource's own spelling; the sources
+            // may include them in another case (experiment: third-party-app-puzzles).
+            let mut askers = sources.clone();
+            askers.extend(
+                mmp.userinclude
+                    .iter()
+                    .map(|d| self.mmp_dir_path(mmp_dir, d)),
+            );
+            includes.user.push(GeneratedCaseFold::ensure(
+                &build_dir,
+                &askers,
+                &build_dir.join("generated-casefold"),
+            )?);
+
+            let mut objs = Vec::new();
+            for (i, source) in sources.iter().enumerate() {
+                let src = &mmp.source[i];
                 let source_dir = source.parent().unwrap_or(mmp_dir);
                 let stem = source
                     .file_stem()
@@ -59,7 +77,7 @@ impl BuildBackend for GcceBuild {
                     .unwrap_or(src.as_str());
                 let obj = build_dir.join(format!("{stem}.o"));
                 self.run_tool(
-                    &self.compile_args_for(&module, source_dir, &includes, &source, &obj),
+                    &self.compile_args_for(&module, source_dir, &includes, source, &obj),
                     &cwd,
                 )?;
                 objs.push(obj);

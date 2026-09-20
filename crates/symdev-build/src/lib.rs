@@ -15,5 +15,5 @@ pub use exports::{DllExports, FrozenExports};
 pub use icons::AppIcon;
 pub use model::{BldInf, Mmp, MmpResource};
 pub use package::SisPackage;
-pub use resources::{AppTarget, BuildOutputs, SdkIncludeCaseFold};
+pub use resources::{AppTarget, BuildOutputs, GeneratedCaseFold, MmpPath, SdkIncludeCaseFold};
 pub use toolchain::Toolchain;

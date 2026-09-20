@@ -222,16 +222,8 @@ impl Elf2E32 {
         E32Exports::from_elf(elf, frozen.as_ref()).map(Some)
     }
 
-    /// `--libpath` is a `;`-separated search list (`elf2e32 --help`); first hit wins.
     fn find_dso(&self, dso: &str) -> Result<PathBuf> {
-        let list = self.libpath.to_string_lossy().into_owned();
-        for dir in list.split(';').filter(|d| !d.is_empty()) {
-            let path = Path::new(dir).join(dso);
-            if path.is_file() {
-                return Ok(path);
-            }
-        }
-        Err(Error::Other(format!("{dso} not found in --libpath {list}")))
+        crate::LibPath::parse(&self.libpath.to_string_lossy()).find(dso)
     }
 
     fn read_elf(&self) -> Result<ElfImage> {

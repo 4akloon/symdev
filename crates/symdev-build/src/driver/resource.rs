@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use symdev_core::{Error, Result};
 
 use super::GcceBuild;
+use crate::resources::MmpPath;
 use crate::{Mmp, MmpResource};
 
 impl GcceBuild {
@@ -33,13 +34,13 @@ impl GcceBuild {
         includes.extend(
             mmp.userinclude
                 .iter()
-                .map(|d| Self::mmp_dir_path(mmp_dir, d)),
+                .map(|d| self.mmp_dir_path(mmp_dir, d)),
         );
         includes.push(epoc.join("include"));
         includes.extend(
             mmp.systeminclude
                 .iter()
-                .map(|d| Self::mmp_dir_path(mmp_dir, d)),
+                .map(|d| self.mmp_dir_path(mmp_dir, d)),
         );
         let rpp = symdev_rcomp::RssPreprocessor::new(&includes).run(&rss)?;
         let compiled = symdev_rcomp::Rcomp::compile(&rpp, &rss.display().to_string())?;
@@ -54,13 +55,8 @@ impl GcceBuild {
         Ok(())
     }
 
-    /// MMP include directory (`..\\inc` style) relative to the MMP.
-    pub(super) fn mmp_dir_path(mmp_dir: &Path, dir: &str) -> PathBuf {
-        let dir = dir.replace('\\', "/");
-        if Path::new(&dir).is_absolute() {
-            PathBuf::from(dir)
-        } else {
-            mmp_dir.join(dir)
-        }
+    /// An MMP include directory, resolved against the MMP or the SDK root (`MmpPath`).
+    pub(super) fn mmp_dir_path(&self, mmp_dir: &Path, dir: &str) -> PathBuf {
+        MmpPath::resolve(mmp_dir, &self.tools.epocroot, dir)
     }
 }
