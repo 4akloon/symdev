@@ -93,9 +93,15 @@ plus one `symdev.toml`, no edit inside the project.
 
 | # | Status | Where |
 |---|---|---|
+| 1 | closed 2026-09-20 | `ProjectCpp`: both files go through the native C preprocessor, so comments and `#ifdef` behave |
+| 2 | closed 2026-09-20 | `ProjectCpp`: the SDK's macro set and variant header; a missing `platform_paths.hrh` says what to write instead |
+| 3 | closed 2026-09-20 | `MACRO`, `OPTION`, `SECUREID`, `LANG` and `CAPABILITY` are honoured; the rest of the vocabulary is split into ignored-with-a-warning and refused-by-name |
+| 4 | closed 2026-09-20 | `MmpResource`: `TARGET` inside the block names the `.rsc` and the `.rsg`, and the language code picks the extension |
+| 5 | closed 2026-09-20 | `BldEntry`: `gnumakefile` / `makefile` / `nmakefile` and `START EXTENSION` are refused by name |
 | 6 | closed 2026-09-20 | `MmpPath`: a path that starts at the root resolves against `SYMDEV_EPOCROOT` |
 | 9 | closed 2026-09-20 | `LibPath`: exact DSO name first, then one differing only in case |
 | 10 | closed 2026-09-20 | `GeneratedCaseFold`: links the spellings the project's sources ask for |
 | 11 | closed 2026-09-20 | `AppTarget`: the packaged binary and the registration resource follow the MMP `TARGET` |
 | 12 | closed 2026-09-20 | manifest `[[install]]`; a packaged file no longer has to sit next to the EXE |
-| 14 | closed 2026-09-20 | `symdev-mbm` (experiment 58), byte-equal to `bmconv`; not yet reachable from a project |
+| 13 | half closed 2026-09-20 | `START BITMAP` builds the `.mbm`/`.mbg` pair and installs it anywhere `TARGETPATH` says; the second `.mif` and the icon model itself are still `icons.rs`/`symdev-mif` work |
+| 14 | closed 2026-09-20 | `symdev-mbm` (experiment 58), byte-equal to `bmconv`; reachable from a project since experiment 61 |
