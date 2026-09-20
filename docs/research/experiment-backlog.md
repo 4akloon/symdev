@@ -1249,3 +1249,23 @@ Numbers 68–75 are the Rust SDK steps of the [design spec](../superpowers/specs
   - **Key codes and event types**, read by compiling `e32keys.h` rather than recalled: `EKeyDevice0` 0xf842 / `EKeyDevice1` 0xf843 (softkeys), `EKeyDevice3` 0xf845 (selection), arrows 0xf807–0xf80a, `EKeyYes` 0xf862, `EKeyNo` 0xf863, `EKeyMenu` 0xf836; scan codes 0xa4/0xa5/0xa7, 0x0e–0x11, 0xc4, 0xc5, 0x94. `TKeyEvent` is four words (`w32std.h` 974), `TEventCode` `EEventKey = 1` (line 266), `TKeyResponse` `EKeyWasConsumed = 1` (`coedef.h` 24).
   - **Import census of a minimal Avkon app** (`gui.elf`, by `NEEDED` DLL): cone 67, eikcore 58, avkon 38, drtaeabi 19, euser 11, apparc 6, scppnwdl 1, gdi 1. Drawing through the `CWindowGc&` costs **no** library — every `CGraphicsContext` drawing entry point is a pure virtual, and `ws32` is absent from both the `LIBRARY` line and `NEEDED`; `gdi` is imported for `CFont::AscentInPixels` alone.
   - **Not diagnosed:** the first `symdev run` of probe A logged `Installation done!` and then `Installation of SIS failed`; an identical second run installed and ran.
+
+## 77. What a Rust binary costs against the same program in C++ (T5, Rust SDK)
+
+- **Requires:** experiments 65, 68, 69, 76.
+- **Procedure:** build the *same* program twice, once in each language, through `symdev build`, and compare the E32. Two pairs: (a) three euser calls and nothing else, (b) the same plus a formatted string. Then read where the bytes went (`arm-none-symbianelf-size -A`, `nm --size-sort -S`) and try the obvious levers on the link.
+- **Outcome:** pass (measurement; no device)
+- **Evidence:** 2026-09-20.
+
+  | Program | C++ | Rust | Ratio |
+  |---|---|---|---|
+  | `User::InfoPrint` + `User::After` + `return 0` | **746 B** | **752 B** | 1.01× |
+  | the same, text built with `TBuf::Format` / `write!` into a `Buf16` | **803 B** | **10 375 B** | 12.9× |
+  | the second one with `push_str` instead of `write!` | — | 8 086 B | — |
+  | a `Vec`/`String` exercise (`examples/alloc`) | — | 11 499 B | — |
+
+  - **With no formatting the two languages are the same size.** A `no_std` Rust EXE that calls euser directly is six bytes larger than its C++ twin, so the target, the entry point, the link and the post-link cost nothing. The whole difference is library code Rust brings and C++ takes from the ROM.
+  - **The jump is `core::fmt` plus `compiler_builtins`.** `size -A` on the 10 375-byte image: `.text` 15 076 (pre-compression), `.rodata` 268, `.plt` 96. By symbol, the largest are `compiler_builtins`' soft-float and 64-bit division helpers — `__divdf3` 0x420, `__adddf3` 0x38c, `__muldf3` 0x344, `__divsf3` 0x24c, `__addsf3` 0x210, `u64_div_rem` 0x27c — then `memmove` 0x3dc and `memcpy` 0x1b0, then `core::fmt::write` and the `Display` impls. **A program that does no floating-point arithmetic still carries the soft-float routines**, because `compiler_builtins` is one codegen unit and the first `__aeabi_mem*` reference pulls the object.
+  - `--gc-sections` on the Rust link (experiment 68) already took this case from 104 560 B to 10 375 B. Two further levers were tried and **neither works**: `--exclude-libs ALL` changes nothing (ld 2.29.1 applies it to archives named with `-l`, and the Rust archive is a positional path), and an anonymous `--version-script` is refused outright — `anonymous version tag cannot be combined with other version tags`, and `--default-symver` is part of the recorded link line.
+  - **The worst case is mixed C++ and Rust**: experiment 76's UI probe, one C++ object beside the Rust archive, came to 107 KB. Same cause at a coarser granularity, and it is the case every shim-using program will be in, so it needs solving before step 70 ships.
+  - Still untried, in order of promise: naming the Rust archive with `-l:` so `--exclude-libs` applies; `-Zbuild-std-features=compiler-builtins-mem` with a narrower `compiler_builtins`; building `compiler_builtins` with more codegen units; a `--localize-symbol`/`objcopy` pass over the archive before linking.
