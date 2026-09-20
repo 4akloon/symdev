@@ -273,20 +273,38 @@ track resumes at 68.
 
 ## 11. Order of work, with pass criteria
 
-| # | Experiment / slice | Passes when |
-|---|---|---|
-| 65a | Spike: no_std hello by hand (stand-in target, prebuilt `core`) → recorded link → native elf2e32 → SIS → EKA2L1 | **passed 2026-09-20**: notifier log line identical to the C++ control; EKA2L1 halts on `InfoPrint` rendering for both (emulator issue, filed) |
-| 65 | The same through `symdev build/package/run` with `language = "rust"`, custom target JSON, pinned nightly + `build-std` | **passed 2026-09-20**: the one-liner from an empty directory, same notifier line, E32 752 bytes; corpus `symbian-rs/corpus/65-hello/` |
-| 68 | `alloc` over euser (`User::Alloc`/`Free`/`ReAlloc`); a `Vec` and a `String` in hello | heap used and freed; cell alignment settled; `memcpy`/`memcmp` resolution observed |
-| 69 | `symbian-core`: `SymbianError` from `e32err.h`, the descriptor family (`Des16` view, `Buf16<N>`, `HBuf16`), `&str` ↔ UTF-16 without a heap round-trip | hello writes its text with `write!` into a `Buf16` and no `unsafe` at the call site |
-| 70 | The C++ shim mechanism: a static library built by the existing GCCE argv, one `extern "C"` `TRAP` wrapper per leaving call, and the rule for which calls need one | a leaving API called from Rust returns `Err`, and the process survives |
-| 71 | Files: `RFs`/`RFile` behind `FileServer`/`File` with `Drop` closing the handle | hello writes and re-reads a file; the bytes are visible in the emulator's drive directory |
-| 72 | Atomics / locks survey on 9.3 | table of what euser offers, with `nm` evidence |
-| 73 | `symdev test --emulator` result protocol | a failing test is reported as failing from the emulator run |
-| — | Threads, async, UI, networking, N8 | after the above, each with its own spec |
+The owner's direction (2026-09-20): **the SDK is driven by example applications, one per
+subsystem**, each of which is the verification harness for the thing it exercises. Not one
+flagship app. Every example lives in `symbian-rs/examples/<name>`, builds through
+`symdev build` like any project, and reports in a way a machine can read.
 
-Each experiment gets a backlog entry with the bytes and the argv; the first passing E32 for
-each stage joins the golden corpus (prompt §45).
+### How an example reports
+
+Three channels, in order of cost:
+
+1. **`User::InfoPrint`** — already proven: EKA2L1 logs `[Service.Notifier]: Trying to display: …`, so a `grep` of `build/eka2l1.log` is a pass/fail signal with no infrastructure. Good for the first milestones.
+2. **A result file** on drive `E:` — the example writes `E:\symdev\results\<uid3>.json` (the shape in the master prompt's §34) and symdev reads it from `~/.local/share/EKA2L1/data/drives/e/` after the process exits. Needs files (step 71). This is what `symdev test --emulator` will use.
+3. **A PID-bound screenshot** — for anything visual. The loop is in the `eka2l1-host` skill.
+
+### Steps
+
+| # | Slice | Passes when |
+|---|---|---|
+| 68 | `alloc` over euser (`User::Alloc`/`Free`/`ReAlloc`); `examples/alloc` | a `Vec` and a `String` live and die; cell alignment settled; `memcpy`/`memcmp` resolution observed (spec §4 item 4) |
+| 69 | `symbian-core`: `SymbianError` from `e32err.h`; the descriptor family (`Des16` borrowed view, `Buf16<N>` on the stack, `HBuf16` on the heap), `&str` ↔ UTF-16 with no heap round-trip, `core::fmt::Write` | `examples/hello` rewritten with `write!` into a `Buf16` and **no `unsafe` at the call site** |
+| 70 | The C++ shim: a static library built by the existing GCCE argv, one `extern "C"` `TRAP` wrapper per leaving call, and the rule for which calls need one | a leaving API called from Rust returns `Err` and the process survives; a non-leaving one still needs no shim |
+| 71 | Files: `RFs`/`RFile` as `FileServer`/`File` with `Drop` closing the handle; the result-file harness and `symdev test --emulator` | `examples/files` writes and re-reads a file, and a deliberately failing test is *reported* as failing |
+| 72 | Atomics and locks on 9.3: what euser exports, whether `RFastLock` can back a `Mutex` | a table with `nm` evidence; `max-atomic-width` in the target revisited |
+| 73 | **Async**: a `CActive` subclass in the shim whose `RunL` wakes a Rust waker, a single-threaded executor on `CActiveScheduler`; `examples/async` awaits an `RTimer` | two timers awaited concurrently finish in the right order, reported through the result file, with no extra thread |
+| 74 | **Networking**: `RSocketServ`, `RHostResolver`, `RSocket` over the async bridge; `examples/net` resolves a name and does one TCP round trip | the bytes come back; the example declares `NetworkServices` and the manifest/capability check passes. EKA2L1 has a real host-socket backend (`src/emu/services/src/internet/protocols/`, `AF_INET`/`getaddrinfo`), so this is verifiable here |
+| 75 | **UI**: the Avkon app framework — `CAknApplication`/`CAknDocument`/`CAknAppUi`/`CCoeControl` are C++ classes with virtual methods, so the shim must *define the subclasses* and forward each virtual to a Rust function pointer; `examples/ui` draws and handles a key | a PID-bound screenshot shows the drawn view and a key press changes it |
+
+Dependencies that fix the order: 73 before 74 (every socket operation is `TRequestStatus`-based)
+and before a real 75 (the app framework runs an active scheduler). 70 before all three (almost
+every Avkon and esock entry point leaves).
+
+Each step gets a backlog entry with the argv and the bytes; each passing example joins
+`symbian-rs/corpus/`.
 
 ## 12. Non-goals for this phase
 
