@@ -34,6 +34,7 @@ pub fn test_project(m: symdev_manifest::Manifest, emulator: bool) -> Result<Exit
             m.package.name
         )));
     }
+    stale_package(&sisx, &cwd.join("build"), &m.package.name)?;
     let result_file = EmulatorData::from_env()?.result_file(uid3);
     clear_stale(&result_file)?;
 
@@ -60,6 +61,34 @@ pub fn test_project(m: symdev_manifest::Manifest, emulator: bool) -> Result<Exit
         eprintln!("warning: {e}");
     }
     report(&outcome?, &m.package.name)
+}
+
+/// Refuses a SIS older than the E32 beside it.
+///
+/// `symdev test` installs `build/<name>.sisx` and does not build or package: a `build`
+/// without a `package` therefore runs the *previous* binary, and the only symptom is a
+/// result that does not match the source — which cost a confused run during step 74,
+/// where the old image was the one with no test report in it at all.
+fn stale_package(sisx: &PathBuf, build_dir: &std::path::Path, name: &str) -> Result<()> {
+    let exe = build_dir.join(format!("{name}.exe"));
+    let (Ok(sis_time), Ok(exe_time)) = (modified(sisx), modified(&exe)) else {
+        return Ok(());
+    };
+    if sis_time >= exe_time {
+        return Ok(());
+    }
+    Err(Error::Other(format!(
+        "build/{name}.sisx is older than build/{name}.exe, so this would install the \
+         previous build: run `symdev package` (symdev test installs the SIS and neither \
+         builds nor packages)"
+    )))
+}
+
+/// The file's modification time, or an error for a file that has none to compare.
+fn modified(path: &std::path::Path) -> Result<std::time::SystemTime> {
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .map_err(|e| Error::Other(format!("{}: {e}", path.display())))
 }
 
 /// Removes a report from an earlier run, so a test that never writes one cannot pass on
