@@ -5,7 +5,6 @@
 //! prints numbers derived from the data so the log proves the round trip happened. No
 //! `unsafe` anywhere: everything goes through `symbian-core` and the global allocator.
 #![no_std]
-#![no_main]
 
 extern crate alloc;
 
@@ -25,7 +24,8 @@ fn overflow() -> SymbianError {
     SymbianError::of(ErrorKind::Overflow)
 }
 
-fn run() -> Result<()> {
+#[symbian_std::main]
+fn main() -> Result<()> {
     // A `Vec` that outgrows its cell several times: every growth is a `User::ReAlloc`.
     let mut squares: Vec<u16> = Vec::new();
     for i in 0..64u16 {
@@ -76,12 +76,3 @@ fn run() -> Result<()> {
     user::after(2_000_000);
     Ok(())
 }
-
-fn main() -> i32 {
-    match run() {
-        Ok(()) => 0,
-        Err(e) => e.code(),
-    }
-}
-
-symbian_runtime::entry!(main);

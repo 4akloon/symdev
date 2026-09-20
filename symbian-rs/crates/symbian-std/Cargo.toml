@@ -9,3 +9,5 @@ crate-type = ["rlib"]
 
 [dependencies]
 symbian-core = { path = "../symbian-core" }
+symbian-macros = { path = "../symbian-macros" }
+symbian-runtime = { path = "../symbian-runtime" }

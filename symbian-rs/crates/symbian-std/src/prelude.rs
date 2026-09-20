@@ -1,7 +1,12 @@
 //! What `use symbian_std::prelude::*;` brings in: the I/O traits, as
 //! `std::io::prelude` does, so `write_all`, `read_to_end` and `seek` are in scope.
 //!
+//! It also brings [`Result`], so that `#[symbian_std::main] fn main() -> Result<()>`
+//! reads the way a Rust program reads. The alias has a defaulted error parameter
+//! ([`crate::io::Result`]), so globbing the prelude does not take `Result<T, E>` away
+//! from the rest of the file — the two-parameter form still means what it always did.
+//!
 //! It deliberately does not re-export `Vec`, `String` or `Box`: those come from
 //! `alloc`, which an application already has, and shadowing them here would make it
 //! harder, not easier, to see where a type comes from.
-pub use crate::io::{Read, Seek, Write};
+pub use crate::io::{Read, Result, Seek, Write};

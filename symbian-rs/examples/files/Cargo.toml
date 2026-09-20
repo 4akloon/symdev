@@ -10,5 +10,4 @@ path = "src/main.rs"
 crate-type = ["staticlib"]
 
 [dependencies]
-symbian-runtime = { path = "../../crates/symbian-runtime" }
 symbian-std = { path = "../../crates/symbian-std" }

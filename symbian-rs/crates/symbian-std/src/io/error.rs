@@ -14,7 +14,12 @@ use super::ErrorKind;
 pub struct Error(SymbianError);
 
 /// `std::io::Result`.
-pub type Result<T> = core::result::Result<T, Error>;
+///
+/// The error parameter has a default, which `std`'s alias does not: that is what lets
+/// [`crate::prelude`] export the name without taking `Result<T, E>` away from a
+/// program that globs it in. `Result<()>` and `Result<(), MyError>` both mean what
+/// they look like.
+pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 impl Error {
     /// Wraps a system error code, as `std::io::Error::from_raw_os_error` does.
@@ -74,3 +79,11 @@ impl fmt::Display for Error {
 }
 
 impl core::error::Error for Error {}
+
+/// `fn main() -> io::Result<()>`: the process ends with the `TInt` the call failed
+/// with, exactly as [`Error::raw_os_error`] reports it.
+impl symbian_runtime::IntoExitCode for Error {
+    fn into_exit_code(self) -> symbian_runtime::ExitCode {
+        symbian_runtime::IntoExitCode::into_exit_code(self.0)
+    }
+}

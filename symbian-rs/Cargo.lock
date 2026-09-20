@@ -7,14 +7,13 @@ name = "allocdemo"
 version = "0.1.0"
 dependencies = [
  "symbian-core",
- "symbian-runtime",
+ "symbian-std",
 ]
 
 [[package]]
 name = "filesdemo"
 version = "0.1.0"
 dependencies = [
- "symbian-runtime",
  "symbian-std",
 ]
 
@@ -23,7 +22,7 @@ name = "hello"
 version = "0.1.0"
 dependencies = [
  "symbian-core",
- "symbian-runtime",
+ "symbian-std",
 ]
 
 [[package]]
@@ -31,6 +30,7 @@ name = "helloraw"
 version = "0.1.0"
 dependencies = [
  "symbian-runtime",
+ "symbian-std",
 ]
 
 [[package]]
@@ -38,7 +38,7 @@ name = "shimdemo"
 version = "0.1.0"
 dependencies = [
  "symbian-core",
- "symbian-runtime",
+ "symbian-std",
 ]
 
 [[package]]
@@ -56,10 +56,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "symbian-macros"
+version = "0.1.0"
+
+[[package]]
 name = "symbian-runtime"
 version = "0.1.0"
 dependencies = [
  "symbian-alloc",
+ "symbian-core",
  "symbian-sys",
 ]
 
@@ -68,6 +73,8 @@ name = "symbian-std"
 version = "0.1.0"
 dependencies = [
  "symbian-core",
+ "symbian-macros",
+ "symbian-runtime",
 ]
 
 [[package]]

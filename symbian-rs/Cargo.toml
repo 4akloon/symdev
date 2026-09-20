@@ -9,6 +9,7 @@ members = [
     "crates/symbian-core",
     "crates/symbian-std",
     "crates/symbian-runtime",
+    "crates/symbian-macros",
     "examples/hello",
     "examples/hello-raw",
     "examples/alloc",

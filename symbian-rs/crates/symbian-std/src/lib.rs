@@ -36,6 +36,24 @@
 //!   and are not faked here. They are declared in `symdev.toml` and handled by the
 //!   crates that own them.
 //!
+//! # Where an application starts
+//!
+//! ```ignore
+//! #![no_std]
+//!
+//! use symbian_std::prelude::*;
+//!
+//! #[symbian_std::main]
+//! fn main() -> Result<()> {
+//!     Ok(())
+//! }
+//! ```
+//!
+//! [`macro@main`] writes the `E32Main()` `eexe.lib` calls; there is no `#![no_main]`
+//! and no entry macro to remember, because the crate is compiled as a `staticlib` and
+//! rustc never looks for a `main` of its own. `#![no_std]` stays, and stays honest:
+//! there is no `std` for this target.
+//!
 //! [`test_report`] is the other half of step 71: how an example says whether it passed,
 //! in a file `symdev test --emulator` can read back off the emulated drive.
 #![no_std]
@@ -47,3 +65,12 @@ pub mod fs;
 pub mod io;
 pub mod prelude;
 pub mod test_report;
+
+pub use symbian_macros::main;
+
+/// What [`macro@main`]'s expansion names. Not an API: the attribute writes these
+/// paths so that an application needs no dependency but this crate.
+#[doc(hidden)]
+pub mod __rt {
+    pub use symbian_runtime::{ExitCode, IntoExitCode};
+}

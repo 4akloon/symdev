@@ -9,14 +9,13 @@
 //! `E:\symdev\results\<uid3>.json`; `symdev test --emulator` reads that back off the
 //! emulated drive and fails the build if any case failed.
 #![no_std]
-#![no_main]
 
 extern crate alloc;
 
 use symbian_std::fs::{self, File};
-use symbian_std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
+use symbian_std::io::{self, ErrorKind, SeekFrom};
+use symbian_std::prelude::*;
 use symbian_std::test_report::Report;
-
 
 /// Symbian paths: a drive letter and backslashes, which is why the literals are
 /// escaped. There is no POSIX root above `E:`.
@@ -111,18 +110,12 @@ fn run(report: &mut Report) {
     );
 }
 
-fn main() -> i32 {
+/// The report could not be written at all is the `Err`: nothing will read a result,
+/// so the process ends with the `TInt` that stopped it. A run that wrote a report
+/// exits 0 or 1, so that the exit code and the `failed` count in the file agree.
+#[symbian_std::main]
+fn main() -> Result<i32> {
     let mut report = Report::new("files");
     run(&mut report);
-    match report.finish() {
-        Ok(true) => 0,
-        // A failing run is a non-zero exit as well as a `failed` count in the file, so
-        // the two channels agree.
-        Ok(false) => 1,
-        // The report could not be written at all: nothing will read a result, so say
-        // so with the code that stopped it.
-        Err(e) => e.raw_os_error().unwrap_or(-1),
-    }
+    Ok(if report.finish()? { 0 } else { 1 })
 }
-
-symbian_runtime::entry!(main);
