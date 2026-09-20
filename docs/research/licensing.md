@@ -44,3 +44,17 @@ The repository owner approved disassembling the SDK's `rcomp.exe` (8.1, build 00
 ### Clean-room record: the remaining SDK tools (2026-09-20)
 
 Same two-role split, approved by the repository owner, for the tools symdev still shells out to or refuses cases of: separate agents disassembled `bmconv.exe`, `svgtbinencode.exe` + `mifconv.exe`, `makesis.exe` and `elf2e32.exe` (for the latter they could also read the EPL-1.0 `elf2e32_next` sources) and wrote prose specifications — [bmconv-spec.md](bmconv-spec.md), [svgb-mif-spec.md](svgb-mif-spec.md), [makesis-spec.md](makesis-spec.md), [elf2e32-options-spec.md](elf2e32-options-spec.md). The native implementations are written from those specs and the golden bytes only; their author read neither the disassembly nor the spec writers' scratch work.
+
+### Clean-room record: the `bld.inf` / `.mmp` front end (2026-09-20)
+
+Same two-role split for the last piece symdev still has no native equivalent of. A separate agent
+read the SDK's own build system — the Perl programs and modules under
+`/home/genius/sdk/S60_3rd_FP2/epoc32/tools/` that preprocess and parse `bld.inf` and `.mmp`, the
+GCCE compilation-configuration file, and the shipped variant header — and wrote
+[mmp-frontend-spec.md](mmp-frontend-spec.md) in prose and tables: directive grammars, defaults,
+path resolution, the two macro namespaces, the resource and bitmap block rules, and the exact GCCE
+ARMV5 UREL flag order, with the preprocessor's behaviour re-confirmed by black-box runs of the
+SDK's own `cpp.exe` under Wine. No Perl, no identifiers from those sources, no copied comments or
+string literals; scratch probes were kept outside the repository. The Rust front end is written
+from that specification alone, and its author read neither the SDK's Perl nor the spec writer's
+scratch work.
