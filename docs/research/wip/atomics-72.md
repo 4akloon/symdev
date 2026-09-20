@@ -47,10 +47,18 @@ Return values are the OLD value in every case; the predicate differs:
 - **Emulator caveats:** `RCondVar::CreateLocal()` returns `KErrNone` but `Handle()` is 0 - EKA2L1 quirk or a real handle-less object, UNKNOWN. After a worker `RThread` has run and exited, the main thread takes an `Access violation reading address 0x8000A4` at the next few instructions on every probe; single-threaded probes never fault. Emulator artefact, UNKNOWN on a device.
 - Operational note: EKA2L1 refuses to install a package whose executable is already on drive E (`Installation of SIS failed` after `Installation done!`), so each probe run needs a fresh app name AND a fresh UID3.
 
+
+### 5. A lock-backed `__atomic_*` shim works, for C++ AND for Rust
+- `shim.cpp` (`/tmp/claude-1000/atomics-work/shim.cpp`): one process-wide `RFastLock` plus `__atomic_{load,store,exchange,fetch_add,fetch_sub,fetch_and,fetch_or,fetch_xor,fetch_nand,compare_exchange}_{1,2,4,8}` and `__sync_synchronize`. The definitions carry `__asm__("__atomic_...")` labels because a plain definition collides with GCC's builtin declaration ("ambiguates built-in declaration").
+- **Observed libcall ABI** (identical for GCC 12.1 and LLVM, read off the emitted code): `load_N(ptr, memorder)`; `store_N(ptr, val, memorder)`; `exchange_N(ptr, val, memorder)`; `fetch_*_N(ptr, val, memorder)`; `compare_exchange_N(ptr, expected_ptr, desired, success_memorder, failure_memorder)` -> **five** arguments, the `weak` flag of the builtin is NOT passed. memorder: 0 relaxed, 2 acquire, 3 release, 4 acq_rel, 5 seq_cst.
+- C++ probe with the shim: `add8 7->10 r=7; xchg16 r=7 v=9; ld32=7; add64 7->107 r=7; cas8(expected 7, actual 10)=false`. Two threads x 20000: `__atomic_fetch_add` = 40000 exact, the hand-rolled plain RMW = 20000 (half lost), a `compare_exchange` loop = 400 wins exact.
+- **Rust probe with the shim:** `librprobe.a` built from the `max-atomic-width: 32` / `atomic-cas: true` target, linked through `symdev build` (MMP `LIBRARY librprobe.a` with the archive dropped in `build/`), gives `store11 ld=11 lda=11 fadd=11 cas=12 now=30 swap8=0 usize=0` and, across two threads x 20000, `AtomicU32::fetch_add` = **40000 exact**. EXE 5423 bytes.
+- Hazard to record: the shim degrades to non-atomic before `atomic_shim_init()` has run, so the init must happen in the `E32Main` prologue before any Rust code.
+
 ## Decisions
 
 ## Dead ends
 
 ## Next step
 
-- Prove (or refute) that a lock-backed `__atomic_*` shim makes Rust atomics link and run; then write the deliverable.
+- Measure the uncontended cost of the shim vs `User::LockedInc` vs a plain increment; then write `docs/research/eka2-concurrency.md` and backlog 72.
