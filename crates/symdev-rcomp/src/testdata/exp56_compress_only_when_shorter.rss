@@ -1,0 +1,20 @@
+NAME TEST
+STRUCT L { LTEXT t; }
+STRUCT A { STRUCT items[]; }
+STRUCT M { BYTE b; LTEXT s; }
+RESOURCE A r_arr {
+	items =
+		{
+		L { t = "2"; },
+		L { t = "2"; },
+		L { t = "2"; },
+		L { t = "2"; },
+		L { t = "2"; },
+		L { t = "2"; },
+		L { t = "2"; },
+		L { t = "2"; },
+		L { t = "2"; }
+		};
+}
+RESOURCE M r_mid { b = 1; s = "xy"; }
+RESOURCE L r_tail { t = "z"; }
