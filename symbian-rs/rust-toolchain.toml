@@ -1,0 +1,5 @@
+# The Rust SDK builds `core`/`alloc` for the phone's target with `-Zbuild-std`, which
+# needs nightly. Pinned to the nightly installed on the host on 2026-09-20.
+[toolchain]
+channel = "nightly-2026-09-19"
+components = ["rust-src"]

@@ -1,5 +1,7 @@
 [workspace]
 resolver = "3"
+# The Rust SDK for the phone builds for its own target with build-std on nightly.
+exclude = ["symbian-rs"]
 members = [
     "crates/symdev-core",
     "crates/symdev-manifest",

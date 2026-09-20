@@ -1,0 +1,37 @@
+{
+  "abi": "eabi",
+  "arch": "arm",
+  "asm-args": [
+    "-mthumb-interwork",
+    "-march=armv5te",
+    "-mlittle-endian"
+  ],
+  "atomic-cas": false,
+  "c-enum-min-bits": 32,
+  "crt-objects-fallback": "false",
+  "data-layout": "e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64",
+  "default-uwtable": false,
+  "eh-frame-header": false,
+  "emit-debug-gdb-scripts": false,
+  "env": "e32",
+  "executables": false,
+  "features": "+soft-float,+strict-align",
+  "frame-pointer": "always",
+  "has-thread-local": false,
+  "has-thumb-interworking": true,
+  "linker": "rust-lld",
+  "linker-flavor": "gnu-lld",
+  "llvm-floatabi": "soft",
+  "llvm-target": "armv5te-none-eabi",
+  "max-atomic-width": 0,
+  "metadata": {
+    "description": "Symbian OS 9.3 EKA2 (S60 3rd FP2) user-side E32 code, ARMv5TE soft-float EABI; symdev links, rustc never does",
+    "host_tools": false,
+    "std": false,
+    "tier": 3
+  },
+  "os": "symbian",
+  "panic-strategy": "abort",
+  "relocation-model": "static",
+  "target-pointer-width": 32
+}

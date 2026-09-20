@@ -1,0 +1,26 @@
+# The Rust SDK for Symbian OS 9.3 (S60 3rd FP2, Nokia E52). A workspace separate from the
+# host tools in `crates/`: these crates build for `targets/arm-symbian-e32.json` with
+# `-Zbuild-std` on the nightly pinned in `rust-toolchain.toml`.
+[workspace]
+resolver = "3"
+members = [
+    "crates/symbian-sys",
+    "crates/symbian-runtime",
+    "examples/hello",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+# rustc never links (design spec §3): every leaf crate is a `staticlib` that symdev's
+# recorded `ld` line consumes. Size over speed, one object per archive, no unwinder.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+debug = false
+
+[profile.dev]
+panic = "abort"

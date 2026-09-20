@@ -1,0 +1,8 @@
+# Every crate in this workspace is phone code. The target JSON and the build-std flags are
+# the same ones `symdev build` passes for a `language = "rust"` project.
+[build]
+target = "targets/arm-symbian-e32.json"
+
+[unstable]
+build-std = ["core", "alloc"]
+json-target-spec = true

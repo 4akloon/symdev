@@ -9,3 +9,4 @@
 /third_party/rom/
 /.claude/settings.local.json
 /examples/*/build/
+/symbian-rs/target/
