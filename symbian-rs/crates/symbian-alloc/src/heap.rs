@@ -4,6 +4,8 @@ use core::ptr;
 
 use symbian_sys::euser::{User_Alloc, User_AllocZ, User_Exit, User_Free, User_ReAlloc};
 
+use crate::serialise::HeapGuard;
+
 /// `KErrNoMemory` (`e32err.h`).
 pub const KERR_NO_MEMORY: i32 = -4;
 
@@ -29,12 +31,17 @@ pub fn oom() -> ! {
 
 /// The global heap of the *current thread*.
 ///
-/// `User::Alloc` allocates on the heap of the thread that calls it. A second thread made
-/// with `RThread::Create` gets its own heap unless it is told to share one, so a pointer
-/// allocated here may only be freed on the thread that allocated it, and `Send`ing an
-/// allocation to another thread would free it on the wrong heap. Nothing in this crate
-/// creates a thread; when threads arrive (step 72) the allocator must be revisited, not
-/// the callers.
+/// `User::Alloc` allocates on the heap of the thread that calls it, so "one heap for the
+/// whole program" is something the program has to arrange. `symbian_std::thread::spawn`
+/// arranges it: a spawned thread is created with a heap of its own and switches to the
+/// creating thread's heap as its first instruction (`User::SwitchAllocator`), because
+/// passing the creator's allocator to `RThread::Create` instead makes the worker's exit
+/// take the creator's heap down with it — the access violation of experiment 80. With
+/// one heap behind every thread, a `Box` or an `Arc` may cross threads as Rust expects.
+///
+/// Concurrent access to that one heap is serialised by [`crate::serialise`], which
+/// `spawn` switches on before it creates the first thread. Until then every operation
+/// here reads one `TInt` and takes no lock.
 pub struct SymbianHeap;
 
 impl SymbianHeap {
@@ -71,12 +78,17 @@ impl SymbianHeap {
     }
 }
 
-// SAFETY: every pointer returned is either a `User::Alloc` cell (alignment 8, observed)
-// or a hand-aligned address inside one, sized as the layout asks; `dealloc` gives euser
-// back exactly the cell it returned; the heap is the calling thread's, and this allocator
-// is only ever reached from the thread that owns it (single-threaded until step 72).
-unsafe impl GlobalAlloc for SymbianHeap {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+/// The heap operations themselves, with **no lock taken**.
+///
+/// They call one another — `alloc_zeroed` over `alloc`, `realloc` over both — and
+/// `RFastLock` is not recursive, so the lock is taken exactly once, by the `GlobalAlloc`
+/// method the caller entered through.
+///
+/// # Safety
+/// Each has the corresponding `GlobalAlloc` method's contract, and additionally the
+/// heap's lock must already be held if serialisation is on.
+impl SymbianHeap {
+    unsafe fn alloc_unlocked(&self, layout: Layout) -> *mut u8 {
         if layout.align() <= MAX_TRUSTED_ALIGN {
             return match Self::cell_size(layout.size()) {
                 // SAFETY: a plain heap request; euser returns null on failure.
@@ -101,10 +113,10 @@ unsafe impl GlobalAlloc for SymbianHeap {
         unsafe { Self::place_padded(cell, layout.align()) }
     }
 
-    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+    unsafe fn alloc_zeroed_unlocked(&self, layout: Layout) -> *mut u8 {
         if layout.align() > MAX_TRUSTED_ALIGN {
             // SAFETY: the padded path allocates and then zeroes what the caller can see.
-            let p = unsafe { self.alloc(layout) };
+            let p = unsafe { self.alloc_unlocked(layout) };
             if !p.is_null() {
                 // SAFETY: `p` is a fresh allocation of `layout.size()` bytes.
                 unsafe { ptr::write_bytes(p, 0, layout.size()) };
@@ -118,7 +130,7 @@ unsafe impl GlobalAlloc for SymbianHeap {
         }
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+    unsafe fn dealloc_unlocked(&self, ptr: *mut u8, layout: Layout) {
         let cell = if layout.align() > MAX_TRUSTED_ALIGN {
             // SAFETY: an over-aligned payload always carries its cell address below it.
             unsafe { Self::padded_cell(ptr) }
@@ -130,19 +142,20 @@ unsafe impl GlobalAlloc for SymbianHeap {
         unsafe { User_Free(cell) };
     }
 
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+    unsafe fn realloc_unlocked(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         if layout.align() > MAX_TRUSTED_ALIGN {
             // `User::ReAlloc` may move the cell, and it promises nothing beyond the
             // heap's own alignment, so an over-aligned block is re-placed by hand.
             // SAFETY: the new layout has the same (valid) alignment and a non-zero size.
-            let new =
-                unsafe { self.alloc(Layout::from_size_align_unchecked(new_size, layout.align())) };
+            let new = unsafe {
+                self.alloc_unlocked(Layout::from_size_align_unchecked(new_size, layout.align()))
+            };
             if !new.is_null() {
                 // SAFETY: both blocks are live and do not overlap; only the bytes that
                 // exist in both are copied.
                 unsafe { ptr::copy_nonoverlapping(ptr, new, layout.size().min(new_size)) };
                 // SAFETY: the old block is still the one this layout describes.
-                unsafe { self.dealloc(ptr, layout) };
+                unsafe { self.dealloc_unlocked(ptr, layout) };
             }
             return new;
         }
@@ -154,5 +167,35 @@ unsafe impl GlobalAlloc for SymbianHeap {
             Some(n) => unsafe { User_ReAlloc(ptr, n, 0) },
             None => ptr::null_mut(),
         }
+    }
+}
+
+// SAFETY: every pointer returned is either a `User::Alloc` cell (alignment 8, observed)
+// or a hand-aligned address inside one, sized as the layout asks; `dealloc` gives euser
+// back exactly the cell it returned; and all four operations run on one heap, under one
+// lock once a second thread exists.
+unsafe impl GlobalAlloc for SymbianHeap {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let _guard = HeapGuard::enter();
+        // SAFETY: the caller's contract, plus the lock this guard holds.
+        unsafe { self.alloc_unlocked(layout) }
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        let _guard = HeapGuard::enter();
+        // SAFETY: as above.
+        unsafe { self.alloc_zeroed_unlocked(layout) }
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        let _guard = HeapGuard::enter();
+        // SAFETY: as above.
+        unsafe { self.dealloc_unlocked(ptr, layout) };
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        let _guard = HeapGuard::enter();
+        // SAFETY: as above.
+        unsafe { self.realloc_unlocked(ptr, layout, new_size) }
     }
 }

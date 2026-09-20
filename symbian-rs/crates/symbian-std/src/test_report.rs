@@ -76,6 +76,18 @@ impl Report {
         self.record(name, ok, "");
     }
 
+    /// Records a case with a formatted detail, whether it passed or failed.
+    ///
+    /// The detail is kept for a passing case too, because a count is worth reading
+    /// when it is right as well as when it is wrong: `4000 of 4000` in the report is
+    /// what says the run actually did the work.
+    pub fn check_detail(&mut self, name: &str, ok: bool, detail: core::fmt::Arguments<'_>) {
+        let mut text = String::new();
+        // A formatter that runs out of room is nothing to abort a test run over.
+        let _ = text.write_fmt(detail);
+        self.record(name, ok, &text);
+    }
+
     /// Records a case that failed, with what went wrong.
     pub fn fail(&mut self, name: &str, detail: &str) {
         self.record(name, false, detail);

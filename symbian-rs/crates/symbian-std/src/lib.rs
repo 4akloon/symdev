@@ -53,17 +53,30 @@
 //! and no entry macro to remember, because the crate is compiled as a `staticlib` and
 //! rustc never looks for a `main` of its own. `#![no_std]` stays, and stays honest:
 //! there is no `std` for this target.
+//! [`sync`] and [`thread`] are step 72: `Arc`, `Mutex`, `Once` and `thread::spawn` over
+//! the atomics the SDK's compiler-runtime archive provides on a CPU that has no atomic
+//! instruction. Both modules say plainly what they cannot do — see their own
+//! documentation before reaching for them, because every atomic operation on this
+//! device is a kernel call.
 //!
 //! [`test_report`] is the other half of step 71: how an example says whether it passed,
 //! in a file `symdev test --emulator` can read back off the emulated drive.
 #![no_std]
-#![forbid(unsafe_code)]
+// Everything an application touches is safe, and the modules that make up the file and
+// I/O facade say so with their own `#![forbid(unsafe_code)]`. [`sync`] and [`thread`]
+// are the exception CLAUDE.md names: a mutex and a thread are built out of kernel
+// handles and raw pointers, and there is no layer below them to hide that in. Every
+// `unsafe` block in this crate lives in those two modules and carries a `// SAFETY:`
+// note.
+#![deny(unsafe_code)]
 
 extern crate alloc;
 
 pub mod fs;
 pub mod io;
 pub mod prelude;
+#[allow(unsafe_code)]
+pub mod sync;
 pub mod test_report;
 
 pub use symbian_macros::main;
@@ -71,3 +84,5 @@ pub use symbian_macros::main;
 /// [`IntoExitCode`] for its own error type to return it from `main`; `()`, `i32`,
 /// `SymbianError`, [`io::Error`] and any `Result` of those are already covered.
 pub use symbian_runtime::{ExitCode, IntoExitCode};
+#[allow(unsafe_code)]
+pub mod thread;

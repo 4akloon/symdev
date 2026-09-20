@@ -14,9 +14,8 @@ dependencies = [
 name = "atomicsdemo"
 version = "0.1.0"
 dependencies = [
- "symbian-core",
  "symbian-runtime",
- "symbian-sys",
+ "symbian-std",
 ]
 
 [[package]]
@@ -88,9 +87,11 @@ dependencies = [
 name = "symbian-std"
 version = "0.1.0"
 dependencies = [
+ "symbian-alloc",
  "symbian-core",
  "symbian-macros",
  "symbian-runtime",
+ "symbian-sys",
 ]
 
 [[package]]

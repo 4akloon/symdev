@@ -21,6 +21,8 @@ Task: ship `shims/common/symrs_atomic.cpp` over an `RFastLock`, raise the target
 - **The way out, measured:** create the worker with the own-heap overload (so nothing kills a heap the creator is using) and have the worker call `User::SwitchAllocator(main_heap)` as its first instruction. Observed: the worker's allocator becomes 0x800000, the creator's heap; 400 interleaved alloc/free pairs on each thread with forced yields all succeed; and after the join the main thread allocates again, including a 16 KB block that walks the free list, and the program runs to the end.
 - Whether the process heap is internally locked is not observable from outside (`RAllocator`'s flags are protected and `RHeap` is not even declared in this SDK), so the allocator takes a lock of its own once a thread has been spawned rather than trusting that test.
 - **`RSemaphore::Wait(0)` is not a zero timeout: it blocks for ever** (observed — the probe printed "about to Wait(0) on an empty semaphore" and never came back). `Wait(1)` on an empty semaphore returns −33 `KErrTimedOut` straight away, and `Wait(1000)` likewise; with a token both return 0. So a `try_lock` has to pass a positive timeout, and 1 microsecond is enough.
+- **The example passes, 23 cases.** `fetch_add` from two threads = **4000 of 4000** exact; the racy load-then-store beside it = **2000 of 4000**, losing exactly half, the same signature the survey saw; a `static Mutex` = 4000 of 4000; an `Arc<Mutex<u32>>` = 4000 of 4000; `Once` ran once; the heap still allocates after the worker exited.
+- Sizes with the Rust libcalls archive: hello 3187, hello-raw 752, alloc 4320, shim 4475, files 10423 — all unchanged — and atomics 11498.
 
 ## Decisions
 
@@ -32,4 +34,4 @@ Task: ship `shims/common/symrs_atomic.cpp` over an `RFastLock`, raise the target
 - Verify with the same example and the same counts; report sizes before and after.
 
 ## Next step
-- Threads: reproduce the survey's access violation after a worker thread exits and find its cause.
+- Backlog entry 80, survey update, spec §11, corpus, then the gates.

@@ -7,5 +7,7 @@
 #![no_std]
 
 mod heap;
+pub mod serialise;
 
 pub use heap::{KERR_NO_MEMORY, MAX_TRUSTED_ALIGN, SymbianHeap, oom};
+pub use serialise::{is_serialised, serialise_across_threads};

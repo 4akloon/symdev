@@ -8,6 +8,8 @@ description = "std's module tree over Symbian OS 9.3: io, fs and a prelude, so p
 crate-type = ["rlib"]
 
 [dependencies]
+symbian-alloc = { path = "../symbian-alloc" }
 symbian-core = { path = "../symbian-core" }
 symbian-macros = { path = "../symbian-macros" }
 symbian-runtime = { path = "../symbian-runtime" }
+symbian-sys = { path = "../symbian-sys" }
