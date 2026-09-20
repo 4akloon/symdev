@@ -10,9 +10,30 @@ pub struct SvgElement {
     /// Attributes in document order, as `svgtbinencode` writes them.
     pub attributes: Vec<(String, String)>,
     pub children: Vec<SvgElement>,
+    /// Character data, exactly as written; only `<text>` keeps it.
+    pub character_data: String,
 }
 
 impl SvgElement {
+    /// The character data as the encoder writes it (spec §4.7): leading,
+    /// trailing and repeated whitespace collapsed, unless the element itself
+    /// carries `xml:space="preserve"`, in which case every whitespace
+    /// character is kept and written as a space (experiment 59). The
+    /// attribute is not inherited from an ancestor.
+    pub fn text(&self) -> String {
+        if self.attribute("xml:space") == Some("preserve") {
+            return self
+                .character_data
+                .chars()
+                .map(|c| if c.is_whitespace() { ' ' } else { c })
+                .collect();
+        }
+        self.character_data
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     pub fn attribute(&self, name: &str) -> Option<&str> {
         self.attributes
             .iter()
@@ -121,6 +142,7 @@ impl SvgParser<'_> {
                         name,
                         attributes,
                         children: Vec::new(),
+                        character_data: String::new(),
                     });
                 }
                 Some(b'>') => {
@@ -140,11 +162,12 @@ impl SvgParser<'_> {
                 None => return Err(self.error("unterminated element")),
             }
         }
-        let children = self.children(&name)?;
+        let (children, character_data) = self.children(&name)?;
         Ok(SvgElement {
             name,
             attributes,
             children,
+            character_data,
         })
     }
 
@@ -166,11 +189,13 @@ impl SvgParser<'_> {
         Ok(entities(&text))
     }
 
-    /// Children until the matching `</name>`; character data is not supported.
-    fn children(&mut self, name: &str) -> Result<Vec<SvgElement>> {
+    /// Children and character data until the matching `</name>`.
+    fn children(&mut self, name: &str) -> Result<(Vec<SvgElement>, String)> {
         let mut children = Vec::new();
+        let mut text = String::new();
         loop {
-            self.space();
+            // No `space()` here: whitespace between the tags is character
+            // data, and `xml:space="preserve"` keeps every byte of it.
             match self.src.get(self.at..self.at + 2) {
                 None => return Err(self.error(&format!("unterminated <{name}>"))),
                 Some(b"</") => {
@@ -184,15 +209,26 @@ impl SvgParser<'_> {
                         return Err(self.error("expected `>`"));
                     }
                     self.at += 1;
-                    return Ok(children);
+                    return Ok((children, text));
                 }
                 Some(b"<!") => {
-                    self.skip_to(b"-->")?;
+                    if self.src.get(self.at..self.at + 9) == Some(b"<![CDATA[") {
+                        self.at += 9;
+                        let start = self.at;
+                        self.skip_to(b"]]>")?;
+                        text.push_str(&String::from_utf8_lossy(&self.src[start..self.at - 3]));
+                    } else {
+                        self.skip_to(b"-->")?;
+                    }
                 }
                 Some(s) if s.starts_with(b"<") => children.push(self.element()?),
                 _ => {
-                    return Err(self.error(&format!(
-                        "TODO: character data in <{name}> (the icon encoder takes shapes only)"
+                    let start = self.at;
+                    while self.src.get(self.at).is_some_and(|&b| b != b'<') {
+                        self.at += 1;
+                    }
+                    text.push_str(&entities(&String::from_utf8_lossy(
+                        &self.src[start..self.at],
                     )));
                 }
             }
