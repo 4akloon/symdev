@@ -4,6 +4,6 @@ mod mif;
 mod svg;
 mod svgb;
 
-pub use mif::{MifFile, MifIcon};
+pub use mif::{MifDepth, MifFile, MifIcon, MifIconData};
 pub use svg::SvgElement;
 pub use svgb::Svgb;

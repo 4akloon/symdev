@@ -3,54 +3,11 @@
 
 use symdev_core::{Error, Result};
 
-/// One icon of a `.mif`: its encoded data and how it is displayed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MifIcon {
-    /// Source file stem, for the `.mbg` enumerators.
-    pub name: String,
-    /// The `.svgb` bytes.
-    pub data: Vec<u8>,
-    /// Display mode (`/c32,8` → 11 with mask 4).
-    pub depth: u32,
-    pub mask_depth: u32,
-    pub animated: bool,
-}
+mod depth;
+mod icon;
 
-impl MifIcon {
-    /// `mifconv /c32,8`, the depth the SDK example icon makefiles use.
-    pub const DEPTH_COLOUR32: u32 = 11;
-    pub const MASK_8BIT: u32 = 4;
-    const SVG: u32 = 1;
-    const HEADER: usize = 32;
-
-    pub fn svg(name: impl Into<String>, data: Vec<u8>) -> Self {
-        Self {
-            name: name.into(),
-            data,
-            depth: Self::DEPTH_COLOUR32,
-            mask_depth: Self::MASK_8BIT,
-            animated: false,
-        }
-    }
-
-    fn block(&self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(Self::HEADER + self.data.len());
-        out.extend_from_slice(b"C##4");
-        for word in [
-            1,
-            Self::HEADER as u32,
-            self.data.len() as u32,
-            Self::SVG,
-            self.depth,
-            u32::from(self.animated),
-            self.mask_depth,
-        ] {
-            out.extend_from_slice(&word.to_le_bytes());
-        }
-        out.extend_from_slice(&self.data);
-        out
-    }
-}
+pub use depth::MifDepth;
+pub use icon::{MifIcon, MifIconData};
 
 /// A `.mif` file: icons with no alignment or padding between them.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,18 +39,20 @@ impl MifFile {
         let mut blocks = Vec::new();
         for icon in &self.icons {
             let block = icon.block();
-            for _ in 0..Self::ENTRIES_PER_ICON {
-                out.extend_from_slice(&at.to_le_bytes());
-                out.extend_from_slice(&(block.len() as u32).to_le_bytes());
+            let len = block.as_ref().map_or(0, |b| b.len() as u32);
+            for (offset, length) in icon.entries(at, len) {
+                out.extend_from_slice(&offset.to_le_bytes());
+                out.extend_from_slice(&length.to_le_bytes());
             }
-            at += block.len() as u32;
-            blocks.push(block);
+            at += len;
+            blocks.extend(block);
         }
         blocks.iter().for_each(|b| out.extend_from_slice(b));
         Ok(out)
     }
 
-    /// `mifconv /H`: the icon enumeration, CRLF throughout (spec §7).
+    /// `mifconv /H`: the icon enumeration, CRLF throughout (spec §7). Every icon takes
+    /// two values; the `_mask` enumerator appears only when a mask depth was given.
     pub fn mbg_text(&self, mif_name: &str) -> String {
         let mif = Self::stem(mif_name);
         let mut out = format!(
@@ -103,7 +62,9 @@ impl MifFile {
         for icon in &self.icons {
             let name = format!("EMbm{mif}{}", Self::stem(&icon.name));
             out.push_str(&format!("\t{name} = {value},\r\n"));
-            out.push_str(&format!("\t{name}_mask = {},\r\n", value + 1));
+            if icon.has_mask() {
+                out.push_str(&format!("\t{name}_mask = {},\r\n", value + 1));
+            }
             value += 2;
         }
         out.push_str(&format!("\tEMbm{mif}LastElement\r\n\t}};\r\n"));
