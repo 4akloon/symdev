@@ -7,11 +7,13 @@ members = [
     "crates/symbian-sys",
     "crates/symbian-alloc",
     "crates/symbian-core",
+    "crates/symbian-std",
     "crates/symbian-runtime",
     "examples/hello",
     "examples/hello-raw",
     "examples/alloc",
     "examples/shim",
+    "examples/files",
 ]
 
 [workspace.package]

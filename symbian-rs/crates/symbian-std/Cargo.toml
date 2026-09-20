@@ -1,0 +1,11 @@
+[package]
+name = "symbian-std"
+version.workspace = true
+edition.workspace = true
+description = "std's module tree over Symbian OS 9.3: io, fs and a prelude, so porting a program is changing its use lines"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+symbian-core = { path = "../symbian-core" }

@@ -11,6 +11,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "filesdemo"
+version = "0.1.0"
+dependencies = [
+ "symbian-runtime",
+ "symbian-std",
+]
+
+[[package]]
 name = "hello"
 version = "0.1.0"
 dependencies = [
@@ -53,6 +61,13 @@ version = "0.1.0"
 dependencies = [
  "symbian-alloc",
  "symbian-sys",
+]
+
+[[package]]
+name = "symbian-std"
+version = "0.1.0"
+dependencies = [
+ "symbian-core",
 ]
 
 [[package]]
