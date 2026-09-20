@@ -271,18 +271,81 @@ on, so nothing here is thrown away.
 
 ## 7. Stage 3: `symbian-sys`, the shim, `symbian-core`
 
-- `symbian-sys`: raw `extern "C"` declarations, one module per DLL (`euser`, `efsrv`, …),
-  each symbol's mangled name taken from `nm -D <dll>.dso` and recorded next to the
-  declaration. Anything that leaves is *not* declared here; it goes through the shim.
-- `shims/s60/` (C++, compiled by `GcceBuild`'s argv): `extern "C" TInt symrs_<name>(…)` wrappers
-  that `TRAP` leaving calls, translate descriptors to `(ptr, len)` pairs, and never let a
-  leave or a C++ exception out. One `.cpp` per subsystem; linked as a static archive.
-- `symbian-core`: `SymbianError(TInt)` with `e32err.h` mapping; descriptors (`Des16Buf<N>`,
-  `HeapDes16`, `&str ↔ UTF-16` without allocation when the caller provides the buffer);
-  `Uid`; `Path` with drive semantics (`C:`, `E:`, `Z:` as data, never POSIX mounts).
+### The rule: when a call needs a C++ shim
+
+Settled by **experiment 78**, written out in full in `symbian-rs/shims/common/symrs_shim.h`
+(that header is the authority; this is the summary). A Symbian call needs a wrapper in the
+shim when **any** of these is true, and otherwise `symbian-sys` declares it and Rust calls
+it directly:
+
+1. **It can leave.** The SDK's trailing `L`/`LC`/`LD` is a hint, not the authority:
+   confirm against the declaration in the header, and treat a header that says nothing
+   either way as leaving. This one is absolute — `__LEAVE_EQUALS_THROW__` makes a leave a
+   real C++ exception, rustc emits one `cantunwind` `.ARM.exidx` entry over the whole Rust
+   text, and an exception that reaches a Rust frame ends the process with **no diagnostic
+   at all** (experiment 76, reproduced in 78). The `TRAP` goes around the leaving SDK call
+   *inside* the shim, never around a call into Rust.
+2. **Its signature is not a C signature**: a class returned by value with a non-trivial
+   copy constructor (sret), a `TRefByValue` varargs function such as `TDes16::Format`, a
+   virtual call.
+3. **It is a virtual member, or a member of a class with multiple or virtual
+   inheritance**, where `this` may need adjusting. Not observed in this repository, so not
+   attempted.
+
+**Being a non-static member function is not a reason.** That was the open question of
+experiment 69 and is now *observed*: a probe compiled with the recorded GCCE argv and
+disassembled shows `d->Append(*s)` as a bare `bl _ZN6TDes166AppendERK7TDesC16` with no
+register shuffle, and `d->AppendNum((TInt64)n)` as `movs r2,r1; asrs r3,r1,#31` — `this`
+is argument 0 under the ordinary AAPCS assignment and everything else follows it. The one
+exception, also observed: a class returned by value is sret, with the return slot as
+argument 0 and `this` displaced to argument 1 (rule 2). So `TDes16::Copy`/`Append`/
+`AppendNum` and every `RFs` member are declared in `symbian-sys` and called directly.
+
+**A panic is not a leave and no `TRAP` catches it.** `e32panic.h` documents
+`ETDes16Overflow = 11` (category USER) for every copying, appending and formatting
+descriptor member. A Rust wrapper that could provoke one must make it unreachable by
+checking first; `symbian-core` checks the room from the length word and `N` it already
+holds, with no call, and returns `KErrOverflow`.
+
+### The pieces
+
+- `symbian-sys`: raw `extern "C"` declarations, one module per DLL (`euser`, `efsrv`,
+  `des16`, …) plus `shim` for the shim's own entry points; each symbol's mangled name
+  taken from `nm -D <dll>.dso` and recorded next to the declaration.
+- `shims/common/` (C++, compiled by `GcceBuild`'s argv): `extern "C" TInt symrs_<name>(…)`
+  wrappers that `TRAP` leaving calls and never let a leave or a C++ exception out. One
+  `.cpp` per subsystem. `shims/s60/` is reserved for the Avkon subclasses of step 75,
+  which need their own libraries and must not be forced onto a console application.
+- Every shim symbol is `__attribute__((visibility("hidden")))`: the shim is an
+  implementation detail of the SDK, not an export of the application.
+- `symbian-core`: `SymbianError(TInt)` with `e32err.h` mapping; the descriptor family;
+  `FileServer` (`RFs`); `shim::leave_if_error`, the run-time check that the trap harness
+  is in place.
+- **The API an application sees takes Rust types.** `FileServer::make_dir_all(&str)`, not
+  `(&impl DesC16)`; a descriptor is something an application never has to name. The
+  descriptor-typed entry points (`Buf16::append_des`, `copy_des`) exist for text that
+  arrives *from* Symbian and are documented as the lower-level path. Errors keep the raw
+  `TInt` underneath an `ErrorKind`, so `?` works and the exact code survives.
 - First real API after alloc: files (`RFs::Connect`, `RFile::Replace/Open/Read/Write/Close`
-  are non-leaving and take descriptors by reference) — provable in EKA2L1 by reading the file
-  back out of the emulator's `drives/e/`.
+  are non-leaving) — `f32file.h` declares no leaving member on `RFs` at all, so step 71 is
+  entirely shim-free.
+
+### Build integration
+
+`RustBuild` compiles `symbian-rs/shims/common/*.cpp` with **`GcceBuild::compile_args`** —
+the identical C++ argv a project source gets, so the shim sees `gcce.h`, the GCC-12
+varargs repair and every define — into `build/shims/*.o`, archives them as
+`build/shims/libsymrs.a` and puts that immediately after the Rust archive. The
+application lists, names and configures nothing: the shim is part of the SDK.
+
+It has to be an **archive**, not loose objects, and the reason is measured (experiment
+78): objects are linked whole, so an unused wrapper's reference to its DLL still makes ld
+record a `DT_NEEDED`, and `--gc-sections` cannot undo it because as-needed is decided
+during symbol resolution and collection happens afterwards. `hello` grew 3 187 → 3 219
+bytes and loaded `bafl.dll` to call nothing. From an archive the member is never pulled.
+The DSOs the SDK itself may import (`efsrv.dso`, `bafl.dso`) go on the line under
+`--as-needed`/`--no-as-needed`. `ar` is derived from `SYMDEV_LD` (`…-ld` → `…-ar`), with
+`SYMDEV_AR` as an optional override: no new required environment variable.
 
 ## 8. Runtime, threads, async (Stage 4+; design only)
 
@@ -341,8 +404,8 @@ Three channels, in order of cost:
 |---|---|---|
 | 68 | `alloc` over euser (`User::Alloc`/`Free`/`ReAlloc`); `examples/alloc` | **done** (2026-09-20): a `Vec` and a `String` live and die; alignment measured at 8; `mem*` resolve to `compiler_builtins`; `--gc-sections` added to the Rust link line |
 | 69 | `symbian-core`: `SymbianError` from `e32err.h`; the descriptor family (`Des16` borrowed view, `Buf16<N>` on the stack, `HBuf16` on the heap), `&str` ↔ UTF-16 with no heap round-trip, `core::fmt::Write` | **done** (2026-09-20): `examples/hello` rewritten with `write!` into a `Buf16`, no `unsafe` anywhere in it; the descriptor type nibbles observed on the device's euser |
-| 70 | The C++ shim: a static library built by the existing GCCE argv, one `extern "C"` `TRAP` wrapper per leaving call, and the rule for which calls need one | a leaving API called from Rust returns `Err` and the process survives; a non-leaving one still needs no shim |
-| 71 | Files: `RFs`/`RFile` as `FileServer`/`File` with `Drop` closing the handle; the result-file harness and `symdev test --emulator` | `examples/files` writes and re-reads a file, and a deliberately failing test is *reported* as failing |
+| 70 | The C++ shim: a static library built by the existing GCCE argv, one `extern "C"` `TRAP` wrapper per leaving call, and the rule for which calls need one | **done** (2026-09-20, experiment 78): `User::LeaveIfError(-12)` through the shim returns `Err(KErrNotFound)` and the process prints four more fields after it; `RFs::MkDirAll` and euser's `TDes16` members are non-static members called directly, because the member ABI was observed rather than guessed. `hello` is still 3 187 bytes and still has six `NEEDED`. `examples/shim`, `corpus/78-shim/` |
+| 71 | Files: `RFs`/`RFile` as `FileServer`/`File` with `Drop` closing the handle; the result-file harness and `symdev test --emulator` | `examples/files` writes and re-reads a file, and a deliberately failing test is *reported* as failing. Step 70 leaves it `FileServer::connect`/`make_dir_all`/`ensure_path_exists` with `Drop`, `sizeof(RFs) == 4`, `sizeof(RFile) == 8`, `KMaxFileName == 0x100`, and no leaving member anywhere on `RFs` — so `RFile` needs no shim either |
 | 72 | **done** — atomics and locks on 9.3 | [eka2-concurrency.md](../../research/eka2-concurrency.md): the four euser counters, the unresolvable libcalls, the `RFastLock`-backed shim that makes Rust atomics link and run, and the recommendation to raise `max-atomic-width` to 32 only alongside that shim |
 | 73 | **Async**: a `CActive` subclass in the shim whose `RunL` wakes a Rust waker, a single-threaded executor on `CActiveScheduler`; `examples/async` awaits an `RTimer` | two timers awaited concurrently finish in the right order, reported through the result file, with no extra thread |
 | 74 | **Networking**: `RSocketServ`, `RHostResolver`, `RSocket` over the async bridge; `examples/net` resolves a name and does one TCP round trip | the bytes come back; the example declares `NetworkServices` and the manifest/capability check passes. EKA2L1 has a real host-socket backend (`src/emu/services/src/internet/protocols/`, `AF_INET`/`getaddrinfo`), so this is verifiable here |

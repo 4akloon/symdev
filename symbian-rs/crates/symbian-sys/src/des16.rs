@@ -37,9 +37,6 @@ pub struct TDes16 {
     _private: [u8; 0],
 }
 
-/// `TChar` is a class wrapping one `TUint`: 4 bytes, one register under the EABI.
-pub type TChar = u32;
-
 unsafe extern "C" {
     /// `00000ee0 T _ZN6TDes164CopyERK7TDesC16` — `TDes16::Copy(const TDesC16&)`.
     /// Replaces the contents. Panics `USER 11` if `src` is longer than `MaxLength()`.
@@ -50,11 +47,6 @@ unsafe extern "C" {
     /// Panics `USER 11` on overflow.
     #[link_name = "_ZN6TDes166AppendERK7TDesC16"]
     pub fn TDes16_Append(this: *mut TDes16, src: *const TDesC16);
-
-    /// `00000f14 T _ZN6TDes166AppendE5TChar` — `TDes16::Append(TChar)`. One code unit
-    /// for anything in the basic multilingual plane. Panics `USER 11` on overflow.
-    #[link_name = "_ZN6TDes166AppendE5TChar"]
-    pub fn TDes16_AppendChar(this: *mut TDes16, c: TChar);
 
     /// `00000f5c T _ZN6TDes169AppendNumEx` — `TDes16::AppendNum(TInt64)`: the signed
     /// decimal integer, formatted by euser and therefore free of `core::fmt`.

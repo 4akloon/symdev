@@ -2,9 +2,7 @@
 use core::fmt;
 
 use symbian_sys::des::TDesC16;
-use symbian_sys::des16::{
-    TDes16, TDes16_Append, TDes16_AppendChar, TDes16_AppendNum, TDes16_Copy, TDes16_Num,
-};
+use symbian_sys::des16::{TDes16, TDes16_Append, TDes16_AppendNum, TDes16_Copy, TDes16_Num};
 
 use super::{DesC16, EBUF, MAX_LENGTH, header, sealed, utf16};
 use crate::{ErrorKind, Result, SymbianError};
@@ -135,8 +133,12 @@ impl<const N: usize> Buf16<N> {
         (self as *mut Self).cast()
     }
 
-    /// Replaces the contents with `src` (`TDes16::Copy`).
-    pub fn copy_from(&mut self, src: &impl DesC16) -> Result<()> {
+    /// Replaces the contents with another descriptor's (`TDes16::Copy`).
+    ///
+    /// Lower level than the rest of this type: an application builds text with
+    /// [`Buf16::push_str`] or `write!` and never names a descriptor. This is for text
+    /// that arrives *from* Symbian — an out-parameter a file or system call filled in.
+    pub fn copy_des(&mut self, src: &impl DesC16) -> Result<()> {
         self.room_for(src.len(), 0)?;
         // SAFETY: `self` has the observed `TBuf16<N>` layout and `src` one of the
         // observed `TDesC16` layouts, both borrowed for the whole call. The only way
@@ -146,27 +148,12 @@ impl<const N: usize> Buf16<N> {
         Ok(())
     }
 
-    /// Appends `src` (`TDes16::Append`).
-    pub fn append(&mut self, src: &impl DesC16) -> Result<()> {
+    /// Appends another descriptor's contents (`TDes16::Append`). Lower level, as
+    /// [`Buf16::copy_des`]: for text that arrives from Symbian.
+    pub fn append_des(&mut self, src: &impl DesC16) -> Result<()> {
         self.room_for(src.len(), self.length())?;
         // SAFETY: as `copy_from`, with the existing length counted in.
         unsafe { TDes16_Append(self.as_tdes16(), src.as_tdesc16()) };
-        Ok(())
-    }
-
-    /// Appends one character (`TDes16::Append(TChar)`).
-    ///
-    /// A character outside the basic multilingual plane is refused with `KErrArgument`:
-    /// whether euser writes a surrogate pair for one has not been observed, and
-    /// [`Buf16::push`] encodes such a character correctly without euser.
-    pub fn append_char(&mut self, c: char) -> Result<()> {
-        if (c as u32) > 0xffff {
-            return Err(SymbianError::of(ErrorKind::Argument));
-        }
-        self.room_for(1, self.length())?;
-        // SAFETY: `TChar` is a class wrapping one `TUint`, passed in one register; `c`
-        // is a single code unit and there is room for it.
-        unsafe { TDes16_AppendChar(self.as_tdes16(), c as u32) };
         Ok(())
     }
 

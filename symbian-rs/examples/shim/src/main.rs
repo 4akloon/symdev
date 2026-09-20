@@ -24,12 +24,6 @@ const GOOD: &str = "E:\\symdev\\shim70\\out.txt";
 /// A drive that is not mounted, so `EnsurePathExistsL` leaves.
 const BAD: &str = "Y:\\symdev\\shim70\\out.txt";
 
-fn path(text: &str) -> Result<Buf16<64>> {
-    let mut buf = Buf16::new();
-    buf.push_str(text)?;
-    Ok(buf)
-}
-
 /// The raw `TInt` of a call, so the note shows `KErrNone` as 0 and a failure as itself.
 fn code(result: Result<()>) -> i64 {
     match result {
@@ -44,7 +38,7 @@ fn run() -> Result<()> {
 
     // No shim: `RFs::MkDirAll` cannot leave and reports its own error.
     note.push_str("shim70 mkdirall=")?;
-    note.append_num(code(fs.make_dir_all(&path(GOOD)?)))?;
+    note.append_num(code(fs.make_dir_all(GOOD)))?;
 
     // Through the shim, and this one really leaves: `User::LeaveIfError(-12)` raises a
     // C++ exception inside the C++ frame, the `TRAP` catches it, and -12 arrives here.
@@ -56,9 +50,9 @@ fn run() -> Result<()> {
     // server accepts paths a phone would refuse, so these are expected to succeed here;
     // what they show is that the trapped path is also the ordinary path.
     note.push_str(" bad=")?;
-    note.append_num(code(fs.ensure_path_exists(&path(BAD)?)))?;
+    note.append_num(code(fs.ensure_path_exists(BAD)))?;
     note.push_str(" ensured=")?;
-    note.append_num(code(fs.ensure_path_exists(&path(GOOD)?)))?;
+    note.append_num(code(fs.ensure_path_exists(GOOD)))?;
 
     // A negative number, to show how euser renders the sign.
     note.push_str(" sign=")?;

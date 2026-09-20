@@ -11,12 +11,29 @@
 //!   wrong (experiment 76).
 //!
 //! Both report failure the same way here: a `SymbianError` holding the exact `TInt`.
+//! Both also take a `&str`, not a descriptor: an application using this SDK should not
+//! have to name a Symbian type to open a path.
 use symbian_sys::efsrv::{KFILE_SERVER_DEFAULT_MESSAGE_SLOTS, RFs, RFs_Connect, RFs_MkDirAll};
 use symbian_sys::euser::{RHandleBase, RHandleBase_Close};
 use symbian_sys::shim::symrs_bafl_ensure_path_exists;
 
-use crate::des::DesC16;
+use crate::des::{Buf16, DesC16};
 use crate::error::{Result, check};
+
+/// `KMaxFileName` (`e32const.h` line 390: `const TInt KMaxFileName=0x100;`): the longest
+/// path the file server accepts, and the size of the descriptor a path is built into.
+pub const MAX_FILE_NAME: usize = 0x100;
+
+/// A path is a `&str` in the application and a descriptor by the time it reaches the
+/// file server. `KErrOverflow` if it is longer than `KMaxFileName`, `KErrArgument` if it
+/// is not valid UTF-16 — the same codes every other conversion in this crate reports.
+///
+/// Drive letters are Symbian's, not POSIX's: `C:\`, `E:\`, `Z:\`.
+fn path_of(path: &str) -> Result<Buf16<MAX_FILE_NAME>> {
+    let mut buf = Buf16::new();
+    buf.push_str(path)?;
+    Ok(buf)
+}
 
 /// An open session with the file server.
 ///
@@ -47,7 +64,8 @@ impl FileServer {
     /// created. An existing path is `KErrAlreadyExists`, not success.
     ///
     /// **No shim.** The call cannot leave, so Rust makes it itself.
-    pub fn make_dir_all(&mut self, path: &impl DesC16) -> Result<()> {
+    pub fn make_dir_all(&mut self, path: &str) -> Result<()> {
+        let path = path_of(path)?;
         // SAFETY: `this` in argument 0, the descriptor borrowed for the call and only
         // read. Non-leaving, so no C++ exception can cross this frame.
         let code = unsafe { RFs_MkDirAll(&mut self.fs, path.as_tdesc16()) };
@@ -60,7 +78,8 @@ impl FileServer {
     /// The SDK call leaves with the file server's own error — a drive that is not
     /// mounted, a path that cannot be written — and the shim's `TRAP` turns that into
     /// this `Err` while the process carries on.
-    pub fn ensure_path_exists(&mut self, path: &impl DesC16) -> Result<()> {
+    pub fn ensure_path_exists(&mut self, path: &str) -> Result<()> {
+        let path = path_of(path)?;
         // SAFETY: the shim takes `RFs*` and `const TDesC16*`, both borrowed for the
         // call, and is a complete `TRAP` unit: it returns `KErrNone`, the leave code or
         // `KErrArgument`, and never lets an exception out. Nothing unwinds into Rust.
