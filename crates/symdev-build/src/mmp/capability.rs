@@ -25,7 +25,8 @@ const OBSOLETE: &[&str] = &[
 /// the `.mmp` does not quietly ask for something else.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MmpCapabilities {
-    names: Vec<&'static str>,
+    /// The canonical names, in bit order.
+    pub names: Vec<&'static str>,
     pub warnings: Vec<String>,
 }
 
@@ -69,10 +70,6 @@ impl MmpCapabilities {
         let order = Capabilities::all();
         names.sort_by_key(|n| order.iter().position(|o| o == n).unwrap_or(usize::MAX));
         Ok(Self { names, warnings })
-    }
-
-    pub fn names(&self) -> &[&'static str] {
-        &self.names
     }
 
     /// The manifest is what the image and the package are built from, so a `.mmp` that

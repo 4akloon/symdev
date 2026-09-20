@@ -173,13 +173,13 @@ fn an_assp_directive_and_the_flat_resource_form_are_refused() {
 
 #[test]
 fn capability_names_are_case_insensitive_and_all_expands() {
-    use crate::MmpCapabilities;
+    use crate::mmp::MmpCapabilities;
     let m = Mmp::parse(
         "TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\nCAPABILITY readuserdata NetworkServices\n",
     )
     .unwrap();
     let caps = MmpCapabilities::of(&m).unwrap();
-    assert_eq!(caps.names(), ["NetworkServices", "ReadUserData"]);
+    assert_eq!(caps.names, ["NetworkServices", "ReadUserData"]);
     caps.check(&["ReadUserData".into(), "NetworkServices".into()], "x.exe")
         .unwrap();
     assert!(caps.check(&["ReadUserData".into()], "x.exe").is_err());
@@ -187,11 +187,11 @@ fn capability_names_are_case_insensitive_and_all_expands() {
     let all =
         Mmp::parse("TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\nCAPABILITY ALL -TCB\n").unwrap();
     let all = MmpCapabilities::of(&all).unwrap();
-    assert_eq!(all.names().len(), 19);
-    assert!(!all.names().contains(&"TCB"));
+    assert_eq!(all.names.len(), 19);
+    assert!(!all.names.contains(&"TCB"));
 
     let none = Mmp::parse("TARGET x.exe\nTARGETTYPE EXE\nSOURCE a.cpp\nCAPABILITY NONE\n").unwrap();
-    assert!(MmpCapabilities::of(&none).unwrap().names().is_empty());
+    assert!(MmpCapabilities::of(&none).unwrap().names.is_empty());
 }
 
 #[test]
