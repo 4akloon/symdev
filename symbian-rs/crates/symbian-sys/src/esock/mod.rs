@@ -20,7 +20,9 @@
 //! `Connect`, `Send`, `Recv`, `Read`, `Write`, `Accept` and `Shutdown` take a
 //! `TRequestStatus&` and complete later. The **blocking** form of each — which is what
 //! `std::net` is — is the pair `RSocket::Connect(addr, status); User::WaitForRequest
-//! (status);` with no `CActive` and no scheduler. [`request`] holds that pair. Step 73's
+//! (status);` with no `CActive` and no scheduler — [`TRequestStatus`] and
+//! [`User_WaitForRequest`], both euser's, both declared once in [`crate::thread`] where
+//! step 72 needed them first and re-exported here. Step 73's
 //! executor will sit on these same declarations rather than replace them.
 //!
 //! # Sizes
@@ -41,14 +43,16 @@
 //! | `TNameRecord` | 564 | 8 |
 //! | `TNameEntry` (`TPckgBuf<TNameRecord>`) | 576 | 8 |
 mod pckgbuf;
-mod request;
 mod rhostresolver;
 mod rsocket;
 mod rsocketserv;
 mod sockaddr;
 
+/// `TRequestStatus` and `User::WaitForRequest` are euser's, and step 72's thread module
+/// declared them first; they are re-exported here so that a socket caller has one place
+/// to look and there is only ever **one** declaration of the symbol.
+pub use crate::thread::{TRequestStatus, User_WaitForRequest};
 pub use pckgbuf::{TPCKG_BUF_OFFSET_DATA, TPckgBuf_ctor, TSockXfrLengthStorage};
-pub use request::{KREQUEST_PENDING, TRequestStatus, TRequestStatusStorage, User_WaitForRequest};
 pub use rhostresolver::{
     RHostResolver, RHostResolver_Close, RHostResolver_GetByAddress, RHostResolver_GetByName,
     RHostResolver_Next, RHostResolver_Open, TNAME_ENTRY_OFFSET_ADDR, TNAME_ENTRY_OFFSET_DATA,

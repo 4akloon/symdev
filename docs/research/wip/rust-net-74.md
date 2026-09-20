@@ -101,3 +101,25 @@ Step 74 of the Rust SDK: `symbian_std::net` — blocking TCP/UDP/resolver in `st
 
 - Read the design spec §6a/§7/§11, experiments 78 and 79, `symbian-std/src/{io,fs}` and
   `shims/common/symrs_shim.h`.
+
+## Stopped mid-task, 2026-09-20 ~22:07 (owner asked to pause until 08:00)
+
+Not a failure — the slice was interrupted, and six commits are already in. Uncommitted at
+the moment of the stop, and committed as-is on top:
+
+- `symbian-core/src/net/request.rs` — was being **deleted**: `main` gained a
+  `TRequestStatus` in `symbian-std`'s `thread.rs` (experiment 80, merged after this branch
+  was cut), and this branch had written a second one. Use the one from `thread.rs` and
+  drop this file; that is the first thing to finish.
+- `driver/{mod,rust_build}.rs`, `required_capability.rs`, `cli/test_cmd.rs` — the
+  capability check ("refuse a build whose imports need a capability the manifest does not
+  grant") and the staleness check ("refuse to test a package older than the image").
+
+### Resume from here
+
+1. Delete the duplicate `TRequestStatus`, take `symbian-std`'s.
+2. Rebase onto `main` — it moved a lot while this ran: experiments 80 (atomics, `Arc`,
+   `Mutex`, threads), 83 (keys reach the guest), 85 (time). Expect conflicts in
+   `symbian-std/src/lib.rs`, `symbian-sys/src/lib.rs`, `symbian-rs/Cargo.toml` and the
+   backlog; all have been additive so far.
+3. Re-run the gate and `examples/net` through `symdev test --emulator`, then report.

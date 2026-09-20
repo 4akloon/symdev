@@ -10,7 +10,7 @@
 //!   are ordinary calls that answer immediately.
 //! - **`TRequestStatus&` later** — `Connect`, `Send`, `Recv`, `SendTo`, `RecvFrom`,
 //!   `Accept`, `Shutdown`. These return `void`; the answer arrives in the status. The
-//!   blocking form is the call followed by [`super::User_WaitForRequest`], which is what
+//!   blocking form is the call followed by [`crate::thread::User_WaitForRequest`], which is what
 //!   `std::net` means and needs no scheduler.
 //!
 //! The `TSockXfrLength` overloads of `Send` and `Recv` are **not** declared: the
@@ -20,9 +20,9 @@
 
 use crate::des8::{TDes8, TDesC8};
 
-use super::request::TRequestStatus;
 use super::rsocketserv::RSocketServ;
 use super::sockaddr::TSockAddr;
+use crate::thread::TRequestStatus;
 
 /// `RSocket::ENormal` (`es_sock.h` line 751): complete when input and output have
 /// stopped — the graceful close, `std`'s `Shutdown::Both`.

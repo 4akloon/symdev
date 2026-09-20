@@ -8,7 +8,7 @@ use std::process::Command;
 
 use symdev_core::{Artifact, BuildBackend, Error, Project, RemotePath, Result};
 
-use super::{CompileIncludes, GcceBuild, LibcallArchive, arg, io};
+use super::{CompileIncludes, GcceBuild, LibcallArchive, arg, io, produced};
 use crate::required_capability::RequiredCapability;
 use crate::rust_sdk::RustSdk;
 
@@ -266,34 +266,30 @@ impl BuildBackend for RustBuild {
         std::fs::create_dir_all(&build_dir).map_err(io)?;
         let cwd = RemotePath::new(arg(&project.root));
         self.run_cargo(&cwd)?;
-        let archive = self.archive(project);
-        if !archive.is_file() {
-            return Err(Error::Other(format!(
-                "cargo produced no {}: the Cargo package must be named `{}` with \
-                 `crate-type = [\"staticlib\"]` (as `symdev new --language rust` writes it)",
-                archive.display(),
+        let archive = produced(
+            self.archive(project),
+            &format!(
+                "the Cargo package must be named `{}` with `crate-type = [\"staticlib\"]`, \
+                 as `symdev new --language rust` writes it",
                 self.name
-            )));
-        }
+            ),
+        )?;
         let shim = self.build_shims(project, &cwd)?;
         self.run_cargo_args(&self.libcalls().cargo_args(), &cwd)?;
-        let libcalls = self.libcalls().path(project);
-        if !libcalls.is_file() {
-            return Err(Error::Other(format!(
-                "cargo produced no {}: the Rust SDK's {} crate is what defines the \
-                 __atomic_* family and memcmp for this target",
-                libcalls.display(),
+        let libcalls = produced(
+            self.libcalls().path(project),
+            &format!(
+                "the Rust SDK's {} crate is what defines the __atomic_* family and memcmp \
+                 for this target",
                 RustSdk::LIBCALLS_CRATE
-            )));
-        }
+            ),
+        )?;
         let elf = build_dir.join(format!("{}.elf", self.name));
         let map = build_dir.join(format!("{}.exe.map", self.name));
         self.gcce.run_tool(
             &self.link_args(&archive, shim.as_deref(), Some(&libcalls), &elf, &map),
             &cwd,
         )?;
-        // Before the E32 exists, so a missing capability is a build error naming the
-        // manifest key rather than a bare -46 on a phone with no console.
         RequiredCapability::check(&elf, &self.gcce.capabilities, &format!("{}.exe", self.name))?;
         let out = build_dir.join(format!("{}.exe", self.name));
         self.gcce

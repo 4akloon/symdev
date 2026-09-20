@@ -69,7 +69,7 @@ pub fn test_project(m: symdev_manifest::Manifest, emulator: bool) -> Result<Exit
 /// without a `package` therefore runs the *previous* binary, and the only symptom is a
 /// result that does not match the source — which cost a confused run during step 74,
 /// where the old image was the one with no test report in it at all.
-fn stale_package(sisx: &PathBuf, build_dir: &std::path::Path, name: &str) -> Result<()> {
+fn stale_package(sisx: &std::path::Path, build_dir: &std::path::Path, name: &str) -> Result<()> {
     let exe = build_dir.join(format!("{name}.exe"));
     let (Ok(sis_time), Ok(exe_time)) = (modified(sisx), modified(&exe)) else {
         return Ok(());

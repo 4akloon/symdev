@@ -50,6 +50,18 @@ fn io(err: std::io::Error) -> Error {
     Error::Other(err.to_string())
 }
 
+/// An artefact a tool was supposed to produce, or an error naming it and `why` the
+/// project may not have got one.
+fn produced(path: PathBuf, why: &str) -> symdev_core::Result<PathBuf> {
+    if path.is_file() {
+        return Ok(path);
+    }
+    Err(Error::Other(format!(
+        "cargo produced no {}: {why}",
+        path.display()
+    )))
+}
+
 impl GcceBuild {
     pub(super) fn linkas_for(module: &Module, name: &str) -> String {
         format!("{name}{{000a0000}}[{:08x}].{}", module.uid3, module.ext())

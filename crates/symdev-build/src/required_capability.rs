@@ -56,8 +56,8 @@ impl RequiredCapability {
     /// Reads `elf`'s `DT_NEEDED` list and fails if it needs a capability `granted` does
     /// not contain.
     pub fn check(elf: &Path, granted: &[String], target: &str) -> Result<()> {
-        let bytes = std::fs::read(elf)
-            .map_err(|e| Error::Other(format!("read {}: {e}", elf.display())))?;
+        let bytes =
+            std::fs::read(elf).map_err(|e| Error::Other(format!("read {}: {e}", elf.display())))?;
         let needed = symdev_elf2e32::ElfImage::parse(bytes)?.needed_dlls()?;
         Self::check_needed(&needed, granted, target)
     }
@@ -86,8 +86,7 @@ impl RequiredCapability {
 
     /// `esock{000a0000}.dso` → `esock`; `euser.dso` → `euser`.
     fn stem(needed: &str) -> &str {
-        let name = needed.split(['{', '.']).next().unwrap_or(needed);
-        name
+        needed.split(['{', '.']).next().unwrap_or(needed)
     }
 }
 
@@ -107,7 +106,10 @@ mod tests {
         let text = e.to_string();
         assert!(text.contains("esock{000a0000}.dso"), "{text}");
         assert!(text.contains("NetworkServices"), "{text}");
-        assert!(text.contains("capabilities = [\"NetworkServices\"]"), "{text}");
+        assert!(
+            text.contains("capabilities = [\"NetworkServices\"]"),
+            "{text}"
+        );
         assert!(text.contains("in_sock.h"), "{text}");
     }
 

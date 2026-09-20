@@ -6,7 +6,7 @@
 //! `User::WaitForRequest` — is a Symbian idiom, not a workaround: it blocks the calling
 //! thread on its own request semaphore until the socket server completes the status.
 //! There is no `CActive`, no `CActiveScheduler` and no executor anywhere in this crate.
-use symbian_sys::esock::{TRequestStatus, TRequestStatusStorage, User_WaitForRequest};
+use symbian_sys::esock::{TRequestStatus, User_WaitForRequest};
 
 use crate::error::{Result, check};
 
@@ -26,16 +26,16 @@ use crate::error::{Result, check};
 /// status inside this function makes that unrepresentable: one request is issued, waited
 /// for and finished before anything else can be.
 pub fn blocking(issue: impl FnOnce(*mut TRequestStatus)) -> Result<i32> {
-    let mut status = TRequestStatusStorage::zeroed();
-    // A request the server rejects before it looks at the status would otherwise be read
-    // as `KErrNone`, because zeroed storage is success.
-    status.set_pending();
-    issue(status.as_request_status());
+    // `TRequestStatus::new` is already `KRequestPending`; a zeroed status would read as
+    // `KErrNone`, so a request the server rejected before looking at it would come back
+    // as a success.
+    let mut status = TRequestStatus::new();
+    issue(&raw mut status);
     // SAFETY: the status is a live, 4-aligned `TRequestStatus` of the measured size that
     // `issue` has just handed to the socket server, and this stack frame outlives the
-    // wait. `User::WaitForRequest` is a non-leaving `static` member of `User` with one
-    // reference argument (experiment 78's ABI does not even arise: there is no `this`).
-    // It returns only once this status is no longer `KRequestPending`.
-    unsafe { User_WaitForRequest(status.as_request_status()) };
-    check(status.code())
+    // wait. `User::WaitForRequest` is a non-leaving `static` member of `User` taking one
+    // reference (so experiment 78's `this` question does not even arise), and it returns
+    // only once this status is no longer `KRequestPending`.
+    unsafe { User_WaitForRequest(&raw mut status) };
+    check(status.status)
 }
