@@ -51,7 +51,7 @@ impl HBuf16 {
     }
 
     /// A buffer holding `s`, sized to fit it exactly.
-    pub fn from_str(s: &str) -> Result<Self> {
+    pub fn from_text(s: &str) -> Result<Self> {
         let mut buf = Self::with_capacity(utf16::utf16_len(s))?;
         buf.push_str(s)?;
         Ok(buf)

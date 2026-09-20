@@ -135,7 +135,8 @@ unsafe impl GlobalAlloc for SymbianHeap {
             // `User::ReAlloc` may move the cell, and it promises nothing beyond the
             // heap's own alignment, so an over-aligned block is re-placed by hand.
             // SAFETY: the new layout has the same (valid) alignment and a non-zero size.
-            let new = unsafe { self.alloc(Layout::from_size_align_unchecked(new_size, layout.align())) };
+            let new =
+                unsafe { self.alloc(Layout::from_size_align_unchecked(new_size, layout.align())) };
             if !new.is_null() {
                 // SAFETY: both blocks are live and do not overlap; only the bytes that
                 // exist in both are copied.

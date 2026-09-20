@@ -21,12 +21,17 @@ pub struct Buf16<const N: usize> {
 }
 
 impl<const N: usize> Buf16<N> {
-    /// An empty buffer. `N` must fit both the 28-bit length field and a `TInt`.
+    /// `N` has to fit both the 28-bit length field and `iMaxLength`'s `TInt`. The check
+    /// is an associated constant, so it is a compile error for the offending `N` rather
+    /// than a panic at run time.
+    const LENGTH_FITS: () = assert!(
+        N <= MAX_LENGTH && N <= i32::MAX as usize,
+        "Buf16<N>: N is larger than a descriptor length"
+    );
+
+    /// An empty buffer.
     pub const fn new() -> Self {
-        assert!(
-            N <= MAX_LENGTH && N <= i32::MAX as usize,
-            "Buf16<N>: N is larger than a descriptor length"
-        );
+        let () = Self::LENGTH_FITS;
         Self {
             type_length: header(EBUF, 0),
             max_length: N as i32,

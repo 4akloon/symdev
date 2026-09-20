@@ -43,7 +43,7 @@ fn run() -> Result<()> {
     }
 
     // A heap-backed descriptor: one cell holding the header word and the code units.
-    let mut heap = HBuf16::from_str("heap ")?;
+    let mut heap = HBuf16::from_text("heap ")?;
     heap.push_str(&text)?;
     user::info_print(&heap)?;
     user::after(400_000);

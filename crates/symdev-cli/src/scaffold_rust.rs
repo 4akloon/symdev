@@ -56,7 +56,7 @@ fn manifest(name: &str) -> String {
 }
 
 /// A `staticlib` named after the package (`RustBuild` looks for `lib<name>.a`); the SDK
-/// crate by absolute path; the same profile as the SDK workspace (size, one object,
+/// crates by absolute path; the same profile as the SDK workspace (size, one object,
 /// no unwinder).
 fn cargo_manifest(name: &str, sdk: &RustSdk) -> String {
     format!(
@@ -72,6 +72,7 @@ fn cargo_manifest(name: &str, sdk: &RustSdk) -> String {
          crate-type = [\"staticlib\"]\n\
          \n\
          [dependencies]\n\
+         symbian-core = {{ path = \"{}\" }}\n\
          symbian-runtime = {{ path = \"{}\" }}\n\
          \n\
          [profile.release]\n\
@@ -83,6 +84,7 @@ fn cargo_manifest(name: &str, sdk: &RustSdk) -> String {
          \n\
          [profile.dev]\n\
          panic = \"abort\"\n",
+        sdk.crate_dir("symbian-core").display(),
         sdk.crate_dir("symbian-runtime").display()
     )
 }
@@ -132,6 +134,7 @@ mod tests {
         assert!(read("symdev.toml").contains("uid3 = \"0xef9f2cab\""));
         let cargo = read("Cargo.toml");
         assert!(cargo.contains("crate-type = [\"staticlib\"]"));
+        assert!(cargo.contains(&sdk.crate_dir("symbian-core").display().to_string()));
         assert!(cargo.contains(&sdk.crate_dir("symbian-runtime").display().to_string()));
         assert!(read(".cargo/config.toml").contains(&sdk.target_spec().display().to_string()));
         assert_eq!(read("rust-toolchain.toml"), RustSdk::TOOLCHAIN_FILE);

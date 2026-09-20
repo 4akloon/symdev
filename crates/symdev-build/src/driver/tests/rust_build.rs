@@ -47,7 +47,7 @@ fn archive_is_under_build_cargo() {
 }
 
 #[test]
-fn link_args_are_gcce_link_args_plus_undefined_e32main() {
+fn link_args_are_gcce_link_args_plus_undefined_e32main_and_gc_sections() {
     let b = rust();
     let (a, elf, map) = (
         Path::new("/p/build/cargo/arm-symbian-e32/release/libhello.a"),
@@ -59,8 +59,16 @@ fn link_args_are_gcce_link_args_plus_undefined_e32main() {
     let at = want.iter().position(|x| x == "_E32Startup").unwrap();
     assert_eq!(want[at - 1], "--entry");
     assert_eq!(&want[at + 1..at + 3], &s(&["-u", "_E32Startup"])[..]);
-    want.insert(at + 3, "-u".into());
-    want.insert(at + 4, E32MAIN.into());
+    want.insert(at + 3, "--gc-sections".into());
+    want.insert(at + 4, "-u".into());
+    want.insert(at + 5, E32MAIN.into());
     assert_eq!(got, want);
     assert_eq!(got.iter().filter(|x| *x == "-u").count(), 2);
+    // The C++ line never gets it (experiment 68: it is `compiler_builtins`' single
+    // codegen unit that makes it necessary, and only Rust links that archive).
+    assert!(
+        !b.gcce
+            .link_args("hello", a, elf, map, &[])
+            .contains(&"--gc-sections".to_string())
+    );
 }
