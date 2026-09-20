@@ -67,6 +67,20 @@ Step 74 of the Rust SDK: `symbian_std::net` — blocking TCP/UDP/resolver in `st
   still **3 187** and `files` still **10 423**, because `--as-needed` drops a DSO no
   symbol references (experiment 78's mechanism, unchanged).
 
+- **End of input on a socket is `KErrEof` (-25), not a zero-byte completion.** Observed:
+  `read_to_end` came back `UnexpectedEof (KErrEof (-25))` from a peer that had closed.
+  `symbian_core::net::Socket::recv` now reports it as the bytes that arrived (0), the
+  same translation `RFile::Read` makes.
+- **A `TSockAddr` a call fills in must be *constructed*, not zeroed.** It is a
+  `TBuf8<KMaxSockAddrSize>`, so `RSocket::LocalName`, `RemoteName` and `RecvFrom` write
+  into it as a descriptor and honour `iMaxLength`. Zeroed storage has `iMaxLength == 0`:
+  the socket server writes nothing and there is no diagnostic anywhere. Fixed by calling
+  `TInetAddr::TInetAddr()` (`_ZN9TInetAddrC1Ev`); it cost three failing cases to find.
+- **The host can connect *into* an emulated listener, on the same port.** EKA2L1 hands
+  the guest's bind address straight to `uv_tcp_bind`, so no mapping: `poker.py` on the
+  host connected to `127.0.0.1:18975` and got `served\n` back from the emulated app.
+- `examples/net`: **22 passed**, `symdev test --emulator` exit 0.
+
 ## Decisions
 
 - **No C++ shim for this step.** Nothing on the path leaves and nothing is sret, so

@@ -23,7 +23,9 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 use symbian_std::io::{self, ErrorKind, Read, Write};
-use symbian_std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream, ToSocketAddrs, UdpSocket};
+use symbian_std::net::{
+    Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream, ToSocketAddrs, UdpSocket,
+};
 use symbian_std::test_report::Report;
 
 /// The host's loopback as the emulated phone sees it — the same address, because
@@ -31,6 +33,11 @@ use symbian_std::test_report::Report;
 const HOST: Ipv4Addr = Ipv4Addr::new(127, 0, 0, 1);
 /// Where `scratchpad/echoserver.py` listens.
 const PORT: u16 = 18974;
+/// Where *this* program listens, for the [`TcpListener`] case: `scratchpad/poker.py` on
+/// the host keeps trying to connect there until it succeeds. The guest's bind is a real
+/// host bind — EKA2L1 hands the address straight to `uv_tcp_bind` — so the emulated
+/// application and the host agree on the port with no mapping in between.
+const LISTEN_PORT: u16 = 18975;
 /// What goes up the wire, with a non-ASCII byte so a truncating write would show.
 const REQUEST: &[u8] = "symdev step 74 — net through symbian-std\n".as_bytes();
 /// What the server sends back for [`REQUEST`].
@@ -52,6 +59,20 @@ fn round_trip(addr: impl ToSocketAddrs) -> io::Result<Vec<u8>> {
 /// in the path.
 fn round_trip_by_name() -> io::Result<Vec<u8>> {
     round_trip(("localhost", PORT))
+}
+
+/// The other direction: listen, take one connection from the host, read what it sent
+/// and answer. `incoming()` rather than `accept()` so both are exercised.
+fn serve_one(listener: &mut TcpListener) -> io::Result<Vec<u8>> {
+    let mut stream = listener
+        .incoming()
+        .next()
+        .ok_or_else(|| io::Error::from(ErrorKind::NotFound))??;
+    let mut got = Vec::new();
+    // The poker closes its write half after one line, so this ends.
+    stream.read_to_end(&mut got)?;
+    stream.write_all(b"served\n")?;
+    Ok(got)
 }
 
 /// What the resolver says `localhost` is.
@@ -134,7 +155,26 @@ fn run(report: &mut Report) {
             .is_some(),
     );
 
-    // 6. UDP, which came free with the same `RSocket`: bind to an ephemeral port and
+    // 6. The other direction: this program as the server. The host's `poker.py` is
+    //    already retrying against `LISTEN_PORT` when the emulator starts.
+    match report.checked(
+        "bind a listener",
+        TcpListener::bind(SocketAddr::V4(SocketAddrV4::new(HOST, LISTEN_PORT))),
+    ) {
+        Some(mut listener) => {
+            report.check(
+                "the listener knows its port",
+                listener.local_addr().map(|a| a.port()) == Ok(LISTEN_PORT),
+            );
+            match report.checked("accept one connection", serve_one(&mut listener)) {
+                Some(got) => report.check("the poke arrived", got == b"poke\n"),
+                None => report.fail("the poke arrived", "no connection was served"),
+            }
+        }
+        None => report.fail("accept one connection", "the bind failed"),
+    }
+
+    // 7. UDP, which came free with the same `RSocket`: bind to an ephemeral port and
     //    read back which one the stack chose.
     match report.checked(
         "bind a UDP socket",
