@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-pollster = "0.4"
+pollster = "1.0"
 symdev-build = { path = "../symdev-build" }
 symdev-core = { path = "../symdev-core" }
 symdev-emulator = { path = "../symdev-emulator" }

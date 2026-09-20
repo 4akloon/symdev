@@ -35,11 +35,11 @@ pub(super) fn decrypt_openssl_dsa_pem(text: &str, password: &str) -> Result<Vec<
         .collect();
     let ciphertext = base64_decode(&b64)?;
     let key = evp_bytes_to_key_md5(password.as_bytes(), &iv, 24);
-    use des::cipher::{BlockDecryptMut, KeyIvInit, block_padding::Pkcs7};
+    use des::cipher::{BlockModeDecrypt, KeyIvInit, block_padding::Pkcs7};
     type TdesCbc = cbc::Decryptor<des::TdesEde3>;
     TdesCbc::new_from_slices(&key, &iv)
         .map_err(|_| Error::Other("invalid 3DES key/iv".into()))?
-        .decrypt_padded_vec_mut::<Pkcs7>(&ciphertext)
+        .decrypt_padded_vec::<Pkcs7>(&ciphertext)
         .map_err(|_| Error::Other("private key decrypt failed (check password)".into()))
 }
 
