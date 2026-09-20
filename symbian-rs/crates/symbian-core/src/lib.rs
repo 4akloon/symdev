@@ -10,6 +10,9 @@
 //!   the place where both halves of the shim rule appear: every `RFs` and `RFile`
 //!   member is called directly because none of them can leave, while
 //!   `BaflUtils::EnsurePathExistsL` goes through the C++ `TRAP` shim because it can.
+//! - [`net`] is sockets — the session, a socket, the resolver and an address. Both
+//!   halves of the shim rule land on the same side there: nothing in `es_sock.h` or
+//!   `in_sock.h` leaves, so the whole subsystem is called directly.
 //! - [`shim`] is the run-time check that the C++ trap harness is in place.
 //! - [`time`] is the clocks: the three `User` counters and the `TTime` wall clock.
 //! - [`user`] wraps the non-leaving `User::` exports.
@@ -23,6 +26,7 @@ extern crate alloc;
 pub mod des;
 pub mod des8;
 pub mod fs;
+pub mod net;
 pub mod shim;
 pub mod time;
 pub mod user;
