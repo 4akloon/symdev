@@ -20,8 +20,43 @@ Step 74 of the Rust SDK: `symbian_std::net` — blocking TCP/UDP/resolver in `st
   `_ZN9TInetAddrC1Emj`, `SetAddress(TUint32)` is `_ZN9TInetAddr10SetAddressEm`.
 - `TSockAddr : public TBuf8<KMaxSockAddrSize>` with `KMaxSockAddrSize = 0x20`
   (`es_sock.h:193`); `TInetAddr : public TSockAddr`. Sizes to be measured, not assumed.
+- **Layouts measured** with a compile probe on the recorded GCCE argv
+  (`scratchpad/net74/probe.cpp`, `objdump -d`; note `movs rN,#k; lsls rN,#2` = k*4):
+  `sizeof` `TSockAddr` **40** (align 4), `TInetAddr` **40** (align 4, adds no members),
+  `RSocketServ` **4**, `RSocket` **8**, `RHostResolver` **8**, `TRequestStatus` **8**
+  (align 4), `TNameRecord` **564**, `TNameEntry` (= `TPckgBuf<TNameRecord>`) **576**
+  (align 8), `TSockXfrLength` (= `TPckgBuf<TInt>`) **16**; `TNameRecord` offsets
+  `iName` 0, `iAddr` 520, `iFlags` 560.
+- **`es_sock.h` needs the case-fold overlay**: it reaches `MetaData.h`, `Metadata.inl`
+  and `MetaContainer.inl`, which are `metadata.h`/`metadata.inl`/`metacontainer.inl` on
+  disk. Three links; nothing else in the two headers needs one.
+- **`TNameEntry` can be built from euser's own exported constructor.**
+  `TPckgBuf<T>()` is `TAlignedBuf8<sizeof(T)>(sizeof(T))` (`e32cmn.inl:2659`, `:1179`),
+  which is `TBufBase8(aLength, S)` — and `TBufBase8(TInt,TInt)` is exported as
+  `_ZN9TBufBase8C1Eii`. So 576 zeroed 8-aligned bytes plus that one call is a valid
+  `TNameEntry` with no header word guessed, exactly as `PtrC8`/`Ptr8` are built.
+- Constants from the headers: `KAfInet` 0x0800, `KAfInet6` 0x0806, `KAFUnspec` 0,
+  `KSockStream` 1, `KSockDatagram` 2, `KProtocolInetTcp` 6, `KProtocolInetUdp` 17,
+  `KInetAddrLoop` 127.0.0.1, `THostName` = `TBuf<0x100>`; `RSocket::TShutdown` is
+  `ENormal 0, EStopInput 1, EStopOutput 2, EImmediate 3`.
+- **EKA2L1 registers the TCP and UDP inet protocols unconditionally**
+  (`internet/protocols/overall.cpp:44`, both `INET_TCP_PROTOCOL_ID` and
+  `INET_UDP_PROTOCOL_ID`, families `{INET_ADDRESS_FAMILY, INET6_ADDRESS_FAMILY}`), over
+  libuv on the host; no config flag to turn on.
 
 ## Decisions
+
+- **No C++ shim for this step.** Nothing on the path leaves and nothing is sret, so
+  `symbian-sys` declares esock/insock/euser directly. `shims/common/symrs_esock.cpp` is
+  not created.
+- Layering mirrors step 71's files: `symbian-sys::esock` (raw) →
+  `symbian-core::net` (safe, owns the `unsafe`) → `symbian_std::net` (`std`'s shape,
+  `#![forbid(unsafe_code)]`).
+- `TRequestStatus` and `User::WaitForRequest` are euser's, but live in
+  `symbian-sys/src/esock/request.rs` for now: three other agents are in this tree and
+  `euser.rs` is the likeliest shared file. Move them when a second subsystem needs them.
+- IPv4 only. `core::net::Ipv6Addr` is refused with `TODO: … (not observed)` rather than
+  guessed, because `TInetAddr`'s v6 path was never exercised here.
 
 ## Dead ends
 
