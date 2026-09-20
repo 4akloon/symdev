@@ -80,7 +80,7 @@ Verdicts: **keep** (correct and still needed), **done** (symdev has it), **corre
 | 9–10 | Cleanup stack, leaves, panic/leave boundary | keep | Leaves are C++ exceptions on EKA2/GCCE (`XLeaveException`); Rust frames must never be on the stack when one is thrown. Hence the C++ shim with `TRAP` around every leaving call, and `panic=abort` |
 | 11 | symbian-runtime | correct | `E32Main` is C++-mangled (`_Z7E32Mainv`): the startup code in `eexe.lib` calls it; the observed link error is "undefined reference to `E32Main()`". A Rust `#[export_name = "_Z7E32Mainv"] extern "C" fn` is the whole entry point for Stage 1 |
 | 12 | Async on Active Objects | later | `CActive` is a C++ class with virtual `RunL`/`DoCancel`; needs a shim class that forwards to a Rust callback. Design is sound, not for this phase |
-| 13–14 | Threads, sync | unknown | ARMv5TE has no `LDREX`/`STREX`; what euser 9.3 offers for user-mode atomics is UNKNOWN on this host (experiment 68) |
+| 13–14 | Threads, sync | settled by exp 72 | ARMv5TE has no `LDREX`/`STREX` and euser 9.3 exports only `User::LockedInc/Dec` and `SafeInc/Dec` (`TInt` ±1, no CAS). Nothing on the link line defines a `__atomic_*`/`__sync_*` libcall, so every atomic is a link error today; a `__atomic_*` shim over one process-wide `RFastLock` makes Rust's `AtomicU32` link and behave correctly. Threads are `RThread::Create` + `Logon`. [eka2-concurrency.md](../../research/eka2-concurrency.md) |
 | 15 | Filesystem | later | `RFs`/`RFile` are non-leaving for `Connect`/`Open`/`Read`/`Write`; the first shim-free API candidate after alloc |
 | 16 | Networking | later | capability-gated; nothing to design until Stage 3 |
 | 17–18 | Time, entropy | later | `User::NTickCount`, `TTime::HomeTime`, `Math::Random`; entropy quality UNKNOWN |
@@ -154,8 +154,8 @@ recorded C++ pipeline already relies on, "hypothesis" means experiment 65 decide
 | `linker-flavor` / `linker` | as derived (`gnu-lld` / `rust-lld`) | rustc does not link (§3): never run for a `staticlib`. **Exp 65:** `executables: false` makes cargo refuse `bin` targets, so a `src/main.rs` library needs `autobins = false`; no `/bin/false` trick needed |
 | `executables` | `false` for the SDK crates | we build static libraries |
 | `has-thread-local` | `false` | Symbian TLS is `Dll::Tls()`/`UserSvr` calls, not an ELF TLS segment |
-| `max-atomic-width` | `0` in Stage 1 | ARMv5TE has no `LDREX`; whether to expose atomics through euser helpers is experiment 68. `core` and `alloc` build without atomics (`Arc` is gated on `target_has_atomic`) |
-| `atomic-cas` | `false` in Stage 1 | same |
+| `max-atomic-width` | `0` in Stage 1 | ARMv5TE has no `LDREX`. **Settled, exp 72:** raise to `32` *only* in the change that also puts a `__atomic_*` shim on the link line — on its own the raise turns a compile error into seven undefined `__atomic_*` references. `core` and `alloc` build without atomics; at `0` there is no `AtomicU32` and no `alloc::sync`, hence no `Arc` |
+| `atomic-cas` | `false` in Stage 1 | same; `true` together with the shim. euser exports no CAS at all, so the shim's lock is the only compare-exchange on 9.3 |
 | `emit-debug-gdb-scripts` | `false` | no gdb on the target |
 | `eh-frame-header` | `false` | no unwinder |
 | `c-enum-min-bits` | `32` | **settled, exp 65:** the derived JSON says 8 (AAPCS short enums) but a probe compiled with the observed GCCE argv has `sizeof(enum) == 4`; override to 32 |
@@ -242,7 +242,8 @@ is why `alloc` must not assume one global heap. Record in the memory-model note 
   `fn main() -> Result<(), SymbianError>` (or `()`), maps the result to `E32Main`'s `TInt`.
   A `CActiveScheduler` is installed only when the app asks for async.
 - Threads: `RThread::Create` with an explicit stack size and heap choice; no POSIX semantics.
-  Atomics: experiment 68 first.
+  Atomics: experiment 72 settled them — a `__atomic_*` shim over one `RFastLock`; `Mutex` on
+  `RFastLock`, `try_lock` on `RSemaphore`'s timeout, `Once` on the shim's `compare_exchange`.
 - Async: a shim `CActive` subclass whose `RunL` calls a Rust `extern "C"` waker; the Rust
   executor is single-threaded and lives on the active scheduler. Not before Stage 3 is solid.
 
@@ -260,7 +261,7 @@ is why `alloc` must not assume one global heap. Record in the memory-model note 
 ## 10. UNKNOWN list (each becomes an experiment before it becomes code)
 
 1. ~~Heap cell alignment and the over-alignment story for `User::Alloc` (§6)~~ — settled by experiment 68: measured 8 bytes on this ROM's heap (32 cells, sizes 1…257, cell sizes always a multiple of 8, `User::AllocLen` always `4 (mod 8)`), and `RHeap` is not even declared in this SDK's headers, so the allocator trusts 8 and pads anything larger by hand.
-2. User-mode atomics on EKA2 9.3 / ARMv5TE: what euser exports (`User::LockedInc/Dec`, anything `__e32_atomic_*`), and whether `RFastLock` is an acceptable fallback for `Mutex`.
+2. ~~User-mode atomics on EKA2 9.3 / ARMv5TE~~ — settled by experiment 72: euser exports only `User::LockedInc/Dec` and `SafeInc/Dec` (`TInt` ±1, old value returned, `Safe*` only when > 0), there is no `e32atomics.h` and no CAS; `RFastLock` is process-local and non-recursive and is the right backing for `Mutex`. [eka2-concurrency.md](../../research/eka2-concurrency.md)
 3. Whether `--check-cfg` accepts `symbian_capability = …` values from a custom target without warnings.
 4. Entropy: what `Math::Random` is seeded from; whether the crypto DLLs expose a real RNG.
 5. Everything Symbian^3 / N8: no SDK, no ROM, no device on this host.
@@ -294,7 +295,7 @@ Three channels, in order of cost:
 | 69 | `symbian-core`: `SymbianError` from `e32err.h`; the descriptor family (`Des16` borrowed view, `Buf16<N>` on the stack, `HBuf16` on the heap), `&str` ↔ UTF-16 with no heap round-trip, `core::fmt::Write` | **done** (2026-09-20): `examples/hello` rewritten with `write!` into a `Buf16`, no `unsafe` anywhere in it; the descriptor type nibbles observed on the device's euser |
 | 70 | The C++ shim: a static library built by the existing GCCE argv, one `extern "C"` `TRAP` wrapper per leaving call, and the rule for which calls need one | a leaving API called from Rust returns `Err` and the process survives; a non-leaving one still needs no shim |
 | 71 | Files: `RFs`/`RFile` as `FileServer`/`File` with `Drop` closing the handle; the result-file harness and `symdev test --emulator` | `examples/files` writes and re-reads a file, and a deliberately failing test is *reported* as failing |
-| 72 | Atomics and locks on 9.3: what euser exports, whether `RFastLock` can back a `Mutex` | a table with `nm` evidence; `max-atomic-width` in the target revisited |
+| 72 | **done** — atomics and locks on 9.3 | [eka2-concurrency.md](../../research/eka2-concurrency.md): the four euser counters, the unresolvable libcalls, the `RFastLock`-backed shim that makes Rust atomics link and run, and the recommendation to raise `max-atomic-width` to 32 only alongside that shim |
 | 73 | **Async**: a `CActive` subclass in the shim whose `RunL` wakes a Rust waker, a single-threaded executor on `CActiveScheduler`; `examples/async` awaits an `RTimer` | two timers awaited concurrently finish in the right order, reported through the result file, with no extra thread |
 | 74 | **Networking**: `RSocketServ`, `RHostResolver`, `RSocket` over the async bridge; `examples/net` resolves a name and does one TCP round trip | the bytes come back; the example declares `NetworkServices` and the manifest/capability check passes. EKA2L1 has a real host-socket backend (`src/emu/services/src/internet/protocols/`, `AF_INET`/`getaddrinfo`), so this is verifiable here |
 | 75 | **UI**: the Avkon app framework — `CAknApplication`/`CAknDocument`/`CAknAppUi`/`CCoeControl` are C++ classes with virtual methods, so the shim must *define the subclasses* and forward each virtual to a Rust function pointer; `examples/ui` draws and handles a key | a PID-bound screenshot shows the drawn view and a key press changes it |
