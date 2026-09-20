@@ -65,7 +65,8 @@ SDK accepts, so each is a gap below, not a property of the app.
    (`/S<tools> /T<tmp>`, short paths — see [svgb-mif-spec.md](svgb-mif-spec.md) §146) (gaps 13–15).
    The `.mbg` came from `mifconv /H`; for `.bmp` input `mifconv` writes an almost-empty `.mif`
    plus a sibling `.mbm`, and its own `bmconv` call is broken under Wine
-   (`\epoc32\tools\BMCONV.exe\bmconv …`), so `bmconv` was run directly.
+   (`\epoc32\tools\BMCONV.exe\bmconv …`), so `bmconv` was run directly. (Experiment 64:
+   the call works once `/B<tools>` and `/S<tools>` are both given.)
 9. Changed `_UID3` in `inc/Puzzles.hrh` from `0xA000EF77` to `0xE000EF77` so the registration
    resource matches a self-signable UID. Not a symdev gap — a protected-range UID cannot be
    self-signed.
@@ -97,11 +98,20 @@ plus one `symdev.toml`, no edit inside the project.
 | 2 | closed 2026-09-20 | `ProjectCpp`: the SDK's macro set and variant header; a missing `platform_paths.hrh` says what to write instead |
 | 3 | closed 2026-09-20 | `MACRO`, `OPTION`, `SECUREID`, `LANG` and `CAPABILITY` are honoured; the rest of the vocabulary is split into ignored-with-a-warning and refused-by-name |
 | 4 | closed 2026-09-20 | `MmpResource`: `TARGET` inside the block names the `.rsc` and the `.rsg`, and the language code picks the extension |
-| 5 | closed 2026-09-20 | `BldEntry`: `gnumakefile` / `makefile` / `nmakefile` and `START EXTENSION` are refused by name |
+| 5 | closed 2026-09-20 | `BldEntry`: `gnumakefile` / `makefile` / `nmakefile` are skipped with a warning naming the file and the line — symdev runs no makefile, what it produces is declared in `symdev.toml`; `START EXTENSION` is still refused by name |
 | 6 | closed 2026-09-20 | `MmpPath`: a path that starts at the root resolves against `SYMDEV_EPOCROOT` |
 | 9 | closed 2026-09-20 | `LibPath`: exact DSO name first, then one differing only in case |
 | 10 | closed 2026-09-20 | `GeneratedCaseFold`: links the spellings the project's sources ask for |
 | 11 | closed 2026-09-20 | `AppTarget`: the packaged binary and the registration resource follow the MMP `TARGET` |
 | 12 | closed 2026-09-20 | manifest `[[install]]`; a packaged file no longer has to sit next to the EXE |
-| 13 | half closed 2026-09-20 | `START BITMAP` builds the `.mbm`/`.mbg` pair and installs it anywhere `TARGETPATH` says; the second `.mif` and the icon model itself are still `icons.rs`/`symdev-mif` work |
+| 13 | closed 2026-09-20 | manifest `[[icons]]` — one entry per `mifconv` call (experiment 64): `games.mif` + `games.mbm` + `puzzles_0xa000ef77.mbg` and `puzzles.mif` are built natively, byte-equal to the SDK tools (4/4), and installed where `dest` says; `START BITMAP` covers the `.mmp` form |
 | 14 | closed 2026-09-20 | `symdev-mbm` (experiment 58), byte-equal to `bmconv`; reachable from a project since experiment 61 |
+| 15 | closed 2026-09-20 | `506d366` widened the SVGB encoder; the project's own `gfx/app.svg` now encodes byte-equal to `mifconv` (experiment 64) |
+
+With gaps 1–15 closed, the acceptance loop (`git clone` + one `symdev.toml`) compiles and links
+every source and builds every icon file; it stops in the post-link at
+`TODO: --sid other than --uid3 (not observed)`. That is not an icon gap: the project's
+`SECUREID 0xA000EF77` and `_UID3` sit in the protected range, the manifest's self-signable
+`uid3 = "0xE000EF77"` does not match them, and a self-signed package could not carry that SID
+anyway. Closing it means either a manifest override for `SECUREID`/`_reg` UID (a symdev
+decision) or an edit to the project (workaround 9 above).
