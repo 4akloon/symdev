@@ -10,3 +10,4 @@
 /.claude/settings.local.json
 /examples/*/build/
 /symbian-rs/target/
+/symbian-rs/examples/*/build/

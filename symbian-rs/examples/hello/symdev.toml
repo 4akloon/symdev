@@ -1,0 +1,17 @@
+[package]
+name = "hello"
+version = "0.1.0"
+
+[target]
+device = "nokia-e52"
+
+[language]
+name = "rust"
+
+[symbian]
+uid3 = "0xef9f2cab"
+capabilities = []
+vendor = "symdev"
+
+[signing]
+mode = "self-signed"
