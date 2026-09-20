@@ -166,7 +166,7 @@ Hypotheses experiment 65 must also settle (each is a yes/no with bytes as eviden
 
 1. `.ARM.exidx` / `.ARM.extab`: rustc with `panic=abort` and `-C force-unwind-tables=no` emits none; if it emits some, does our post-linker accept them as the C++ path's do? (The C++ objects carry them and post-link fine.)
 2. Symbol versioning on DSO imports (`--default-symver` on the link): a Rust object's undefined symbol `_ZN4User9InfoPrintERK7TDesC16` binds to `euser.dso`'s versioned export exactly as a C++ object's does — expected yes, it is the linker's job, not the compiler's.
-3. Archive pull-in: with the Rust code in a `.a` placed where objects go, `eexe.lib`'s reference to `_Z7E32Mainv` pulls the member. If not, `--whole-archive` around it, or `-u _Z7E32Mainv`. Record which.
+3. Archive pull-in — **settled by 65a:** the reference to `_Z7E32Mainv` comes from `usrt2_2.lib` in the `-( -)` group *after* the object position, so a `.a` there is not pulled; `-u _Z7E32Mainv` before it is the fix (`--whole-archive` not needed).
 4. No reference from Rust code to `__aeabi_*` helpers that `-lgcc` does not provide (division, memcpy/memset via `compiler_builtins` — build-std provides `compiler_builtins` with `mem` feature; check for duplicate `memcpy` against `-lgcc`/`usrt`).
 5. Size of the E32 for hello: baseline for the size report of prompt §43.
 
@@ -271,7 +271,7 @@ is why `alloc` must not assume one global heap. Record in the memory-model note 
 
 | # | Experiment / slice | Passes when |
 |---|---|---|
-| 65a | Spike: no_std hello by hand (stand-in target, prebuilt `core`) → recorded link → native elf2e32 → SIS → EKA2L1 | note on screen in a PID-bound screenshot; exit 0 |
+| 65a | Spike: no_std hello by hand (stand-in target, prebuilt `core`) → recorded link → native elf2e32 → SIS → EKA2L1 | **passed 2026-09-20**: notifier log line identical to the C++ control; EKA2L1 halts on `InfoPrint` rendering for both (emulator issue, filed) |
 | 65 | The same through `symdev build/package/run` with `language = "rust"`, custom target JSON, pinned nightly + `build-std` | same, from a scaffolded project; E32 size recorded |
 | 66 | `alloc` over euser; a `Vec` and a `String` in hello | heap used and freed; alignment hypothesis settled |
 | 67 | First shim + `symbian-core` file API; hello writes and reads a file | file content visible in the emulator's drive directory |
