@@ -84,3 +84,18 @@ own `gfx/*.bmp` and `gfx/app.svg`.
 4. Packaging: one name for the EXE, extra install files in the manifest (gaps 11, 12).
 5. Icons: `bmconv` from the existing spec, `.mbg`, a wider icon model, a wider SVG subset
    (gaps 13–15).
+
+## Closing the gaps
+
+Tracked here as they land. "Closed" means a test in the workspace locks the behaviour
+down; the acceptance criterion for the whole list is still the one above — `git clone`
+plus one `symdev.toml`, no edit inside the project.
+
+| # | Status | Where |
+|---|---|---|
+| 6 | closed 2026-09-20 | `MmpPath`: a path that starts at the root resolves against `SYMDEV_EPOCROOT` |
+| 9 | closed 2026-09-20 | `LibPath`: exact DSO name first, then one differing only in case |
+| 10 | closed 2026-09-20 | `GeneratedCaseFold`: links the spellings the project's sources ask for |
+| 11 | closed 2026-09-20 | `AppTarget`: the packaged binary and the registration resource follow the MMP `TARGET` |
+| 12 | closed 2026-09-20 | manifest `[[install]]`; a packaged file no longer has to sit next to the EXE |
+| 14 | closed 2026-09-20 | `symdev-mbm` (experiment 58), byte-equal to `bmconv`; not yet reachable from a project |
