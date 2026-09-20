@@ -44,3 +44,12 @@ So: a non-virtual, non-static member with scalar/pointer arguments and a scalar 
 - **Why an archive and not objects (measured):** with loose objects, `hello` went 3187 → 3219 and gained `bafl{000a0000}.dso` as `DT_NEEDED`. Hidden visibility + `--gc-sections` did remove the unused wrapper's code (`nm` shows no `symrs_*` in the ELF) but ld decides `--as-needed` during symbol resolution, *before* garbage collection, so the dependency survived the code. From an archive the member is never pulled: `hello` is **3187 bytes again**, with the same six NEEDED entries as before.
 - `ar` is derived from `SYMDEV_LD` (`…-ld` → `…-ar`), with `SYMDEV_AR` as an optional override. No new required environment variable.
 - `RustSdk::LIBRARIES = ["efsrv.dso", "bafl.dso"]`, added under `--as-needed`/`--no-as-needed` before `-lsupc++`.
+
+## The example runs (2026-09-20)
+
+`examples/shim` (`shimdemo`, uid3 0xe0000684), 4430 B:
+`[Service.Notifier]: Trying to display: shim70 mkdirall=0 trapped=-12 bad=0 ensured=0 sign=-42 alive`
+
+- `trapped=-12` — `User::LeaveIfError(-12)` really left inside the shim, the `TRAP` caught it, and everything after that line still printed.
+- `sign=-42` confirms euser's `AppendNum(TInt64)` renders the minus sign, so `decimal_len`'s bound is right.
+- **EKA2L1's file server accepts paths a phone would refuse.** A throwaway probe put `Z:\…`, `Y:\…`, `Q:\…` and a `*` in a component through `BaflUtils::EnsurePathExistsL` and every one returned `KErrNone`. That is why the deterministic leave is `User::LeaveIfError` and not a bad path; whether the file call leaves on a device is untested.

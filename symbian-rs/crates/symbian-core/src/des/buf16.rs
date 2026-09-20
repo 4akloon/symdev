@@ -2,6 +2,9 @@
 use core::fmt;
 
 use symbian_sys::des::TDesC16;
+use symbian_sys::des16::{
+    TDes16, TDes16_Append, TDes16_AppendChar, TDes16_AppendNum, TDes16_Copy, TDes16_Num,
+};
 
 use super::{DesC16, EBUF, MAX_LENGTH, header, sealed, utf16};
 use crate::{ErrorKind, Result, SymbianError};
@@ -111,4 +114,103 @@ impl<const N: usize> fmt::Write for Buf16<N> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         self.push_str(s).map_err(|_| fmt::Error)
     }
+}
+
+/// The euser descriptor operations: text and numbers built by the ROM's own code, so a
+/// program that uses them instead of `write!` links none of `core::fmt`.
+///
+/// Every one of them is a **non-static** `IMPORT_C` member function of `TDes16`, called
+/// directly with `this` as argument 0 — the member ABI observed in experiment 78, not
+/// guessed; the evidence is in [`symbian_sys::des16`]. None of them can leave, so none
+/// of them goes through the C++ shim.
+///
+/// They can, however, **panic**: overflowing the destination is `ETDes16Overflow = 11`
+/// in the USER category (`e32panic.h`), a panic and not a leave, which no `TRAP` can
+/// catch and which takes the thread down. Each wrapper therefore checks the room first,
+/// from the length word and `N` it already has, and returns `KErrOverflow` instead. A
+/// failed call has written nothing.
+impl<const N: usize> Buf16<N> {
+    /// The `TDes16&` a modifying member function is called on.
+    fn as_tdes16(&mut self) -> *mut TDes16 {
+        (self as *mut Self).cast()
+    }
+
+    /// Replaces the contents with `src` (`TDes16::Copy`).
+    pub fn copy_from(&mut self, src: &impl DesC16) -> Result<()> {
+        self.room_for(src.len(), 0)?;
+        // SAFETY: `self` has the observed `TBuf16<N>` layout and `src` one of the
+        // observed `TDesC16` layouts, both borrowed for the whole call. The only way
+        // `Copy` can fail is an overflow, which `room_for` has just ruled out, so the
+        // panic that would end the thread is unreachable. It cannot leave.
+        unsafe { TDes16_Copy(self.as_tdes16(), src.as_tdesc16()) };
+        Ok(())
+    }
+
+    /// Appends `src` (`TDes16::Append`).
+    pub fn append(&mut self, src: &impl DesC16) -> Result<()> {
+        self.room_for(src.len(), self.length())?;
+        // SAFETY: as `copy_from`, with the existing length counted in.
+        unsafe { TDes16_Append(self.as_tdes16(), src.as_tdesc16()) };
+        Ok(())
+    }
+
+    /// Appends one character (`TDes16::Append(TChar)`).
+    ///
+    /// A character outside the basic multilingual plane is refused with `KErrArgument`:
+    /// whether euser writes a surrogate pair for one has not been observed, and
+    /// [`Buf16::push`] encodes such a character correctly without euser.
+    pub fn append_char(&mut self, c: char) -> Result<()> {
+        if (c as u32) > 0xffff {
+            return Err(SymbianError::of(ErrorKind::Argument));
+        }
+        self.room_for(1, self.length())?;
+        // SAFETY: `TChar` is a class wrapping one `TUint`, passed in one register; `c`
+        // is a single code unit and there is room for it.
+        unsafe { TDes16_AppendChar(self.as_tdes16(), c as u32) };
+        Ok(())
+    }
+
+    /// Appends `value` in signed decimal (`TDes16::AppendNum(TInt64)`).
+    ///
+    /// This is the call that keeps `core::fmt` out of a binary. `e32des16.h` has no
+    /// `AppendNum(TInt)`, so an `i32` widens to the 64-bit overload — which also avoids
+    /// `compiler_builtins`' 64-bit division.
+    pub fn append_num(&mut self, value: i64) -> Result<()> {
+        self.room_for(decimal_len(value), self.length())?;
+        // SAFETY: `decimal_len` is an upper bound on what euser can write for a signed
+        // decimal integer — every digit plus a sign — so the overflow panic cannot
+        // happen. The 64-bit argument lands in r2:r3 under the observed member ABI.
+        unsafe { TDes16_AppendNum(self.as_tdes16(), value) };
+        Ok(())
+    }
+
+    /// Replaces the contents with `value` in signed decimal (`TDes16::Num(TInt64)`).
+    pub fn num(&mut self, value: i64) -> Result<()> {
+        self.room_for(decimal_len(value), 0)?;
+        // SAFETY: as `append_num`, starting from an empty buffer.
+        unsafe { TDes16_Num(self.as_tdes16(), value) };
+        Ok(())
+    }
+
+    /// `KErrOverflow` unless `extra` more code units fit after `existing`.
+    fn room_for(&self, extra: usize, existing: usize) -> Result<()> {
+        match existing.checked_add(extra) {
+            Some(end) if end <= N => Ok(()),
+            _ => Err(SymbianError::of(ErrorKind::Overflow)),
+        }
+    }
+}
+
+/// How many code units a signed decimal `value` takes: the digits plus a minus sign.
+///
+/// Used as the bound for the overflow check, so it must never be too small.
+/// `i64::MIN.unsigned_abs()` is why the magnitude is taken as a `u64`.
+const fn decimal_len(value: i64) -> usize {
+    let mut len = if value < 0 { 2 } else { 1 };
+    let mut rest = value.unsigned_abs() / 10;
+    while rest > 0 {
+        len += 1;
+        rest /= 10;
+    }
+    len
 }

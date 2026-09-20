@@ -4,13 +4,21 @@
 //! - [`SymbianError`] keeps the raw `TInt` a call returned and names it from `e32err.h`.
 //! - [`des`] is the 16-bit descriptor family, with every layout observed rather than
 //!   assumed; the observation table is in that module's documentation.
-//! - [`user`] wraps the non-leaving `User::` exports. Anything that can leave waits for
-//!   the C++ `TRAP` shim of step 70 and is deliberately absent.
+//! - [`fs`] is the file server, and the first type where both halves of the shim rule
+//!   appear: `RFs::MkDirAll` is called directly because it cannot leave, while
+//!   `BaflUtils::EnsurePathExistsL` goes through the C++ `TRAP` shim because it can.
+//! - [`shim`] is the run-time check that the C++ trap harness is in place.
+//! - [`user`] wraps the non-leaving `User::` exports.
+//!
+//! What needs a shim and what does not is written out once, in
+//! `symbian-rs/shims/common/symrs_shim.h`.
 #![no_std]
 
 extern crate alloc;
 
 pub mod des;
+pub mod fs;
+pub mod shim;
 pub mod user;
 
 mod error;
@@ -19,6 +27,7 @@ mod error_kind;
 pub use des::{Buf16, Des16, DesC16, HBuf16, PtrC16};
 pub use error::{Result, SymbianError, check};
 pub use error_kind::ErrorKind;
+pub use fs::FileServer;
 
 /// The layouts the descriptor types must keep, checked at compile time against what the
 /// C++ probe measured on the device (see the `des` module documentation).

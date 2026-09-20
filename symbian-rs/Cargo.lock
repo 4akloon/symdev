@@ -26,6 +26,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "shimdemo"
+version = "0.1.0"
+dependencies = [
+ "symbian-core",
+ "symbian-runtime",
+]
+
+[[package]]
 name = "symbian-alloc"
 version = "0.1.0"
 dependencies = [

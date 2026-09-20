@@ -73,4 +73,8 @@ class TDesC16;
 // Returns KErrNone, the leave code, or KErrArgument for a null argument.
 SYMRS_EXPORT TInt symrs_bafl_ensure_path_exists(RFs* aFs, const TDesC16* aPath);
 
+// User::LeaveIfError(TInt) from euser.dso, TRAPped: the shim's own self-check.
+// Returns aReason for a negative aReason, KErrNone otherwise.
+SYMRS_EXPORT TInt symrs_leave_if_error(TInt aReason);
+
 #endif // SYMRS_SHIM_H

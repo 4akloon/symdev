@@ -54,3 +54,19 @@ unsafe extern "C" {
     #[link_name = "_ZN4User7ReAllocEPvii"]
     pub fn User_ReAlloc(cell: *mut u8, size: i32, mode: i32) -> *mut u8;
 }
+
+/// `RHandleBase`: the base of every kernel handle (`RFs`, `RFile`, …). One `TInt
+/// iHandle`, and the only member the SDK needs here.
+#[repr(C)]
+pub struct RHandleBase {
+    pub handle: i32,
+}
+
+unsafe extern "C" {
+    /// `000001dc T _ZN11RHandleBase5CloseEv` — `RHandleBase::Close()`, which is what
+    /// `RFs::Close()` compiles to (observed: `do_close(RFs*)` emits a bare
+    /// `bl _ZN11RHandleBase5CloseEv`). Non-leaving, and safe on a handle that was never
+    /// opened: a default-constructed handle is 0.
+    #[link_name = "_ZN11RHandleBase5CloseEv"]
+    pub fn RHandleBase_Close(this: *mut RHandleBase);
+}
