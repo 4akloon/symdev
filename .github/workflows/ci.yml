@@ -1,0 +1,59 @@
+# Rust gate only: no Symbian SDK, no ROM, no EKA2L1 on this runner.
+# Tests that need an SDK skip themselves (SYMDEV_EPOCROOT, SYMDEV_SIGN_PASSWORD);
+# the toolchain tests assert the "missing toolchain" error, so a bare runner is
+# the environment they expect. End-to-end build/package/run stays manual on the host.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Same gate as CLAUDE.md: zero warnings, from rustc and from clippy.
+  RUSTFLAGS: -D warnings
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned to workspace.package.rust-version in Cargo.toml — bump both together.
+      - name: Install Rust 1.98.1
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --component clippy,rustfmt
+          rustup default 1.98.1
+          rustc --version
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-1.98.1-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.98.1-
+
+      - name: Fetch dependencies
+        run: cargo fetch --locked
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --offline --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --offline --locked
