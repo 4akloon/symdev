@@ -8,6 +8,7 @@ Code rules (shared with Cursor, always apply):
 
 @.cursor/rules/production-quality.mdc
 @.cursor/rules/rust-types-and-methods.mdc
+@.cursor/rules/byte-exact-reimplementation.mdc
 
 ## Claude-specific
 
