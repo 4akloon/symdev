@@ -41,3 +41,23 @@ pub fn dummy_e32(dir: &tempfile::TempDir) {
     std::fs::create_dir_all(dir.path().join("build")).unwrap();
     std::fs::write(dir.path().join("build/hello.exe"), b"").unwrap();
 }
+
+/// A minimal `EPOCROOT` for tests that parse a `bld.inf`: the front end preprocesses
+/// project files, and that needs the variant header the SDK names in `variant.cfg`.
+pub fn fake_epocroot(dir: &tempfile::TempDir) -> std::path::PathBuf {
+    let root = dir.path().join("sdk");
+    let variant = root.join("epoc32/include/variant");
+    std::fs::create_dir_all(&variant).unwrap();
+    std::fs::create_dir_all(root.join("epoc32/tools/variant")).unwrap();
+    std::fs::write(
+        variant.join("Symbian_OS_v9.3.hrh"),
+        "#define __SERIES60_3X__\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("epoc32/tools/variant/variant.cfg"),
+        "epoc32\\include\\variant\\Symbian_OS_v9.3.hrh\n",
+    )
+    .unwrap();
+    root
+}

@@ -1,7 +1,7 @@
 use predicates::prelude::*;
 
 mod common;
-use common::{HELLO, bin, dummy_e32, hello_with_uid3, write_toml};
+use common::{HELLO, bin, dummy_e32, fake_epocroot, hello_with_uid3, write_toml};
 
 #[test]
 fn package_omitted_uid3_errors() {
@@ -94,8 +94,10 @@ fn package_names_the_binary_after_the_mmp_target() {
     .unwrap();
     std::fs::create_dir_all(dir.path().join("build")).unwrap();
     std::fs::write(dir.path().join("build/Puzzles_0xa000ef77.exe"), b"").unwrap();
+    let epocroot = fake_epocroot(&dir);
     bin()
         .current_dir(&dir)
+        .env("SYMDEV_EPOCROOT", &epocroot)
         .env("SYMDEV_SIGN_PASSWORD", "secret")
         .arg("package")
         .assert()
