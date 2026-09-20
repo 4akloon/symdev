@@ -2,7 +2,7 @@
 
 Inventory only. No implementation. Facts are **Verified** against in-tree types/methods at `7f17630` (`Drop the unused UidCrc::parse_token stub…`) unless labeled **Unknown**.
 
-Cites: [experiment-backlog.md](experiment-backlog.md) experiments 1–9, 13–42; [ported-tools-crates.md](ported-tools-crates.md); [pipeline-and-tools.md](pipeline-and-tools.md); [hardcoded-values.md](hardcoded-values.md) (uncommitted); crates `symdev-build`, `symdev-cli`, `symdev-sis`, `symdev-uidcrc`, `symdev-makekeys`, `symdev-rcomp`, `symdev-elf2e32`. `.cursor/rules/rust-types-and-methods.mdc`: Wine/env/argv stay on `*Tool`, not value types.
+Cites: [experiment-backlog.md](experiment-backlog.md) experiments 1–9, 13–42; [ported-tools-crates.md](ported-tools-crates.md); [pipeline-and-tools.md](pipeline-and-tools.md); [hardcoded-values.md](hardcoded-values.md) (uncommitted); crates `symdev-build`, `symdev-cli`, `symdev-sis`, `symdev-uidcrc`, `symdev-makekeys`, `symdev-rcomp`, `symdev-elf2e32`. `CLAUDE.md`: Wine/env/argv stay on `*Tool`, not value types.
 
 Locked (not reopened): Linux host edit+build; Wave 0 `arm-none-symbianelf-g++` → `ld` → `elf2e32` → `makesis` → `signsis`; no Windows VM; self-sign; never invent argv; never claim E52 until stock install+launch.
 
