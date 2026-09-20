@@ -45,3 +45,11 @@ Task: build `symbian-std` (`io`/`fs`/`prelude` in `std` shape) over `RFs`/`RFile
 - `symbian-sys` gained `des8` and an `efsrv/` module (`rfs`, `rfile`, `entry`);
   `symbian-core` gained `des8` (`PtrC8`/`Ptr8`) and an `fs/` module
   (`server`, `file`, `entry`, `session`). Builds clean for the phone target.
+- Host side: `symdev-emulator` gained `json.rs` (a small strict JSON reader, no new
+  dependency) and `results.rs` (`EmulatorData` for
+  `~/.local/share/EKA2L1/drives/e/...`, `TestReport`, `await_report`) plus
+  `Eka2l1Backend::stop` (`kill -9`, only a pid still recognisable as EKA2L1).
+  `symdev-cli` gained `symdev test --emulator`. Host gate green.
+- **Careful: the drive path.** The skill says installed apps live under
+  `~/.local/share/EKA2L1/data/drives/e/`, but `EmulatorData::drive_e` currently builds
+  `<root>/drives/e`. Check the real tree before the first emulator run.

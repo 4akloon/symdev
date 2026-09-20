@@ -5,6 +5,11 @@ use std::process::{Command, Stdio};
 
 use symdev_core::{Error, Result};
 
+mod json;
+mod results;
+
+pub use results::{EmulatorData, SCHEMA, TestCase, TestReport, await_report};
+
 /// User-installed EKA2L1 (`SYMDEV_EKA2L1`): a binary or wrapper that accepts the
 /// observed `--install <sis>` and `--run <uid>` options (experiment 48).
 pub struct Eka2l1Backend {
@@ -71,6 +76,29 @@ impl Eka2l1Backend {
             .spawn()
             .map_err(|e| Error::Other(format!("start {:?}: {e}", self.eka2l1)))?;
         Ok(child.id())
+    }
+
+    /// Ends an instance **this process started** (`kill -9`).
+    ///
+    /// EKA2L1 ignores `SIGTERM`, so there is no polite signal to try first. Only a pid
+    /// that [`Eka2l1Backend::previous`] still recognises as an EKA2L1 is signalled: the
+    /// user may have their own emulator open and a stale pid may have been reused by
+    /// something else entirely.
+    pub fn stop(pid: u32) -> Result<()> {
+        let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+        if !comm.trim().to_ascii_lowercase().contains("eka2l1") {
+            return Err(Error::Other(format!(
+                "refusing to kill pid {pid}: it is not an EKA2L1 process any more"
+            )));
+        }
+        let status = Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .status()
+            .map_err(|e| Error::Other(format!("kill -9 {pid}: {e}")))?;
+        if !status.success() {
+            return Err(Error::Other(format!("kill -9 {pid} failed: {status}")));
+        }
+        Ok(())
     }
 }
 

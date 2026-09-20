@@ -3,6 +3,7 @@ mod build_cmd;
 mod cli;
 mod scaffold;
 mod scaffold_rust;
+mod test_cmd;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -79,6 +80,21 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
+        Some(Commands::Test { emulator }) => {
+            match symdev_manifest::load(Path::new("symdev.toml")) {
+                Ok(m) => match test_cmd::test_project(m, emulator) {
+                    Ok(code) => code,
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        ExitCode::from(1)
+                    }
+                },
+                Err(e) => {
+                    eprintln!("error: invalid manifest: {e}");
+                    ExitCode::from(1)
+                }
+            }
+        }
         Some(Commands::Freeze) => match freeze_project() {
             Ok(code) => code,
             Err(e) => {

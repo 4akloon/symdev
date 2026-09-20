@@ -4,24 +4,16 @@ mod common;
 use common::bin;
 
 #[test]
-fn help_lists_only_the_six_commands() {
+fn help_lists_only_the_seven_commands() {
     // `run` (EKA2L1, M5) joined the §17 four on 2026-09-19, `freeze` (DLL exports,
-    // experiment 54) the same day; the other north-star verbs are still not
-    // subcommands.
+    // experiment 54) the same day, and `test` (the result protocol, experiment 79) on
+    // 2026-09-20; the other north-star verbs are still not subcommands.
     let assert = bin().arg("--help").assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    for cmd in ["new", "build", "package", "deploy", "run", "freeze"] {
+    for cmd in ["new", "build", "package", "deploy", "run", "freeze", "test"] {
         assert!(stdout.contains(cmd), "missing {cmd}: {stdout}");
     }
-    for cmd in [
-        "doctor",
-        "test",
-        "debug",
-        "sdk",
-        "toolchain",
-        "emulator",
-        "devices",
-    ] {
+    for cmd in ["doctor", "debug", "sdk", "toolchain", "emulator", "devices"] {
         assert!(!stdout.contains(cmd), "help must not list {cmd}: {stdout}");
     }
     assert!(

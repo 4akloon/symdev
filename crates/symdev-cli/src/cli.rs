@@ -27,6 +27,13 @@ pub enum Commands {
     Deploy,
     /// Install build/<name>.sisx into EKA2L1 and launch it (SYMDEV_EKA2L1).
     Run,
+    /// Run the application in EKA2L1 and report what it wrote to
+    /// `E:\symdev\results\<uid3>.json` (design spec §11).
+    Test {
+        /// The only test backend today: run in EKA2L1 and read the result file back.
+        #[arg(long)]
+        emulator: bool,
+    },
     /// Append the DLLs' new exports to their frozen .def files (eabi/<name>u.def).
     Freeze,
 }
