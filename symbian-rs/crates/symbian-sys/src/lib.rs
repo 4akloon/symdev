@@ -17,3 +17,4 @@ pub mod des8;
 pub mod efsrv;
 pub mod euser;
 pub mod shim;
+pub mod thread;
