@@ -7,6 +7,7 @@ Task: ship `shims/common/symrs_atomic.cpp` over an `RFastLock`, raise the target
 `symdev test --emulator`. Settle the post-thread-exit access violation at 0x8000A4.
 
 ## Findings
+- Baseline E32 sizes reproduced on this worktree before any change: hello 3187, hello-raw 752, alloc 4320, shim 4475, files 10423 — exactly the figures in the brief.
 
 ## Decisions
 
