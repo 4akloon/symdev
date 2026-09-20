@@ -30,3 +30,10 @@ Probe `scratchpad/shim70/memberabi{,2}.cpp`, compiled with the observed GCCE arg
 - `MaxLength()`/`Length()` are inline (`ldr r0,[r0,#4]` / `[r0,#0]` masked) — no call at all.
 
 So: a non-virtual, non-static member with scalar/pointer arguments and a scalar or void return is callable from Rust as `extern "C" fn(this, ...)`. No shim needed for that class.
+
+## More findings
+
+- `sizeof(RFs)` = 4, `sizeof(RFile)` = 8 (probe `sizes.cpp`). `RFs::Connect()` is `_ZN3RFs7ConnectEi` with the default argument `-1` (observed `movs r1,#1; negs r1,r1`); `RFs::Close()` is `_ZN11RHandleBase5CloseEv`.
+- A descriptor overflow is a **panic, not a leave**: `e32panic.h` line 131 `ETDes16Overflow=11` under the USER category, documented for "any of the copying, appending or formatting member functions". A `TRAP` cannot catch it, so the Rust wrapper pre-checks capacity.
+- `bafl.dll`, `efsrv.dll`, `euser.dll` are all in the EKA2L1 ROM (`~/.local/share/EKA2L1/data/drives/z/rm-469/sys/bin/`).
+- `BaflUtils::EnsurePathExistsL(RFs&, const TDesC&)` = `_ZN9BaflUtils17EnsurePathExistsLER3RFsRK7TDesC16` (bafl.dso): static, leaving, and what step 71 needs to create `E:\symdev\results\`.
