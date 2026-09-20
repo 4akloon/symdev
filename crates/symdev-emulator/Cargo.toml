@@ -6,3 +6,6 @@ rust-version.workspace = true
 
 [dependencies]
 symdev-core = { path = "../symdev-core" }
+
+[dev-dependencies]
+tempfile = "3"

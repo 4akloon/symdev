@@ -30,13 +30,41 @@ impl Eka2l1Backend {
 
     /// One invocation installs to E: and launches by UID3.
     pub fn run_args(&self, sisx: &Path, uid3: u32) -> Vec<String> {
-        vec![
-            self.eka2l1.display().to_string(),
-            "--install".into(),
+        self.run_args_replacing(sisx, uid3, false)
+    }
+
+    /// The same, optionally uninstalling first.
+    ///
+    /// EKA2L1 will not install over an executable already on drive E: the log says
+    /// `Installation done!` and then `Installation of SIS failed`, and what runs is the
+    /// **old** binary — a rebuilt application that looks unchanged. Its `--remove <uid>`
+    /// undoes the installation, but it fails when nothing is installed, and a failing
+    /// option aborts the whole invocation, so it is only passed when the package really
+    /// is there ([`Eka2l1Backend::installed`]).
+    pub fn run_args_replacing(&self, sisx: &Path, uid3: u32, replace: bool) -> Vec<String> {
+        let uid = format!("0x{uid3:08x}");
+        let mut args = vec![self.eka2l1.display().to_string()];
+        if replace {
+            args.extend(["--remove".to_string(), uid.clone()]);
+        }
+        args.extend([
+            "--install".to_string(),
             sisx.display().to_string(),
-            "--run".into(),
-            format!("0x{uid3:08x}"),
-        ]
+            "--run".to_string(),
+            uid,
+        ]);
+        args
+    }
+
+    /// Whether EKA2L1 already holds an executable of this name on drive E. The emulator
+    /// refuses to install over one, so `run` uninstalls first when it does. A data
+    /// directory we cannot read means "not installed": the worst case is the refusal
+    /// that happened before this existed, never a wrong uninstall.
+    pub fn installed(exe: Option<&str>) -> bool {
+        let (Some(exe), Ok(data)) = (exe, crate::results::EmulatorData::from_env()) else {
+            return false;
+        };
+        data.drive_e().join("sys").join("bin").join(exe).is_file()
     }
 
     /// PID recorded by an earlier `run` if that process still exists (Linux `/proc`).
@@ -56,7 +84,8 @@ impl Eka2l1Backend {
 
     /// Start the emulator in the background; its output goes to `log`.
     pub fn run(&self, sisx: &Path, uid3: u32, log: &Path) -> Result<u32> {
-        let args = self.run_args(sisx, uid3);
+        let replace = Self::installed(exe_name(sisx).as_deref());
+        let args = self.run_args_replacing(sisx, uid3, replace);
         let out =
             std::fs::File::create(log).map_err(|e| Error::Other(format!("create {log:?}: {e}")))?;
         let err = out
@@ -145,5 +174,69 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("/nonexistent/eka2l1"), "{err}");
+    }
+}
+
+/// `<name>.sisx` names `<name>.exe` only when the package name is the binary's name.
+/// It is not, whenever an MMP's `TARGET` differs from the manifest's `package.name`, so
+/// the real name is read out of the `.pkg` symdev writes beside the SIS.
+fn exe_name(sisx: &Path) -> Option<String> {
+    let pkg = std::fs::read_to_string(sisx.with_extension("pkg")).ok()?;
+    let line = pkg
+        .lines()
+        .find(|l| l.to_ascii_lowercase().contains("\\sys\\bin\\"))?;
+    let (_, after) = line.rsplit_once("\\sys\\bin\\")?;
+    Some(after.trim_end_matches(['"', '\r']).to_string())
+}
+
+#[cfg(test)]
+mod reinstall_tests {
+    use super::*;
+
+    fn backend() -> Eka2l1Backend {
+        Eka2l1Backend {
+            eka2l1: PathBuf::from("/usr/bin/eka2l1"),
+        }
+    }
+
+    #[test]
+    fn replacing_uninstalls_before_it_installs() {
+        let args =
+            backend().run_args_replacing(Path::new("/p/build/hello.sisx"), 0xef9f_2cab, true);
+        assert_eq!(
+            args,
+            [
+                "/usr/bin/eka2l1",
+                "--remove",
+                "0xef9f2cab",
+                "--install",
+                "/p/build/hello.sisx",
+                "--run",
+                "0xef9f2cab",
+            ]
+        );
+        // Not passed otherwise: `--remove` fails when nothing is installed, and a
+        // failing option aborts the invocation before `--install` is reached.
+        assert_eq!(
+            backend().run_args_replacing(Path::new("/p/build/hello.sisx"), 0xef9f_2cab, false),
+            backend().run_args(Path::new("/p/build/hello.sisx"), 0xef9f_2cab)
+        );
+    }
+
+    #[test]
+    fn the_exe_name_comes_from_the_pkg_not_from_the_sisx_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let sisx = dir.path().join("puzzles.sisx");
+        std::fs::write(
+            dir.path().join("puzzles.pkg"),
+            "&EN\r\n\"Puzzles_0xa000ef77.exe\"\t\t-\"!:\\sys\\bin\\Puzzles_0xa000ef77.exe\"\r\n",
+        )
+        .unwrap();
+        assert_eq!(
+            exe_name(&sisx).as_deref(),
+            Some("Puzzles_0xa000ef77.exe"),
+            "the package name and the binary's name differ whenever an MMP TARGET does"
+        );
+        assert_eq!(exe_name(&dir.path().join("missing.sisx")), None);
     }
 }

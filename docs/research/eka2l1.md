@@ -58,3 +58,19 @@ app failed: `ogl_graphics_driver::abort()` calls `list_queue.abort()` and only t
 while the flag is still false, takes the error branch of `run()` and logs it. Every normal
 exit produces the line. A one-line upstream fix (test the stop flag before logging) would
 remove a permanently misleading ERROR; not yet submitted.
+
+## Reinstalling over an installed application (2026-09-20)
+
+EKA2L1 will not install over an executable already on drive E. The log reads
+`Installation done!` and then `Installation of SIS failed`, and **the old binary is what
+runs** — a rebuilt application that looks unchanged, which has cost two confused
+debugging sessions here.
+
+No emulator change is needed: `--remove <uid>` (`thread.cpp` registers it beside
+`--install`) uninstalls the package. It **fails when nothing is installed**, and a failing
+option aborts the whole invocation before `--install` is reached, so it must only be
+passed when the package really is there. `Eka2l1Backend::run` checks for
+`<data>/drives/e/sys/bin/<exe>.exe` and prepends `--remove` only then. The executable's
+name comes from the `.pkg` beside the SIS, not from the SIS's own name: the two differ
+whenever an MMP's `TARGET` is not the manifest's `package.name`.
+

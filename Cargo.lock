@@ -938,6 +938,7 @@ name = "symdev-emulator"
 version = "0.1.0"
 dependencies = [
  "symdev-core",
+ "tempfile",
 ]
 
 [[package]]
