@@ -8,6 +8,7 @@ fn encode_signed_sisx_is_verifiable_and_not_hello_golden() {
     let caps = hello_caps();
     let spec = SisUnsignedSpec {
         name: "hello",
+        exe_name: "hello",
         uid3: 0xe79e_4cf9,
         version: (1, 0, 24),
         vendor: "Vendor",
@@ -46,6 +47,7 @@ fn experiment5_hello_key_native_sign_skipped_without_password() {
     let caps = hello_caps();
     let spec = SisUnsignedSpec {
         name: "hello",
+        exe_name: "hello",
         uid3: 0xe79e_4cf9,
         version: (1, 0, 24),
         vendor: "Vendor",

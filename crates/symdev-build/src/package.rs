@@ -131,6 +131,7 @@ impl PackageBackend for SisPackage {
             .collect();
         let spec = SisUnsignedSpec {
             name: &self.name,
+            exe_name: &self.app,
             uid3: self.uid3,
             version: self.version,
             vendor: &self.vendor,

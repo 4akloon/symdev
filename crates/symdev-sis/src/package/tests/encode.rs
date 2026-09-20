@@ -15,6 +15,7 @@ fn hello_exe_sha1_matches_experiment_29() {
 fn encode_unsigned_sis_matches_hello_pkg_fixture() {
     let bytes = SisUnsigned::encode(&SisUnsignedSpec {
         name: "hello",
+        exe_name: "hello",
         uid3: 0xe79e_4cf9,
         version: (1, 0, 24),
         vendor: "Vendor",
@@ -40,6 +41,7 @@ fn encode_unsigned_sis_with_reg_rsc_matches_experiment_43() {
         .unwrap();
     let bytes = SisUnsigned::encode(&SisUnsignedSpec {
         name: "hello",
+        exe_name: "hello",
         uid3: 0xe79e_4cf9,
         version: (1, 0, 24),
         vendor: "Vendor",
@@ -86,6 +88,7 @@ fn encode_unsigned_three_file_gui_sis_matches_experiment_51() {
     let golden = parse_hex(include_str!("../../testdata/exp51_gui_sis.hex"));
     let bytes = SisUnsigned::encode(&SisUnsignedSpec {
         name: "gui",
+        exe_name: "gui",
         uid3: 0xe5d1_a001,
         version: (1, 0, 0),
         vendor: "Vendor",
@@ -116,6 +119,7 @@ fn encode_unsigned_three_file_gui_sis_matches_experiment_51() {
 fn encode_unsigned_sis_uses_project_fields_not_hello_goldens() {
     let bytes = SisUnsigned::encode(&SisUnsignedSpec {
         name: "other",
+        exe_name: "other",
         uid3: 0xe000_0001,
         version: (0, 1, 0),
         vendor: "symdev",
@@ -135,6 +139,7 @@ fn encode_unsigned_sis_uses_project_fields_not_hello_goldens() {
 fn encode_unsigned_sis_rejects_capability_bits_not_derived() {
     let err = SisUnsigned::encode(&SisUnsignedSpec {
         name: "hello",
+        exe_name: "hello",
         uid3: 0xe79e_4cf9,
         version: (1, 0, 24),
         vendor: "Vendor",
@@ -149,4 +154,33 @@ fn encode_unsigned_sis_rejects_capability_bits_not_derived() {
         err.to_string(),
         "capability bit not yet derived: NotACapability"
     );
+}
+
+/// gap 11: the SIS installs the EXE under its own name, which the registration resource
+/// names; the package name is the SIS's identity only.
+#[test]
+fn controller_installs_the_exe_under_its_own_name_not_the_package_name() {
+    let (controller, _) = SisUnsignedSpec {
+        name: "hello",
+        exe_name: "app_0x1",
+        uid3: 0xe79e_4cf9,
+        version: (1, 0, 24),
+        vendor: "Vendor",
+        vendor_localized: "Vendor-EN",
+        exe: &hello_exe_bytes(),
+        capabilities: &hello_caps(),
+        datetime: hello_datetime(),
+        files: &[],
+    }
+    .parts()
+    .unwrap();
+    let payload = controller.payload();
+    let utf16 = |s: &str| {
+        s.encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect::<Vec<u8>>()
+    };
+    let has = |s: &str| payload.windows(utf16(s).len()).any(|w| w == utf16(s));
+    assert!(has("!:\\sys\\bin\\app_0x1.exe"));
+    assert!(!has("!:\\sys\\bin\\hello.exe"));
 }

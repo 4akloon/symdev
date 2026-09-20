@@ -45,6 +45,7 @@ fn generated_self_signed_dsa_verifies_with_injected_dates() {
         .unwrap();
     let spec = SisUnsignedSpec {
         name: "hello",
+        exe_name: "hello",
         uid3: 0xe79e_4cf9,
         version: (1, 0, 24),
         vendor: "Vendor",

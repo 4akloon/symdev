@@ -11,7 +11,11 @@ use crate::{
 };
 
 pub struct SisUnsignedSpec<'a> {
+    /// Package name: the SIS's own identity and display name.
     pub name: &'a str,
+    /// The EXE's file stem: it is installed as `!:\sys\bin\<exe_name>.exe`, which is
+    /// what the registration resource names — not the package name (gap 11).
+    pub exe_name: &'a str,
     pub uid3: u32,
     pub version: (u32, u32, u32),
     pub vendor: &'a str,
@@ -53,7 +57,7 @@ impl SisUnsignedSpec<'_> {
         // makesis writes type 41 only when the EXE has capabilities (experiment 51).
         let caps = (caps.value != 0).then_some(caps);
         let (exe_file, exe_blob) = Self::install_file(
-            format!("!:\\sys\\bin\\{}.exe", self.name),
+            format!("!:\\sys\\bin\\{}.exe", self.exe_name),
             self.exe,
             caps,
             0,

@@ -72,8 +72,15 @@ impl Makesis {
             .map(|((_, dest), data)| SisPkgFile { dest, data })
             .collect();
         // TODO: capability bits from E32 (Wine makesis; not in Wave 0 .pkg)
+        let exe_name = parsed
+            .exe
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| Error::Other(format!("bad EXE name in .pkg: {}", parsed.exe.display())))?
+            .to_string();
         let spec = SisUnsignedSpec {
             name: &parsed.name,
+            exe_name: &exe_name,
             uid3: parsed.uid3,
             version: parsed.version,
             vendor: &parsed.vendor,
