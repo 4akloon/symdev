@@ -36,6 +36,11 @@ pub(crate) fn validate(raw: RawManifest) -> Result<Manifest> {
         toolchain: toolchain(raw.toolchain)?,
         symbian: symbian(raw.symbian)?,
         signing: signing(raw.signing)?,
+        install: raw
+            .install
+            .into_iter()
+            .map(crate::install::InstallFile::validate)
+            .collect::<Result<Vec<_>>>()?,
     })
 }
 

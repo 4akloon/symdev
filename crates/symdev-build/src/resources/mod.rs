@@ -4,12 +4,14 @@ use std::path::Path;
 
 use symdev_core::{Error, Result};
 
+mod app_target;
 mod build_outputs;
 mod casefold;
 mod mmp_ext;
 mod mmp_resource_ext;
 mod project_mmps;
 
+pub use app_target::AppTarget;
 pub use build_outputs::BuildOutputs;
 pub use casefold::SdkIncludeCaseFold;
 pub(crate) use project_mmps::ProjectMmps;

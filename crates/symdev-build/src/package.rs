@@ -7,6 +7,9 @@ use symdev_sis::{SisDateTime, SisPkgFile, SisUnsigned, SisUnsignedSpec};
 
 pub struct SisPackage {
     pub name: String,
+    /// The application binary's name (`AppTarget`): `build/<app>.exe` and the
+    /// registration resource are named after it, not after `name`.
+    pub app: String,
     pub uid3: u32,
     pub version: (u32, u32, u32),
     pub vendor: String,
@@ -23,8 +26,9 @@ impl SisPackage {
     pub fn pkg_text(&self, files: &[(String, String)]) -> String {
         let (major, minor, patch) = self.version;
         let mut text = format!(
-            "&EN\r\n#{{\"{name}\"}},(0x{uid3:08x}),{major},{minor},{patch},TYPE=SA\r\n%{{\"{vendor}\"}}\r\n:\"{vendor}\"\r\n[0x102752AE], 0, 0, 0, {{\"S60ProductID\"}}\r\n\"{name}.exe\"\t\t-\"!:\\sys\\bin\\{name}.exe\"\r\n",
+            "&EN\r\n#{{\"{name}\"}},(0x{uid3:08x}),{major},{minor},{patch},TYPE=SA\r\n%{{\"{vendor}\"}}\r\n:\"{vendor}\"\r\n[0x102752AE], 0, 0, 0, {{\"S60ProductID\"}}\r\n\"{app}.exe\"\t\t-\"!:\\sys\\bin\\{app}.exe\"\r\n",
             name = self.name,
+            app = self.app,
             uid3 = self.uid3,
             vendor = self.vendor,
         );
@@ -69,7 +73,7 @@ impl PackageBackend for SisPackage {
             [one] => *one,
             _ => return Err(Error::Other("no E32 artifact".into())),
         };
-        let expected = format!("{}.exe", self.name);
+        let expected = format!("{}.exe", self.app);
         let name_ok = artifact
             .path
             .file_name()
@@ -86,31 +90,33 @@ impl PackageBackend for SisPackage {
         let exe = std::fs::read(&artifact.path).map_err(|e| Error::Other(e.to_string()))?;
         let now = SystemTime::now();
         let datetime = SisDateTime::utc(now);
-        let reg_dest = SisPkgFile::reg_rsc_dest(&self.name);
-        // (file name next to the EXE, destination, bytes), in build order.
+        let reg_dest = SisPkgFile::reg_rsc_dest(&self.app);
+        // (source as the `.pkg` names it, destination, bytes), in build order. A file
+        // next to the EXE is named bare, as the SDK example packages do; one from
+        // elsewhere in the project (an `[[install]]` entry) keeps its own path.
         let mut extra: Vec<(String, String, Vec<u8>)> = Vec::new();
         for a in artifacts {
             let Some(dest) = &a.dest else { continue };
-            let file = a
-                .path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .ok_or_else(|| Error::Other(format!("bad artifact path {:?}", a.path)))?;
-            if a.path.parent() != Some(workdir) {
-                return Err(Error::Other(format!(
-                    "{file} must sit next to the EXE in {workdir:?}"
-                )));
-            }
-            let data = std::fs::read(&a.path).map_err(|e| Error::Other(e.to_string()))?;
-            extra.push((file.to_string(), dest.clone(), data));
+            let file = if a.path.parent() == Some(workdir) {
+                a.path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .ok_or_else(|| Error::Other(format!("bad artifact path {:?}", a.path)))?
+                    .to_string()
+            } else {
+                a.path.display().to_string()
+            };
+            let data = std::fs::read(&a.path)
+                .map_err(|e| Error::Other(format!("read {}: {e}", a.path.display())))?;
+            extra.push((file, dest.clone(), data));
         }
         // No project _reg.rsc: generate the recorded registration (experiment 43).
         if !extra
             .iter()
             .any(|(_, d, _)| d.eq_ignore_ascii_case(&reg_dest))
         {
-            let rsc = symdev_rcomp::Rsc::registration(self.uid3, &self.name)?.bytes()?;
-            let file = format!("{}_reg.rsc", self.name);
+            let rsc = symdev_rcomp::Rsc::registration(self.uid3, &self.app)?.bytes()?;
+            let file = format!("{}_reg.rsc", self.app);
             std::fs::write(workdir.join(&file), &rsc).map_err(|e| Error::Other(e.to_string()))?;
             extra.push((file, reg_dest.clone(), rsc));
         }

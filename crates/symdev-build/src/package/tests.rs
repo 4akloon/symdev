@@ -8,6 +8,7 @@ mod validation;
 fn fake_pkg() -> SisPackage {
     SisPackage {
         name: "hello".into(),
+        app: "hello".into(),
         uid3: 0xe79e4cf9,
         version: (0, 1, 0),
         vendor: "symdev".into(),

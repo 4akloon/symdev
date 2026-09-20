@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser};
-use symdev_build::{AppIcon, BuildOutputs, FrozenExports, GcceBuild, SisPackage, Toolchain};
+use symdev_build::{
+    AppIcon, AppTarget, BuildOutputs, FrozenExports, GcceBuild, SisPackage, Toolchain,
+};
 use symdev_core::{Artifact, BuildBackend, Error, LocalEnv, PackageBackend, Project};
 
 use cli::{Cli, Commands};
@@ -157,18 +159,21 @@ fn package_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
         .symbian
         .uid3
         .ok_or_else(|| Error::Other("uid3 required for package (set symbian.uid3)".into()))?;
-    let e32 = PathBuf::from("build").join(format!("{}.exe", m.package.name));
+    let cwd = std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?;
+    let project = Project { root: cwd.clone() };
+    let app = AppTarget::of(&project, &m.package.name)?;
+    let e32 = PathBuf::from("build").join(app.exe_file());
     if !e32.is_file() {
         return Err(Error::Other(format!(
-            "E32 not found: build/{}.exe (run symdev build)",
-            m.package.name
+            "E32 not found: {} (run symdev build)",
+            e32.display()
         )));
     }
     let icon = m.symbian.icon.clone();
     let password = std::env::var("SYMDEV_SIGN_PASSWORD").unwrap_or_default();
-    let cwd = std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?;
     let package = SisPackage {
         name: m.package.name,
+        app: app.name().to_string(),
         uid3,
         version: m.package.version,
         vendor: m.symbian.vendor,
@@ -184,7 +189,12 @@ fn package_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
             .map(|p| if p.is_absolute() { p } else { cwd.join(p) }),
         subject: m.signing.subject,
     }
-    .package(&package_artifacts(&cwd, &e32, icon.as_deref())?)?;
+    .package(&package_artifacts(
+        &project,
+        &e32,
+        icon.as_deref(),
+        &m.install,
+    )?)?;
     println!("{}", package.primary.display());
     Ok(ExitCode::SUCCESS)
 }
@@ -234,30 +244,41 @@ fn run_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// The EXE plus the resources the project's MMPs compile (`BuildOutputs`); a project
-/// without `bld.inf` packages its EXE alone.
-fn package_artifacts(cwd: &Path, e32: &Path, icon: Option<&Path>) -> Result<Vec<Artifact>, Error> {
-    let has_bld = cwd.join("group/bld.inf").is_file() || cwd.join("bld.inf").is_file();
-    if !has_bld {
-        return Ok(vec![Artifact::exe(cwd.join(e32))]);
-    }
-    let project = Project {
-        root: cwd.to_path_buf(),
+/// The EXE, the resources the project's MMPs compile (`BuildOutputs`), the icon and the
+/// manifest's `[[install]]` files; a project without `bld.inf` packages its EXE and its
+/// `[[install]]` files alone.
+fn package_artifacts(
+    project: &Project,
+    e32: &Path,
+    icon: Option<&Path>,
+    install: &[symdev_manifest::InstallFile],
+) -> Result<Vec<Artifact>, Error> {
+    let cwd = &project.root;
+    let mut outputs = if AppTarget::has_bld_inf(project) {
+        let mut outputs = BuildOutputs::of(project)?;
+        if let Some(source) = icon {
+            outputs.push(AppIcon::of(project, source)?.artifact(&cwd.join("build")));
+        }
+        outputs
+            .into_iter()
+            .filter(|a| a.dest.is_some() || a.path == cwd.join(e32))
+            .collect()
+    } else {
+        vec![Artifact::exe(cwd.join(e32))]
     };
-    let mut outputs = BuildOutputs::of(&project)?;
-    if let Some(source) = icon {
-        outputs.push(AppIcon::of(&project, source)?.artifact(&cwd.join("build")));
+    for file in install {
+        outputs.push(Artifact::installed(
+            cwd.join(&file.source),
+            file.dest.clone(),
+        ));
     }
     for a in &outputs {
         if a.dest.is_some() && !a.path.is_file() {
             return Err(Error::Other(format!(
-                "build output not found: {} (run symdev build)",
+                "file to install not found: {} (run symdev build)",
                 a.path.display()
             )));
         }
     }
-    Ok(outputs
-        .into_iter()
-        .filter(|a| a.dest.is_some() || a.path == cwd.join(e32))
-        .collect())
+    Ok(outputs)
 }

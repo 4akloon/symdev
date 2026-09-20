@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use symdev_core::{Artifact, Error, Project, Result};
 
-use crate::resources::ProjectMmps;
+use crate::resources::AppTarget;
 
 /// The app's scalable icon (`[symbian] icon`): one SVG built into `<app>_aif.mif`, the
 /// file the SDK examples name in `LOCALISABLE_APP_INFO.icon_file`.
@@ -26,12 +26,10 @@ impl AppIcon {
                 source.display()
             )));
         }
-        let app = ProjectMmps::load(project)?
-            .mmps
-            .into_iter()
-            .map(|(_, mmp)| mmp)
-            .find(|mmp| mmp.target_type.eq_ignore_ascii_case("EXE"))
-            .ok_or_else(|| Error::Other("icon set but the project has no EXE MMP".into()))?
+        let app = AppTarget::from_mmps(project)
+            .map_err(|e| {
+                Error::Other(format!("icon set but no application to name it after: {e}"))
+            })?
             .name()
             .to_string();
         Ok(Self {

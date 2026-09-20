@@ -1,8 +1,10 @@
 mod error;
+mod install;
 mod schema;
 mod validate;
 
 pub use error::{Error, Result};
+pub use install::InstallFile;
 pub use schema::{
     Compiler, Device, Language, Manifest, Package, Platform, Signing, SigningMode, Symbian, Target,
     Toolchain,
@@ -234,4 +236,25 @@ fn signing_subject_is_optional_and_nonempty() {
             .to_string()
             .contains("signing.subject")
     );
+}
+
+#[test]
+fn install_entries_are_optional_and_normalised() {
+    assert!(symdev_manifest::parse(HELLO).unwrap().install.is_empty());
+    let src = format!(
+        "{HELLO}\n[[install]]\nsource = \"build/games.mbm\"\ndest = \"/resource/apps/games.mbm\"\n"
+    );
+    let m = symdev_manifest::parse(&src).unwrap();
+    assert_eq!(
+        m.install,
+        [symdev_manifest::InstallFile {
+            source: std::path::PathBuf::from("build/games.mbm"),
+            dest: "!:\\resource\\apps\\games.mbm".into(),
+        }]
+    );
+}
+
+#[test]
+fn install_entry_without_a_destination_is_rejected() {
+    reject(&format!("{HELLO}\n[[install]]\nsource = \"a.mbm\"\n"));
 }

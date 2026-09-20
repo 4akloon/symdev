@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
+use crate::install::InstallFile;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Manifest {
     pub package: Package,
@@ -11,6 +13,8 @@ pub struct Manifest {
     pub toolchain: Toolchain,
     pub symbian: Symbian,
     pub signing: Signing,
+    /// `[[install]]`: extra files the package carries.
+    pub install: Vec<InstallFile>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,6 +95,8 @@ pub(crate) struct RawManifest {
     pub(crate) toolchain: Option<RawToolchain>,
     pub(crate) symbian: Option<RawSymbian>,
     pub(crate) signing: Option<RawSigning>,
+    #[serde(default)]
+    pub(crate) install: Vec<crate::install::RawInstall>,
 }
 
 #[derive(Deserialize)]
