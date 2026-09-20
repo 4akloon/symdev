@@ -84,11 +84,8 @@ impl RssCompiler {
                 }
                 RssItem::Uid2(e) => uid2 = Some(me.int(e)? as u32),
                 RssItem::Uid3(e) => uid3 = Some(me.int(e)? as u32),
-                RssItem::CharacterSet(cs) => {
-                    return Err(Error::Other(format!(
-                        "TODO: CHARACTER_SET {cs} (not in the SDK examples)"
-                    )));
-                }
+                // Handled by the lexer (RssCharset).
+                RssItem::CharacterSet(_) => {}
                 RssItem::Resource(r) => resources.push(r),
             }
         }

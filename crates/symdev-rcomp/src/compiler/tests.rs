@@ -101,3 +101,47 @@ fn undefined_name_in_text_is_its_spelling_and_control_chars_are_quoted() {
     assert!(rsc.windows(8).any(|w| w == b"STRING_x"));
     assert!(rsc.windows(4).any(|w| w == [b'a', 0x01, 0x0c, b'b']));
 }
+
+/// rcomp-spec.md §4: an unassigned `LINK`/`LLINK`/`BUF` writes nothing at all, while
+/// the fixed-size types write their zeros.
+#[test]
+fn unassigned_members_match_the_spec() {
+    let src = "NAME TEST\nSTRUCT S { BYTE b; WORD w; LONG l; LTEXT t; BUF u; LINK k; LLINK m; }\n\
+               RESOURCE S r_a { }\n";
+    let c = Rcomp::compile(src.as_bytes(), "t").unwrap();
+    assert_eq!(c.resources[0].data.uncompressed(), [0u8; 8]);
+}
+
+/// rcomp-spec.md §5.1: out-of-range integers are refused, negatives are two's complement.
+#[test]
+fn integer_range_follows_the_spec() {
+    let one = |v: &str| {
+        Rcomp::compile(
+            format!("NAME TEST\nSTRUCT S {{ BYTE b; }}\nRESOURCE S r_a {{ b = {v}; }}\n")
+                .as_bytes(),
+            "t",
+        )
+        .map(|c| c.resources[0].data.uncompressed())
+    };
+    assert_eq!(one("255").unwrap(), [0xff]);
+    assert_eq!(one("-128").unwrap(), [0x80]);
+    assert!(one("256").is_err());
+    assert!(one("-129").is_err());
+}
+
+/// rcomp-spec.md §5.6: source bytes are CP1252 unless `CHARACTER_SET` says otherwise.
+#[test]
+fn source_characters_are_cp1252_by_default() {
+    let body = b"NAME TEST\nSTRUCT S { BUF b; }\nRESOURCE S r_a { b = \"\x80\x91\x9e\xe9\"; }\n";
+    let c = Rcomp::compile(body, "t").unwrap();
+    assert_eq!(
+        c.resources[0].data.uncompressed(),
+        [0xac, 0x20, 0x18, 0x20, 0x7e, 0x01, 0xe9, 0x00]
+    );
+    let latin1 = [b"CHARACTER_SET ISOLATIN1\n".as_slice(), body].concat();
+    let c = Rcomp::compile(&latin1, "t").unwrap();
+    assert_eq!(
+        c.resources[0].data.uncompressed(),
+        [0x80, 0x00, 0x91, 0x00, 0x9e, 0x00, 0xe9, 0x00]
+    );
+}

@@ -2,9 +2,14 @@ use super::*;
 use crate::lexer::RssLexer;
 
 fn parse(src: &str) -> Vec<RssItem> {
-    RssParser::new(RssLexer::new(src.as_bytes(), "t.rss").tokens().unwrap())
-        .items()
-        .unwrap()
+    RssParser::new(
+        RssLexer::new(src.as_bytes(), "t.rss")
+            .unwrap()
+            .tokens()
+            .unwrap(),
+    )
+    .items()
+    .unwrap()
 }
 
 #[test]

@@ -9,6 +9,19 @@ use crate::parser::{
 };
 
 impl RssCompiler {
+    /// `rcomp` accepts `-2^(8k-1) ..= 2^(8k)-1` for a `k`-byte integer and rejects the
+    /// rest rather than truncating (spec §5.1).
+    fn fits(value: i64, bytes: u32) -> Result<i64> {
+        let bits = 8 * i64::from(bytes);
+        if value >= -(1i64 << (bits - 1)) && value < (1i64 << bits) {
+            Ok(value)
+        } else {
+            Err(Error::Other(format!(
+                "{value} does not fit in {bytes} byte(s)"
+            )))
+        }
+    }
+
     /// A struct instance: members in declaration order, assigned value else default.
     /// `top`: the resource itself (no length prefix).
     pub(super) fn structure(
@@ -125,12 +138,6 @@ impl RssCompiler {
                                 items.len()
                             )));
                         }
-                        if items.len() < n {
-                            return Err(Error::Other(format!(
-                                "TODO: [{n}] array with {} items (padding not observed)",
-                                items.len()
-                            )));
-                        }
                     }
                     None => {
                         let count = items.len();
@@ -164,9 +171,13 @@ impl RssCompiler {
         id: u32,
     ) -> Result<()> {
         match m.ty {
-            RssType::Byte => data.raw(&[self.int_value(value)? as u8]),
-            RssType::Word => data.raw(&(self.int_value(value)? as u16).to_le_bytes()),
-            RssType::Long => data.raw(&(self.int_value(value)? as u32).to_le_bytes()),
+            RssType::Byte => data.raw(&[Self::fits(self.int_value(value)?, 1)? as u8]),
+            RssType::Word => {
+                data.raw(&(Self::fits(self.int_value(value)?, 2)? as u16).to_le_bytes());
+            }
+            RssType::Long => {
+                data.raw(&(Self::fits(self.int_value(value)?, 4)? as u32).to_le_bytes());
+            }
             RssType::Double => {
                 let v = match value {
                     None => 0.0,
@@ -178,6 +189,7 @@ impl RssCompiler {
                 };
                 data.raw(&v.to_le_bytes());
             }
+            RssType::Link | RssType::Llink if value.is_none() => {}
             RssType::Link => data.raw(&(self.link(value)? as u16).to_le_bytes()),
             RssType::Llink => data.raw(&self.link(value)?.to_le_bytes()),
             RssType::Srlink => data.raw(&id.to_le_bytes()),
@@ -251,7 +263,8 @@ impl RssCompiler {
                 }
                 RssTextForm::Bare => data.raw(&bytes),
                 RssTextForm::Terminated => {
-                    return Err(Error::Other("TODO: TEXT8 (not observed)".into()));
+                    data.raw(&bytes);
+                    data.raw(&[0]);
                 }
             }
             return Ok(());
@@ -271,8 +284,11 @@ impl RssCompiler {
                 data.text16(&units);
             }
             RssTextForm::Bare => data.text16(&units),
+            // The terminator belongs to the text, so it is compressed with it.
             RssTextForm::Terminated => {
-                return Err(Error::Other("TODO: TEXT (not observed)".into()));
+                let mut units = units;
+                units.push(0);
+                data.text16(&units);
             }
         }
         Ok(())

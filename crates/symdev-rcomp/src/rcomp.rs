@@ -35,7 +35,7 @@ impl Rcomp {
 
     /// Preprocessed resource source → compiled resources.
     pub fn compile(src: &[u8], file: &str) -> Result<RscCompiled> {
-        let tokens = RssLexer::new(src, file).tokens()?;
+        let tokens = RssLexer::new(src, file)?.tokens()?;
         let items = RssParser::new(tokens).items()?;
         RssCompiler::compile(&items)
     }

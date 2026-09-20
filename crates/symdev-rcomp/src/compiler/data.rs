@@ -38,7 +38,7 @@ impl RscResourceData {
         for s in &self.segments {
             match s {
                 RscSegment::Raw(b) => out.extend_from_slice(b),
-                RscSegment::Pad => out.push(0),
+                RscSegment::Pad => out.push(crate::pack::RscPacker::PAD),
                 RscSegment::Text(t) => t
                     .iter()
                     .for_each(|u| out.extend_from_slice(&u.to_le_bytes())),

@@ -5,6 +5,7 @@
 mod compiler;
 mod cpp;
 mod lexer;
+mod pack;
 mod parser;
 mod rcomp;
 mod resource;
