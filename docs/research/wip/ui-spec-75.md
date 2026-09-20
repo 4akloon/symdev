@@ -18,6 +18,11 @@
 - **Drawing needs no extra library:** every `CWindowGc` call in the example (Clear, SetPenColor, UseFont, DrawText, DiscardFont) is a pure virtual of `CGraphicsContext`, dispatched through the vtable — ws32.lib is absent from the LIBRARY line and ws32 absent from NEEDED.
 - The observed GCCE compile argv passes `-mthumb` and `-mthumb-interwork` (`crates/symdev-build/src/driver/compile.rs`), so shim C++ is **Thumb** while rustc on `arm-symbian-e32` emits **ARM** — interworking across the Rust/shim boundary is a real risk to probe.
 
+- **Probe 76 stage A passed in EKA2L1** (`/tmp/claude-1000/ui-spec-work/probe76/`): a Thumb C++ shim EXE calls an ARM Rust `staticlib` function directly (`blx <sym>@plt`, the linker's ARM PLT stub does the state change) and the Rust code calls back through a `#[repr(C)]` table of `extern "C"` function pointers (`blx r1`). Log: `Shim: calling Rust` / `Rust: entered from Thumb shim` / `Rust: trapped leave returned -6` / `Shim: back from Rust`. So a `TRAPD` *inside* the shim turns `User::Leave(-6)` into the return value -6 and no Rust frame ever sees the exception.
+- Link warning, new: `libprobe76.a(...) uses 4-byte wchar_t yet the output is to use 2-byte wchar_t`. Harmless here (nothing crosses as `wchar_t`), but it is an attribute mismatch worth naming.
+- **Size:** adding one C++ shim object pulls the whole `compiler_builtins` CGU (a single object, no per-function split): the E32 grew from 752 bytes (exp 65 hello) to 104 268 bytes. The C++-only control of the same shim is 3591 bytes.
+- The first `symdev run` of the probe printed `Installation done!` and then `Installation of SIS failed`; an identical second run installed and ran. Transient, not reproducible; noted, not diagnosed.
+
 ## Decisions
 
 ## Dead ends
