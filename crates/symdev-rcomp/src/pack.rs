@@ -18,16 +18,11 @@ struct PackedText {
     trailing: Vec<u8>,
 }
 
-/// A resource image with its text compression decided.
-pub struct RscPacker;
-
-impl RscPacker {
-    /// Alignment byte before 16-bit text that is stored raw, packed or not (spec §3.6).
-    pub const PAD: u8 = 0xab;
-
+impl RscResourceData {
     /// `Some(bytes)` when the resource is packed, `None` when every text ended up raw
     /// and the plain uncompressed image is written instead.
-    pub fn pack(data: &RscResourceData) -> Result<Option<Vec<u8>>> {
+    pub fn packed(&self) -> Result<Option<Vec<u8>>> {
+        let data = self;
         // Level one: compress each text under its `2 * n` budget; what does not fit is
         // raw for good (spec §1.1).
         let mut compressed: Vec<Option<Vec<u8>>> = data
@@ -41,7 +36,7 @@ impl RscPacker {
         // The leading empty compressed run, dropped for good once it loses its test.
         let mut leading_empty = true;
         loop {
-            let texts = Self::layout(data, &compressed, leading_empty);
+            let texts = data.layout(&compressed, leading_empty);
             if texts.is_empty() {
                 return Ok(None);
             }
@@ -57,11 +52,8 @@ impl RscPacker {
 
     /// Walk the image, collecting the compressible texts with their sizes and the raw
     /// bytes between them (spec §1.3 pass 0).
-    fn layout(
-        data: &RscResourceData,
-        compressed: &[Option<Vec<u8>>],
-        leading_empty: bool,
-    ) -> Vec<PackedText> {
+    fn layout(&self, compressed: &[Option<Vec<u8>>], leading_empty: bool) -> Vec<PackedText> {
+        let data = self;
         let mut texts: Vec<PackedText> = Vec::new();
         let mut raw: Vec<u8> = Vec::new();
         for (i, seg) in data.segments.iter().enumerate() {
@@ -86,7 +78,6 @@ impl RscPacker {
                             if let Some(last) = texts.last_mut() {
                                 last.trailing = std::mem::take(&mut raw);
                             }
-                            raw.clear();
                             texts.push(PackedText {
                                 segment: Some(i),
                                 raw_size: pad + 2 * t.len(),
@@ -96,7 +87,7 @@ impl RscPacker {
                         }
                         None => {
                             if pad == 1 {
-                                raw.push(Self::PAD);
+                                raw.push(RscResourceData::PAD);
                             }
                             t.iter()
                                 .for_each(|u| raw.extend_from_slice(&u.to_le_bytes()));
@@ -105,6 +96,8 @@ impl RscPacker {
                 }
             }
         }
+        // With no compressible text the caller writes the uncompressed image instead,
+        // so the bytes collected here are not lost.
         if let Some(last) = texts.last_mut() {
             last.trailing = raw;
         }

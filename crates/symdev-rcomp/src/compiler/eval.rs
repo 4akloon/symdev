@@ -43,10 +43,10 @@ impl RssCompiler {
                 .ok_or_else(|| Error::Other(format!("unknown name {n}"))),
             RssValue::Expr(RssExpr::Real(r)) => Ok(RssConst::Real(*r)),
             RssValue::Expr(RssExpr::Neg(inner)) if matches!(**inner, RssExpr::Real(_)) => {
-                let RssExpr::Real(r) = **inner else {
-                    unreachable!()
-                };
-                Ok(RssConst::Real(-r))
+                match **inner {
+                    RssExpr::Real(r) => Ok(RssConst::Real(-r)),
+                    _ => Err(Error::Other("negated real expected".into())),
+                }
             }
             RssValue::Expr(e) => self.int(e).map(RssConst::Int),
             RssValue::Text(parts) => {

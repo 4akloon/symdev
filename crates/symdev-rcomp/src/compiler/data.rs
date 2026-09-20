@@ -17,6 +17,9 @@ pub struct RscResourceData {
 }
 
 impl RscResourceData {
+    /// Alignment byte before 16-bit text that is stored raw, packed or not (spec §3.6).
+    pub const PAD: u8 = 0xab;
+
     /// Length when completely uncompressed (pads and UTF-16 included).
     pub fn len(&self) -> usize {
         self.segments
@@ -38,7 +41,7 @@ impl RscResourceData {
         for s in &self.segments {
             match s {
                 RscSegment::Raw(b) => out.extend_from_slice(b),
-                RscSegment::Pad => out.push(crate::pack::RscPacker::PAD),
+                RscSegment::Pad => out.push(Self::PAD),
                 RscSegment::Text(t) => t
                     .iter()
                     .for_each(|u| out.extend_from_slice(&u.to_le_bytes())),
@@ -47,7 +50,7 @@ impl RscResourceData {
         out
     }
 
-    pub(super) fn raw(&mut self, bytes: &[u8]) {
+    pub fn raw(&mut self, bytes: &[u8]) {
         if let Some(RscSegment::Raw(last)) = self.segments.last_mut() {
             last.extend_from_slice(bytes);
         } else {
@@ -57,7 +60,7 @@ impl RscResourceData {
 
     /// 16-bit text starts at an even offset within the resource (experiment 56:
     /// `LTEXT` alone is `len, 0x00, UTF-16`; after an odd number of bytes no pad).
-    pub(super) fn text16(&mut self, units: &[u16]) {
+    pub fn text16(&mut self, units: &[u16]) {
         if units.is_empty() {
             return;
         }

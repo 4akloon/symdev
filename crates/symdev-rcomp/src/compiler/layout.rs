@@ -5,7 +5,7 @@ use symdev_core::{Error, Result};
 
 use super::{RscResourceData, RscSegment, RssCompiler, RssConst};
 use crate::parser::{
-    RssExpr, RssMember, RssStruct, RssStructValue, RssTextForm, RssType, RssValue, RssWidth,
+    RssExpr, RssMember, RssStruct, RssStructValue, RssType, RssValue, RssWidth,
 };
 
 impl RssCompiler {
@@ -36,6 +36,13 @@ impl RssCompiler {
             if !def.members.iter().any(|m| &m.name == field) {
                 return Err(Error::Other(format!("{} has no member {field}", def.name)));
             }
+        }
+        if def.len_prefix.is_some() && !top {
+            return Err(Error::Other(format!(
+                "TODO: length-prefixed nested list {} (spec §5.5: the source syntax was not \
+                 observed, so there is no golden)",
+                def.name
+            )));
         }
         if let (Some(width), false) = (def.len_prefix, top) {
             // Padding stays relative to the resource: build in place, patch the
@@ -79,9 +86,9 @@ impl RssCompiler {
             };
             if (offset..offset + n).contains(&at)
                 && let RscSegment::Raw(b) = seg
+                && let Some(slot) = b.get_mut(at - offset..at - offset + bytes.len())
             {
-                let i = at - offset;
-                b[i..i + bytes.len()].copy_from_slice(&bytes);
+                slot.copy_from_slice(&bytes);
                 return Ok(());
             }
             offset += n;
@@ -237,59 +244,6 @@ impl RssCompiler {
                     return Err(Error::Other(format!("STRUCT member given {other:?}")));
                 }
             },
-        }
-        Ok(())
-    }
-
-    fn text(
-        &self,
-        data: &mut RscResourceData,
-        text: &[u32],
-        form: RssTextForm,
-        bits: u8,
-    ) -> Result<()> {
-        if bits == 8 {
-            let bytes: Vec<u8> = text
-                .iter()
-                .map(|&c| {
-                    u8::try_from(c).map_err(|_| Error::Other(format!("U+{c:04X} in 8-bit text")))
-                })
-                .collect::<Result<_>>()?;
-            match form {
-                RssTextForm::Counted => {
-                    data.raw(&[u8::try_from(bytes.len())
-                        .map_err(|_| Error::Other("LTEXT8 longer than 255".into()))?]);
-                    data.raw(&bytes);
-                }
-                RssTextForm::Bare => data.raw(&bytes),
-                RssTextForm::Terminated => {
-                    data.raw(&bytes);
-                    data.raw(&[0]);
-                }
-            }
-            return Ok(());
-        }
-        let units: Vec<u16> = text
-            .iter()
-            .map(|&c| {
-                u16::try_from(c).map_err(|_| {
-                    Error::Other(format!("TODO: U+{c:X} outside the BMP (not observed)"))
-                })
-            })
-            .collect::<Result<_>>()?;
-        match form {
-            RssTextForm::Counted => {
-                data.raw(&[u8::try_from(units.len())
-                    .map_err(|_| Error::Other("LTEXT longer than 255".into()))?]);
-                data.text16(&units);
-            }
-            RssTextForm::Bare => data.text16(&units),
-            // The terminator belongs to the text, so it is compressed with it.
-            RssTextForm::Terminated => {
-                let mut units = units;
-                units.push(0);
-                data.text16(&units);
-            }
         }
         Ok(())
     }

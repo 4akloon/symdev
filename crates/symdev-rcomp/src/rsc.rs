@@ -4,7 +4,6 @@ use symdev_core::{Error, Result};
 use symdev_uidcrc::UidCrc;
 
 use crate::compiler::RscCompiled;
-use crate::pack::RscPacker;
 
 impl RscCompiled {
     pub const UID1: u32 = 0x101f_4a6b;
@@ -36,7 +35,7 @@ impl RscCompiled {
         let mut bits = vec![0u8; self.resources.len().div_ceil(8)];
         let mut bodies = Vec::new();
         for (i, r) in self.resources.iter().enumerate() {
-            match RscPacker::pack(&r.data)? {
+            match r.data.packed()? {
                 Some(packed) => {
                     bits[i / 8] |= 1 << (i % 8);
                     bodies.push(packed);

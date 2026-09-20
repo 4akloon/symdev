@@ -109,6 +109,11 @@ impl RssParser {
                 let name = self.ident()?;
                 Ok(RssItem::Rls(name, self.value()?))
             }
+            // Known rcomp statements with no example in the SDK corpus (spec §4).
+            "OFFSET" | "LOCAL" => {
+                self.at -= 1;
+                Err(self.error(&format!("TODO: `{keyword}` (not observed)")))
+            }
             other => {
                 self.at -= 1;
                 Err(self.error(&format!("unknown statement `{other}`")))

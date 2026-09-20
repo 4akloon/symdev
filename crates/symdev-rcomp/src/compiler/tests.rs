@@ -82,7 +82,7 @@ fn probes_match_wine_rcomp() {
 
 #[test]
 fn name_value_is_base_27_letters_with_digits_zero() {
-    use crate::RssCompiler;
+    use crate::compiler::RssCompiler;
     // Experiment 56: `TEST` → 0x6120e, `AB` → 29, `A1` → 27, `L10N` → 0x39ab2.
     assert_eq!(RssCompiler::name_value("TEST").unwrap(), 0x6120e);
     assert_eq!(RssCompiler::name_value("AB").unwrap(), 29);

@@ -249,6 +249,28 @@ mod tests {
         assert_eq!(enc(&"X".repeat(200)), b"X".repeat(200));
     }
 
+    /// rcomp-spec.md §2.5: paths the recorded examples do not reach.
+    #[test]
+    fn switches_windows_and_modes_as_the_spec_describes() {
+        // A run in a window no dynamic window holds: define window 4 (SD4 + byte).
+        assert_eq!(enc("\u{531}\u{532}\u{533}"), [0x1c, 0xfc, 0x81, 0x82, 0x83]);
+        // A run in a window that exists already: select it (SC3 for U+0600).
+        assert_eq!(enc("\u{621}\u{622}\u{623}"), [0x13, 0xa1, 0xa2, 0xa3]);
+        // Characters no window can hold: SCU into Unicode mode, UC0 back out.
+        assert_eq!(
+            enc("AB\u{4e2d}\u{4e2e}AB"),
+            [0x41, 0x42, 0x0f, 0x4e, 0x2d, 0x4e, 0x2e, 0xe0, 0x41, 0x42]
+        );
+        // A lone windowed character while in Unicode mode is quoted with UQU.
+        assert_eq!(
+            enc("AB\u{4e2d}\u{4e2e}\u{e000}\u{4e2d}\u{4e2e}ABCD"),
+            [
+                0x41, 0x42, 0x0f, 0x4e, 0x2d, 0x4e, 0x2e, 0xf0, 0xe0, 0x00, 0x4e, 0x2d, 0x4e, 0x2e,
+                0xe0, 0x41, 0x42, 0x43, 0x44
+            ]
+        );
+    }
+
     #[test]
     fn gives_up_when_the_encoding_would_not_be_shorter() {
         // A lone unencodable character costs SQU and two bytes for one character.

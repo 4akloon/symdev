@@ -2,7 +2,10 @@
 
 use symdev_core::{Error, Result};
 
-use crate::{RscCompiled, RssCompiler, RssLexer, RssParser};
+use crate::RscCompiled;
+use crate::compiler::RssCompiler;
+use crate::lexer::RssLexer;
+use crate::parser::RssParser;
 
 pub struct Rcomp {
     pub unicode: bool,
@@ -35,7 +38,7 @@ impl Rcomp {
 
     /// Preprocessed resource source → compiled resources.
     pub fn compile(src: &[u8], file: &str) -> Result<RscCompiled> {
-        let tokens = RssLexer::new(src, file)?.tokens()?;
+        let tokens = RssLexer::new(src, file).tokens()?;
         let items = RssParser::new(tokens).items()?;
         RssCompiler::compile(&items)
     }
