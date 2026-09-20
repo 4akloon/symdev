@@ -92,19 +92,49 @@ impl RustBuild {
         )
     }
 
-    /// Compiles every SDK shim source into `build/shims/` and returns the objects in the
-    /// order they go on the link line.
-    fn build_shims(&self, project: &Project, cwd: &RemotePath) -> Result<Vec<PathBuf>> {
-        let dir = project.root.join("build/shims");
-        std::fs::create_dir_all(&dir).map_err(io)?;
+    /// `build/shims/libsymrs.a`: the shim as a static library.
+    ///
+    /// An **archive**, not a list of objects, and for one measured reason. Objects are
+    /// linked whole, so an unused wrapper's reference to its DLL still makes ld record a
+    /// `DT_NEEDED` — `--gc-sections` then removes the code but not the dependency,
+    /// because as-needed is decided during symbol resolution and garbage collection
+    /// happens after it. A `hello` that calls nothing came out at 3219 bytes and loaded
+    /// `bafl.dll` for no reason. From an archive a member nobody references is never
+    /// pulled and the question does not arise.
+    pub fn shim_archive(&self, project: &Project) -> PathBuf {
+        project.root.join("build/shims/libsymrs.a")
+    }
+
+    /// `ar cr <archive> <objects…>`, the one archiver invocation.
+    pub fn ar_args(&self, archive: &Path, objects: &[PathBuf]) -> Result<Vec<String>> {
+        let mut args = vec![arg(&self.gcce.tools.ar()?), "cr".into(), arg(archive)];
+        args.extend(objects.iter().map(|o| arg(o)));
+        Ok(args)
+    }
+
+    /// Compiles every SDK shim source into `build/shims/` and archives the objects.
+    fn build_shims(&self, project: &Project, cwd: &RemotePath) -> Result<Option<PathBuf>> {
+        let sources = self.sdk.shim_sources()?;
+        if sources.is_empty() {
+            return Ok(None);
+        }
+        std::fs::create_dir_all(project.root.join("build/shims")).map_err(io)?;
         let mut objects = Vec::new();
-        for source in self.sdk.shim_sources()? {
+        for source in sources {
             let obj = self.shim_object(project, &source);
             self.gcce
                 .run_tool(&self.shim_compile_args(&source, &obj)?, cwd)?;
             objects.push(obj);
         }
-        Ok(objects)
+        let archive = self.shim_archive(project);
+        // `ar cr` updates in place, so a stale member from an earlier build would
+        // survive a renamed source; the archive is rebuilt from scratch every time.
+        if archive.exists() {
+            std::fs::remove_file(&archive).map_err(io)?;
+        }
+        self.gcce
+            .run_tool(&self.ar_args(&archive, &objects)?, cwd)?;
+        Ok(Some(archive))
     }
 
     /// `GcceBuild::link_args` with `-u _Z7E32Mainv` after `-u _E32Startup`,
@@ -129,21 +159,18 @@ impl RustBuild {
     /// covers helpers the DSOs do not define. Both are added for Rust only; the recorded
     /// C++ link line, byte-verified against the SDK's own, is untouched.
     ///
-    /// The shim objects follow the Rust archive: they are objects, so the linker takes
-    /// them whole and the archive's references to `symrs_*` resolve regardless of
-    /// order, while the euser and drtaeabi lines must stay in front of the archive.
-    /// [`RustSdk::LIBRARIES`] adds the DSOs the SDK's own code imports.
+    /// The shim archive follows the Rust archive, because that is where the undefined
+    /// `symrs_*` references come from and an archive is searched only for what is
+    /// undefined at the point it appears. The euser and drtaeabi lines stay in front of
+    /// the Rust archive. [`RustSdk::LIBRARIES`] adds the DSOs the SDK's own code imports.
     pub fn link_args(
         &self,
         archive: &Path,
-        shims: &[PathBuf],
+        shim: Option<&Path>,
         elf: &Path,
         map: &Path,
     ) -> Vec<String> {
-        let libraries: Vec<String> = RustSdk::LIBRARIES.iter().map(|l| (*l).into()).collect();
-        let mut args = self
-            .gcce
-            .link_args(&self.name, archive, elf, map, &libraries);
+        let mut args = self.gcce.link_args(&self.name, archive, elf, map, &[]);
         let after = args
             .windows(2)
             .position(|w| w[0] == "-u" && w[1] == "_E32Startup")
@@ -166,14 +193,32 @@ impl RustBuild {
         {
             args.insert(at + i, flag);
         }
-        let after_archive = args
-            .iter()
-            .position(|a| a == &arg(archive))
-            .map_or(args.len(), |i| i + 1);
-        for (i, obj) in shims.iter().enumerate() {
-            args.insert(after_archive + i, arg(obj));
+        if let Some(shim) = shim {
+            let after_archive = args
+                .iter()
+                .position(|a| a == &arg(archive))
+                .map_or(args.len(), |i| i + 1);
+            args.insert(after_archive, arg(shim));
         }
+        let at = args
+            .iter()
+            .position(|a| a == "-lsupc++")
+            .unwrap_or(args.len());
+        args.splice(at..at, Self::sdk_libraries());
         args
+    }
+
+    /// The DSOs the SDK's own crates and shim import, under `--as-needed` so that an
+    /// application which calls neither keeps the dependency list of a pure-euser
+    /// program: `--gc-sections` drops the unused shim function (its symbols are hidden,
+    /// so they are not collection roots), and `--as-needed` then drops the `DT_NEEDED`
+    /// the removed code would have justified. Without it ld 2.29.1 records every `-l`
+    /// shared library and a hello would load `bafl.dll` to call nothing.
+    fn sdk_libraries() -> Vec<String> {
+        let mut out = vec!["--as-needed".to_string()];
+        out.extend(RustSdk::LIBRARIES.iter().map(|l| format!("-l:{l}")));
+        out.push("--no-as-needed".into());
+        out
     }
 
     fn run_cargo(&self, cwd: &RemotePath) -> Result<()> {
@@ -211,11 +256,11 @@ impl BuildBackend for RustBuild {
                 self.name
             )));
         }
-        let shims = self.build_shims(project, &cwd)?;
+        let shim = self.build_shims(project, &cwd)?;
         let elf = build_dir.join(format!("{}.elf", self.name));
         let map = build_dir.join(format!("{}.exe.map", self.name));
         self.gcce
-            .run_tool(&self.link_args(&archive, &shims, &elf, &map), &cwd)?;
+            .run_tool(&self.link_args(&archive, shim.as_deref(), &elf, &map), &cwd)?;
         let out = build_dir.join(format!("{}.exe", self.name));
         self.gcce
             .run_elf2e32(&self.gcce.elf2e32_args(&self.name, &elf, &out), &cwd)?;

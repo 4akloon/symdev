@@ -41,6 +41,27 @@ impl Toolchain {
         })
     }
 
+    /// The archiver, for the SDK's C++ shim: `SYMDEV_AR`, else the `ar` that sits beside
+    /// `SYMDEV_LD` in the same binutils build (`arm-none-symbianelf-ld` →
+    /// `arm-none-symbianelf-ar`).
+    ///
+    /// Derived rather than required, because the two always ship together and a Rust
+    /// build must keep working for an environment that predates the shim.
+    pub fn ar(&self) -> Result<PathBuf> {
+        if let Some(ar) = Self::optional("SYMDEV_AR") {
+            return Ok(ar);
+        }
+        let name = self.ld.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        match name.strip_suffix("ld") {
+            Some(prefix) => Ok(self.ld.with_file_name(format!("{prefix}ar"))),
+            None => Err(Error::Other(format!(
+                "cannot find the archiver beside SYMDEV_LD ({}): its file name does not \
+                 end in `ld`, so set SYMDEV_AR to the matching `ar`",
+                self.ld.display()
+            ))),
+        }
+    }
+
     fn optional(key: &str) -> Option<PathBuf> {
         std::env::var_os(key)
             .filter(|v| !v.is_empty())

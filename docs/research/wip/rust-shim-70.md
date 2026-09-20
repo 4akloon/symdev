@@ -37,3 +37,10 @@ So: a non-virtual, non-static member with scalar/pointer arguments and a scalar 
 - A descriptor overflow is a **panic, not a leave**: `e32panic.h` line 131 `ETDes16Overflow=11` under the USER category, documented for "any of the copying, appending or formatting member functions". A `TRAP` cannot catch it, so the Rust wrapper pre-checks capacity.
 - `bafl.dll`, `efsrv.dll`, `euser.dll` are all in the EKA2L1 ROM (`~/.local/share/EKA2L1/data/drives/z/rm-469/sys/bin/`).
 - `BaflUtils::EnsurePathExistsL(RFs&, const TDesC&)` = `_ZN9BaflUtils17EnsurePathExistsLER3RFsRK7TDesC16` (bafl.dso): static, leaving, and what step 71 needs to create `E:\symdev\results\`.
+
+## Build integration — decided
+
+- Shim sources: `symbian-rs/shims/common/*.cpp`, compiled with `GcceBuild::compile_args` (the C++ project argv) into `build/shims/*.o`, then **archived** into `build/shims/libsymrs.a` and placed right after the Rust archive on the link line.
+- **Why an archive and not objects (measured):** with loose objects, `hello` went 3187 → 3219 and gained `bafl{000a0000}.dso` as `DT_NEEDED`. Hidden visibility + `--gc-sections` did remove the unused wrapper's code (`nm` shows no `symrs_*` in the ELF) but ld decides `--as-needed` during symbol resolution, *before* garbage collection, so the dependency survived the code. From an archive the member is never pulled: `hello` is **3187 bytes again**, with the same six NEEDED entries as before.
+- `ar` is derived from `SYMDEV_LD` (`…-ld` → `…-ar`), with `SYMDEV_AR` as an optional override. No new required environment variable.
+- `RustSdk::LIBRARIES = ["efsrv.dso", "bafl.dso"]`, added under `--as-needed`/`--no-as-needed` before `-lsupc++`.

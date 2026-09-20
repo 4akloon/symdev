@@ -54,9 +54,8 @@ fn link_args_add_e32main_gc_sections_and_the_helper_dsos_before_the_archive() {
         Path::new("/p/build/hello.elf"),
         Path::new("/p/build/hello.exe.map"),
     );
-    let got = b.link_args(a, &[], elf, map);
-    let libraries: Vec<String> = RustSdk::LIBRARIES.iter().map(|l| (*l).into()).collect();
-    let mut want = b.gcce.link_args("hello", a, elf, map, &libraries);
+    let got = b.link_args(a, None, elf, map);
+    let mut want = b.gcce.link_args("hello", a, elf, map, &[]);
     let at = want.iter().position(|x| x == "_E32Startup").unwrap();
     assert_eq!(want[at - 1], "--entry");
     assert_eq!(&want[at + 1..at + 3], &s(&["-u", "_E32Startup"])[..]);
@@ -79,6 +78,11 @@ fn link_args_add_e32main_gc_sections_and_the_helper_dsos_before_the_archive() {
         archive..archive,
         [lib.clone(), "-l:euser.dso".into(), "-l:drtaeabi.dso".into()],
     );
+    let at = want.iter().position(|x| x == "-lsupc++").unwrap();
+    let mut sdk = vec!["--as-needed".to_string()];
+    sdk.extend(RustSdk::LIBRARIES.iter().map(|l| format!("-l:{l}")));
+    sdk.push("--no-as-needed".into());
+    want.splice(at..at, sdk);
     assert_eq!(got, want);
     assert_eq!(got.iter().filter(|x| *x == "-u").count(), 2);
 
@@ -113,13 +117,36 @@ fn shim_objects_follow_the_archive_and_keep_the_dso_ordering() {
         Path::new("/p/build/hello.elf"),
         Path::new("/p/build/hello.exe.map"),
     );
-    let shims = [PathBuf::from("/p/build/shims/symrs_f32.o")];
-    let got = b.link_args(a, &shims, elf, map);
+    let project = Project {
+        root: PathBuf::from("/p"),
+    };
+    let shim = b.shim_archive(&project);
+    assert_eq!(shim, PathBuf::from("/p/build/shims/libsymrs.a"));
+    let got = b.link_args(a, Some(&shim), elf, map);
     let archive = got.iter().position(|x| x == &a.display().to_string());
-    let shim = got.iter().position(|x| x == "/p/build/shims/symrs_f32.o");
+    let at = got.iter().position(|x| x == "/p/build/shims/libsymrs.a");
     let euser = got.iter().position(|x| x == "-l:euser.dso");
-    assert_eq!(shim, archive.map(|i| i + 1));
+    assert_eq!(at, archive.map(|i| i + 1));
     assert!(euser < archive);
+}
+
+#[test]
+fn the_archiver_is_derived_from_the_linker() {
+    let b = rust();
+    let project = Project {
+        root: PathBuf::from("/p"),
+    };
+    let shim = b.shim_archive(&project);
+    let objects = [PathBuf::from("/p/build/shims/symrs_f32.o")];
+    assert_eq!(
+        b.ar_args(&shim, &objects).unwrap(),
+        s(&[
+            "/gcc/binutils/bin/arm-none-symbianelf-ar",
+            "cr",
+            "/p/build/shims/libsymrs.a",
+            "/p/build/shims/symrs_f32.o",
+        ])
+    );
 }
 
 #[test]
