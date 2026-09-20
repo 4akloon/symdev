@@ -123,3 +123,11 @@ every source and builds every icon file; it stops in the post-link at
 `uid3 = "0xE000EF77"` does not match them, and a self-signed package could not carry that SID
 anyway. Closing it means either a manifest override for `SECUREID`/`_reg` UID (a symdev
 decision) or an edit to the project (workaround 9 above).
+
+## Re-running the acceptance test
+
+`docs/research/acceptance/puzzles.sh [build|package|run|all]` clones the project into a
+scratch directory, adds only `docs/research/acceptance/puzzles-symdev.toml`, drives symdev
+over it, and fails if anything inside the project changed. Nothing from the project is
+copied into this repository. `run` leaves EKA2L1 running: its pid is in `build/eka2l1.pid`
+and it ignores SIGTERM, so stop it with `kill -9`.

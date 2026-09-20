@@ -1,0 +1,74 @@
+[package]
+name = "puzzles"
+version = "1.0.0"
+
+[target]
+device = "nokia-e52"
+
+[language]
+name = "cpp"
+
+[symbian]
+uid3 = "0xA000EF77"
+capabilities = []
+vendor = "Tiago Dionizio"
+icon = "gfx/app.svg"
+
+[signing]
+mode = "self-signed"
+
+[[icons]]
+dest = "/resource/apps/0xa000ef77/puzzles.mif"
+depth = "c32,8"
+sources = ["gfx/app.svg"]
+
+# group/Images.mk: mifconv <z>\resource\apps\0xe000ef77\games.mif /H<epoc32>\include\puzzles_0xa000ef77.mbg /c24 ..\gfx\*.bmp (34)
+[[icons]]
+dest = "/resource/apps/0xa000ef77/games.mif"
+header = "puzzles_0xa000ef77.mbg"
+depth = "c24"
+sources = [
+    "gfx/blackbox.bmp",
+    "gfx/bridges.bmp",
+    "gfx/cube.bmp",
+    "gfx/dominosa.bmp",
+    "gfx/fifteen.bmp",
+    "gfx/filling.bmp",
+    "gfx/flip.bmp",
+    "gfx/galaxies.bmp",
+    "gfx/guess.bmp",
+    "gfx/inertia.bmp",
+    "gfx/keen.bmp",
+    "gfx/lightup.bmp",
+    "gfx/loopy.bmp",
+    "gfx/magnets.bmp",
+    "gfx/map.bmp",
+    "gfx/mines.bmp",
+    "gfx/net.bmp",
+    "gfx/netslide.bmp",
+    "gfx/pattern.bmp",
+    "gfx/pearl.bmp",
+    "gfx/pegs.bmp",
+    "gfx/range.bmp",
+    "gfx/rect.bmp",
+    "gfx/samegame.bmp",
+    "gfx/signpost.bmp",
+    "gfx/singles.bmp",
+    "gfx/sixteen.bmp",
+    "gfx/slant.bmp",
+    "gfx/solo.bmp",
+    "gfx/tents.bmp",
+    "gfx/towers.bmp",
+    "gfx/twiddle.bmp",
+    "gfx/unequal.bmp",
+    "gfx/untangle.bmp",
+]
+
+# group/Fonts.mk copies four fonts; sis/Puzzles_S60.pkg installs these two.
+[[install]]
+source = "fonts/Vera.ttf"
+dest = "/resource/apps/0xa000ef77/Vera.ttf"
+
+[[install]]
+source = "fonts/VeraMono.ttf"
+dest = "/resource/apps/0xa000ef77/VeraMono.ttf"
