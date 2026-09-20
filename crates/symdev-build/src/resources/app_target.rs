@@ -1,4 +1,6 @@
 //! `AppTarget`: the name of the binary the package installs and launches.
+use std::path::Path;
+
 use symdev_core::{Error, Project, Result};
 
 use super::project_mmps::ProjectMmps;
@@ -13,16 +15,16 @@ pub struct AppTarget(String);
 
 impl AppTarget {
     /// The first EXE MMP's name; a project with no `bld.inf` falls back to `package_name`.
-    pub fn of(project: &Project, package_name: &str) -> Result<Self> {
+    pub fn of(project: &Project, package_name: &str, epocroot: &Path) -> Result<Self> {
         if !Self::has_bld_inf(project) {
             return Ok(Self(package_name.to_string()));
         }
-        Self::from_mmps(project)
+        Self::from_mmps(project, epocroot)
     }
 
     /// The first EXE MMP's name; an error when the project has no MMP that builds one.
-    pub fn from_mmps(project: &Project) -> Result<Self> {
-        let name = ProjectMmps::load(project)?
+    pub fn from_mmps(project: &Project, epocroot: &Path) -> Result<Self> {
+        let name = ProjectMmps::load(project, epocroot)?
             .mmps
             .into_iter()
             .map(|(_, mmp)| mmp)

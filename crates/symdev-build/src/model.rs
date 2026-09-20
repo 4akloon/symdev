@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BldInf {
     pub mmp_files: Vec<PathBuf>,
     pub test_mmp_files: Vec<PathBuf>,
     pub exports: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Mmp {
     pub target: String,
     pub target_type: String,
@@ -33,7 +33,7 @@ pub struct Mmp {
 }
 
 /// A `START RESOURCE <file> … END` block.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MmpResource {
     /// The `.rss` named after `START RESOURCE`.
     pub file: String,

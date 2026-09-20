@@ -11,7 +11,7 @@ use crate::resources::{GeneratedCaseFold, ProjectMmps, SdkIncludeCaseFold};
 
 impl BuildBackend for GcceBuild {
     fn build(&self, project: &Project) -> Result<Vec<Artifact>> {
-        let mmps = ProjectMmps::load(project)?;
+        let mmps = ProjectMmps::load(project, &self.tools.epocroot)?;
         let build_dir = project.root.join("build");
         std::fs::create_dir_all(&build_dir).map_err(io)?;
         let cwd = RemotePath::new(arg(&project.root));
@@ -23,7 +23,7 @@ impl BuildBackend for GcceBuild {
 
         let mut artifacts = Vec::new();
         if let Some(source) = &self.icon {
-            let icon = AppIcon::of(project, source)?;
+            let icon = AppIcon::of(project, source, &self.tools.epocroot)?;
             self.compile_icon(&icon, &build_dir)?;
             artifacts.push(icon.artifact(&build_dir));
         }

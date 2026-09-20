@@ -42,7 +42,7 @@ impl GcceBuild {
                 .iter()
                 .map(|d| self.mmp_dir_path(mmp_dir, d)),
         );
-        let rpp = symdev_rcomp::RssPreprocessor::new(&includes).run(&rss)?;
+        let rpp = symdev_rcomp::CPreprocessor::for_rss(&includes).run(&rss)?;
         let compiled = symdev_rcomp::Rcomp::compile(&rpp, &rss.display().to_string())?;
         let rsc = build_dir.join(format!("{stem}.rsc"));
         std::fs::write(&rsc, compiled.rsc_bytes()?)

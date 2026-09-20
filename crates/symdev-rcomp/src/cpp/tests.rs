@@ -18,7 +18,7 @@ fn includes_case_insensitively_and_applies_conditionals_and_macros() {
          #else\n#error wrong branch\n#endif\n",
     )
     .unwrap();
-    let rpp = RssPreprocessor::new(std::slice::from_ref(&dir))
+    let rpp = CPreprocessor::for_rss(std::slice::from_ref(&dir))
         .run(&dir.join("app.rss"))
         .unwrap();
     let text = String::from_utf8(rpp.clone()).unwrap();

@@ -15,7 +15,7 @@ pub struct AppIcon {
 
 impl AppIcon {
     /// `source` relative to the project root; the app is the project's first EXE MMP.
-    pub fn of(project: &Project, source: &Path) -> Result<Self> {
+    pub fn of(project: &Project, source: &Path, epocroot: &Path) -> Result<Self> {
         let is_svg = source
             .extension()
             .and_then(|e| e.to_str())
@@ -26,7 +26,7 @@ impl AppIcon {
                 source.display()
             )));
         }
-        let app = AppTarget::from_mmps(project)
+        let app = AppTarget::from_mmps(project, epocroot)
             .map_err(|e| {
                 Error::Other(format!("icon set but no application to name it after: {e}"))
             })?

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use symdev_core::{Error, Result};
 
@@ -11,6 +11,22 @@ pub struct Toolchain {
     pub elf2e32: Option<PathBuf>,
     pub gcc_lib: PathBuf,
     pub gcc_target_lib: PathBuf,
+}
+
+/// The SDK root alone (`SYMDEV_EPOCROOT`). Reading a project's `bld.inf` needs it — the
+/// preprocessor's include path and the variant header live under it — while packaging
+/// needs neither the compiler nor the linker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Epocroot(PathBuf);
+
+impl Epocroot {
+    pub fn from_env() -> Result<Self> {
+        Ok(Self(Toolchain::required("SYMDEV_EPOCROOT")?))
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
 }
 
 impl Toolchain {

@@ -5,6 +5,7 @@ mod icons;
 mod mmp;
 mod model;
 mod package;
+mod project;
 mod resources;
 mod toolchain;
 
@@ -15,5 +16,6 @@ pub use exports::{DllExports, FrozenExports};
 pub use icons::AppIcon;
 pub use model::{BldInf, Mmp, MmpResource};
 pub use package::SisPackage;
+pub use project::{HostPath, ProjectCpp, ProjectLine, ProjectPass};
 pub use resources::{AppTarget, BuildOutputs, GeneratedCaseFold, MmpPath, SdkIncludeCaseFold};
-pub use toolchain::Toolchain;
+pub use toolchain::{Epocroot, Toolchain};

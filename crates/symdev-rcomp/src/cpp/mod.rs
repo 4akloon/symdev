@@ -1,6 +1,8 @@
-//! Native replacement for the SDK `cpp.exe -nostdinc -undef -C -D_UNICODE` step before
-//! `rcomp` (experiment 9 argv): includes, macros and conditionals, with `# line
-//! "file"` markers so `rcomp` errors point at the right source.
+//! Native replacement for the SDK `cpp.exe -nostdinc -undef` step: includes, macros and
+//! conditionals, with `# line "file"` markers so errors point at the right source.
+//!
+//! Two recipes use it: `.rss` before `rcomp` (experiment 9 argv, `-C -D_UNICODE`) and
+//! `bld.inf`/`.mmp` before the project front end (mmp-frontend-spec.md §1).
 
 mod cond;
 mod macros;
@@ -24,28 +26,46 @@ struct CppBranch {
     outer: bool,
 }
 
-pub struct RssPreprocessor {
+pub struct CPreprocessor {
     include_dirs: Vec<PathBuf>,
     macros: CppMacros,
+    preinclude: Option<PathBuf>,
     out: String,
     depth: usize,
 }
 
-impl RssPreprocessor {
-    /// `-I` directories in order; `_UNICODE` is predefined as the SDK recipe does.
-    pub fn new(include_dirs: &[PathBuf]) -> Self {
+impl CPreprocessor {
+    /// `-I` directories in order and the `-D` list, each `NAME` or `NAME=value`.
+    pub fn new(include_dirs: &[PathBuf], defines: &[String]) -> Self {
         let mut macros = CppMacros::default();
-        macros.predefine("_UNICODE");
+        for define in defines {
+            macros.predefine(define);
+        }
         Self {
             include_dirs: include_dirs.to_vec(),
             macros,
+            preinclude: None,
             out: String::new(),
             depth: 0,
         }
     }
 
+    /// The `.rss` recipe: `_UNICODE` predefined, nothing else.
+    pub fn for_rss(include_dirs: &[PathBuf]) -> Self {
+        Self::new(include_dirs, &["_UNICODE".to_string()])
+    }
+
+    /// `cpp -include <header>`: read before the source file itself.
+    pub fn preinclude(mut self, header: &Path) -> Self {
+        self.preinclude = Some(header.to_path_buf());
+        self
+    }
+
     /// Preprocessed text of `source` (Latin-1 in, Latin-1 out as bytes).
     pub fn run(mut self, source: &Path) -> Result<Vec<u8>> {
+        if let Some(header) = self.preinclude.clone() {
+            self.file(&header)?;
+        }
         self.file(source)?;
         Ok(self.out.chars().map(|c| c as u32 as u8).collect())
     }
@@ -219,7 +239,11 @@ impl RssPreprocessor {
                 return Ok(found);
             }
         }
-        Err(Error::Other(format!("#include {name}: not found")))
+        let searched: Vec<String> = dirs.iter().map(|d| d.display().to_string()).collect();
+        Err(Error::Other(format!(
+            "#include {name}: not found in {}",
+            searched.join(", ")
+        )))
     }
 
     fn find(dir: &Path, name: &str) -> Option<PathBuf> {

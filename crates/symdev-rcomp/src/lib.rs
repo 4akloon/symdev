@@ -15,7 +15,7 @@ mod uid;
 
 pub use compiler::RscCompiled;
 pub use compiler::RscResourceData;
-pub use cpp::RssPreprocessor;
+pub use cpp::CPreprocessor;
 pub use rcomp::Rcomp;
 pub use resource::{Rsc, RscAppRegistration, RscLtext16};
 pub use uid::RscUid;

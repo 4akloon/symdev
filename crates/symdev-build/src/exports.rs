@@ -104,10 +104,10 @@ pub struct FrozenExports;
 
 impl FrozenExports {
     /// Every DLL MMP with the `--defoutput` of its last build.
-    pub fn of(project: &Project) -> Result<Vec<DllExports>> {
+    pub fn of(project: &Project, epocroot: &Path) -> Result<Vec<DllExports>> {
         let build_dir = project.root.join("build");
         let mut out = Vec::new();
-        for (mmp_dir, mmp) in ProjectMmps::load(project)?.mmps {
+        for (mmp_dir, mmp) in ProjectMmps::load(project, epocroot)?.mmps {
             if !mmp.is_dll() {
                 continue;
             }
@@ -132,10 +132,10 @@ impl FrozenExports {
 
     /// Append each DLL's unfrozen exports to its frozen `.def` (creating it and its
     /// directory on first freeze). Returns the DLLs whose `.def` changed.
-    pub fn freeze(project: &Project) -> Result<Vec<DllExports>> {
+    pub fn freeze(project: &Project, epocroot: &Path) -> Result<Vec<DllExports>> {
         let build_dir = project.root.join("build");
         let mut changed = Vec::new();
-        for dll in Self::of(project)? {
+        for dll in Self::of(project, epocroot)? {
             let generated = std::fs::read_to_string(build_dir.join(format!("{}.def", dll.dll)))
                 .map_err(|e| Error::Other(format!("read build/{}.def: {e}", dll.dll)))?;
             let existing = if dll.frozen_def.is_file() {

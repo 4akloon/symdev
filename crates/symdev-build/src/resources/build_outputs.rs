@@ -1,4 +1,6 @@
 //! `BuildOutputs`: what `symdev build` writes and `symdev package` installs.
+use std::path::Path;
+
 use symdev_core::{Artifact, Project, Result};
 
 use super::project_mmps::ProjectMmps;
@@ -8,10 +10,10 @@ use super::project_mmps::ProjectMmps;
 pub struct BuildOutputs;
 
 impl BuildOutputs {
-    pub fn of(project: &Project) -> Result<Vec<Artifact>> {
+    pub fn of(project: &Project, epocroot: &Path) -> Result<Vec<Artifact>> {
         let build_dir = project.root.join("build");
         let mut out = Vec::new();
-        for (_, mmp) in ProjectMmps::load(project)?.mmps {
+        for (_, mmp) in ProjectMmps::load(project, epocroot)?.mmps {
             if mmp.target_type.eq_ignore_ascii_case("DLL") {
                 out.push(Artifact::installed(
                     build_dir.join(format!("{}.dll", mmp.name())),
