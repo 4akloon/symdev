@@ -1,0 +1,151 @@
+//! Goldens from experiment 58: our own BMPs compiled by Wine `bmconv.exe`.
+
+use crate::{BmpImage, MbmBitmap, MbmDepth, MbmFile, MbmRle};
+
+fn unhex(s: &str) -> Vec<u8> {
+    let s: String = s.split_whitespace().collect();
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+        .collect()
+}
+
+/// One bitmap compiled the way `bmconv` does by default (compression on).
+fn compile(bmp: &str, depth: &str, compress: bool) -> Vec<u8> {
+    let image = BmpImage::parse(&unhex(bmp)).unwrap();
+    let depth = MbmDepth::from_option(depth).unwrap();
+    let raw = depth.encode(&image);
+    let packed = compress
+        .then(|| match depth.bits() {
+            12 => MbmRle::twelve_bit(&raw).map(|d| (d, 2)),
+            16 => MbmRle::sixteen_bit(&raw).map(|d| (d, 3)),
+            24 => MbmRle::twenty_four_bit(&raw).map(|d| (d, 4)),
+            _ => MbmRle::bytewise(&raw).map(|d| (d, 1)),
+        })
+        .flatten();
+    let (data, compression) = packed.unwrap_or((raw, 0));
+    MbmFile::new(vec![MbmBitmap {
+        width: image.width,
+        height: image.height,
+        twips: image.twips(),
+        depth,
+        data,
+        compression,
+    }])
+    .bytes()
+    .unwrap()
+}
+
+#[test]
+fn compiled_bitmaps_match_bmconv() {
+    let cases: [(&str, &str, &str); 8] = [
+        (
+            include_str!("testdata/exp58_two1.bmp.hex"),
+            "8",
+            include_str!("testdata/exp58_two1_8.mbm.hex"),
+        ),
+        (
+            include_str!("testdata/exp58_bands2.bmp.hex"),
+            "1",
+            include_str!("testdata/exp58_bands2_1.mbm.hex"),
+        ),
+        (
+            include_str!("testdata/exp58_two3.bmp.hex"),
+            "c12",
+            include_str!("testdata/exp58_two3_c12.mbm.hex"),
+        ),
+        (
+            include_str!("testdata/exp58_two3.bmp.hex"),
+            "c16",
+            include_str!("testdata/exp58_two3_c16.mbm.hex"),
+        ),
+        (
+            include_str!("testdata/exp58_two3.bmp.hex"),
+            "c24",
+            include_str!("testdata/exp58_two3_c24.mbm.hex"),
+        ),
+        (
+            include_str!("testdata/exp58_solid5.bmp.hex"),
+            "4",
+            include_str!("testdata/exp58_solid5_4.mbm.hex"),
+        ),
+        (
+            include_str!("testdata/exp58_noise6.bmp.hex"),
+            "c8",
+            include_str!("testdata/exp58_noise6_c8.mbm.hex"),
+        ),
+        (
+            include_str!("testdata/exp58_bands7.bmp.hex"),
+            "c4",
+            include_str!("testdata/exp58_bands7_c4.mbm.hex"),
+        ),
+    ];
+    for (bmp, depth, want) in cases {
+        assert_eq!(compile(bmp, depth, true), unhex(want), "/{depth}");
+    }
+}
+
+/// bmconv-spec.md §7.2: the recorded bytewise runs, including the guard tail.
+#[test]
+fn bytewise_rle_matches_the_recorded_streams() {
+    let zeros = |n: usize| MbmRle::bytewise(&vec![0u8; n]);
+    assert_eq!(zeros(8).unwrap(), unhex("03 00 fc 00 00 00 00"));
+    assert_eq!(zeros(64).unwrap(), unhex("3b 00 fc 00 00 00 00"));
+    assert_eq!(zeros(128).unwrap(), unhex("7b 00 fc 00 00 00 00"));
+    assert_eq!(zeros(132).unwrap(), unhex("7f 00 fc 00 00 00 00"));
+    assert_eq!(zeros(256).unwrap(), unhex("7f 00 7b 00 fc 00 00 00 00"));
+    assert_eq!(zeros(260).unwrap(), unhex("7f 00 7f 00 fc 00 00 00 00"));
+    assert_eq!(
+        zeros(320).unwrap(),
+        unhex("7f 00 7f 00 3a 00 fb 00 00 00 00 00")
+    );
+    // Four bytes: the guard tail alone busts the budget.
+    assert_eq!(zeros(4), None);
+}
+
+/// bmconv-spec.md §4.1, §4.3: grey levels and the colour words.
+#[test]
+fn pixel_conversion_matches_the_spec_table() {
+    let value = |depth: &str, (r, g, b): (u8, u8, u8)| {
+        let image = BmpImage {
+            width: 1,
+            height: 1,
+            pixels: vec![(r, g, b)],
+            x_pels_per_metre: 0,
+            y_pels_per_metre: 0,
+        };
+        MbmDepth::from_option(depth).unwrap().encode(&image)
+    };
+    assert_eq!(value("8", (255, 0, 0))[0], 0x3f);
+    assert_eq!(value("8", (0, 255, 0))[0], 0x9f);
+    assert_eq!(value("8", (48, 32, 16))[0], 0x22);
+    assert_eq!(value("c12", (48, 32, 16))[..2], [0x21, 0x03]);
+    assert_eq!(value("c16", (48, 32, 16))[..2], [0x02, 0x31]);
+    assert_eq!(value("c24", (0, 0, 255))[..3], [0xff, 0x00, 0x00]);
+    // Palette indices the spec spot-checks through the tool.
+    assert_eq!(value("c8", (255, 0, 0))[0], 5);
+    assert_eq!(value("c8", (0, 255, 0))[0], 30);
+    assert_eq!(value("c8", (0, 0, 255))[0], 220);
+    assert_eq!(value("c8", (255, 255, 255))[0], 255);
+    assert_eq!(value("c8", (0x7f, 0x7f, 0x7f))[0], 112);
+}
+
+/// bmconv-spec.md §9.2: the header file, verified against `bmconv /h`.
+#[test]
+fn mbg_text_matches_bmconv() {
+    let bitmap = MbmBitmap {
+        width: 1,
+        height: 1,
+        twips: (0, 0),
+        depth: MbmDepth::Grey8,
+        data: vec![0],
+        compression: 0,
+    };
+    let file = MbmFile::new(vec![bitmap.clone(), bitmap]);
+    assert_eq!(
+        file.mbg_text("h.mbg", &["two1.bmp".into(), "bands2.bmp".into()]),
+        "// h.mbg\r\n// Generated by BitmapCompiler\r\n\
+         // Copyright (c) 1998-2001 Symbian Ltd.  All rights reserved.\r\n//\r\n\r\n\
+         enum TMbmH\r\n\t{\r\n\tEMbmHTwo1,\r\n\tEMbmHBands2\r\n\t};\r\n"
+    );
+}

@@ -8,6 +8,7 @@ members = [
     "crates/symdev-sis",
     "crates/symdev-rcomp",
     "crates/symdev-mif",
+    "crates/symdev-mbm",
     "crates/symdev-elf2e32",
     "crates/symdev-cli",
     "crates/symdev-build",

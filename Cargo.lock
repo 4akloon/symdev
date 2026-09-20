@@ -960,6 +960,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "symdev-mbm"
+version = "0.1.0"
+dependencies = [
+ "symdev-core",
+]
+
+[[package]]
 name = "symdev-mif"
 version = "0.1.0"
 dependencies = [
