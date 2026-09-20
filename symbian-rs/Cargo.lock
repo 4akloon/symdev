@@ -97,3 +97,11 @@ dependencies = [
 [[package]]
 name = "symbian-sys"
 version = "0.1.0"
+
+[[package]]
+name = "timedemo"
+version = "0.1.0"
+dependencies = [
+ "symbian-core",
+ "symbian-std",
+]

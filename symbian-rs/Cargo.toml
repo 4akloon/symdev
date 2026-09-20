@@ -17,6 +17,7 @@ members = [
     "examples/shim",
     "examples/files",
     "examples/atomics",
+    "examples/time",
 ]
 
 [workspace.package]

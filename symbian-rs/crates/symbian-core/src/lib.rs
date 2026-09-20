@@ -11,6 +11,7 @@
 //!   member is called directly because none of them can leave, while
 //!   `BaflUtils::EnsurePathExistsL` goes through the C++ `TRAP` shim because it can.
 //! - [`shim`] is the run-time check that the C++ trap harness is in place.
+//! - [`time`] is the clocks: the three `User` counters and the `TTime` wall clock.
 //! - [`user`] wraps the non-leaving `User::` exports.
 //!
 //! What needs a shim and what does not is written out once, in
@@ -23,6 +24,7 @@ pub mod des;
 pub mod des8;
 pub mod fs;
 pub mod shim;
+pub mod time;
 pub mod user;
 
 mod error;
