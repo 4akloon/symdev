@@ -2,7 +2,10 @@
 
 use symdev_core::{Error, Result};
 
-use crate::{RscCompiled, RssCompiler, RssLexer, RssParser};
+use crate::RscCompiled;
+use crate::compiler::RssCompiler;
+use crate::lexer::RssLexer;
+use crate::parser::RssParser;
 
 pub struct Rcomp {
     pub unicode: bool,

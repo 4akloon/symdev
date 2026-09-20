@@ -5,10 +5,23 @@ use symdev_core::{Error, Result};
 
 use super::{RscResourceData, RscSegment, RssCompiler, RssConst};
 use crate::parser::{
-    RssExpr, RssMember, RssStruct, RssStructValue, RssTextForm, RssType, RssValue, RssWidth,
+    RssExpr, RssMember, RssStruct, RssStructValue, RssType, RssValue, RssWidth,
 };
 
 impl RssCompiler {
+    /// `rcomp` accepts `-2^(8k-1) ..= 2^(8k)-1` for a `k`-byte integer and rejects the
+    /// rest rather than truncating (spec §5.1).
+    fn fits(value: i64, bytes: u32) -> Result<i64> {
+        let bits = 8 * i64::from(bytes);
+        if value >= -(1i64 << (bits - 1)) && value < (1i64 << bits) {
+            Ok(value)
+        } else {
+            Err(Error::Other(format!(
+                "{value} does not fit in {bytes} byte(s)"
+            )))
+        }
+    }
+
     /// A struct instance: members in declaration order, assigned value else default.
     /// `top`: the resource itself (no length prefix).
     pub(super) fn structure(
@@ -23,6 +36,13 @@ impl RssCompiler {
             if !def.members.iter().any(|m| &m.name == field) {
                 return Err(Error::Other(format!("{} has no member {field}", def.name)));
             }
+        }
+        if def.len_prefix.is_some() && !top {
+            return Err(Error::Other(format!(
+                "TODO: length-prefixed nested list {} (spec §5.5: the source syntax was not \
+                 observed, so there is no golden)",
+                def.name
+            )));
         }
         if let (Some(width), false) = (def.len_prefix, top) {
             // Padding stays relative to the resource: build in place, patch the
@@ -66,9 +86,9 @@ impl RssCompiler {
             };
             if (offset..offset + n).contains(&at)
                 && let RscSegment::Raw(b) = seg
+                && let Some(slot) = b.get_mut(at - offset..at - offset + bytes.len())
             {
-                let i = at - offset;
-                b[i..i + bytes.len()].copy_from_slice(&bytes);
+                slot.copy_from_slice(&bytes);
                 return Ok(());
             }
             offset += n;
@@ -125,12 +145,6 @@ impl RssCompiler {
                                 items.len()
                             )));
                         }
-                        if items.len() < n {
-                            return Err(Error::Other(format!(
-                                "TODO: [{n}] array with {} items (padding not observed)",
-                                items.len()
-                            )));
-                        }
                     }
                     None => {
                         let count = items.len();
@@ -164,9 +178,13 @@ impl RssCompiler {
         id: u32,
     ) -> Result<()> {
         match m.ty {
-            RssType::Byte => data.raw(&[self.int_value(value)? as u8]),
-            RssType::Word => data.raw(&(self.int_value(value)? as u16).to_le_bytes()),
-            RssType::Long => data.raw(&(self.int_value(value)? as u32).to_le_bytes()),
+            RssType::Byte => data.raw(&[Self::fits(self.int_value(value)?, 1)? as u8]),
+            RssType::Word => {
+                data.raw(&(Self::fits(self.int_value(value)?, 2)? as u16).to_le_bytes());
+            }
+            RssType::Long => {
+                data.raw(&(Self::fits(self.int_value(value)?, 4)? as u32).to_le_bytes());
+            }
             RssType::Double => {
                 let v = match value {
                     None => 0.0,
@@ -178,6 +196,7 @@ impl RssCompiler {
                 };
                 data.raw(&v.to_le_bytes());
             }
+            RssType::Link | RssType::Llink if value.is_none() => {}
             RssType::Link => data.raw(&(self.link(value)? as u16).to_le_bytes()),
             RssType::Llink => data.raw(&self.link(value)?.to_le_bytes()),
             RssType::Srlink => data.raw(&id.to_le_bytes()),
@@ -225,55 +244,6 @@ impl RssCompiler {
                     return Err(Error::Other(format!("STRUCT member given {other:?}")));
                 }
             },
-        }
-        Ok(())
-    }
-
-    fn text(
-        &self,
-        data: &mut RscResourceData,
-        text: &[u32],
-        form: RssTextForm,
-        bits: u8,
-    ) -> Result<()> {
-        if bits == 8 {
-            let bytes: Vec<u8> = text
-                .iter()
-                .map(|&c| {
-                    u8::try_from(c).map_err(|_| Error::Other(format!("U+{c:04X} in 8-bit text")))
-                })
-                .collect::<Result<_>>()?;
-            match form {
-                RssTextForm::Counted => {
-                    data.raw(&[u8::try_from(bytes.len())
-                        .map_err(|_| Error::Other("LTEXT8 longer than 255".into()))?]);
-                    data.raw(&bytes);
-                }
-                RssTextForm::Bare => data.raw(&bytes),
-                RssTextForm::Terminated => {
-                    return Err(Error::Other("TODO: TEXT8 (not observed)".into()));
-                }
-            }
-            return Ok(());
-        }
-        let units: Vec<u16> = text
-            .iter()
-            .map(|&c| {
-                u16::try_from(c).map_err(|_| {
-                    Error::Other(format!("TODO: U+{c:X} outside the BMP (not observed)"))
-                })
-            })
-            .collect::<Result<_>>()?;
-        match form {
-            RssTextForm::Counted => {
-                data.raw(&[u8::try_from(units.len())
-                    .map_err(|_| Error::Other("LTEXT longer than 255".into()))?]);
-                data.text16(&units);
-            }
-            RssTextForm::Bare => data.text16(&units),
-            RssTextForm::Terminated => {
-                return Err(Error::Other("TODO: TEXT (not observed)".into()));
-            }
         }
         Ok(())
     }

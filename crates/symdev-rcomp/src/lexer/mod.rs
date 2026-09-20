@@ -1,5 +1,9 @@
 //! Tokens of preprocessed resource source (`.rpp`): what `rcomp` reads after `cpp`.
 
+mod charset;
+
+pub use charset::RssCharset;
+
 use symdev_core::{Error, Result};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -23,13 +27,14 @@ pub struct RssSpanned {
 }
 
 /// Splits `.rpp` text into tokens. `# <line> "<file>"` markers set the position;
-/// comments are skipped. Source bytes are Latin-1 (no `CHARACTER_SET` in the SDK
-/// examples, experiment 56).
+/// comments are skipped. Source bytes are CP1252 until a `CHARACTER_SET` statement
+/// says otherwise (spec §5.6).
 pub struct RssLexer<'a> {
     src: &'a [u8],
     at: usize,
     file: String,
     line: u32,
+    charset: RssCharset,
 }
 
 impl<'a> RssLexer<'a> {
@@ -39,12 +44,14 @@ impl<'a> RssLexer<'a> {
             at: 0,
             file: file.to_string(),
             line: 1,
+            charset: RssCharset::default(),
         }
     }
 
     pub fn tokens(mut self) -> Result<Vec<RssSpanned>> {
         let mut out = Vec::new();
         let mut line_start = true;
+        let mut expect_charset = false;
         while self.at < self.src.len() {
             let c = self.src[self.at];
             if c == b'\n' {
@@ -113,6 +120,15 @@ impl<'a> RssLexer<'a> {
                 self.at += 1;
                 RssToken::Punct(char::from(c))
             };
+            // `CHARACTER_SET <name>` changes how the literals after it are decoded.
+            if let RssToken::Ident(name) = &token {
+                if std::mem::take(&mut expect_charset) {
+                    self.charset =
+                        RssCharset::from_name(name).map_err(|e| self.error(&e.to_string()))?;
+                } else {
+                    expect_charset = name == "CHARACTER_SET";
+                }
+            }
             out.push(RssSpanned {
                 token,
                 file: self.file.clone(),
@@ -239,43 +255,21 @@ impl<'a> RssLexer<'a> {
                         }
                     });
                 }
-                _ => out.push(u32::from(c)),
+                _ => {
+                    let start = self.at - 1;
+                    while self
+                        .src
+                        .get(self.at)
+                        .is_some_and(|&b| b != close && b != b'\\' && b != b'\n')
+                    {
+                        self.at += 1;
+                    }
+                    out.extend(self.charset.decode(&self.src[start..self.at]));
+                }
             }
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn kinds(src: &str) -> Vec<RssToken> {
-        RssLexer::new(src.as_bytes(), "t.rss")
-            .tokens()
-            .unwrap()
-            .into_iter()
-            .map(|t| t.token)
-            .collect()
-    }
-
-    #[test]
-    fn lexes_resource_statement_with_comments_and_markers() {
-        let toks = kinds(
-            "# 1 \"a.rss\"\nNAME TEST // id\n/* c */ RESOURCE S r { b = 0x10; t = \"H\\\"i\"; d = -0.25; c = 'A'; }\n",
-        );
-        assert_eq!(toks[0], RssToken::Ident("NAME".into()));
-        assert!(toks.contains(&RssToken::Int(16)));
-        assert!(toks.contains(&RssToken::Str(vec![0x48, 0x22, 0x69])));
-        assert!(toks.contains(&RssToken::Real(0.25)));
-        assert!(toks.contains(&RssToken::Char(0x41)));
-    }
-
-    #[test]
-    fn line_markers_set_file_and_line() {
-        let toks = RssLexer::new(b"# 7 \"Z:\\\\x\\\\y.rh\" 1\nfoo\n", "t")
-            .tokens()
-            .unwrap();
-        assert_eq!(toks[0].file, "Z:\\x\\y.rh");
-        assert_eq!(toks[0].line, 7);
-    }
-}
+mod tests;

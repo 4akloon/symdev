@@ -4,6 +4,7 @@
 mod data;
 mod eval;
 mod layout;
+mod text;
 
 use std::collections::HashMap;
 
@@ -32,22 +33,19 @@ impl RssCompiler {
     /// `NAME` value: base 27, `A`/`a` = 1 … `Z`/`z` = 26, digits 0 (experiment 56:
     /// `TEST` → `0x6120e`, `AB` → 29, `L10N` → `0x39ab2`).
     pub fn name_value(name: &str) -> Result<u32> {
+        if name.chars().count() > 4 {
+            return Err(Error::Other(format!(
+                "NAME {name} is longer than four characters"
+            )));
+        }
         let mut value = 0u32;
         for c in name.chars() {
             let digit = match c {
                 'A'..='Z' => c as u32 - 'A' as u32 + 1,
                 'a'..='z' => c as u32 - 'a' as u32 + 1,
-                '0'..='9' => 0,
-                _ => {
-                    return Err(Error::Other(format!(
-                        "TODO: NAME {name} with `{c}` (only letters observed)"
-                    )));
-                }
+                _ => 0,
             };
-            value = value
-                .checked_mul(27)
-                .and_then(|v| v.checked_add(digit))
-                .ok_or_else(|| Error::Other(format!("NAME {name} too long")))?;
+            value = value * 27 + digit;
         }
         Ok(value)
     }
@@ -84,11 +82,8 @@ impl RssCompiler {
                 }
                 RssItem::Uid2(e) => uid2 = Some(me.int(e)? as u32),
                 RssItem::Uid3(e) => uid3 = Some(me.int(e)? as u32),
-                RssItem::CharacterSet(cs) => {
-                    return Err(Error::Other(format!(
-                        "TODO: CHARACTER_SET {cs} (not in the SDK examples)"
-                    )));
-                }
+                // Handled by the lexer (RssCharset).
+                RssItem::CharacterSet(_) => {}
                 RssItem::Resource(r) => resources.push(r),
             }
         }
@@ -133,5 +128,7 @@ impl RssCompiler {
     }
 }
 
+#[cfg(test)]
+mod spec_tests;
 #[cfg(test)]
 mod tests;

@@ -91,7 +91,7 @@ fn filebrowse_reg() -> RscAppRegistration {
 fn driveinfo_rsc_bytes_match_experiment_41() {
     let rsc = Rsc::new(
         RscUid::new(0x101f_8021, 0xa000_01f4),
-        vec![driveinfo_reg().resource().unwrap()],
+        vec![driveinfo_reg().data()],
     );
     assert_eq!(rsc.bytes().unwrap(), driveinfo_rsc());
 }
@@ -100,7 +100,7 @@ fn driveinfo_rsc_bytes_match_experiment_41() {
 fn filebrowse_rsc_bytes_match_experiment_41() {
     let rsc = Rsc::new(
         RscUid::new(0x101f_8021, 0xe800_00a6),
-        vec![filebrowse_reg().resource().unwrap()],
+        vec![filebrowse_reg().data()],
     );
     assert_eq!(rsc.bytes().unwrap(), filebrowse_rsc());
 }
@@ -114,7 +114,9 @@ fn rsc_ltext16_empty_is_a_zero_length_byte() {
 fn rsc_ltext16_driveinfo_is_length_pad_and_utf16le() {
     let bytes = RscLtext16::new("DriveInfoApp").unwrap().bytes();
     assert_eq!(bytes[0], 12);
-    assert_eq!(bytes[1], 0);
+    // The alignment pad is 0xAB and is dropped again when the resource is packed
+    // (rcomp-spec.md §3.6), so the `.rsc` goldens are unaffected.
+    assert_eq!(bytes[1], 0xab);
     assert_eq!(
         &bytes[2..],
         "DriveInfoApp"
@@ -126,17 +128,17 @@ fn rsc_ltext16_driveinfo_is_length_pad_and_utf16le() {
 
 #[test]
 fn driveinfo_uncompressed_is_59_bytes_experiment_42() {
-    let resource = driveinfo_reg().resource().unwrap();
-    assert_eq!(resource.uncompressed().len(), 59);
-    assert_eq!(resource.uncompressed_len().unwrap(), 59);
+    let resource = driveinfo_reg().data();
+    assert_eq!(resource.len(), 59);
+    assert_eq!(resource.len() as u16, 59);
     assert_eq!(&driveinfo_rsc()[16..20], [0, 59, 0, 1]);
     assert_eq!(&driveinfo_rsc()[70..], [0x14, 0, 0x46, 0]);
 }
 
 #[test]
 fn filebrowse_uncompressed_is_126_bytes_experiment_42() {
-    let resource = filebrowse_reg().resource().unwrap();
-    assert_eq!(resource.uncompressed().len(), 126);
+    let resource = filebrowse_reg().data();
+    assert_eq!(resource.len(), 126);
     assert_eq!(&filebrowse_rsc()[16..20], [0, 126, 0, 1]);
     assert_eq!(&filebrowse_rsc()[105..], [0x14, 0, 0x69, 0]);
 }
