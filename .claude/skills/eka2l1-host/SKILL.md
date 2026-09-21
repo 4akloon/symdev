@@ -86,7 +86,7 @@ evidence: `docs/research/eka2l1-input.md`.
 
 ## Killing
 
-EKA2L1 ignores SIGTERM. Stop only the PIDs you started, with `kill -9`. Never `pkill`/`killall` by name, never `wineserver -k`: the user may have their own emulator or Wine programs open. When matching processes with `pgrep -f`, anchor the pattern (`pgrep -f '^winedbg'`) — an unanchored pattern also matches your own shell and kills it.
+EKA2L1 ignores SIGTERM. Stop only the PIDs you started, with `kill -9`. Never `pkill`/`killall` by name, never `wineserver -k`: the user may have their own emulator or Wine programs open. When matching processes with `pgrep -f`, anchor the pattern (`pgrep -f '^winedbg'`) — and the same for `pkill -f`, which I used unanchored on 2026-09-21 and killed my own shell — an unanchored pattern also matches your own shell and kills it.
 
 ## Known behaviour
 
