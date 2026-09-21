@@ -45,11 +45,15 @@ ordering of experiment 77 resolves the `mem*` helpers from ROM, so the one
 Rust archive. The 5 156 bytes the report adds are `symbian_std::fs` and `core::fmt`,
 not the UI.
 
-Sizes of every other example, unchanged to the byte by this step: `hello` 3 187,
-`hello-raw` 752, `alloc` 4 474, `shim` 4 474, `files` 10 552, `atomics` 11 582,
-`time` 20 583. (`net` is 13 322 against the 13 183 of experiment 84; it grew on `main`
-in `d277b9d`, before this branch.) So `symbian_std::ui` costs a console application
-nothing.
+Every other example, rebuilt on this branch: `hello` 3 187, `hello-raw` 752, `alloc`
+4 474, `shim` 4 474, `files` 10 552, `time` 20 583, `async` 21 659 — unchanged to the
+byte — and `atomics` 11 719, `tls` 16 272, `net` 13 380 against `main`'s 11 726,
+16 271 and 13 379. Those three were A/B'd in one tree with and without the
+`pub use symbian_ui as ui;` line: **`.text` is byte-identical either way** (15 716,
+22 016, 17 696), and only the deflate stream of the E32 body moves. That is
+experiment 87's own layout wobble — `symbian-std` gaining a dependency changes its
+crate disambiguator and LTO lays the same code out differently. So `symbian_std::ui`
+costs a console application nothing.
 
 Eleven `NEEDED`: the six of the recorded link line plus `apparc`, `cone`, `eikcore`,
 `avkon` and `gdi`. **No `ws32`** — every drawing entry point is a pure virtual of
