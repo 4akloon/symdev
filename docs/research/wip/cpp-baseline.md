@@ -30,3 +30,9 @@ Read the four Rust examples and the SDK `helloworldbasic` skeleton.
 - 2026-09-21 Heap method verified in headers: `User::AllocSize(TInt&)` (e32std.h:4484) returns
   the cell count and outputs total allocated bytes; `RHeap::Size()` (e32cmn.inl:78) is
   "total number of bytes committed by the host chunk", not the allocation. Use AllocSize.
+- 2026-09-21 locale pair builds (LANG SC 01 02 93, CHARACTER_SET UTF8, own RSS_SIGNATURE
+  STRUCT because uikon.rh's is GUI-only). C++ code 9180 B + 204 B of .r01/.r02/.r93,
+  e32 6405 B, 5 DLLs / 75 ordinals. Rust code 14328 B, e32 9684 B, 3 DLLs / 27 ordinals.
+- Non-equivalence recorded: the C++ API has no per-language lookup — BaflUtils::
+  NearestLanguageFile reads User::Language() itself — so the six `get_in(language)` cases
+  the Rust example checks cannot be written in C++ at all.

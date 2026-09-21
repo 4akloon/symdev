@@ -1,0 +1,21 @@
+NAME CPLC
+
+CHARACTER_SET UTF8
+
+#include <badef.rh>
+#include "cpplocale.rls"
+
+// The first resource in the file is the signature `RResourceFile::ConfirmSignatureL`
+// reads. `uikon.rh` declares this STRUCT for GUI applications; a console program that
+// wants a resource file has to declare it itself.
+STRUCT RSS_SIGNATURE
+    {
+    LONG signature = 4;
+    SRLINK self;
+    }
+
+RESOURCE RSS_SIGNATURE { }
+
+RESOURCE TBUF r_greeting     { buf = STRING_r_greeting; }
+RESOURCE TBUF r_language_is  { buf = STRING_r_language_is; }
+RESOURCE TBUF r_ok           { buf = STRING_r_ok; }

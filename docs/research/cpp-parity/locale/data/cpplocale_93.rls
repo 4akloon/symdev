@@ -1,0 +1,8 @@
+//d:The greeting this example shows.
+rls_string STRING_r_greeting "Привіт з C++"
+
+//d:The word for "language".
+rls_string STRING_r_language_is "мова"
+
+//d:The word for "ok".
+rls_string STRING_r_ok "гаразд"

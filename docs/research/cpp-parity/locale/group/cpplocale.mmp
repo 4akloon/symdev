@@ -1,0 +1,29 @@
+TARGET            cpplocale.exe
+TARGETTYPE        exe
+UID               0 0xe00006a3
+
+SECUREID          0xe00006a3
+
+SOURCEPATH        ..\src
+SOURCE            cpplocale.cpp
+
+SOURCEPATH        ..\..\common
+SOURCE            symdevreport.cpp
+
+SOURCEPATH        ..\data
+START RESOURCE    cpplocale.rss
+HEADER
+TARGETPATH        resource\apps
+END //RESOURCE
+
+USERINCLUDE       ..\..\common
+SYSTEMINCLUDE     \epoc32\include
+
+LIBRARY           euser.lib
+LIBRARY           efsrv.lib
+LIBRARY           bafl.lib
+
+LANG SC 01 02 93
+
+VENDORID          0
+CAPABILITY        NONE

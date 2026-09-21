@@ -1,0 +1,13 @@
+// Which language's strings this build of the resource carries. The mmp's
+// `LANG SC 01 02 93` makes rcomp run once per code with LANGUAGE_<code> defined, so
+// this file is the switch — and it is the file a new language has to be added to by
+// hand, in two places: here and in the mmp.
+#ifdef LANGUAGE_SC
+#include "cpplocale_01.rls"   // the SC build is the default: English
+#elif defined LANGUAGE_01
+#include "cpplocale_01.rls"   // English
+#elif defined LANGUAGE_02
+#include "cpplocale_02.rls"   // French
+#elif defined LANGUAGE_93
+#include "cpplocale_93.rls"   // Ukrainian
+#endif
