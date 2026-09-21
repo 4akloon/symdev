@@ -41,7 +41,7 @@ fn alloc_error(_: core::alloc::Layout) -> ! {
 /// function, and `#[symbian_std::main]` through `symbian_std::__start`. The `std`
 /// shape's own `__start` reaches `std::os::symbian::start`, which installs the same
 /// [`symbian_sys::cleanup::TrapCleanup`] — that equality is the point, and
-/// `examples/dirprobe` is the test that holds it.
+/// `examples/cleanup` is the test that holds it.
 pub fn start<T: IntoExitCode>(main: fn() -> T) -> i32 {
     // Held for the whole of `main` and dropped after it: the destructor uninstalls
     // the handler and frees the stack, so it must outlive every frame that could push
