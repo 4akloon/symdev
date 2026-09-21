@@ -23,9 +23,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::ffi::c_void;
 
-use symbian_sys::tls::{
-    SYMBIAN_STD_TLS_HANDLE, UserSvr_DllFreeTls, UserSvr_DllSetTls, UserSvr_DllTls,
-};
+use symbian_sys::tls::{SYMBIAN_STD_TLS_HANDLE, UserSvr_DllSetTls, UserSvr_DllTls};
 
 /// How a value is dropped once its type has been erased.
 pub(super) type Dropper = unsafe fn(*mut u8);
@@ -59,18 +57,42 @@ struct Table {
     destroying: bool,
 }
 
-/// This thread's table, or null.
-fn current() -> *mut Table {
+/// What the slot holds once this thread's sweep has finished: not a table, and not
+/// nothing either, so that a later access is refused rather than quietly starting a
+/// fresh set of thread-locals nothing would ever drop. It is never dereferenced.
+const SWEPT: *mut Table = 1 as *mut Table;
+
+/// What this thread's slot holds.
+enum Slot {
+    /// Nothing has been stored yet.
+    Empty,
+    /// The sweep has run; this thread has no thread-locals and may not have any.
+    Swept,
+    /// The thread's table.
+    Table(*mut Table),
+}
+
+/// Reads this thread's slot.
+fn current() -> Slot {
     // SAFETY: a euser static taking one scalar. It returns what this thread last
-    // stored under the handle, which is either null or the `Box` leaked by `create`.
-    unsafe { UserSvr_DllTls(SYMBIAN_STD_TLS_HANDLE).cast::<Table>() }
+    // stored under the handle: null, the sentinel, or the box `current_or_create`
+    // leaked.
+    let raw = unsafe { UserSvr_DllTls(SYMBIAN_STD_TLS_HANDLE).cast::<Table>() };
+    if raw.is_null() {
+        Slot::Empty
+    } else if raw == SWEPT {
+        Slot::Swept
+    } else {
+        Slot::Table(raw)
+    }
 }
 
 /// This thread's table, creating it on first use.
 fn current_or_create() -> Result<*mut Table, Cause> {
-    let existing = current();
-    if !existing.is_null() {
-        return Ok(existing);
+    match current() {
+        Slot::Table(existing) => return Ok(existing),
+        Slot::Swept => return Err(Cause::Destroying),
+        Slot::Empty => {}
     }
     let table = Box::into_raw(Box::new(Table {
         entries: Vec::new(),
@@ -92,13 +114,15 @@ fn current_or_create() -> Result<*mut Table, Cause> {
 ///
 /// `Ok(None)` means the key has no entry yet and the caller should initialise it.
 pub(super) fn get(key: usize) -> Result<Option<*mut u8>, Cause> {
-    let table = current();
-    if table.is_null() {
-        return Ok(None);
-    }
-    // SAFETY: the pointer came out of this thread's own slot, where only `create` puts
-    // one, and only this thread reads or writes the table. The borrow ends before this
-    // function returns, so nothing the caller does can alias it.
+    let table = match current() {
+        Slot::Empty => return Ok(None),
+        Slot::Swept => return Err(Cause::Destroying),
+        Slot::Table(table) => table,
+    };
+    // SAFETY: the pointer came out of this thread's own slot, where only
+    // `current_or_create` puts one, and only this thread reads or writes the table.
+    // The borrow ends before this function returns, so nothing the caller does can
+    // alias it.
     let table = unsafe { &*table };
     if table.destroying {
         return Err(Cause::Destroying);
@@ -128,35 +152,30 @@ pub(super) fn reserve(key: usize, drop: Dropper) -> Result<(), Cause> {
     Ok(())
 }
 
-/// Publishes the value an initialiser produced, or withdraws the reservation when
-/// `value` is null because it could not produce one.
+/// Publishes the value an initialiser produced, against the entry [`reserve`] made
+/// for it. `value` is the leaked `Box`, so it is never null.
 pub(super) fn publish(key: usize, value: *mut u8) {
-    let table = current();
-    if table.is_null() {
+    let Slot::Table(table) = current() else {
         return;
-    }
+    };
     // SAFETY: as `get`; the borrow does not outlive this function.
     let table = unsafe { &mut *table };
     let Some(index) = table.entries.iter().position(|e| e.key == key) else {
         return;
     };
-    if value.is_null() {
-        table.entries.remove(index);
-    } else {
-        table.entries[index].value = value;
-    }
+    table.entries[index].value = value;
 }
 
-/// Drops every thread-local this thread initialised, newest first, and gives the slot
-/// back to the kernel.
+/// Drops every thread-local this thread initialised, newest first, and marks the
+/// thread swept so that a later access is refused rather than starting a fresh set
+/// nothing would drop — which is `std`'s contract after a thread's destructors run.
 ///
 /// Called at the end of every thread [`crate::thread::spawn`] creates. It is
 /// idempotent and costs one kernel call on a thread that has no thread-local.
 pub(super) fn destroy() {
-    let table = current();
-    if table.is_null() {
+    let Slot::Table(table) = current() else {
         return;
-    }
+    };
     // SAFETY: as `get`. Each step below takes the borrow, ends it, and only then runs
     // a `Drop` that may itself reach back into this table.
     unsafe { (*table).destroying = true };
@@ -173,19 +192,20 @@ pub(super) fn destroy() {
         }
     }
     // SAFETY: the table is empty and out of reach: `destroying` makes every further
-    // access an error, so this is the last reference to the box `create` leaked.
+    // access an error, so this is the last reference to the box `current_or_create`
+    // leaked.
     unsafe { drop(Box::from_raw(table)) };
-    // SAFETY: a euser static taking one scalar; it forgets this thread's slot.
-    unsafe { UserSvr_DllFreeTls(SYMBIAN_STD_TLS_HANDLE) };
+    // SAFETY: as `current`; the sentinel is stored, never followed, and says that this
+    // thread has already been swept.
+    unsafe { UserSvr_DllSetTls(SYMBIAN_STD_TLS_HANDLE, SWEPT.cast::<c_void>()) };
 }
 
 /// How many thread-locals this thread is holding — for a test that wants to see the
 /// sweep happen, and for nothing else.
 pub(super) fn live() -> usize {
-    let table = current();
-    if table.is_null() {
+    let Slot::Table(table) = current() else {
         return 0;
-    }
+    };
     // SAFETY: as `get`.
     unsafe { (*table).entries.len() }
 }

@@ -25,6 +25,10 @@ Task: implement `symbian_std::thread::LocalKey` + `thread_local!` on Symbian's T
 - Destructors: `table::destroy()` runs at the end of every `spawn`ed thread's trampoline, newest first; `thread::drop_thread_locals()` is public for the main thread, which has no hook below symbian-std (a `no_mangle` hook would be a `--gc-sections` root and bloat every program — the exp 80 lesson).
 - `with` ends the process with `User::Panic(symrs-tls, reason)`; `try_with` is std's recoverable shape. `AccessError::reason()` is an e32err code: -4 kernel refused, -14 re-entrant initialiser, -13 already destroyed.
 
+- **`examples/tls` reports 45 passed through `symdev test --emulator`, exit 0.** E32 is **16 194 bytes**.
+- **Measured cost (emulator only): 98 ns per `thread_local!` access, of which the bare `UserSvr::DllTls` call is 50 ns; `AtomicU32::fetch_add` beside it is 155 ns.** So a thread-local is the cheap way to hold per-thread state here, not the expensive one.
+- Destructors: a worker's thread-local was dropped when the thread ended (1 dropped) and the creator's survived; `drop_thread_locals()` drops the main thread's; a second sweep is harmless; an access after the sweep is `KErrDied` and not a fresh value (a `SWEPT` sentinel in the slot gives std's contract instead of resurrection).
+
 ## Dead ends
 
 ## Next step

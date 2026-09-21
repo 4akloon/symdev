@@ -14,11 +14,13 @@ use symbian_sys::tls::{
     UserSvr_DllTlsWithUid,
 };
 
-/// Handles the probe stores under. Arbitrary — that is the point of the probe.
-const H1: i32 = 0x7359_6D64;
-const H2: i32 = 0x7359_6D65;
-const H3: i32 = 0x7359_6D66;
-const H4: i32 = 0x7359_6D67;
+/// Handles the probe stores under. Arbitrary — that is the point of the probe — but
+/// deliberately not [`symbian_sys::tls::SYMBIAN_STD_TLS_HANDLE`], which
+/// `symbian_std::thread_local!` owns and this file must not disturb.
+const H1: i32 = 0x7072_6F31;
+const H2: i32 = 0x7072_6F32;
+const H3: i32 = 0x7072_6F33;
+const H4: i32 = 0x7072_6F40;
 
 /// How many distinct handles the probe tries to hold at once.
 const MANY: i32 = 64;
