@@ -113,3 +113,12 @@ dependencies = [
  "symbian-core",
  "symbian-std",
 ]
+
+[[package]]
+name = "tlsdemo"
+version = "0.1.0"
+dependencies = [
+ "symbian-runtime",
+ "symbian-std",
+ "symbian-sys",
+]
