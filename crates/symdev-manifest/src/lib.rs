@@ -2,6 +2,7 @@ mod error;
 mod icons;
 mod install;
 mod schema;
+mod ui;
 mod validate;
 
 pub use error::{Error, Result};
@@ -11,6 +12,7 @@ pub use schema::{
     Compiler, Device, Language, Manifest, Package, Platform, Signing, SigningMode, Symbian, Target,
     Toolchain,
 };
+pub use ui::{Softkeys, UiApp, UiKind};
 pub use validate::USER_GRANTABLE;
 
 use std::path::Path;
@@ -288,4 +290,52 @@ fn secure_id_is_optional_and_range_checked() {
         "capabilities = []",
         "secure_id = \"0x10003A3F\"\ncapabilities = []",
     ));
+}
+
+#[test]
+fn ui_section_is_absent_for_a_console_project() {
+    assert!(symdev_manifest::parse(HELLO).unwrap().ui.is_none());
+}
+
+#[test]
+fn ui_section_defaults_the_captions_to_the_package_name() {
+    let m = symdev_manifest::parse(&format!("{HELLO}\n[ui]\nkind = \"avkon\"\n")).unwrap();
+    let ui = m.ui.unwrap();
+    assert_eq!(ui.kind, symdev_manifest::UiKind::Avkon);
+    assert_eq!(ui.caption, "hello");
+    assert_eq!(ui.short_caption, "hello");
+    assert_eq!(ui.softkeys, symdev_manifest::Softkeys::Exit);
+    assert_eq!(ui.softkeys.resource(), "R_AVKON_SOFTKEYS_EXIT");
+}
+
+#[test]
+fn ui_short_caption_falls_back_to_the_caption() {
+    let src = format!("{HELLO}\n[ui]\nkind = \"avkon\"\ncaption = \"Bar chart\"\n");
+    let ui = symdev_manifest::parse(&src).unwrap().ui.unwrap();
+    assert_eq!(ui.caption, "Bar chart");
+    assert_eq!(ui.short_caption, "Bar chart");
+    let src = format!("{src}short_caption = \"Bars\"\n");
+    assert_eq!(
+        symdev_manifest::parse(&src)
+            .unwrap()
+            .ui
+            .unwrap()
+            .short_caption,
+        "Bars"
+    );
+}
+
+#[test]
+fn ui_rejects_an_empty_caption_an_unknown_kind_and_unobserved_softkeys() {
+    reject(&format!(
+        "{HELLO}\n[ui]\nkind = \"avkon\"\ncaption = \" \"\n"
+    ));
+    reject(&format!("{HELLO}\n[ui]\nkind = \"qt\"\n"));
+    reject(&format!(
+        "{HELLO}\n[ui]\nkind = \"avkon\"\nsoftkeys = \"options-exit\"\n"
+    ));
+    reject(&format!(
+        "{HELLO}\n[ui]\nkind = \"avkon\"\nmenu = \"yes\"\n"
+    ));
+    reject(&format!("{HELLO}\n[ui]\ncaption = \"Notes\"\n"));
 }

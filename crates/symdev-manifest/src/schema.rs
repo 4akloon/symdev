@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 use crate::icons::IconContainer;
 use crate::install::InstallFile;
+use crate::ui::UiApp;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Manifest {
@@ -18,6 +19,8 @@ pub struct Manifest {
     pub install: Vec<InstallFile>,
     /// `[[icons]]`: icon containers built by the native `mifconv`.
     pub icons: Vec<IconContainer>,
+    /// `[ui]`: present for a GUI application, absent for a console one.
+    pub ui: Option<UiApp>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,6 +111,7 @@ pub(crate) struct RawManifest {
     pub(crate) install: Vec<crate::install::RawInstall>,
     #[serde(default)]
     pub(crate) icons: Vec<crate::icons::RawIconContainer>,
+    pub(crate) ui: Option<crate::ui::RawUi>,
 }
 
 #[derive(Deserialize)]

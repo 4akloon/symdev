@@ -26,8 +26,10 @@ const PRIVILEGED: &[&str] = &[
 ];
 
 pub(crate) fn validate(raw: RawManifest) -> Result<Manifest> {
+    let package = package(raw.package.name, raw.package.version)?;
     Ok(Manifest {
-        package: package(raw.package.name, raw.package.version)?,
+        ui: crate::ui::UiApp::validate(raw.ui, &package.name)?,
+        package,
         target: Target {
             device: raw.target.device,
         },
