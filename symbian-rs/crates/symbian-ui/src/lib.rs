@@ -71,6 +71,7 @@ mod app;
 mod event;
 mod gc;
 mod geom;
+pub mod query;
 mod ui;
 mod vtbl;
 
