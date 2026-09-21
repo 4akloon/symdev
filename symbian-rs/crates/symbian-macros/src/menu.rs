@@ -32,8 +32,13 @@ impl Menu {
     /// `symdev build` would give it.
     pub fn load(dir: &Path) -> Result<Self, String> {
         let path = dir.join(MANIFEST);
-        let manifest = symdev_manifest::load(&path)
-            .map_err(|e| format!("`#[{}(gui)]` cannot read {}: {e}", crate::entry::ATTRIBUTE, path.display()))?;
+        let manifest = symdev_manifest::load(&path).map_err(|e| {
+            format!(
+                "`#[{}(gui)]` cannot read {}: {e}",
+                crate::entry::ATTRIBUTE,
+                path.display()
+            )
+        })?;
         let Some(ui) = manifest.ui else {
             return Err(format!(
                 "`#[{}(gui)]` is an Avkon application, but {} has no `[ui]` section",
@@ -138,7 +143,10 @@ mod tests {
              [[ui.menu]]\nid = \"more\"\nlabel = \"More\"\n",
         )
         .unwrap();
-        let out = Menu::load(&dir).map_err(|e| e.to_string()).unwrap().module();
+        let out = Menu::load(&dir)
+            .map_err(|e| e.to_string())
+            .unwrap()
+            .module();
         std::fs::remove_dir_all(&dir).unwrap();
         assert!(out.contains("include_str!("), "{out}");
         assert!(out.contains("symdev.toml\");"), "{out}");

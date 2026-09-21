@@ -121,9 +121,8 @@ fn a_menu_id_becomes_an_upper_case_constant() {
 #[test]
 fn ui_rejects_an_id_that_cannot_be_a_constant() {
     for id in ["More", "2fast", "new note", "меню", "-x"] {
-        let src = format!(
-            "{HELLO}\n[ui]\nkind = \"avkon\"\n[[ui.menu]]\nid = \"{id}\"\nlabel = \"x\"\n"
-        );
+        let src =
+            format!("{HELLO}\n[ui]\nkind = \"avkon\"\n[[ui.menu]]\nid = \"{id}\"\nlabel = \"x\"\n");
         reject(&src);
         let err = parse(&src).unwrap_err().to_string();
         assert!(err.contains("lower case ASCII word"), "{id}: {err}");
@@ -132,7 +131,8 @@ fn ui_rejects_an_id_that_cannot_be_a_constant() {
 
 #[test]
 fn ui_rejects_two_ids_that_would_be_one_constant() {
-    let src = with_menu("") + "[[ui.menu]]\nid = \"new-note\"\nlabel = \"a\"\n[[ui.menu]]\nid = \"new_note\"\nlabel = \"b\"\n";
+    let src = with_menu("")
+        + "[[ui.menu]]\nid = \"new-note\"\nlabel = \"a\"\n[[ui.menu]]\nid = \"new_note\"\nlabel = \"b\"\n";
     reject(&src);
     let err = parse(&src).unwrap_err().to_string();
     assert!(err.contains("`menu::NEW_NOTE`"), "{err}");
