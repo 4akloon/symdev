@@ -56,3 +56,11 @@ must be caught at build time. Language read once from `User::Language()`.
   (`english_apac` → English, `french` → default English, `ukrainian` → Ukrainian).
 - `symdev build` of `examples/locale`: `localedemo.exe` = 10 100 bytes (3 keys x 3 languages
   + fs + Report harness; not comparable with `hello` — size deltas measured separately).
+- **MEASURED: the emulator's language is changeable, but only to a language the ROM lists.**
+  `~/.local/share/EKA2L1/config.yml` key `language:` (not `emulator-language:`, which is the Qt
+  UI's own). EKA2L1 validates it against `Z:\resource\bootdata\languages.txt` of the device and
+  silently rewrites the config to the ROM default otherwise (`src/emu/system/src/epoc.cpp`
+  1379-1383, list read in `src/emu/system/src/devices.cpp` ~320). Setting `language: 93` came
+  back as `language: 1` and `User::Language()` still returned 1.
+  The RM-469 ROM's `languages.txt` (UTF-16LE) is: `01,d 02 03 14 18 05` — English (default),
+  French, German, Turkish, Dutch, Italian. Six, and no Ukrainian or Russian.
