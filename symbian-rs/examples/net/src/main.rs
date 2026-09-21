@@ -9,9 +9,11 @@
 //! `TRequestStatus` + `User::WaitForRequest` underneath, which is Symbian's own blocking
 //! form; no active scheduler and no executor exists below this file.
 //!
-//! The peer is a Python server on the build host's loopback (`scratchpad/echoserver.py`
-//! in the step-74 notes): it reads a line and answers with the same line uppercased and
-//! `-PONG` appended. Deterministic, offline, and nothing outside this machine.
+//! **Two peers must be running first**, both in `peer/` beside this file and both
+//! described by `peer/README.md`: `echoserver.py 18974 0.0.0.0`, which the example
+//! connects to, and `poker.py 18975 300`, which connects to the listener the example
+//! opens. The example blocks on each in turn, so starting only one of them leaves it
+//! waiting and no report is written — which reads as a network failure and is not one.
 //!
 //! It reports through [`symbian_std::test_report`], which writes
 //! `E:\symdev\results\<uid3>.json`; `symdev test --emulator` reads that back off the
