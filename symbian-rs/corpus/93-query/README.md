@@ -74,6 +74,10 @@ program that asks no question pays nothing — not even `avkon.dso`'s import of
 `CAknQueryDialog`. The 7 405 bytes over `uidemo` are `alloc::String`, `core::fmt`'s
 `Debug` for the report details, and the three query wrappers.
 
+A rebuild of `examples/query` gives a file of the same 20 120 bytes differing in exactly
+**8** of them: offsets 20–23, the `E32ImageHeader` CRC, and 36–39, `iTimeLo`. That is the
+build timestamp and the checksum over it, not a content change.
+
 `nm` on `build/shims/symrs_query.o` shows exactly the three avkon imports the shim cites:
 
 ```
