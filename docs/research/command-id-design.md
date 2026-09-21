@@ -196,6 +196,14 @@ the brief) on `examples/ui`: 16.1 s wall, the generated `.rss` carries the four
 copy only at offsets 20–23 (`iHeaderCrc`) and 36–40 (`iTimeLo`/`iTimeHi`) — the code is
 the same code, which is what "the constants cost nothing" means.
 
+**Runtime, in the emulator:** `symdev package` (a throwaway self-signed key) then `symdev
+test --emulator` reports `uidemo: 3 passed`, no panic in the log. `symdev run` followed by
+`docs/research/acceptance/emukey.py keys <pid> F1 Down Return` and a PID-bound screenshot:
+the drawing reads `bars=2 keys=0 cmd=1` — three bars became two through `menu::FEWER`,
+which is experiment 91's result to the pixel (1 607 pixels differ from the start frame,
+bounding box (393,157)–(848,594) of the 900×600 window). The emulator started for this was
+stopped with `kill -9` on its own pid.
+
 **Cost, measured:** `symbian-macros` gains `symdev-manifest = { path =
 "../../../crates/symdev-manifest" }`. `cargo build -p symbian-macros --offline` from clean
 under the nightly compiles proc-macro2, quote, unicode-ident, serde_core, serde, thiserror,
