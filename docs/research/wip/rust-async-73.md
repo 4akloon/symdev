@@ -21,3 +21,7 @@ Task: a single-threaded executor on `CActiveScheduler` (own or join), `TRequestS
 ## Next step
 
 - Read the governing docs (design spec §6a/§7/§8/§11, avkon-rust-spec active scheduler, eka2-concurrency, experiments 78/80/84) and `symbian-core/src/net/`.
+- SDK headers are extended-ASCII: `grep` needs `-a` or it silently prints nothing. Cost me four searches.
+- `class RTimer : public RHandleBase` — `e32std.h` line 3159: `CreateLocal()` -> TInt, `After(TRequestStatus&, TTimeIntervalMicroSeconds32)`, `Cancel()`, all void/TInt, no trailing L, so no shim. `TTimeIntervalMicroSeconds32` is `TTimeIntervalBase` = one `TInt`, inline ctors only, so trivially copyable.
+- `e32base.h` 1580: `CActive` — `RunL()`/`DoCancel()` pure virtual, `iStatus` is a public member, `SetActive()` and the ctor are protected -> a subclass is the only way in, which is rule 3 of `symrs_shim.h`. `CActiveScheduler` (2828) has static `Install/Add/Start/Stop/Current/RunIfReady`.
+- euser.dso exports all of them (`_ZN6RTimer5AfterER14TRequestStatus27TTimeIntervalMicroSeconds32`, `_ZN16CActiveScheduler3AddEP7CActive`, ...).
