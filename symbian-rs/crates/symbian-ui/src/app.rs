@@ -61,9 +61,9 @@ pub trait App: Sized {
     /// An item of the Options menu, named by the word `[[ui.menu]] id` gave it.
     ///
     /// `symdev.toml` declares the menu, because it is a compiled resource that has to
-    /// exist before any Rust runs; this is where it is acted on. Match with
-    /// [`Command::named`] or [`Command::is`] and the word is the only thing written
-    /// twice.
+    /// exist before any Rust runs; this is where it is acted on. Match on the `menu`
+    /// module `#[symbian_std::main(gui)]` writes from that manifest — `menu::MORE` for
+    /// `id = "more"` — and a word the manifest does not have is a compile error.
     ///
     /// Two commands never arrive: the right softkey's [`Command::EXIT`], which the
     /// shim acts on itself, and [`Command::OPTIONS`], which the framework consumes to
