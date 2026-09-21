@@ -12,6 +12,7 @@ members = [
     "crates/symbian-std",
     "crates/symbian-runtime",
     "crates/symbian-macros",
+    "examples/async",
     "examples/hello",
     "examples/hello-raw",
     "examples/alloc",

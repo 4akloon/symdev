@@ -9,6 +9,7 @@ crate-type = ["rlib"]
 
 [dependencies]
 symbian-alloc = { path = "../symbian-alloc" }
+symbian-async = { path = "../symbian-async" }
 symbian-core = { path = "../symbian-core" }
 symbian-macros = { path = "../symbian-macros" }
 symbian-runtime = { path = "../symbian-runtime" }

@@ -84,6 +84,7 @@ pub mod sync;
 pub mod test_report;
 pub mod time;
 
+pub use symbian_async as task;
 pub use symbian_macros::main;
 /// What a `fn main` may return, and the `TInt` it becomes. An application implements
 /// [`IntoExitCode`] for its own error type to return it from `main`; `()`, `i32`,

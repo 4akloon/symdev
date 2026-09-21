@@ -11,6 +11,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "asyncdemo"
+version = "0.1.0"
+dependencies = [
+ "symbian-async",
+ "symbian-core",
+ "symbian-std",
+]
+
+[[package]]
 name = "atomicsdemo"
 version = "0.1.0"
 dependencies = [
@@ -104,6 +113,7 @@ name = "symbian-std"
 version = "0.1.0"
 dependencies = [
  "symbian-alloc",
+ "symbian-async",
  "symbian-core",
  "symbian-macros",
  "symbian-runtime",

@@ -39,3 +39,9 @@ Task: a single-threaded executor on `CActiveScheduler` (own or join), `TRequestS
 - `symrs_active.cpp` compiles with that argv; undefined symbols are euser's `CActiveScheduler`/`CActive`/`User::LeaveIfError`, drtaeabi's `__cxa_*` and `_ZdlPvj` from `scppnwdl.dso` — all already on the link line, so no new DSO.
 - `symbian-async` builds and is clippy-clean for the target. Shape as planned; `Join` needed a hand-written `impl Unpin` because it holds the finished halves' outputs.
 - The mixing guard landed as: `symbian_core::net::blocking` returns `KErrInUse` when `CActiveScheduler::Current()` is non-null. No new state, no atomic, and it is the platform's own rule. A blocking program installs no scheduler, so step 74 is unaffected — to be re-run and checked.
+
+## PASS (2026-09-21, first run)
+
+`asyncdemo: 15 passed`, `symdev test --emulator` exit 0, twice. Measured inside EKA2L1:
+`one_timer_ms=312`, **`two_at_once_ms=312`**, **`one_after_the_other_ms=625`** (the sequential control), `race_ms=109` (the loser was a 20-second timer, so cancellation on drop works), `twenty_rounds_ms=312` for twenty install/run/uninstall rounds. E32 is 21 650 bytes.
+Refusals observed from inside the emulator: `spawn` with no scheduler `KErrNotReady`, nested `block_on` `KErrInUse`, `symbian_core::net::blocking` under a scheduler `KErrInUse`, a 3 600 s sleep `KErrOverflow`.
