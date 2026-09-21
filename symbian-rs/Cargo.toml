@@ -32,6 +32,7 @@ members = [
     "examples/tls",
     "examples/ui",
     "examples/notes",
+    "examples/query",
 ]
 
 [workspace.package]

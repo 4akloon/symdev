@@ -53,8 +53,13 @@ with a Rust surface that names no Symbian type, and drive one in EKA2L1 as evide
   the dialog — `eikdialg.h` documents destruction on exit and says nothing about the
   leaving path, and a double delete is worse than a leak.
 
+- Built: `querydemo.exe` **18 889** bytes. `symrs_query.o` imports exactly the three
+  cited mangled names. `uidemo` is still **12 715** and `hello-raw` still **752** — the
+  new translation unit costs a program that asks no question nothing, because the shim
+  is an archive and an unreferenced member is never pulled.
+
 ## Dead ends
 
 ## Next step
 
-Write `symrs_query.cpp` and `query.rs`, plus `examples/query` as the driven evidence.
+Run `examples/query` in EKA2L1 and drive a dialog with `emukey.py`.

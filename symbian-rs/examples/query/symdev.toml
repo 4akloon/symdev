@@ -1,0 +1,23 @@
+[package]
+name = "querydemo"
+version = "0.1.0"
+
+[target]
+device = "nokia-e52"
+
+[language]
+name = "rust"
+
+[symbian]
+uid3 = "0xe0000696"
+capabilities = []
+vendor = "symdev"
+
+[ui]
+kind = "avkon"
+caption = "Rust query"
+short_caption = "Query"
+softkeys = "exit"
+
+[signing]
+mode = "self-signed"
