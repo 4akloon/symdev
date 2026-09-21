@@ -47,8 +47,8 @@ thread_local! {
     static WITNESS: Witness = Witness(1);
 }
 
-/// A key whose initialiser asks for the key, which `std` reports as a panic and this
-/// crate as an [`symbian_std::thread::AccessError`].
+// A key whose initialiser asks for the key, which `std` reports as a panic and this
+// crate as a `symbian_std::thread::AccessError`.
 thread_local! {
     static SELF_REFERENTIAL: Cell<u32> = {
         let seen = SELF_REFERENTIAL.try_with(|c| c.get()).is_ok();
@@ -83,7 +83,11 @@ pub fn one_thread(report: &mut Report) {
         let _ = name.borrow_mut();
     });
     let runs = NAME_INITS.load(Ordering::SeqCst);
-    report.check_detail("however often it is read", runs == 1, format_args!("{runs} runs"));
+    report.check_detail(
+        "however often it is read",
+        runs == 1,
+        format_args!("{runs} runs"),
+    );
     report.check(
         "the lazy value is what the initialiser built",
         NAME.with(|name| name.borrow().as_str() == "unnamed-main"),
@@ -163,12 +167,18 @@ pub fn two_threads(report: &mut Report) {
     report.check_detail(
         "the lazy initialiser ran again for the worker",
         NAME_INITS.load(Ordering::SeqCst) == 2,
-        format_args!("{} runs across both threads", NAME_INITS.load(Ordering::SeqCst)),
+        format_args!(
+            "{} runs across both threads",
+            NAME_INITS.load(Ordering::SeqCst)
+        ),
     );
     report.check_detail(
         "the worker's heap value is its own too",
         worker_name_len == 14 && NAME.with(|n| n.borrow().len()) == 12,
-        format_args!("worker {worker_name_len}, main {}", NAME.with(|n| n.borrow().len())),
+        format_args!(
+            "worker {worker_name_len}, main {}",
+            NAME.with(|n| n.borrow().len())
+        ),
     );
     report.check_detail(
         "and it held its own three keys",
@@ -213,7 +223,10 @@ pub fn main_thread_teardown(report: &mut Report) {
         format_args!("{:?}", COUNTER.try_with(Cell::get).err()),
     );
     thread::drop_thread_locals();
-    report.check("a second sweep is harmless", thread::live_thread_locals() == 0);
+    report.check(
+        "a second sweep is harmless",
+        thread::live_thread_locals() == 0,
+    );
 }
 
 /// `LocalKey<Cell<T>>::set` is a `std` convenience this crate does not have; the

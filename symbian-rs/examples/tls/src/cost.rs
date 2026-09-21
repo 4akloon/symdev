@@ -52,7 +52,10 @@ pub fn measure(report: &mut Report) {
     MEASURED.with(|c| c.set(0));
 
     let Some(access) = per_iteration(|| MEASURED.with(|c| c.set(c.get() + 1))) else {
-        report.fail("a thread_local access is measurable", "the clock went backwards");
+        report.fail(
+            "a thread_local access is measurable",
+            "the clock went backwards",
+        );
         return;
     };
     let Some(kernel) = per_iteration(|| {

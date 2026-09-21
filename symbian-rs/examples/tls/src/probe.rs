@@ -133,7 +133,11 @@ pub fn the_uid_overloads(report: &mut Report) {
     report.check_detail(
         "a one-argument set read with uid = handle",
         true,
-        format_args!("{:#x} (marker is {:#x})", cross as usize, marker(8) as usize),
+        format_args!(
+            "{:#x} (marker is {:#x})",
+            cross as usize,
+            marker(8) as usize
+        ),
     );
     // SAFETY: as above.
     unsafe {
@@ -172,11 +176,7 @@ pub fn per_thread(report: &mut Report) {
     report.check_detail(
         "and it did not overwrite the creator's slot",
         get(H1) == marker(11),
-        format_args!(
-            "{:#x} wanted {:#x}",
-            get(H1) as usize,
-            marker(11) as usize
-        ),
+        format_args!("{:#x} wanted {:#x}", get(H1) as usize, marker(11) as usize),
     );
     // SAFETY: a euser static taking one scalar.
     unsafe { UserSvr_DllFreeTls(H1) };

@@ -60,7 +60,7 @@ struct Table {
 /// What the slot holds once this thread's sweep has finished: not a table, and not
 /// nothing either, so that a later access is refused rather than quietly starting a
 /// fresh set of thread-locals nothing would ever drop. It is never dereferenced.
-const SWEPT: *mut Table = 1 as *mut Table;
+const SWEPT: *mut Table = core::ptr::dangling_mut::<Table>();
 
 /// What this thread's slot holds.
 enum Slot {
@@ -179,11 +179,8 @@ pub(super) fn destroy() {
     // SAFETY: as `get`. Each step below takes the borrow, ends it, and only then runs
     // a `Drop` that may itself reach back into this table.
     unsafe { (*table).destroying = true };
-    loop {
-        // SAFETY: as above; the borrow ends with the statement.
-        let Some(entry) = (unsafe { (*table).entries.pop() }) else {
-            break;
-        };
+    // SAFETY: as above; the borrow ends with the statement.
+    while let Some(entry) = unsafe { (*table).entries.pop() } {
         if !entry.value.is_null() {
             // SAFETY: `value` is the `Box<T>` `LocalKey::try_with` leaked for this
             // entry, `drop` is the dropper written for that same `T`, and the entry has
