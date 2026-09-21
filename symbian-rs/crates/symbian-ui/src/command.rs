@@ -6,12 +6,17 @@
 //! word*: `[[ui.menu]] id = "more"` in the manifest and [`Command::named`]`("more")`
 //! here compute the identical value, and the number appears in neither place.
 //!
+//! Applications do not call [`Command::named`] themselves.
+//! `#[symbian_std::main(gui)]` reads the same manifest symdev reads and writes one
+//! constant per item into a `menu` module, so a misspelled or removed item is a
+//! compile error (`docs/research/command-id-design.md`). This is what it generates.
+//!
 //! ```ignore
-//! const MORE: Command = Command::named("more");
+//! mod menu { pub const MORE: Command = Command::named("more"); }
 //!
 //! fn command(&mut self, command: Command, ui: &Ui) -> Result<()> {
 //!     match command {
-//!         MORE => self.bars += 1,
+//!         menu::MORE => self.bars += 1,
 //!         _ => return Ok(()),
 //!     }
 //!     ui.redraw();

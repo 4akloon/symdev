@@ -36,7 +36,7 @@
 //!     }
 //!
 //!     fn command(&mut self, command: Command, ui: &Ui) -> symbian_core::Result<()> {
-//!         if command.is("more") {
+//!         if command == menu::MORE {
 //!             self.bars += 1;
 //!             ui.redraw();
 //!         }
@@ -61,9 +61,11 @@
 //! label = "More bars"
 //! ```
 //!
-//! and the *word* `more` is what [`Command::named`] matches — symdev and this crate
-//! derive the same number from it, so neither the manifest nor the source writes one
-//! down. The left softkey opens that menu and the right one ends the application; both
+//! and `#[symbian_std::main(gui)]` reads that manifest and writes a `menu` module
+//! beside the application: one `Command` constant per item, `menu::MORE` here. So the
+//! number is written down nowhere, and a word this source misspells — or an item the
+//! manifest no longer has — is a compile error rather than a match arm that never
+//! fires (`docs/research/command-id-design.md`). The left softkey opens that menu and the right one ends the application; both
 //! are handled below this crate, so neither reaches [`App::key`]. A softkey never
 //! does: the button group container sits above the view on the control stack and
 //! turns the key into a command.
