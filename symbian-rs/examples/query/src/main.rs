@@ -11,9 +11,12 @@
 //! `ExecuteLD`, and a dialog whose text reaches `self.name` proves the descriptor the
 //! shim handed it was ours.
 //!
-//! Keys, never a softkey: F1/F2 reach the guest and do nothing in an application built
-//! here (`docs/research/eka2l1-input.md`), so the test drives arrows, digits and the
-//! selection key.
+//! The test drives arrows, digits and the selection key, which is what
+//! `docs/research/eka2l1-input.md` says is safe to write a test against — and a data
+//! query needs nothing more, because `Return` both opens and confirms one. The softkeys
+//! turn out to work here as well, F1 confirming and F2 cancelling: a query dialog's CBA
+//! comes from the ROM's own resource, and it is the CBA built from the `.rss` symdev
+//! generates that swallows them (experiment 93).
 #![no_std]
 
 extern crate alloc;
@@ -21,6 +24,7 @@ extern crate alloc;
 use alloc::string::String;
 use core::fmt::Write as _;
 
+use symbian_core::ErrorKind;
 use symbian_std::test_report::Report;
 use symbian_std::ui::prelude::*;
 use symbian_std::ui::query;
@@ -131,9 +135,13 @@ impl Form {
     /// The result file `symdev test --emulator` reads, rewritten after every query so
     /// that it always describes the run as far as it has got.
     ///
-    /// What it can assert before a key has been pressed is only the entry path; the
-    /// two interesting cases turn from failures into passes as the queries are driven,
-    /// which is what makes them worth reporting at all.
+    /// Only what an *undriven* run can honestly assert is a case here: the entry path,
+    /// and the guards `query::text` applies before it reaches the framework at all. The
+    /// dialogs themselves are not in it, because no case may need a person to press a
+    /// key before it can pass — a test that fails until somebody types is a broken
+    /// test, not a pending one. The two answers are reported as extra cases once they
+    /// exist, so a driven run says six and an undriven one says four, and neither says
+    /// anything false. **The screenshots are the test of the dialogs.**
     fn report(&self) {
         let mut report = Report::new("querydemo");
         report.check_detail(
@@ -141,21 +149,37 @@ impl Form {
             self.area.width > 0 && self.area.height > 0,
             format_args!("{}x{}", self.area.width, self.area.height),
         );
+        // A maximum of zero would be a descriptor nothing can be typed into, and one
+        // above the surface's own bound would be an allocation nobody asked for. Both
+        // are refused in Rust, before any C++ frame exists.
         report.check_detail(
-            "no query returned an error",
-            self.failed.is_none(),
-            format_args!("{:?}", self.failed),
+            "a query with no room for an answer is refused",
+            matches!(query::text("", 0), Err(e) if e.kind() == ErrorKind::Argument),
+            format_args!("{:?}", query::text("", 0)),
         );
         report.check_detail(
-            "a text query came back with what was typed",
-            self.name.is_some(),
-            format_args!("{:?}", self.name),
+            "a query wanting more than the surface allows is refused",
+            matches!(
+                query::text("", query::MAX_TEXT_LEN + 1),
+                Err(e) if e.kind() == ErrorKind::Argument
+            ),
+            format_args!("{:?}", query::text("", query::MAX_TEXT_LEN + 1)),
         );
+        let long: String = core::iter::repeat_n('x', query::MAX_TEXT_LEN + 1).collect();
         report.check_detail(
-            "a number query came back with a number",
-            self.age.is_some(),
-            format_args!("{:?}", self.age),
+            "a prompt longer than the surface allows is refused",
+            matches!(query::text(&long, 8), Err(e) if e.kind() == ErrorKind::Overflow),
+            format_args!("{:?}", query::text(&long, 8)),
         );
+        if let Some(name) = &self.name {
+            report.check_detail("a text query came back", true, format_args!("{name:?}"));
+        }
+        if let Some(age) = self.age {
+            report.check_detail("a number query came back", true, format_args!("{age}"));
+        }
+        if let Some(code) = self.failed {
+            report.check_detail("a query returned an error", false, format_args!("{code}"));
+        }
         // Writing it is the whole point; there is nowhere to report a failure to write
         // a report to, so the error is dropped deliberately rather than by omission.
         let _ = report.finish();
