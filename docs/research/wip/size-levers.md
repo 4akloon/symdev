@@ -128,3 +128,50 @@ nobody reads. The trade, in one sentence: a Rust panic then traps instead of rea
 `#[panic_handler]`, so it no longer leaves through `User::Exit(-1)` and `symdev test`
 would see a kernel fault rather than an exit code — and the design note's intended end
 state is a `User::Panic` with a category, which this flag would put out of reach.
+
+### L8 — `core::fmt` in `hello`: the measured ceiling (biggest lever, unapplied)
+
+Measured, not argued. `examples/hello/src/main.rs`'s one `write!` replaced by the four
+calls a macro would generate — `push_str`, `push_str`, `append_num`, `push_str` —
+nothing else touched, same build:
+
+| | exe | text |
+|---|---|---|
+| `write!` (with L1+L2+L4) | 2 523 | 2 908 |
+| hand-expanded | **1 193** | **832** |
+| delta | **-1 330 (-53 %)** | **-2 076 (-71 %)** |
+
+Against the 4c5fc5e baseline that is 3 187 -> 1 193, **-62 %**, and the C++ `hello`
+this project records is 746 bytes.
+
+What `write!` actually referenced, from `nm --size-sort` (after L4):
+`usize Display::fmt` 636, `core::fmt::write` 536, `str Display::fmt` 400,
+`Buf16 as fmt::Write::write_char` 192, `Formatter::padding` 192,
+`pad_integral::write_prefix` 100. So it is **not** integer formatting as such —
+`Buf16::append_num` already hands the digits to euser's `TDes16::AppendNum`, which
+costs zero bytes — it is `Arguments` construction, the `Formatter` width/precision
+machinery and the `fmt::Write` shim that `write!` forces every piece through.
+
+What is left in the 832 bytes: `Buf16::push_str` 432 (UTF-8 -> UTF-16) and ~350 of
+fixed SDK entry glue (`_E32Startup`, `CallThrdProcEntry`, `__cpp_initialize__aeabi_`).
+A macro that also emitted the literal as a compile-time `&[u16]` and appended it as a
+descriptor would take most of the remaining 432 too.
+
+**Left unapplied**: taking it means a new public formatting macro, and that is a DX
+decision, not a flag. The shape that costs nothing: a proc macro with `write!`'s exact
+syntax that emits direct pushes for `{}`/`{name}` over `&str`, integers and `char`,
+and **falls back to `write!` for any piece it cannot do natively** (`{:>8}`, `{:x}`, a
+user `Display`), so no program loses an ability — it only keeps `core::fmt` out of the
+programs that never needed it.
+
+### Not a lever: the `KErr*` name table
+
+`strings` shows ~1.2 kB of `.rodata` of `KErrNotSupported…` in most examples. It is
+reached only through `SymbianError: Debug` from `symbian_std::test_report::checked`,
+i.e. from the **test harness**. `hello`, which does not use `Report`, carries none of
+it (`-Zfmt-debug=none` moved it by 0 bytes). A shipped application does not pay it.
+
+### Not a lever: `.bss` / `.data`
+
+Measured at the baseline: `.data` is 0 everywhere except `async` (40 B), `.bss` is 0–72
+(`atomics` 72, `tls` 52, `async` 40, most 24, `hello` 0). Nothing to take.
