@@ -58,6 +58,14 @@ with a Rust surface that names no Symbian type, and drive one in EKA2L1 as evide
   new translation unit costs a program that asks no question nothing, because the shim
   is an archive and an unreferenced member is never pulled.
 
+- **Driven in EKA2L1, pid-bound.** `Return` (the selection key, `EKeyDevice3`) opens the
+  text query; the dialog draws prompt "Name?", an empty editor and RSK "Cancel" with no
+  LSK. Three `5` presses put `555` in the field and the LSK turns into "OK". A second
+  `Return` **confirms the dialog** — so a data query needs no softkey, and the confirm
+  path is *not* blocked on the softkey slice.
+- The answer reaches Rust: the view then draws `name=555`, i.e. the `TPtr16` the shim
+  built over the Rust `Vec<u16>` is the descriptor `CAknTextQueryDialog` wrote into.
+
 ## Dead ends
 
 ## Next step
