@@ -59,6 +59,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "notes"
+version = "0.1.0"
+dependencies = [
+ "symbian-core",
+ "symbian-std",
+]
+
+[[package]]
 name = "shimdemo"
 version = "0.1.0"
 dependencies = [

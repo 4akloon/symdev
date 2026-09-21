@@ -1,0 +1,26 @@
+[package]
+name = "notes"
+version = "0.1.0"
+
+[target]
+device = "nokia-e52"
+
+[language]
+name = "rust"
+
+[symbian]
+uid3 = "0xe0000696"
+capabilities = []
+vendor = "symdev"
+
+# Present = this is an Avkon application: the C++ subclasses of `shims/s60`, the Avkon
+# import libraries, and the application and registration resources a captioned
+# application needs.
+[ui]
+kind = "avkon"
+caption = "Rust notes"
+short_caption = "Notes"
+softkeys = "exit"
+
+[signing]
+mode = "self-signed"

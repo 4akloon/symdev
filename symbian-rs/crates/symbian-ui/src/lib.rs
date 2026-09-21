@@ -64,6 +64,8 @@
 
 extern crate alloc;
 
+pub mod note;
+
 mod abi;
 mod app;
 mod event;

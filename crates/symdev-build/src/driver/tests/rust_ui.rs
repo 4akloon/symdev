@@ -61,7 +61,17 @@ fn the_s60_shim_is_only_built_for_a_ui_project() {
         with_ui.iter().any(|s| s.ends_with("symrs_avkon.cpp")),
         "{with_ui:?}"
     );
-    assert_eq!(with_ui.len(), console.len() + 1);
+    // A `[ui]` build is the console list, unchanged and in order, plus the whole of
+    // `shims/s60` — which is more than one file since the notes joined the subclasses.
+    assert_eq!(&with_ui[..console.len()], &console[..], "{with_ui:?}");
+    let s60 = b.sdk.ui_shim_dir();
+    assert!(with_ui.len() > console.len(), "{with_ui:?}");
+    assert!(
+        with_ui[console.len()..]
+            .iter()
+            .all(|s| s.parent() == Some(s60.as_path())),
+        "{with_ui:?}"
+    );
 }
 
 /// What the Avkon headers need beyond the recorded C++ argv: the case-fold overlay
