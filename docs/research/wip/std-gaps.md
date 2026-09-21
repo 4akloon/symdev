@@ -42,6 +42,17 @@ and a partial `process` backend in the `symbian-rs/rust-src` overlay, keep `env`
 
 ## Decisions
 
+- **Step 1 done.** `sys/path/symbian/` (mod.rs + a pure `drive.rs`) replaces
+  `unsupported_backslash` for this target. `Prefix::Disk`, uppercased; no UNC, no
+  verbatim, no device namespace — Symbian has none. `absolute` stays `unsupported()`
+  with `TODO: RFs::Parse / TParse (not observed)`.
+- The host test lives in `crates/symdev-build/src/std_src/tests.rs` and compiles the
+  overlay's own `drive.rs` through `#[path]`, so the tested file *is* the shipped file.
+  (`include!` does not work: the file's `//!` docs are inner attributes and a macro
+  cannot expand to those.)
+- Emulator: `stdhello: 30 passed`, `symdev test --emulator` exit 0; E32 52 908 bytes
+  (was 52 210, so the prefix parser costs 698).
+
 ## Dead ends
 
 ## Next step

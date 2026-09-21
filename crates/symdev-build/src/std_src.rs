@@ -221,3 +221,6 @@ fn copy_tree(from: &Path, to: &Path) -> Result<()> {
 fn io(e: std::io::Error) -> Error {
     Error::Other(e.to_string())
 }
+
+#[cfg(test)]
+mod tests;

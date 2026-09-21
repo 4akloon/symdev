@@ -23,6 +23,8 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use symbian_std::test_report::Report;
 
+mod platform;
+
 /// Symbian paths: a drive letter and backslashes. There is no POSIX root above `E:`.
 const DIR: &str = "E:\\symdev\\std77";
 const PATH: &str = "E:\\symdev\\std77\\roundtrip.txt";
@@ -204,6 +206,9 @@ fn main() -> std::io::Result<()> {
         "HashMap needs sys::random",
         hashed.get("answer") == Some(&42),
     );
+
+    // The step-77 gaps this slice closed: paths, directories, arguments, processes.
+    platform::path_cases(&mut report);
 
     fs::remove_file(PATH)?;
     report.check("remove_file", !fs::exists(PATH).unwrap_or(true));

@@ -27,9 +27,13 @@ cfg_select! {
         mod sgx;
         pub use sgx::*;
     }
-    any(target_os = "solid_asp3", target_os = "symbian") => {
+    target_os = "solid_asp3" => {
         mod unsupported_backslash;
         pub use unsupported_backslash::*;
+    }
+    target_os = "symbian" => {
+        mod symbian;
+        pub use symbian::*;
     }
     target_os = "uefi" => {
         mod uefi;
