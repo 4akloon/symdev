@@ -66,6 +66,18 @@ with a Rust surface that names no Symbian type, and drive one in EKA2L1 as evide
 - The answer reaches Rust: the view then draws `name=555`, i.e. the `TPtr16` the shim
   built over the Rust `Vec<u16>` is the descriptor `CAknTextQueryDialog` wrote into.
 
+- A number query opens with the `initial` this side passed (`7`, selected in the field),
+  takes `4` `2` and comes back as `age=42`.
+- **The softkeys work on a query dialog.** `F2` on an open query cancels it — the Rust
+  side sees `Ok(None)` and the cancel counter goes to `x1` — and `F1` confirms one
+  (`name=99` after `9` `9` `F1`). So `eka2l1-input.md`'s "softkeys do nothing in our own
+  applications" is narrower than it reads: it is about a CBA built from **our generated
+  `.rss`**. A dialog whose CBA comes from the ROM's own resource takes both softkeys.
+  Worth handing to the softkey slice as a discriminator.
+- `Escape` does nothing because it is **not bound**: the profile at
+  `~/.local/share/EKA2L1/bindings/default.yml` has 22 binds and they are F1-F4, Return,
+  the four arrows, `0`-`9`, `*`, `/` and Backspace. Nothing else reaches the guest.
+
 ## Dead ends
 
 ## Next step
