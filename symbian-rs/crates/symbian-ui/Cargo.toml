@@ -1,0 +1,11 @@
+[package]
+name = "symbian-ui"
+version.workspace = true
+edition.workspace = true
+description = "The safe Rust side of an Avkon application: the App trait, the drawing context and the key events the C++ shim forwards"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+symbian-core = { path = "../symbian-core" }

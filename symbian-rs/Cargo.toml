@@ -10,6 +10,7 @@ members = [
     "crates/symbian-async",
     "crates/symbian-core",
     "crates/symbian-std",
+    "crates/symbian-ui",
     "crates/symbian-runtime",
     "crates/symbian-macros",
     "examples/async",

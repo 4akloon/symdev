@@ -125,6 +125,13 @@ name = "symbian-sys"
 version = "0.1.0"
 
 [[package]]
+name = "symbian-ui"
+version = "0.1.0"
+dependencies = [
+ "symbian-core",
+]
+
+[[package]]
 name = "timedemo"
 version = "0.1.0"
 dependencies = [
