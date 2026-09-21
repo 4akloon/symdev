@@ -45,3 +45,8 @@ Read the current `[[ui.menu]]` path end to end: manifest -> macro -> shim -> res
   boundary, and the shim's clamp never has to do anything.
 - `symdev package` does **not** rebuild; `symdev build` first, or the sisx carries the
   previous `.exe` (cost me one emulator run).
+- **Re-verified experiment 91's failure on this build.** With `has_menu()` forced to
+  `false` (so `EAknSoftkeyOptions` on the left button and **no** `menubar` in
+  `EIK_APP_INFO`), F1 kills the thread: `Thread Bars terminated ... KERN-EXEC and exit
+  code: 3`. So the refusal the manifest used to carry guarded a real failure — which is
+  why the two resources are now emitted from one condition instead.
