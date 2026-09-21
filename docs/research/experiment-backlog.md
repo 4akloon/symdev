@@ -1787,3 +1787,46 @@ Numbers 68–75 are the Rust SDK steps of the [design spec](../superpowers/specs
   - **The table of `TLanguage` names is 110 plain `pub const` lines for the sake of one error message.** Written first as a generating `macro_rules!` (which fits the 300-line rule with room to spare), rustc's "a constant with a similar name exists" note then pointed inside the macro body; written out, it points at `pub const french: Language = Language::from_code(2); // ELangFrench`. They are lower case on purpose — those are the words an author types inside `locale!`, and the lint is disabled for that module alone.
   - **What this does not show:** a device; any language outside the ROM's six actually selected on the machine; `TLocale::LanguageDowngrade`; whether a language change under a running process is visible to it (nothing here remembers the value, so nothing assumes either way); aliases in the declaration (`languages: english [american, australian]`, so one column answers several `TLanguage`s without a second copy of the strings) — not built, and an author adds the column instead; and **the other half**, the launcher's application name, which still needs `localisable_resource_file`, per-language `.r0N` compilation and `BaflUtils::NearestLanguageFile` and is untouched here.
   - **One weakness, named.** `E0063`'s span is the whole `locale!` invocation rather than the row, because a `macro_rules!` expansion reports at its call site; the message names the missing *language*, which is what to search for. Capturing each row as a `tt` so the braces would carry the caller's span was tried and changed nothing. And a key nothing uses is not an error — the constant is emitted, unused, and `dead_code` does not fire inside a macro expansion, the same hole experiment 91 records for menu constants and the same as C++.
+
+## 97. The cleanup stack a `no_std` program never had, and what parity with C++ costs (T5, Rust SDK)
+
+**Requires:** `SYMDEV_EPOCROOT`, the GCCE toolchain, `SYMDEV_EKA2L1`, `Kernel:trace` in
+the emulator's `log-filter`.
+
+**Procedure.** A `no_std` console application (`symbian-rs/examples/cleanup`) calls
+`RFs::GetDir` through `symbian-sys`. Run it before and after the runtime installs
+`CTrapCleanup`. Measure every example's E32 image either side.
+
+**Outcome.**
+
+- **Before:** no result file, and the emulator log line
+  `thread.cpp:542 [Kernel]: Thread Main panicked with category: E32USER-CBase and exit
+  code: 69` — `EClnNoTrapHandlerInstalled`. A panic, not a leave, so no `TRAP` catches
+  it. Invisible at the stock `Kernel:Warn` filter, which is the third time that filter
+  has hidden an answer.
+- **The asymmetry was two functions three lines apart.** `symbian-std`'s `__start` has
+  two definitions, one per shape; the `std` one reached `std::os::symbian::start`,
+  which installed the handler, and the `no_std` one called `ExitCode::from_main`
+  directly. `entry!` was a third path with the same hole. All three now go through one
+  `symbian_runtime::start`, and `TrapCleanup` moved to `symbian-sys` (the only crate
+  the `std` overlay depends on) so there is one definition rather than a copy per path.
+- **After:** `GetDir` returns 9 entries; `cleanupdemo: 2 passed`.
+- **Cost, whole image, against the previous `main`:** `hello` 3 187 → 3 231 (+44),
+  `hello-raw` 752 → 808 (+56), `alloc` 4 474 → 4 525 (+51), `shim` 4 474 → 4 520 (+46),
+  `spawnee` 3 208 → 3 257 (+49), `files` 10 552 → 10 586 (+34), `locale` 9 684 → 9 713
+  (+29), `time` 20 583 → 20 586 (+3). **Every GUI example is unchanged** — `ui` 13 714,
+  `notes` 15 626, `ui-list` 14 773 — because `EikStart::RunApplication` installs the
+  thread's cleanup stack itself, so only the console shape ever lacked one.
+- **Where the bytes go on `hello`:** 16 of the 44 are `.text` of the C++ shim
+  `symrs_cleanup_destroy` (`size` on `symrs_cleanup.o`; `0x10` in the link map), which
+  exists because `~CTrapCleanup` is virtual and cannot be called from Rust. The rest is
+  the `_ZN12CTrapCleanup3NewEv` import, the null check and the drop glue.
+
+**C++ comparison.** This is a cost C++ pays too: a Symbian `E32Main` conventionally
+opens with `CTrapCleanup::New()` and ends with `delete cleanup`. The difference is that
+C++'s `delete` is an inlined vtable call while ours is a cross-language hop into the
+shim, so C++ should be up to ~16 bytes cheaper. **Measured C++ delta: TODO (not yet
+measured)** — requested from the C++ baseline work; do not quote a number until it is.
+
+**Evidence.** `symbian-rs/examples/cleanup`, `symbian-rs/crates/symbian-sys/src/cleanup.rs`,
+`symbian-rs/crates/symbian-runtime/src/lib.rs`.

@@ -27,7 +27,7 @@ members = [
     "examples/shim",
     "examples/spawnee",
     "examples/files",
-    "examples/dirprobe",
+    "examples/cleanup",
     "examples/atomics",
     "examples/time",
     "examples/net",

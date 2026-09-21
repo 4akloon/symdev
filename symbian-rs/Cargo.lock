@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "dirprobe"
+name = "cleanupdemo"
 version = "0.1.0"
 dependencies = [
  "symbian-core",

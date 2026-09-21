@@ -12,11 +12,11 @@
 //! diagnostic at all (experiment 76). The rule for what needs a wrapper is in
 //! `shims/common/symrs_shim.h`; read it before adding one.
 
+use crate::cleanup::CTrapCleanup;
 use crate::des::TDesC16;
 use crate::des16::TDes16;
 use crate::efsrv::{CDir, RFs};
 use crate::process::RProcess;
-use crate::cleanup::CTrapCleanup;
 
 unsafe extern "C" {
     /// `BaflUtils::EnsurePathExistsL(RFs&, const TDesC&)`

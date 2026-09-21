@@ -1,4 +1,22 @@
-//! Scratch probe: does a `no_std` console application have a cleanup stack?
+//! The regression test for the thread's cleanup stack in a `no_std` program.
+//!
+//! Symbian's cleanup stack is per thread and does not exist until somebody calls
+//! `CTrapCleanup::New()`. Nothing warns you: the first `CleanupStack::PushL` anywhere
+//! below — including inside an SDK call's own `TRAP`, where the application never
+//! sees the call — panics `E32USER-CBase 69` and takes the thread with it, and a
+//! panic is not a leave, so no `TRAP` catches it.
+//!
+//! For a while only `std` installed one. This program is the measurement that found
+//! it and the test that keeps it found: it calls `RFs::GetDir`, which uses the
+//! cleanup stack inside efsrv's own trap harness. Before
+//! `symbian_runtime::start` installed the handler it died here, writing no result at
+//! all, and the emulator log said
+//! `Thread Main panicked with category: E32USER-CBase and exit code: 69` — visible
+//! only with `Kernel:trace` in the emulator's `log-filter`.
+//!
+//! It reaches for `symbian-sys` directly rather than a friendly wrapper on purpose:
+//! there is no `read_dir` in the `no_std` shape yet, and what is under test is the
+//! runtime, not the file API. When one arrives this should use it.
 #![no_std]
 
 extern crate alloc;
@@ -6,8 +24,8 @@ extern crate alloc;
 use symbian_core::Result;
 use symbian_core::des::{Buf16, DesC16};
 use symbian_std::test_report::Report;
-use symbian_sys::efsrv::{KFILE_SERVER_DEFAULT_MESSAGE_SLOTS, RFs, RFs_Connect};
 use symbian_sys::efsrv::{CDir, CDir_Count, ESORT_NONE, KENTRY_ATT_MATCH_MASK, RFs_GetDir};
+use symbian_sys::efsrv::{KFILE_SERVER_DEFAULT_MESSAGE_SLOTS, RFs, RFs_Connect};
 
 /// `RFs::GetDir` is the call `std`'s own cleanup note names as the one that dies
 /// without a trap handler. Returns the entry count, or the error code.
@@ -39,7 +57,7 @@ fn count_entries() -> i32 {
 
 #[symbian_std::main]
 fn main() -> Result<i32> {
-    let mut report = Report::new("dirprobe");
+    let mut report = Report::new("cleanup");
     report.check("reached main", true);
     // If there is no cleanup stack, the thread dies inside this call and the report
     // below is never written — which is the whole measurement.
