@@ -11,3 +11,5 @@
 /examples/*/build/
 /symbian-rs/target/
 /symbian-rs/examples/*/build/
+
+__pycache__/
