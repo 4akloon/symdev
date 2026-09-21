@@ -25,3 +25,13 @@ Task: a single-threaded executor on `CActiveScheduler` (own or join), `TRequestS
 - `class RTimer : public RHandleBase` — `e32std.h` line 3159: `CreateLocal()` -> TInt, `After(TRequestStatus&, TTimeIntervalMicroSeconds32)`, `Cancel()`, all void/TInt, no trailing L, so no shim. `TTimeIntervalMicroSeconds32` is `TTimeIntervalBase` = one `TInt`, inline ctors only, so trivially copyable.
 - `e32base.h` 1580: `CActive` — `RunL()`/`DoCancel()` pure virtual, `iStatus` is a public member, `SetActive()` and the ctor are protected -> a subclass is the only way in, which is rule 3 of `symrs_shim.h`. `CActiveScheduler` (2828) has static `Install/Add/Start/Stop/Current/RunIfReady`.
 - euser.dso exports all of them (`_ZN6RTimer5AfterER14TRequestStatus27TTimeIntervalMicroSeconds32`, `_ZN16CActiveScheduler3AddEP7CActive`, ...).
+- The C++ shim is auto-globbed: `RustSdk::shim_sources` takes every `shims/common/*.cpp`, so a new file needs no build change. `RustSdk::LIBRARIES` needs no new DSO either — `CActive`/`CActiveScheduler`/`RTimer` are all euser.
+- Only `symbian-macros` has host tests in `symbian-rs`; these crates are verified by their example in the emulator, so that example is the test.
+
+## Plan (decided, 2026-09-21)
+
+1. `shims/common/symrs_active.cpp`: `CSymRsActive : CActive` forwarding `RunL`/`DoCancel` to a two-slot vtable of function pointers with an opaque context, plus `symrs_scheduler_*` (the one TRAP is `CActiveScheduler::Start`).
+2. `symbian-sys`: `src/active.rs` (the shim entries + `CActiveScheduler::Current`, which is a plain static and needs no shim) and `RTimer` in `src/time.rs`.
+3. `symbian-async`: `Request<S: Source>` (a boxed state the `CActive` points at, generic over what issues and cancels — so step 74's sockets implement `Source` and reuse the whole thing), `Sleep` over `RTimer`, `join`/`race`, a process-wide single-threaded `Executor` bound to one `CActiveScheduler` (checked, a different thread has a different scheduler), `block_on` (owns a scheduler) and `spawn` (joins one).
+4. The waker is `Arc<TaskWaker>` whose only state is an `AtomicU32` flag, so `Wake`'s `Send + Sync` is true; the driving is done by the request's `RunL`, which is on the scheduler's thread by construction.
+5. Mixing guard: `symbian_core` counts outstanding executor requests, and `blocking()` refuses while any exist on a thread that has a scheduler installed.
