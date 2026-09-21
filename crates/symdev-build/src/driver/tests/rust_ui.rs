@@ -61,6 +61,15 @@ fn the_s60_shim_is_only_built_for_a_ui_project() {
         with_ui.iter().any(|s| s.ends_with("symrs_avkon.cpp")),
         "{with_ui:?}"
     );
+    // The list box joined them, and so will the next component.
+    assert!(
+        !console.iter().any(|s| s.ends_with("symrs_list.cpp")),
+        "{console:?}"
+    );
+    assert!(
+        with_ui.iter().any(|s| s.ends_with("symrs_list.cpp")),
+        "{with_ui:?}"
+    );
     // A `[ui]` build is the console list, unchanged and in order, plus the whole of
     // `shims/s60` — which is more than one file since the notes joined the subclasses.
     assert_eq!(&with_ui[..console.len()], &console[..], "{with_ui:?}");

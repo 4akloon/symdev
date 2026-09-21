@@ -52,4 +52,19 @@ impl Ui {
     pub(crate) const fn host(&self) -> &'static Host {
         self.host
     }
+
+    /// The `CShimView*` the shim passed to `construct`.
+    ///
+    /// A component that is a control in its own right — [`crate::List`] is the first —
+    /// needs the view to take its rectangle from and the app UI to put itself on the
+    /// control stack of. Handing the raw pointer out is safe; using it is not, which is
+    /// why both are `pub(crate)` and every call site carries a `// SAFETY:` note.
+    pub(crate) const fn view(&self) -> *mut c_void {
+        self.view
+    }
+
+    /// The `CShimAppUi*` the shim passed to `construct`. See [`Ui::view`].
+    pub(crate) const fn app_ui(&self) -> *mut c_void {
+        self.app_ui
+    }
 }

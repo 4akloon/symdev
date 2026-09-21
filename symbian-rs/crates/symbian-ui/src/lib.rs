@@ -98,6 +98,7 @@ mod command;
 mod event;
 mod gc;
 mod geom;
+mod list;
 pub mod query;
 mod ui;
 mod vtbl;
@@ -108,6 +109,7 @@ pub use command::Command;
 pub use event::{EventCode, KeyEvent, KeyResponse, key, scan};
 pub use gc::{Gc, MAX_TEXT};
 pub use geom::{Point, Rect, Rgb};
+pub use list::{List, MAX_ITEM_TEXT};
 pub use ui::Ui;
 pub use vtbl::start;
 
@@ -118,5 +120,6 @@ pub mod prelude {
     pub use crate::event::{EventCode, KeyEvent, KeyResponse, key, scan};
     pub use crate::gc::Gc;
     pub use crate::geom::{Point, Rect, Rgb};
+    pub use crate::list::List;
     pub use crate::ui::Ui;
 }

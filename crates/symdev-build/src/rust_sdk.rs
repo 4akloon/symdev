@@ -49,11 +49,21 @@ impl RustSdk {
     /// costs no window-server import at all. `gdi.dso` is here for the one symbol
     /// `CFont::AscentInPixels` — which this shim does not yet call, so `--as-needed`
     /// would drop it; it stays named because the moment text is measured it is back.
+    ///
+    /// `eikcoctl.dso` is the sixth, and it is the list box's: `CEikListBox`,
+    /// `CEikTextListBox`, `CTextListBoxModel` and `CEikScrollBarFrame` are all exported
+    /// from `eikcoctl.dll`, not from `avkon.dll` — only the `CAkn*StyleListBox` leaves
+    /// are Avkon's (`nm -D` on both, 2026-09-21). An application with no list pays
+    /// nothing for it: `symrs_list.o` is a member of the shim archive that nothing
+    /// references, so it is never pulled and no `DT_NEEDED` is recorded.
+    /// `bafl.dso`, which the item array (`CDesC16ArrayFlat`) needs, is already on every
+    /// Rust link line through [`Self::LIBRARIES`].
     pub const UI_LIBRARIES: &'static [&'static str] = &[
         "apparc.dso",
         "cone.dso",
         "eikcore.dso",
         "avkon.dso",
+        "eikcoctl.dso",
         "gdi.dso",
     ];
 
