@@ -1,0 +1,20 @@
+TARGET            cppfiles.exe
+TARGETTYPE        exe
+UID               0 0xe00006a1
+
+SECUREID          0xe00006a1
+
+SOURCEPATH        ..\src
+SOURCE            cppfiles.cpp
+
+SOURCEPATH        ..\..\common
+SOURCE            symdevreport.cpp
+
+USERINCLUDE       ..\..\common
+SYSTEMINCLUDE     \epoc32\include
+
+LIBRARY           euser.lib
+LIBRARY           efsrv.lib
+
+VENDORID          0
+CAPABILITY        NONE

@@ -1,8 +1,8 @@
 TARGET            cpphello.exe
 TARGETTYPE        exe
-UID               0 0xef9f2cac
+UID               0 0xe00006a0
 
-SECUREID          0xef9f2cac
+SECUREID          0xe00006a0
 EPOCSTACKSIZE     0x5000
 
 SOURCEPATH        ..\src

@@ -1,5 +1,5 @@
 [package]
-name = "cpphello"
+name = "cppfiles"
 version = "0.1.0"
 
 [target]
@@ -9,7 +9,7 @@ device = "nokia-e52"
 name = "cpp"
 
 [symbian]
-uid3 = "0xe00006a0"
+uid3 = "0xe00006a1"
 capabilities = []
 vendor = "symdev"
 
