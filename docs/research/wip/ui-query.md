@@ -78,6 +78,13 @@ with a Rust surface that names no Symbian type, and drive one in EKA2L1 as evide
   `~/.local/share/EKA2L1/bindings/default.yml` has 22 binds and they are F1-F4, Return,
   the four arrows, `0`-`9`, `*`, `/` and Backspace. Nothing else reaches the guest.
 
+- **A query can run from `construct`.** A throwaway build that opened
+  `query::text("FromConstruct?", 32)` from the `construct` callback showed the dialog
+  during startup, took `7` `7` and `Return`, came back `Some("77")`, and the application
+  carried on normally. So `CCoeEnv` already exists when `CShimAppUi::ConstructL` calls
+  into Rust — CONE builds the environment before the app UI — and `construct` simply
+  blocks inside the dialog's own loop until it is dismissed. The probe was reverted.
+
 ## Dead ends
 
 ## Next step
