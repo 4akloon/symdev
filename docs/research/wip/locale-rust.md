@@ -72,3 +72,16 @@ must be caught at build time. Language read once from `User::Language()`.
   | 2 | 2 ELangFrench | Bonjour depuis Rust | langue | d'accord |
   | 3 | 3 ELangGerman (in ROM, NOT in the table) | Hello from Rust | language | ok |
   All three runs `localedemo: 8 passed`. The config was restored to `language: 1` afterwards.
+- **MEASURED: the `AtomicU32` cache is the wrong answer on ARMv5TE.** `symdev build` of a
+  `hello`-shaped probe (`examples/sizeprobe`, since deleted), `.exe` bytes:
+  | languages | with the AtomicU32 cache | asking euser every time |
+  |---|---|---|
+  | plain `const` (no locale!) | 3 187 | 3 187 |
+  | 1 | 3 183 | 3 183 |
+  | 2 | 4 024 | 3 230 |
+  | 3 | 4 067 | 3 309 |
+  The cache costs **794 bytes**: `AtomicU32::load(Relaxed)` on `armv5te` is not a `ldr`, it is
+  `__atomic_load_4`, and linking that drags in `symbian-libcalls`' whole atomics object
+  (all 30 `__atomic_*`, `AtomicLock`, `RFastLock::{CreateLocal,Wait,Signal}`, `__sync_synchronize`,
+  16 bytes of `.bss`, 4 more PLT entries, ~43 more dynsyms; `.text` +1 952).
+  DEAD END: D2 as written. Next: measure what one `User::Language()` call costs, then decide.

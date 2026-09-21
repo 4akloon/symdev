@@ -99,6 +99,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "sizeprobe"
+version = "0.1.0"
+dependencies = [
+ "symbian-core",
+ "symbian-std",
+]
+
+[[package]]
 name = "spawnee"
 version = "0.1.0"
 dependencies = [

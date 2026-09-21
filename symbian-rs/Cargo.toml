@@ -22,6 +22,7 @@ members = [
     "examples/async",
     "examples/hello",
     "examples/locale",
+    "examples/sizeprobe",
     "examples/hello-raw",
     "examples/alloc",
     "examples/shim",
