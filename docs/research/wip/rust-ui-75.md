@@ -28,7 +28,29 @@ subclasses forwarding virtuals to a Rust vtable, `crates/symbian-ui`, `#[main(gu
 - Manifest: `RawManifest` is `deny_unknown_fields`, so `[ui]` must be added there,
   in `Manifest`, and in `validate`.
 
+- **The s60 shim compiles.** `shims/s60/symrs_avkon.cpp` with the recorded GCCE argv
+  plus `-I <sdk-include-casefold>` and `-DSYMRS_UID3=…`: `.o` is 31 516 bytes with
+  **186 undefined symbols** (the C++ `examples/gui` has 182, experiment 76's shim 185 —
+  subclassing cost is fixed). Without the case-fold overlay it fails at
+  `fbs.h` → `FbsMessage.h`, so the s60 shim needs the overlay the C++ path already
+  builds; `shims/common` does not.
+- Link order problem found by reading: the shim archive follows the Rust archive, so
+  the shim's reference to `symrs_app_vtbl` would never be resolved (ld does not
+  rescan). `-u symrs_app_vtbl` before the Rust archive is the fix.
+
 ## Decisions
+
+- **Forwarding is shape B** of the spec, unchanged: one `.cpp`, one `.h`, two tables
+  with a `size` word. `set_brush` gained a third argument (`solid`) so one Rust call
+  covers `SetBrushStyle` + `SetBrushColor`; everything else is the spec's ABI.
+- **`Draw` hands Rust a rect whose origin is (0,0)** (`TRect(TPoint(0,0), Size())`),
+  not `Rect()`. Drawing through a window gc is window-relative, so this removes the
+  spec's open item C from the application's view entirely — to be confirmed in pixels.
+- **`#[symbian_std::main(gui)]` writes no `E32Main`.** The shim owns it. The attribute
+  exports `symrs_app_vtbl` and reads the application type from `fn main`'s **return
+  type**, so the type is never written twice.
+- `symbian-ui` is reached as `symbian_std::ui` (one re-export line), so an application
+  still names one crate.
 
 ## Dead ends
 
