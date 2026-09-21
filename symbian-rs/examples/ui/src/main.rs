@@ -10,8 +10,10 @@
 //! `docs/research/acceptance/emukey.py` between them: three bars, then five after two
 //! `Up` presses, then the Options menu on the left softkey (F1), a `Down` and a
 //! `Return` to pick an item, and the right softkey (F2) to end the process. The menu
-//! itself is four `[[ui.menu]]` entries in `symdev.toml`; the words in them are the
-//! words `Command::named` repeats below.
+//! itself is four `[[ui.menu]]` entries in `symdev.toml`; `#[symbian_std::main(gui)]`
+//! reads them and writes `menu::MORE`, `menu::FEWER`, `menu::RESET` and `menu::QUIT`,
+//! so a menu item this source misspells, or one the manifest no longer has, is a
+//! compile error rather than a line that never fires.
 //!
 //! Beside the pixels, `construct` writes the usual result file, so
 //! `symdev test --emulator` also has something to say on every rebuild without a
@@ -29,14 +31,6 @@ use symbian_std::ui::prelude::*;
 /// How many bars the chart may show. Six is what fits the E52's client area at the
 /// width below without the last one leaving the screen.
 const MAX_BARS: u8 = 6;
-
-/// The four menu items, named exactly as `[[ui.menu]] id` names them in
-/// `symdev.toml`. The number behind each name is derived from the word by both sides
-/// and written down in neither.
-const MORE: Command = Command::named("more");
-const FEWER: Command = Command::named("fewer");
-const RESET: Command = Command::named("reset");
-const QUIT: Command = Command::named("quit");
 
 struct Bars {
     /// The one piece of state the drawing is derived from.
@@ -126,12 +120,12 @@ impl App for Bars {
     /// right softkey's `Command::EXIT` never does, because the shim acts on it.
     fn command(&mut self, command: Command, ui: &Ui) -> symbian_core::Result<()> {
         match command {
-            MORE if self.bars < MAX_BARS => self.bars += 1,
-            FEWER if self.bars > 1 => self.bars -= 1,
-            RESET => self.bars = 3,
+            menu::MORE if self.bars < MAX_BARS => self.bars += 1,
+            menu::FEWER if self.bars > 1 => self.bars -= 1,
+            menu::RESET => self.bars = 3,
             // A menu item may end the application itself, which is the same door the
             // right softkey uses.
-            QUIT => {
+            menu::QUIT => {
                 ui.exit();
                 return Ok(());
             }
