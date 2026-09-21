@@ -53,6 +53,35 @@ and a partial `process` backend in the `symbian-rs/rust-src` overlay, keep `env`
 - Emulator: `stdhello: 30 passed`, `symdev test --emulator` exit 0; E32 52 908 bytes
   (was 52 210, so the prefix parser costs 698).
 
+- **Step 2 done.** `read_dir` over `RFs::GetDir` + `CDir` (`sys/fs/symbian/dir.rs`);
+  `args` over `User::CommandLine` + `RProcess().FileName()` for element 0
+  (`sys/args/symbian.rs`); `env` a deliberate empty-but-not-panicking backend
+  (`sys/env/symbian.rs`). `stdhello: 41 passed`, E32 67 303 bytes.
+- **The real blocker was not a leave: no thread had a `CTrapCleanup`.** `RFs::GetDir`
+  uses the cleanup stack inside its own TRAP, and a thread with no trap handler panics
+  `E32USER-CBase 69` (`EClnNoTrapHandlerInstalled`) — which the emulator logs only at
+  `Kernel:trace`, so at the default `log-filter` it looks exactly like experiment 76's
+  silent death. `std` now installs one in `rt::symbian_start` and in `sys::thread`'s
+  trampoline, which is what a Symbian `E32Main` and every thread it creates conventionally
+  do. **The `no_std` runtime still installs none** — out of scope here, worth a step.
+- `RFs::GetDir` does **not** need a TRAP of its own: it returns `TInt` and traps
+  `GetDirL` itself (proved by putting a shim TRAP around it, which changed nothing, and
+  then by the emulator's own "Leave trapped by trap handler" for the missing-directory
+  case). The only shim `read_dir` needs is `delete aDir`, because `~CDir` is virtual.
+- Measured with a compile probe on the recorded GCCE argv: `sizeof(TPtr16)` **12**,
+  align 4; `sizeof(RProcess)` **4**; `sizeof(TBuf16<256>)` **520**;
+  `sizeof(TRequestStatus)` **8** (confirming experiment 84).
+- **EKA2L1 quirk, not the file server's:** its `mkdir` answers `KErrAlreadyExists` when
+  the *parent* is missing, where Symbian answers `KErrPathNotFound`. `create_dir_all`
+  reads that as "already there" and stops, so more than one missing level silently
+  creates nothing. One level at a time works.
+- **EKA2L1 quirk:** a file's size reads back as 0 from both `RFs::Entry` and a directory
+  listing until `RFile::Flush`; closing the handle is not enough.
+- One wrapper per shim translation unit: the recorded GCCE argv has no
+  `-ffunction-sections`, so `--gc-sections` drops an unused wrapper only when it is the
+  whole of an object's text. Sharing `symrs_f32.cpp` cost `examples/shim` 26 bytes;
+  splitting brought every `no_std` example back to its recorded size to the byte.
+
 ## Dead ends
 
 ## Next step

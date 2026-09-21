@@ -13,7 +13,9 @@
 //! `shims/common/symrs_shim.h`; read it before adding one.
 
 use crate::des::TDesC16;
-use crate::efsrv::RFs;
+use crate::des16::TDes16;
+use crate::efsrv::{CDir, RFs};
+use crate::thread::CTrapCleanup;
 
 unsafe extern "C" {
     /// `BaflUtils::EnsurePathExistsL(RFs&, const TDesC&)`
@@ -23,6 +25,38 @@ unsafe extern "C" {
     /// file server's own error — a drive that is not there, a read-only path — and the
     /// wrapper hands that code back instead of letting the exception fly.
     pub fn symrs_bafl_ensure_path_exists(fs: *mut RFs, path: *const TDesC16) -> i32;
+}
+
+unsafe extern "C" {
+    /// `delete aDir` for the `CDir` that `RFs::GetDir` allocates.
+    ///
+    /// Not a `TRAP` but rule 3: `~CDir()` is `IMPORT_C virtual` (`f32file.h` line
+    /// 1599), so destroying one dispatches through the vtable and Rust cannot. Reaching
+    /// for the exported `_ZN4CDirD0Ev` instead would be assuming the dynamic type is
+    /// exactly `CDir`. Null-safe, and it cannot leave.
+    pub fn symrs_f32_dir_delete(dir: *mut CDir);
+}
+
+unsafe extern "C" {
+    /// `delete aCleanup` for the `CTrapCleanup` a thread installed with
+    /// [`crate::thread::CTrapCleanup_New`].
+    ///
+    /// Rule 3, as `symrs_f32_dir_delete`: `~CTrapCleanup` is virtual, so destroying
+    /// one dispatches through the vtable. It uninstalls the thread's trap handler and
+    /// frees the cleanup stack, so it must run after everything on the thread that
+    /// could use either. Null-safe, and it cannot leave.
+    pub fn symrs_cleanup_destroy(cleanup: *mut CTrapCleanup);
+}
+
+unsafe extern "C" {
+    /// `RProcess().FileName()`, the current process's own image file, copied into
+    /// `out`.
+    ///
+    /// Rule 2: `TFileName` is a `TBuf16<256>` returned **by value**, which the EABI
+    /// passes back through a hidden pointer that displaces `this` — not an `extern "C"`
+    /// signature. `KErrNone`, `KErrArgument` for a null pointer, or `KErrOverflow` if
+    /// `out` is shorter than the name.
+    pub fn symrs_process_file_name(out: *mut TDes16) -> i32;
 }
 
 unsafe extern "C" {

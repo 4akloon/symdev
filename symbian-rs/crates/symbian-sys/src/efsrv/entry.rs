@@ -25,6 +25,14 @@ pub const TENTRY_OFFSET_ATT: usize = 0;
 /// `offsetof(TEntry, iSize)`, measured: the size in bytes, as a `TInt`.
 pub const TENTRY_OFFSET_SIZE: usize = 4;
 
+/// `offsetof(TEntry, iName)`, measured: the `TBufC<KMaxFileName>` holding the entry's
+/// name — which is the name alone, not a path.
+///
+/// Only the **address** of the field is taken from this offset; what is inside it is
+/// read through euser's own `TDesC16::Ptr()` and the documented length mask, so no
+/// guess is made about how a `TBufC16` stores its code units.
+pub const TENTRY_OFFSET_NAME: usize = 28;
+
 /// `KEntryAttVolume` (`f32file.h` line 237): the entry is a volume label, not a file.
 pub const KENTRY_ATT_VOLUME: u32 = 0x0008;
 

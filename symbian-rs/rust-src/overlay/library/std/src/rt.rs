@@ -209,6 +209,13 @@ fn lang_start_internal(
 /// 88), and the main thread has no `trampoline` to do it at the end.
 #[cfg(all(not(test), target_os = "symbian"))]
 pub fn symbian_start<T: crate::process::Termination + 'static>(main: fn() -> T) -> i32 {
+    // The main thread's trap handler and cleanup stack. A Symbian `E32Main`
+    // conventionally opens with `CTrapCleanup::New()`, and this function is the body of
+    // this program's: without one, the first `CleanupStack::PushL` anywhere below —
+    // including inside a framework call's own `TRAP`, as `RFs::GetDir` has — panics
+    // `E32USER-CBase 69` and kills the thread. Dropped after `main` and after the
+    // thread-local sweep, so nothing that could use the cleanup stack outlives it.
+    let _cleanup = crate::sys::cleanup::TrapCleanup::install();
     let code = lang_start_internal(
         &move || crate::sys::backtrace::__rust_begin_short_backtrace(main).report().to_i32(),
         0,

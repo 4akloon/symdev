@@ -72,6 +72,12 @@ unsafe extern "C" fn trampoline(arg: *mut core::ffi::c_void) -> i32 {
     // closure below — goes to the creator's heap and not to the one this thread is
     // about to abandon. `User::Allocator` and `User::SwitchAllocator` are euser statics.
     unsafe { User_SwitchAllocator(CREATOR_HEAP.load()) };
+    // This thread's own trap handler and cleanup stack: the cleanup stack is per
+    // thread and nothing in the kernel installs one, so without this the first
+    // `CleanupStack::PushL` below — including inside a framework call's own `TRAP` —
+    // panics `E32USER-CBase 69` and the thread dies where the join sees only that it
+    // ended. It is dropped at the end of this function, after the thread-local sweep.
+    let _cleanup = crate::sys::pal::symbian::cleanup::TrapCleanup::install();
     // SAFETY: the pointer is the `Box<ThreadInit>` the creator leaked for this thread.
     let init = unsafe { Box::from_raw(arg.cast::<ThreadInit>()) };
     init.init()();

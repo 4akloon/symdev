@@ -14,6 +14,8 @@
 "std/src/os/mod.rs" = "0b00c28565e3b4710123ac5ef74b144081d7064b"
 "std/src/rt.rs" = "b4ca619955ac0f1c9594fcc2a44cae2fa1c3cab0"
 "std/src/sys/alloc/mod.rs" = "be4a251915fdf4ec5eb064b0baf31086e7956724"
+"std/src/sys/args/mod.rs" = "5273a2674b439a47e4bd71c9e3248ae7a4229dd1"
+"std/src/sys/env/mod.rs" = "22bb96df831441411866cf8b807cc34c5fae990c"
 "std/src/sys/fs/mod.rs" = "91ebf9b1b599a13fb8b57328dfa2771db73a9baa"
 "std/src/sys/io/error/mod.rs" = "2f61809435727d226b35bd3a1a099e0edc6d2a6a"
 "std/src/sys/pal/mod.rs" = "892b92bb416e8f9879a00e53de3a0e939899c2fc"

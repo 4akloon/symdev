@@ -67,6 +67,22 @@ unsafe extern "C" {
     #[link_name = "_ZN4User9LockedDecERi"]
     pub fn User_LockedDec(value: *mut i32) -> i32;
 
+    /// `000009b4 T _ZN4User17CommandLineLengthEv` — `User::CommandLineLength()`
+    /// (`e32std.h` line 4569): how many code units the process's command line is.
+    #[link_name = "_ZN4User17CommandLineLengthEv"]
+    pub fn User_CommandLineLength() -> i32;
+
+    /// `00000918 T _ZN4User11CommandLineER6TDes16` — `User::CommandLine(TDes16&)`
+    /// (`e32std.h` line 4570): the command line the creator passed to
+    /// `RProcess::Create`, copied into the caller's descriptor.
+    ///
+    /// **It is `User::`, not `RProcess::`**: this SDK's `euser.dso` exports no
+    /// `RProcess::CommandLine` at all. It returns `void` and there is no error path; a
+    /// destination shorter than [`User_CommandLineLength`] would panic `USER 11`, which
+    /// no `TRAP` catches, so the caller must size the buffer first.
+    #[link_name = "_ZN4User11CommandLineER6TDes16"]
+    pub fn User_CommandLine(command: *mut crate::des16::TDes16);
+
     /// `00000a3c T _ZN4User7ReAllocEPvii` — `User::ReAlloc(TAny*, TInt, TInt)`; the third
     /// argument is the mode (0 = default: the cell may move, the common prefix is kept,
     /// failure returns null and leaves the old cell alone — experiment 68).

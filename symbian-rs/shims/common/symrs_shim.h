@@ -66,6 +66,13 @@
 // and the one C++ subclass, in symrs_active.cpp -- which is rule 3 and carries the third
 // TRAP, around CActiveScheduler::Start().
 //
+// ONE WRAPPER PER TRANSLATION UNIT, when the wrapper is not for everybody. The recorded
+// GCCE argv carries no -ffunction-sections, so an object's whole .text is one section and
+// --gc-sections can only drop it whole. A wrapper that shares a file with one the program
+// does use is therefore paid for by every program. That is why symrs_f32_dir_delete,
+// symrs_cleanup_destroy and symrs_process_file_name each have a file of their own, and it
+// is what keeps every no_std example byte-identical now that std needs them.
+//
 // A panic is NOT a leave and a TRAP does not catch it: e32panic.h line 131 documents
 // ETDes16Overflow = 11 (category USER) for "any of the copying, appending or formatting
 // member functions". Nothing here can turn a panic into an error, so a Rust wrapper that
@@ -75,7 +82,10 @@
 
 #include <e32def.h>
 
+class CDir;
+class CTrapCleanup;
 class RFs;
+class TDes16;
 class TDesC16;
 class TRequestStatus;
 
@@ -89,6 +99,19 @@ class TRequestStatus;
 // Creates every directory in `aPath`'s path component that does not exist yet.
 // Returns KErrNone, the leave code, or KErrArgument for a null argument.
 SYMRS_EXPORT TInt symrs_bafl_ensure_path_exists(RFs* aFs, const TDesC16* aPath);
+
+// `delete aDir` for the CDir that RFs::GetDir allocates. Here for rule 3: ~CDir() is
+// virtual, so the call goes through the vtable. Null-safe, and it cannot leave.
+SYMRS_EXPORT void symrs_f32_dir_delete(CDir* aDir);
+
+// `delete aCleanup` for a CTrapCleanup. Here for rule 3: ~CTrapCleanup is virtual. It
+// uninstalls this thread's trap handler and frees its cleanup stack. Null-safe.
+SYMRS_EXPORT void symrs_cleanup_destroy(CTrapCleanup* aCleanup);
+
+// RProcess().FileName() -- the current process's own image file -- copied into aOut.
+// Here for rule 2: TFileName is returned by value through an sret pointer. Returns
+// KErrNone, KErrArgument for a null argument, or KErrOverflow if aOut is too short.
+SYMRS_EXPORT TInt symrs_process_file_name(TDes16* aOut);
 
 // User::LeaveIfError(TInt) from euser.dso, TRAPped: the shim's own self-check.
 // Returns aReason for a negative aReason, KErrNone otherwise.

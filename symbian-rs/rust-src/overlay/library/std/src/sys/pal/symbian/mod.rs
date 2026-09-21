@@ -12,6 +12,7 @@
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
+pub mod cleanup;
 pub mod des;
 
 use crate::io as std_io;

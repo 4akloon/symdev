@@ -28,13 +28,43 @@
 //! leave: no `TRAP` catches it and the thread dies. Every caller must know the
 //! destination has room *before* it calls, which is what `symbian-core` does.
 
-use crate::des::TDesC16;
+use crate::des::{KMASK_DES_LENGTH_16, TDesC16};
 
 /// The opaque `TDes16` a modifying member function is called on: passed as `this`, i.e.
 /// argument 0. Only ever seen behind a pointer.
 #[repr(C)]
 pub struct TDes16 {
     _private: [u8; 0],
+}
+
+/// Caller-owned storage a `TPtr16` is built into by euser's own constructor.
+///
+/// `sizeof(TPtr16) == 12` and `__alignof__(TPtr16) == 4`, measured by compiling
+/// `return sizeof(TPtr16);` with the recorded GCCE argv and reading the immediate
+/// (`movs r0, #12` / `movs r0, #4`). Nothing here writes a header word: euser builds
+/// the descriptor, exactly as [`crate::des8`] does for the 8-bit family, so the type
+/// nibble of a `TPtr16` is never guessed at.
+#[repr(C, align(4))]
+pub struct TPtr16Storage {
+    words: [u32; 3],
+}
+
+impl TPtr16Storage {
+    /// Zeroed storage, ready for euser's constructor to build a descriptor into.
+    pub const fn zeroed() -> Self {
+        Self { words: [0; 3] }
+    }
+
+    /// The `TDes16&` a filling export expects. A `TPtr16` is a `TDes16` is a `TDesC16`,
+    /// and all three begin at the header word.
+    pub const fn as_tdes16(&mut self) -> *mut TDes16 {
+        (self as *mut Self).cast()
+    }
+
+    /// The length in code units, from the header word's documented low 28 bits.
+    pub const fn length(&self) -> usize {
+        (self.words[0] & KMASK_DES_LENGTH_16) as usize
+    }
 }
 
 unsafe extern "C" {
@@ -59,4 +89,10 @@ unsafe extern "C" {
     /// `00000ec8 T _ZN6TDes163NumEx` — `TDes16::Num(TInt64)`: `AppendNum` after `Zero`.
     #[link_name = "_ZN6TDes163NumEx"]
     pub fn TDes16_Num(this: *mut TDes16, value: i64);
+
+    /// `00001008 T _ZN6TPtr16C1EPtii` — `TPtr16::TPtr16(TUint16* aBuf, TInt aLength,
+    /// TInt aMaxLength)`, euser.dso: a writable view over storage the caller owns,
+    /// built in place so that the descriptor header comes from euser.
+    #[link_name = "_ZN6TPtr16C1EPtii"]
+    pub fn TPtr16_ctor(this: *mut TPtr16Storage, buf: *mut u16, length: i32, max_length: i32);
 }

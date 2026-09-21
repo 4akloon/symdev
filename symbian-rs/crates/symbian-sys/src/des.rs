@@ -21,6 +21,23 @@ pub struct TDesC16 {
     _private: [u8; 0],
 }
 
+/// `KMaskDesLength16` (`e32des16.h`): the low 28 bits of a descriptor's header word are
+/// its length in code units, and the top nibble is the type.
+pub const KMASK_DES_LENGTH_16: u32 = 0x0fff_ffff;
+
+unsafe extern "C" {
+    /// `00001c38 T _ZNK7TDesC163PtrEv` — `TDesC16::Ptr() const`: where the code units
+    /// are.
+    ///
+    /// It is an exported function and not a field read because the answer depends on
+    /// the type nibble — a `TPtrC16` keeps a pointer where a `TBufC16` keeps the units
+    /// themselves, and an `EBufCPtr` keeps neither. Calling euser is how this SDK reads
+    /// a descriptor it did not build, instead of assuming which of the five shapes it
+    /// is.
+    #[link_name = "_ZNK7TDesC163PtrEv"]
+    pub fn TDesC16_Ptr(this: *const TDesC16) -> *const u16;
+}
+
 impl<const N: usize> Lit16<N> {
     /// Builds the literal from ASCII bytes at compile time (`static HELLO: Lit16<5> =
     /// Lit16::ascii(b"Hello")`). Non-ASCII input is refused: the observed layout holds

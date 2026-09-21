@@ -209,6 +209,8 @@ fn main() -> std::io::Result<()> {
 
     // The step-77 gaps this slice closed: paths, directories, arguments, processes.
     platform::path_cases(&mut report);
+    platform::read_dir_cases(&mut report, DIR, "roundtrip.txt");
+    platform::args_and_env_cases(&mut report);
 
     fs::remove_file(PATH)?;
     report.check("remove_file", !fs::exists(PATH).unwrap_or(true));

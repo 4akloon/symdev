@@ -9,8 +9,11 @@
 //! That is also why there are no timestamps: `TEntry::iModified` is a `TTime` at an
 //! offset nobody has measured, so `modified`, `accessed` and `created` are
 //! `Unsupported` rather than a guess at a field.
+//!
+//! The same two words also come out of a directory listing, where the `TEntry` lives
+//! inside a `CDir` rather than in caller-owned storage; [`super::dir`] reads them there
+//! and builds a [`FileAttr`] with [`FileAttr::of_dir_entry`].
 
-use crate::fmt;
 use crate::io;
 use crate::sys::time::SystemTime;
 use crate::sys::unsupported;
@@ -38,6 +41,12 @@ impl FileAttr {
     /// is a file, because a directory cannot be opened as one.
     pub(super) fn of_open_file(size: u64) -> Self {
         FileAttr { att: 0, size }
+    }
+
+    /// The same two words, read out of a `TEntry` inside the `CDir` a directory listing
+    /// is, so that `DirEntry::metadata` costs no second call to the file server.
+    pub(super) fn of_dir_entry(att: u32, size: u64) -> Self {
+        FileAttr { att, size }
     }
 
     pub fn size(&self) -> u64 {
@@ -116,41 +125,3 @@ impl FileTimes {
     pub fn set_modified(&mut self, _t: SystemTime) {}
 }
 
-/// `std::fs::ReadDir`: `RDir`'s `CDir` entry points leave and would need a C++ shim,
-/// which step 77 did not add, so the directory iterator does not exist rather than
-/// pretending an empty directory.
-pub struct ReadDir(pub(super) !);
-
-impl fmt::Debug for ReadDir {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0
-    }
-}
-
-impl Iterator for ReadDir {
-    type Item = io::Result<DirEntry>;
-
-    fn next(&mut self) -> Option<io::Result<DirEntry>> {
-        self.0
-    }
-}
-
-pub struct DirEntry(pub(super) !);
-
-impl DirEntry {
-    pub fn path(&self) -> crate::path::PathBuf {
-        self.0
-    }
-
-    pub fn file_name(&self) -> crate::ffi::OsString {
-        self.0
-    }
-
-    pub fn metadata(&self) -> io::Result<FileAttr> {
-        self.0
-    }
-
-    pub fn file_type(&self) -> io::Result<FileType> {
-        self.0
-    }
-}

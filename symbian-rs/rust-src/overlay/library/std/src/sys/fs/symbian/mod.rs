@@ -7,14 +7,14 @@
 //! # What is real, and what is `Unsupported`
 //!
 //! Real: opening (all six `OpenOptions` combinations), reading, writing, seeking,
-//! flushing, truncating, `metadata`, `exists`, `remove_file`, `rename`, `create_dir`
-//! and `create_dir_all`.
+//! flushing, truncating, `metadata`, `exists`, `remove_file`, `rename`, `create_dir`,
+//! `create_dir_all` and, since the std-gaps slice, `read_dir` — `RFs::GetDir` into a
+//! `CDir`, destroyed through the one shim its virtual destructor needs.
 //!
 //! `Unsupported`, and each for a stated reason rather than because it was skipped:
 //!
 //! | | why |
 //! |---|---|
-//! | `read_dir` | `RDir`/`CDir`'s `NewL`/`AddL` **leave**, so they need a C++ `TRAP` shim that step 77 did not add |
 //! | `symlink`, `read_link`, `hard_link` | Symbian 9.3 has neither, on any file system |
 //! | `set_permissions` | `RFs::SetAtt` has not been observed, so the SDK does not declare it |
 //! | `set_times` | no timestamp field of `TEntry` has had its offset measured |
@@ -30,10 +30,12 @@
 //! rather than papered over.
 
 mod attr;
+mod dir;
 mod file;
 mod session;
 
-pub use attr::{DirEntry, FileAttr, FilePermissions, FileTimes, FileType, ReadDir};
+pub use attr::{FileAttr, FilePermissions, FileTimes, FileType};
+pub use dir::{DirEntry, ReadDir};
 pub use crate::sys::fs::common::Dir;
 pub use file::{File, OpenOptions};
 
@@ -90,8 +92,9 @@ fn with_trailing_separator(path: &Path) -> PathBuf {
     owned
 }
 
-pub fn readdir(_path: &Path) -> io::Result<ReadDir> {
-    unsupported()
+/// `RFs::GetDir`: the whole directory, read into memory in one call. See [`dir`].
+pub fn readdir(path: &Path) -> io::Result<ReadDir> {
+    ReadDir::open(path)
 }
 
 pub fn unlink(path: &Path) -> io::Result<()> {
