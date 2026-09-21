@@ -6,3 +6,7 @@ target = "targets/arm-symbian-e32.json"
 [unstable]
 build-std = ["core", "alloc"]
 json-target-spec = true
+# `core`'s size/speed switch (RustBuild::BUILD_STD_FEATURES): the small integer
+# `Display` without the 200-byte two-digit table, the small sort, the short padding
+# path. 600-1450 bytes of .text and 200 of .rodata off every example that formats.
+build-std-features = ["optimize_for_size"]

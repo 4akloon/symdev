@@ -52,6 +52,9 @@ impl<'a> LibcallArchive<'a> {
             "--target".into(),
             arg(&self.sdk.target_spec()),
             "-Zbuild-std=core,alloc".into(),
+            // The same `core` switch the application is built with, so the two
+            // halves of one program agree on which `core` they saw.
+            "-Zbuild-std-features=optimize_for_size".into(),
             "-Zjson-target-spec".into(),
             "--target-dir".into(),
             "build/cargo".into(),

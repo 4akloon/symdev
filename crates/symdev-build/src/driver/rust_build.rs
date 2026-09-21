@@ -80,23 +80,43 @@ impl RustBuild {
         }
     }
 
+    /// `core`'s own size/speed switch, on for a `#![no_std]` application.
+    ///
+    /// It picks the small algorithm wherever `core` keeps two: integer `Display`
+    /// without the 200-byte two-digit lookup table, the small sort, the short
+    /// `str` padding path. Measured on the sixteen `no_std` examples it takes
+    /// 600–1 450 bytes of `.text` and exactly 200 bytes of `.rodata` off each one that
+    /// formats anything, and grows none of them; a 369 MHz ARM9 has bytes to spare
+    /// less than it has cycles, and nothing observable changes.
+    ///
+    /// Only the `no_std` path names it. Naming `-Zbuild-std-features` at all replaces
+    /// cargo's default set, which for a real `std` is `panic-unwind`, and the `std`
+    /// examples are not what this was measured on.
+    const BUILD_STD_FEATURES: &'static str = "-Zbuild-std-features=optimize_for_size";
+
     /// The one recorded cargo invocation, run in the project root. `-Zbuild-std` builds
     /// `core` and `alloc` for the target; `-Zjson-target-spec` is what this nightly's
     /// cargo demands for a `.json` target; `--target-dir build/cargo` keeps every output
     /// under `build/`. The scaffolded `.cargo/config.toml` repeats these so a hand
     /// `cargo build` matches.
     pub fn cargo_args(&self) -> Vec<String> {
-        vec![
+        let mut args = vec![
             arg(&self.cargo),
             "build".into(),
             "--release".into(),
             "--target".into(),
             arg(&self.sdk.target_spec()),
             self.build_std().into(),
+        ];
+        if !self.std {
+            args.push(Self::BUILD_STD_FEATURES.into());
+        }
+        args.extend([
             "-Zjson-target-spec".into(),
             "--target-dir".into(),
             "build/cargo".into(),
-        ]
+        ]);
+        args
     }
 
     /// The SDK's compiler-runtime archive: the `__atomic_*` family, `__sync_synchronize`,

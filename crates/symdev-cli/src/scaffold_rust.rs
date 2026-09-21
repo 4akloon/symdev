@@ -113,6 +113,9 @@ fn cargo_config(sdk: &RustSdk) -> String {
          \n\
          [unstable]\n\
          build-std = [\"core\", \"alloc\"]\n\
+         # `core`'s size/speed switch: the small integer `Display` (no 200-byte\n\
+         # two-digit table), the small sort, the short padding path.\n\
+         build-std-features = [\"optimize_for_size\"]\n\
          json-target-spec = true\n",
         sdk.target_spec().display()
     )

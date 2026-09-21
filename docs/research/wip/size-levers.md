@@ -80,3 +80,51 @@ names `__aeabi_uidiv` as the one reference into
 `__addsf3` 528, a second `memcpy` 432, `__mulsf3` 412, `__truncdfsf2` 324 … After the
 split, `nm` finds exactly two builtins left in the image: `u32_div_rem` (212) and
 `__udivsi3` (16) — 228 B instead of 9 516.
+
+### L3 — `opt-level = "z"` instead of `"s"` (REJECT, a trade)
+
+`symbian-rs/Cargo.toml`. Corpus total exe -1 849, but it is not a win everywhere:
+`alloc` +531, `ui-list` +305, `notes` +184, `ui` +160, `hello` +132 against
+`async` -1 052, `time` -477, `files` -419. A lever that grows five of sixteen is a
+trade; left at `"s"`.
+
+### L4 — `-Zbuild-std-features=optimize_for_size` (KEEP, big and uniform)
+
+`RustBuild::BUILD_STD_FEATURES` (`no_std` path only, because naming the flag replaces
+cargo's default feature set and the `std` examples' default is `panic-unwind`), the
+same line in `LibcallArchive::cargo_args`, in `symbian-rs/.cargo/config.toml` and in
+the scaffold's `.cargo/config.toml`.
+
+Every example that formats anything drops **600–1 450 B of `.text` and exactly 200 B of
+`.rodata`**; **none grows**. `hello` 3 187 -> 2 523 exe. The 200 B is `core`'s
+`DEC_DIGITS_LUT` two-digit table; the text is the small integer `Display`
+(`display_u32_small`), `usize Display::fmt` 908 -> 636, `str Display::fmt` 784 -> 400.
+
+**Cumulative L1+L2+L4 against the 4c5fc5e baseline: exe -18 878, text -23 028.**
+`hello` -21 %, `time` -34 %.
+
+### L5 — `-Zlocation-detail=none` (REJECT, zero)
+
+Verified the flag reaches rustc (`cargo build -v` prints it). **Zero bytes** on all
+sixteen. `#[panic_handler]` in `symbian-runtime` ignores its `&PanicInfo`, so with
+`panic = "abort"` and LTO the `Location` statics are already dead before this flag
+looks at them.
+
+### L6 — `-Zfmt-debug=none` (REJECT, the largest number in the audit, and a real loss)
+
+Corpus total **exe -19 427, text -17 536** — bigger than everything else together.
+It is rejected because it blanks `{:?}` output that is used: `Report::checked` in
+`symbian-std` writes the failure detail with `write!(detail, "{e:?}")`, so every
+`symdev test` failure would report an empty reason, and `async`/`query`/`time`/`notes`/
+`tls` format `{:?}` themselves. What it actually deletes is visible in `strings`:
+`SymbianError: Debug` prints `ErrorKind::name()`, and the whole `KErrNotSupported…`
+table (~1.2 kB of `.rodata`) is in every example that calls `Report::checked`.
+
+### L7 — `-Cpanic=immediate-abort` (a trade, left unapplied)
+
+Corpus total **exe -2 438, text -3 364**, and no example grows. It deletes the
+`core::panicking` stubs and the `Arguments` each panic site builds for a message
+nobody reads. The trade, in one sentence: a Rust panic then traps instead of reaching
+`#[panic_handler]`, so it no longer leaves through `User::Exit(-1)` and `symdev test`
+would see a kernel fault rather than an exit code — and the design note's intended end
+state is a `User::Panic` with a category, which this flag would put out of reach.
