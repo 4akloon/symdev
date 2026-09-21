@@ -59,6 +59,9 @@
 //! documentation before reaching for them, because every atomic operation on this
 //! device is a kernel call.
 //!
+//! [`thread_local!`](crate::thread_local) and [`thread::LocalKey`] are step 76: per-thread
+//! state over `UserSvr::DllTls`, one kernel call per access and no compiler support.
+//!
 //! [`test_report`] is the other half of step 71: how an example says whether it passed,
 //! in a file `symdev test --emulator` can read back off the emulated drive.
 #![no_std]
