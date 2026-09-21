@@ -8,15 +8,25 @@ use std::process::Command;
 
 use symdev_core::{Artifact, BuildBackend, Error, Project, RemotePath, Result};
 
-use super::{CompileIncludes, GcceBuild, LibcallArchive, arg, io, produced};
+use super::{CompileFlags, CompileIncludes, GcceBuild, LibcallArchive, arg, io, produced};
 use crate::required_capability::RequiredCapability;
+use crate::resources::SdkIncludeCaseFold;
 use crate::rust_sdk::RustSdk;
+use crate::ui_resources::UiResources;
 
 /// The C++-mangled `E32Main()` that `eexe.lib`'s startup calls. The reference to it comes
 /// from `usrt2_2.lib` in the `-( -)` group *after* the object position, so the Rust
 /// archive would not be searched for it; `-u` makes the linker pull the member that
 /// defines it (experiment 65a).
 pub const E32MAIN: &str = "_Z7E32Mainv";
+
+/// The symbol the Avkon shim imports from the Rust side (`#[symbian_std::main(gui)]`
+/// exports it). It needs a `-u` of its own: the shim archive is searched *after* the
+/// Rust archive, because that is the direction the `symrs_*` references usually run,
+/// and `ld` does not go back. Naming the vtable here makes the Rust archive's member
+/// be pulled on the first pass, so the shim's reference to it is already defined by
+/// the time the shim archive is reached.
+pub const APP_VTBL: &str = "symrs_app_vtbl";
 
 pub struct RustBuild {
     pub gcce: GcceBuild,
@@ -27,6 +37,10 @@ pub struct RustBuild {
     /// The manifest's `package.name`: the Cargo package, the archive `lib<name>.a`, and
     /// the E32 `build/<name>.exe`.
     pub name: String,
+    /// `[ui]`: present makes this an Avkon application — the `shims/s60` subclasses,
+    /// the five extra import libraries, and the `.rsc`/`_reg.rsc`/`.mif` a captioned
+    /// application needs. Absent, nothing of the UI is linked or generated.
+    pub ui: Option<UiResources>,
 }
 
 impl RustBuild {
@@ -91,10 +105,38 @@ impl RustBuild {
     /// The source directory is the shim directory, so `#include "symrs_shim.h"` finds
     /// its neighbour, and nothing of the user's project is on the include path — the
     /// shim belongs to the SDK.
-    pub fn shim_compile_args(&self, source: &Path, obj: &Path) -> Result<Vec<String>> {
-        self.gcce.compile_args(
-            &self.sdk.shim_dir(),
-            &CompileIncludes::default(),
+    /// A GUI application's shim adds two things the console one has no use for: the
+    /// case-insensitive overlay of `epoc32/include`, without which `fbs.h`'s
+    /// `#include <FbsMessage.h>` stops the Avkon header chain on a case-sensitive
+    /// host, and `SYMRS_UID3`, the application's own UID3. The UID is generated onto
+    /// the compile line rather than written into a source, because the manifest
+    /// already holds it and two copies drift apart.
+    pub fn shim_compile_args(
+        &self,
+        source: &Path,
+        obj: &Path,
+        casefold: Option<&Path>,
+    ) -> Result<Vec<String>> {
+        let includes = CompileIncludes {
+            system: casefold.map(Path::to_path_buf).into_iter().collect(),
+            ..CompileIncludes::default()
+        };
+        let flags = CompileFlags {
+            macros: match self.ui {
+                Some(_) => vec![format!("SYMRS_UID3=0x{:08x}", self.gcce.uid3)],
+                None => Vec::new(),
+            },
+            option: Vec::new(),
+        };
+        let dir = match source.parent() {
+            Some(dir) => dir.to_path_buf(),
+            None => self.sdk.shim_dir(),
+        };
+        self.gcce.compile_args_for(
+            &self.gcce.exe_module(),
+            &flags,
+            &dir,
+            &includes,
             source,
             obj,
         )
@@ -122,16 +164,28 @@ impl RustBuild {
 
     /// Compiles every SDK shim source into `build/shims/` and archives the objects.
     fn build_shims(&self, project: &Project, cwd: &RemotePath) -> Result<Option<PathBuf>> {
-        let sources = self.sdk.shim_sources()?;
+        let sources = self.sdk.shim_sources(self.ui.is_some())?;
         if sources.is_empty() {
             return Ok(None);
         }
+        let build_dir = project.root.join("build");
+        // Only the Avkon headers need it, so a console application does not pay for
+        // building the overlay at all.
+        let casefold = match self.ui {
+            Some(_) => Some(SdkIncludeCaseFold::ensure(
+                &self.gcce.tools.epocroot.join("epoc32/include"),
+                &build_dir.join("sdk-include-casefold"),
+            )?),
+            None => None,
+        };
         std::fs::create_dir_all(project.root.join("build/shims")).map_err(io)?;
         let mut objects = Vec::new();
         for source in sources {
             let obj = self.shim_object(project, &source);
-            self.gcce
-                .run_tool(&self.shim_compile_args(&source, &obj)?, cwd)?;
+            self.gcce.run_tool(
+                &self.shim_compile_args(&source, &obj, casefold.as_deref())?,
+                cwd,
+            )?;
             objects.push(obj);
         }
         let archive = self.shim_archive(project);
@@ -171,6 +225,13 @@ impl RustBuild {
     /// `symrs_*` references come from and an archive is searched only for what is
     /// undefined at the point it appears. The euser and drtaeabi lines stay in front of
     /// the Rust archive. [`RustSdk::LIBRARIES`] adds the DSOs the SDK's own code imports.
+    ///
+    /// A GUI application changes two things and disturbs nothing else. It names
+    /// [`APP_VTBL`] with a `-u` as well, because the reference to it runs the other
+    /// way — from the shim archive back into the Rust one, which `ld` has already
+    /// passed. And it puts [`RustSdk::UI_LIBRARIES`] on, through the recorded line's
+    /// own `libraries` slot, so they sit after the runtime DSOs exactly where an
+    /// MMP's `LIBRARY` list would have put them.
     pub fn link_args(
         &self,
         archive: &Path,
@@ -179,11 +240,21 @@ impl RustBuild {
         elf: &Path,
         map: &Path,
     ) -> Vec<String> {
-        let mut args = self.gcce.link_args(&self.name, archive, elf, map, &[]);
+        let ui_libraries: Vec<String> = match self.ui {
+            Some(_) => RustSdk::UI_LIBRARIES.iter().map(|l| (*l).into()).collect(),
+            None => Vec::new(),
+        };
+        let mut args = self
+            .gcce
+            .link_args(&self.name, archive, elf, map, &ui_libraries);
         let after = args
             .windows(2)
             .position(|w| w[0] == "-u" && w[1] == "_E32Startup")
             .map_or(args.len(), |i| i + 2);
+        if self.ui.is_some() {
+            args.insert(after, APP_VTBL.into());
+            args.insert(after, "-u".into());
+        }
         args.insert(after, E32MAIN.into());
         args.insert(after, "-u".into());
         args.insert(after, "--gc-sections".into());
@@ -294,6 +365,8 @@ impl BuildBackend for RustBuild {
         let out = build_dir.join(format!("{}.exe", self.name));
         self.gcce
             .run_elf2e32(&self.gcce.elf2e32_args(&self.name, &elf, &out), &cwd)?;
-        Ok(vec![Artifact::exe(out)])
+        let mut artifacts = vec![Artifact::exe(out)];
+        artifacts.extend(self.build_ui(&build_dir)?);
+        Ok(artifacts)
     }
 }

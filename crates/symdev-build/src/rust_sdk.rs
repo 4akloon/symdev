@@ -38,6 +38,25 @@ impl RustSdk {
     pub const LIBRARIES: &'static [&'static str] =
         &["efsrv.dso", "bafl.dso", "esock.dso", "insock.dso"];
 
+    /// What the Avkon shim of `shims/s60` imports, and **only** a project with a
+    /// `[ui]` section gets them. The list is the six a minimal Avkon application
+    /// needs, counted per `NEEDED` DSO on `examples/gui`'s ELF (experiment 76): cone
+    /// 67 imports, eikcore 58, avkon 38, apparc 6, euser 11, gdi 1. `euser.dso` is
+    /// already on the recorded link line, so five are named here.
+    ///
+    /// `ws32.dso` is deliberately absent: every drawing entry point is a pure virtual
+    /// of `CGraphicsContext`, so painting through the gc the framework hands over
+    /// costs no window-server import at all. `gdi.dso` is here for the one symbol
+    /// `CFont::AscentInPixels` — which this shim does not yet call, so `--as-needed`
+    /// would drop it; it stays named because the moment text is measured it is back.
+    pub const UI_LIBRARIES: &'static [&'static str] = &[
+        "apparc.dso",
+        "cone.dso",
+        "eikcore.dso",
+        "avkon.dso",
+        "gdi.dso",
+    ];
+
     pub fn from_env() -> Result<Self> {
         let root = match std::env::var_os("SYMDEV_RUST_SDK") {
             Some(v) if !v.is_empty() => PathBuf::from(v),
@@ -100,19 +119,32 @@ impl RustSdk {
 
     /// `shims/common`: the C++ the SDK compiles into every Rust application so that a
     /// leaving Symbian call is `TRAP`ped before it can reach a Rust frame (design spec
-    /// §7, step 70). `shims/s60` is reserved for the Avkon subclasses of step 75, which
-    /// need their own libraries and cannot be forced onto a console application.
+    /// §7, step 70).
     pub fn shim_dir(&self) -> PathBuf {
         self.root.join("shims").join("common")
     }
 
-    /// Every `.cpp` under [`Self::shim_dir`], sorted, so the object list and therefore
-    /// the link line are the same on every host.
+    /// `shims/s60`: the four Avkon subclasses, compiled **only** for a project whose
+    /// manifest has a `[ui]` section. They bring five more import libraries and an
+    /// `E32Main` of their own, neither of which a console application may be given.
+    pub fn ui_shim_dir(&self) -> PathBuf {
+        self.root.join("shims").join("s60")
+    }
+
+    /// Every `.cpp` of the shim, sorted, so the object list and therefore the link
+    /// line are the same on every host. `ui` adds [`Self::ui_shim_dir`].
     ///
     /// The application names none of them: the shim is part of the SDK.
-    pub fn shim_sources(&self) -> Result<Vec<PathBuf>> {
-        let dir = self.shim_dir();
-        let mut sources: Vec<PathBuf> = std::fs::read_dir(&dir)
+    pub fn shim_sources(&self, ui: bool) -> Result<Vec<PathBuf>> {
+        let mut sources = self.sources_in(&self.shim_dir())?;
+        if ui {
+            sources.extend(self.sources_in(&self.ui_shim_dir())?);
+        }
+        Ok(sources)
+    }
+
+    fn sources_in(&self, dir: &Path) -> Result<Vec<PathBuf>> {
+        let mut sources: Vec<PathBuf> = std::fs::read_dir(dir)
             .map_err(|e| {
                 Error::Other(format!(
                     "Rust SDK at {} has no readable {} ({e}); the C++ shim is part of the SDK",

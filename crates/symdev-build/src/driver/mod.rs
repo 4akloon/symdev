@@ -21,13 +21,14 @@ mod resource;
 mod rust_build;
 mod source;
 mod tool;
+mod ui_build;
 
 pub use compile::{CompileFlags, CompileIncludes};
 pub use gcce_compat::GcceCompat;
 pub use language::SourceLanguage;
 pub use libcalls::LibcallArchive;
 pub use module::Module;
-pub use rust_build::{E32MAIN, RustBuild};
+pub use rust_build::{APP_VTBL, E32MAIN, RustBuild};
 
 pub struct GcceBuild {
     pub env: LocalEnv,
