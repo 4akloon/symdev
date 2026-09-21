@@ -115,6 +115,8 @@ cfg_select! {
 }
 
 pub use imp::{alloc, dealloc, realloc};
+#[cfg(target_os = "symbian")]
+pub use imp::serialise_across_threads;
 
 cfg_select! {
     any(target_os = "hermit", target_os = "solid_asp3", target_os = "uefi", target_os = "zkvm") => {

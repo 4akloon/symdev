@@ -196,14 +196,19 @@ pub struct RFastLock {
 }
 
 impl RFastLock {
-    /// An unopened lock. `RFastLock`'s own constructor is
-    /// `inline RFastLock() : iCount(0)` over `RHandleBase`'s `iHandle(0)`
-    /// (`e32cmn.inl` line 3158), so all-zero is exactly what C++ would build.
+    /// An unopened lock, as a value: see [`RSemaphore::NULL`].
+    ///
+    /// `RFastLock`'s own constructor is `inline RFastLock() : iCount(0)` over
+    /// `RHandleBase`'s `iHandle(0)` (`e32cmn.inl` line 3158), so all-zero is exactly
+    /// what C++ would build.
+    pub const NULL: Self = Self {
+        base: RHandleBase { handle: 0 },
+        count: 0,
+    };
+
+    /// An unopened lock.
     pub const fn null() -> Self {
-        Self {
-            base: RHandleBase { handle: 0 },
-            count: 0,
-        }
+        Self::NULL
     }
 }
 
