@@ -21,6 +21,10 @@ Task: implement `symbian_std::thread::LocalKey` + `thread_local!` on Symbian's T
 
 ## Decisions
 
+- Design shipped: **one** platform slot (`SYMBIAN_STD_TLS_HANDLE = 0x73596D64`) per thread holding a `Box<Table>`; the table is a `Vec<Entry{key,value,drop}>` keyed by the `LocalKey` static's own **address** (no registration, no atomic). Access = 1 kernel call + linear scan. One slot rather than one per key because (a) the kernel will not enumerate a thread's slots, so destructors need our own list, and (b) the handle is unobserved on hardware, so one assumption beats N.
+- Destructors: `table::destroy()` runs at the end of every `spawn`ed thread's trampoline, newest first; `thread::drop_thread_locals()` is public for the main thread, which has no hook below symbian-std (a `no_mangle` hook would be a `--gc-sections` root and bloat every program — the exp 80 lesson).
+- `with` ends the process with `User::Panic(symrs-tls, reason)`; `try_with` is std's recoverable shape. `AccessError::reason()` is an e32err code: -4 kernel refused, -14 re-entrant initialiser, -13 already destroyed.
+
 ## Dead ends
 
 ## Next step
