@@ -79,3 +79,51 @@ invocation aborted before `--install` with `Failed to remove package.` — so no
 installed at all. The registry is a directory per UID under `sys/install/sisregistry` on
 the **system** drive: 274 entries on `c` and none on `e`, although packages install to E.
 
+
+## The default log filter hides the two things you need when a guest thread dies (2026-09-21)
+
+`~/.local/share/EKA2L1/config.yml` carries
+
+```yaml
+log-filter: "*:trace Emulated.Stdout:off Service.EFsrv:warn Service.Cenrep:off Kernel:Warn Service.Track:error"
+```
+
+and both `Kernel:Warn` and `Service.EFsrv:warn` matter. A guest panic is logged at
+**`LOG_TRACE(KERNEL, "Thread {} panicked with category: {} and exit code: {}")`**
+(`kernel/src/thread.cpp:542`), and every file-server request name is a `SERVICE_EFSRV`
+trace. At the default filter a panicked thread produces **no output at all** — which
+reads exactly like experiment 76's "a C++ exception reached a Rust frame and the process
+died with no diagnostic", and is not that.
+
+Widening it for a diagnosis, and putting it back afterwards:
+
+```sh
+cp ~/.local/share/EKA2L1/config.yml /tmp/config.yml.bak
+sed -i 's|^log-filter: .*|log-filter: "*:trace Emulated.Stdout:off Service.Cenrep:off"|' \
+    ~/.local/share/EKA2L1/config.yml
+# … run …
+cp /tmp/config.yml.bak ~/.local/share/EKA2L1/config.yml
+```
+
+That is how experiment 90 found `E32USER-CBase 69` (`EClnNoTrapHandlerInstalled`) behind
+what looked like a silent death in `std::fs::read_dir`, in about a minute rather than the
+three hours the wrong hypothesis had already cost.
+
+## Two behaviours of its file server and loader that differ from Symbian's (2026-09-21)
+
+Measured in experiment 90; both are the emulator's, not the platform's.
+
+- **`mkdir` answers `KErrAlreadyExists` when the *parent* of the new directory is
+  missing**, where the real file server answers `KErrPathNotFound`
+  (`services/src/fs/fs.cpp:778`, with the comment "if it's parent does not exist or the
+  sub-directory already created, this should returns"). `std`'s `create_dir_all` reads
+  that as "already there" and stops, so more than one missing level silently creates
+  nothing. One level at a time works.
+- **A file's size reads back as 0** from both `RFs::Entry` and a directory listing until
+  `RFile::Flush`. Closing the handle is not enough.
+- **`RProcess::Create` cannot spawn an image that has a writable data section.** The
+  loader succeeds, the emulator gives the child an extra `anonymous` chunk of 0x1000
+  bytes at 0x400000 for its data, and the child dies with `KERN-EXEC 3` reading its own
+  heap base + 0xA4 before it reaches `main`. Every `std` image tried does this and no
+  `no_std` one does — the emulator logs the latter's `runtime data` as `0x0`. The parent
+  then waits forever on a `RProcess::Logon` that never completes.
