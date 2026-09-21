@@ -29,3 +29,4 @@ Task: find the best design that ties a menu item's command number in the generat
 - `libuidemo.d` dep-info lists `examples/ui/symdev.toml` (the include_str tracker); archive does not contain the manifest text ("More bars" absent).
 - Next: symdev build + symdev test --emulator on examples/ui; write docs/research/command-id-design.md.
 - `symdev build` (release CLI, env from the brief) on examples/ui: OK in 16.1 s wall, `.rss` has the four MENU_ITEMs with 0x41e0/0x7612/0x73c0/0x4736; `uidemo.exe` 12 844 bytes = experiment 91's corpus size (cmp result recorded in the note).
+- Note drafted and committed (`docs/research/command-id-design.md`). `symdev package` needs SYMDEV_SIGN_PASSWORD (≥4 chars); with no existing `.cer/.key` a fresh self-signed pair is generated, so a throwaway password in a subshell is fine for the emulator run (never for cargo test).
