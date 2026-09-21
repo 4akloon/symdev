@@ -106,6 +106,7 @@ extern crate std;
 pub mod fs;
 #[cfg(not(feature = "std"))]
 pub mod io;
+pub mod locale;
 #[cfg(not(feature = "std"))]
 pub mod net;
 pub mod prelude;

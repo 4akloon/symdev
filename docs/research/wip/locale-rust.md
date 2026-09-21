@@ -42,3 +42,11 @@ must be caught at build time. Language read once from `User::Language()`.
   application that never asks never calls euser, and the single-language case folds away.
 - D3: fallback chain = exact code → dialect base (suffix stripped, read off the enum's names) →
   the declared default language.
+- Built: `symbian-sys::euser::User_Language`, `symbian_core::locale::{Language, lang}` (108 named
+  consts in `lang.rs`, generated from the header, compile-time `const _` assertions instead of
+  `#[test]` — `symbian-rs` builds for `arm-symbian-e32` and has no test harness),
+  `symbian_std::locale!` (a `macro_rules!`, in `crates/symbian-std/src/locale.rs`).
+- `cargo build --release -p localedemo --offline` clean first try; clippy clean.
+
+## Next step
+- `symdev build`/`package`/`run` the example in EKA2L1 and read `User::Language()`.

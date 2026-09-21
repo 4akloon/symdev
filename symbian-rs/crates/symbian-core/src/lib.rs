@@ -6,6 +6,8 @@
 //!   assumed; the observation table is in that module's documentation.
 //! - [`des8`] is as much of the 8-bit descriptor family as the file API needs, built
 //!   by euser's own constructors because its type nibbles were never observed.
+//! - [`locale`] is the device's UI language and the rule for picking a translation
+//!   with it.
 //! - [`fs`] is the file system — the session, an open file and a directory entry — and
 //!   the place where both halves of the shim rule appear: every `RFs` and `RFile`
 //!   member is called directly because none of them can leave, while
@@ -26,6 +28,7 @@ extern crate alloc;
 pub mod des;
 pub mod des8;
 pub mod fs;
+pub mod locale;
 pub mod net;
 pub mod shim;
 pub mod time;
@@ -39,6 +42,7 @@ pub use des8::{DesC8, Ptr8, PtrC8};
 pub use error::{Result, SymbianError, check};
 pub use error_kind::ErrorKind;
 pub use fs::{Entry, File, FileServer};
+pub use locale::Language;
 
 /// The layouts the descriptor types must keep, checked at compile time against what the
 /// C++ probe measured on the device (see the `des` module documentation).

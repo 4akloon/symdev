@@ -21,6 +21,7 @@ members = [
     "crates/symbian-macros",
     "examples/async",
     "examples/hello",
+    "examples/locale",
     "examples/hello-raw",
     "examples/alloc",
     "examples/shim",

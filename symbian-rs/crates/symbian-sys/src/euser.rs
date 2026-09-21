@@ -48,6 +48,16 @@ unsafe extern "C" {
     #[link_name = "_ZN4User4FreeEPv"]
     pub fn User_Free(cell: *mut u8);
 
+    /// `00000a54 T _ZN4User8LanguageEv` — `User::Language()`, declared
+    /// `IMPORT_C static TLanguage Language();` at `e32std.h` line 4531.
+    ///
+    /// `TLanguage` is the enum of `e32const.h` line 1439 (`ELangTest = 0`,
+    /// `ELangEnglish = 1`, … `ELangNone = 0xFFFF`). It is a plain C enum, and the
+    /// target JSON's `c-enum-min-bits: 32` says it comes back in r0 as a 32-bit value;
+    /// the SDK's own comment on `ELangNone` caps the range at 1023 languages.
+    #[link_name = "_ZN4User8LanguageEv"]
+    pub fn User_Language() -> i32;
+
     /// `00000a78 T _ZN4User9LockedIncERi` — `User::LockedInc(TInt&)`, declared in
     /// `e32std.h` line 4519 under the comment `// Atomic operations`.
     ///
