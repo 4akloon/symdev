@@ -10,11 +10,18 @@
 //! [ui]
 //! kind = "avkon"
 //! caption = "Notes"
-//! short_caption = "Notes"   # optional; defaults to `caption`
-//! softkeys = "exit"         # optional; defaults to "exit"
+//! short_caption = "Notes"      # optional; defaults to `caption`
+//! softkeys = "options-exit"    # optional; "options-exit" when there is a menu
+//! left_softkey = "Options"     # optional; the label only, never the command
+//! right_softkey = "Exit"       # optional
+//!
+//! [[ui.menu]]
+//! id = "new"                   # the word the Rust source matches with Command::named
+//! label = "New note"
 //! ```
 use serde::Deserialize;
 
+use crate::command_id::CommandId;
 use crate::error::{Error, Result};
 
 /// A GUI application, as `[ui]` declares it.
@@ -26,6 +33,11 @@ pub struct UiApp {
     /// `short_caption`, for the places S60 has less room. Defaults to `caption`.
     pub short_caption: String,
     pub softkeys: Softkeys,
+    /// The label on the left softkey, which is also the menu title.
+    pub left_softkey: String,
+    pub right_softkey: String,
+    /// The Options menu, in the order it is shown. Empty means no menu bar.
+    pub menu: Vec<MenuItem>,
 }
 
 /// Which application framework. There is one, and naming it is what leaves room for a
@@ -37,24 +49,31 @@ pub enum UiKind {
     Avkon,
 }
 
-/// The button group the `.rss`'s `EIK_APP_INFO` names.
+/// Which pair of buttons the generated `CBA` carries.
 ///
-/// Only the one Avkon resource `examples/gui` is built against has been observed
-/// working end to end, so it is the only value: `R_AVKON_SOFTKEYS_OPTIONS_EXIT` needs
-/// a menu bar this step does not generate, and a guess is not acceptable.
+/// The button *group* is generated into the application's own `.rss` rather than named
+/// from Avkon's, so that the commands it sends are ones symdev chose — see
+/// `UiResources::app_rss`. What these two values choose is the command on the **left**
+/// button, and only that: `Exit` leaves it empty, `OptionsExit` makes it
+/// `EAknSoftkeyOptions`, which is the command the framework itself watches for in
+/// order to open the menu bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub enum Softkeys {
     #[serde(rename = "exit")]
     Exit,
+    #[serde(rename = "options-exit")]
+    OptionsExit,
 }
 
-impl Softkeys {
-    /// The Avkon resource identifier `cba` is set to.
-    pub fn resource(self) -> &'static str {
-        match self {
-            Self::Exit => "R_AVKON_SOFTKEYS_EXIT",
-        }
-    }
+/// One line of the Options menu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MenuItem {
+    /// The name the Rust source repeats in `Command::named`.
+    pub name: String,
+    /// What the person reads.
+    pub label: String,
+    /// What `HandleCommandL` is handed, derived from [`MenuItem::name`].
+    pub command: CommandId,
 }
 
 impl UiApp {
@@ -64,13 +83,66 @@ impl UiApp {
         };
         let caption = text(raw.caption, "ui.caption")?.unwrap_or_else(|| package.to_string());
         let short_caption = text(raw.short_caption, "ui.short_caption")?.unwrap_or(caption.clone());
+        let menu = menu(raw.menu)?;
+        // A menu with no way to open it is dead weight, and an Options softkey with no
+        // menu bar is worse than dead: the framework reaches for the menu bar the
+        // moment the key is pressed and the application dies with an access violation
+        // (observed in EKA2L1, experiment 91). So the default follows the menu, and
+        // the contradiction is refused rather than shipped.
+        let softkeys = raw.softkeys.unwrap_or(if menu.is_empty() {
+            Softkeys::Exit
+        } else {
+            Softkeys::OptionsExit
+        });
+        if softkeys == Softkeys::OptionsExit && menu.is_empty() {
+            return Err(Error::Invalid(
+                "ui.softkeys = \"options-exit\" needs at least one [[ui.menu]] item: \
+                 the left softkey opens the menu bar, and there would be none"
+                    .into(),
+            ));
+        }
         Ok(Some(Self {
             kind: raw.kind,
             caption,
             short_caption,
-            softkeys: raw.softkeys.unwrap_or(Softkeys::Exit),
+            softkeys,
+            left_softkey: text(raw.left_softkey, "ui.left_softkey")?
+                .unwrap_or_else(|| "Options".into()),
+            right_softkey: text(raw.right_softkey, "ui.right_softkey")?
+                .unwrap_or_else(|| "Exit".into()),
+            menu,
         }))
     }
+}
+
+/// The menu, with the two things that make one useless caught here rather than in the
+/// emulator: two items a person cannot tell apart, and two names that happen to hash
+/// to one command, which would silently join two lines into one.
+fn menu(raw: Option<Vec<RawMenuItem>>) -> Result<Vec<MenuItem>> {
+    let mut items: Vec<MenuItem> = Vec::new();
+    for entry in raw.unwrap_or_default() {
+        let name = required(entry.id, "ui.menu.id")?;
+        let label = required(entry.label, "ui.menu.label")?;
+        let command = CommandId::of(&name);
+        if let Some(clash) = items.iter().find(|i| i.name == name) {
+            return Err(Error::Invalid(format!(
+                "ui.menu has two items named {:?} ({:?} and {:?})",
+                name, clash.label, label
+            )));
+        }
+        if let Some(clash) = items.iter().find(|i| i.command == command) {
+            return Err(Error::Invalid(format!(
+                "ui.menu ids {:?} and {:?} both become command {command}; rename one",
+                clash.name, name
+            )));
+        }
+        items.push(MenuItem {
+            name,
+            label,
+            command,
+        });
+    }
+    Ok(items)
 }
 
 /// A caption is shown to a person, so it may hold anything but nothing: an empty one
@@ -84,6 +156,10 @@ fn text(value: Option<String>, field: &str) -> Result<Option<String>> {
     }
 }
 
+fn required(value: Option<String>, field: &str) -> Result<String> {
+    text(value, field)?.ok_or_else(|| Error::Invalid(format!("{field} is required")))
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawUi {
@@ -91,6 +167,16 @@ pub(crate) struct RawUi {
     pub(crate) caption: Option<String>,
     pub(crate) short_caption: Option<String>,
     pub(crate) softkeys: Option<Softkeys>,
+    pub(crate) left_softkey: Option<String>,
+    pub(crate) right_softkey: Option<String>,
+    pub(crate) menu: Option<Vec<RawMenuItem>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RawMenuItem {
+    pub(crate) id: Option<String>,
+    pub(crate) label: Option<String>,
 }
 
 #[cfg(test)]

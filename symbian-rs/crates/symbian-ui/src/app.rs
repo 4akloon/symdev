@@ -8,6 +8,7 @@
 
 use symbian_core::Result;
 
+use crate::command::Command;
 use crate::event::{KeyEvent, KeyResponse};
 use crate::gc::Gc;
 use crate::geom::Rect;
@@ -57,9 +58,18 @@ pub trait App: Sized {
         KeyResponse::NotConsumed
     }
 
-    /// A command from a softkey or a menu (`key::command`). Exit is handled by the
-    /// framework itself and never arrives here.
-    fn command(&mut self, command: i32, ui: &Ui) -> Result<()> {
+    /// An item of the Options menu, named by the word `[[ui.menu]] id` gave it.
+    ///
+    /// `symdev.toml` declares the menu, because it is a compiled resource that has to
+    /// exist before any Rust runs; this is where it is acted on. Match with
+    /// [`Command::named`] or [`Command::is`] and the word is the only thing written
+    /// twice.
+    ///
+    /// Two commands never arrive: the right softkey's [`Command::EXIT`], which the
+    /// shim acts on itself, and [`Command::OPTIONS`], which the framework consumes to
+    /// open the menu. An error here is turned into a leave **after** this call has
+    /// returned.
+    fn command(&mut self, command: Command, ui: &Ui) -> Result<()> {
         let (_, _) = (command, ui);
         Ok(())
     }

@@ -17,6 +17,7 @@ use symbian_core::ErrorKind;
 
 use crate::abi::{AppVtbl, Host, RawKeyEvent, RawRect};
 use crate::app::App;
+use crate::command::Command;
 use crate::event::{KeyEvent, KeyResponse};
 use crate::gc::Gc;
 use crate::geom::Rect;
@@ -127,7 +128,7 @@ extern "C" fn command<A: App>(app: *mut c_void, command: i32) -> i32 {
     let Some(ui) = state.ui.as_ref() else {
         return 0;
     };
-    match state.app.command(command, ui) {
+    match state.app.command(Command::from_raw(command), ui) {
         Ok(()) => 0,
         Err(e) => e.code(),
     }

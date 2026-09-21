@@ -21,7 +21,25 @@ icon = "gfx/uidemo.svg"
 kind = "avkon"
 caption = "Rust bars"
 short_caption = "Bars"
-softkeys = "exit"
+
+# Each item's `id` is the word the Rust source repeats in `Command::named`; the number
+# behind it is derived from that word and appears in neither place. A menu turns the
+# left softkey into Options on its own.
+[[ui.menu]]
+id = "more"
+label = "More bars"
+
+[[ui.menu]]
+id = "fewer"
+label = "Fewer bars"
+
+[[ui.menu]]
+id = "reset"
+label = "Reset"
+
+[[ui.menu]]
+id = "quit"
+label = "Exit"
 
 [signing]
 mode = "self-signed"

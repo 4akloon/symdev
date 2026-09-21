@@ -4,10 +4,10 @@
 //! (experiment 76), not recalled. `ENonCharacterKeyBase = 0xf800` and every `EKey*`
 //! below is `0xf800 + n`.
 //!
-//! **Write a test against the arrows, the selection key and digits.** F1/F2 are
-//! delivered to the guest and drive a ROM application's softkeys, but do nothing in an
-//! application built here — unexplained, recorded as unknown in
-//! [`eka2l1-input.md`](../../../../docs/research/eka2l1-input.md).
+//! A **softkey** does not arrive here. The button group container sits above this
+//! view on the control stack (`ECoeStackPriorityCba` = 60 against the view's 0), turns
+//! `EStdKeyDevice0`/`Device1` into a command and consumes the key, so the left and
+//! right softkeys reach [`crate::App::command`] and never [`crate::App::key`].
 #![forbid(unsafe_code)]
 
 use crate::abi::RawKeyEvent;
@@ -134,16 +134,4 @@ pub mod scan {
     pub const YES: i32 = 0xc4;
     /// `EStdKeyNo`.
     pub const NO: i32 = 0xc5;
-}
-
-/// Commands an Avkon application may be handed by `HandleCommandL`.
-pub mod command {
-    /// `EEikCmdExit` (`eikon.hrh`). Handled by the shim itself, never forwarded.
-    pub const EXIT: i32 = 0x100;
-    /// `EAknSoftkeyOptions` (`avkon.hrh`).
-    pub const SOFTKEY_OPTIONS: i32 = 3000;
-    /// `EAknSoftkeyBack` (`avkon.hrh`).
-    pub const SOFTKEY_BACK: i32 = 3001;
-    /// `EAknSoftkeyExit` (`avkon.hrh`). Handled by the shim itself, never forwarded.
-    pub const SOFTKEY_EXIT: i32 = 3002;
 }

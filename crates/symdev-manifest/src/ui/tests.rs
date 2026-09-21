@@ -1,6 +1,14 @@
 //! What `[ui]` accepts, what it defaults and what it refuses.
 use crate::tests::{HELLO, reject};
-use crate::{Softkeys, UiKind, parse};
+use crate::{CommandId, Softkeys, UiKind, parse};
+
+/// A `[ui]` with one menu item, which is what turns the Options softkey on.
+fn with_menu(extra: &str) -> String {
+    format!(
+        "{HELLO}\n[ui]\nkind = \"avkon\"\n{extra}\n\
+         [[ui.menu]]\nid = \"more\"\nlabel = \"More bars\"\n"
+    )
+}
 
 #[test]
 fn ui_section_is_absent_for_a_console_project() {
@@ -14,8 +22,9 @@ fn ui_section_defaults_the_captions_to_the_package_name() {
     assert_eq!(ui.kind, UiKind::Avkon);
     assert_eq!(ui.caption, "hello");
     assert_eq!(ui.short_caption, "hello");
-    assert_eq!(ui.softkeys, Softkeys::Exit);
-    assert_eq!(ui.softkeys.resource(), "R_AVKON_SOFTKEYS_EXIT");
+    assert_eq!(ui.left_softkey, "Options");
+    assert_eq!(ui.right_softkey, "Exit");
+    assert!(ui.menu.is_empty());
 }
 
 #[test]
@@ -28,18 +37,73 @@ fn ui_short_caption_falls_back_to_the_caption() {
     assert_eq!(parse(&src).unwrap().ui.unwrap().short_caption, "Bars");
 }
 
-/// `softkeys = "options-exit"` would need a menu bar this step does not generate, and
-/// a `[ui]` with no `kind` would leave the framework unnamed. Both are refused rather
-/// than guessed at.
+/// No menu means nothing to open, so the left softkey stays empty; a menu means the
+/// opposite. Neither has to be written down.
 #[test]
-fn ui_rejects_an_empty_caption_an_unknown_kind_and_unobserved_softkeys() {
+fn the_softkeys_follow_the_menu() {
+    let without = format!("{HELLO}\n[ui]\nkind = \"avkon\"\n");
+    assert_eq!(
+        parse(&without).unwrap().ui.unwrap().softkeys,
+        Softkeys::Exit
+    );
+    assert_eq!(
+        parse(&with_menu("")).unwrap().ui.unwrap().softkeys,
+        Softkeys::OptionsExit
+    );
+}
+
+#[test]
+fn a_menu_item_carries_the_command_its_name_hashes_to() {
+    let ui = parse(&with_menu("")).unwrap().ui.unwrap();
+    assert_eq!(ui.menu.len(), 1);
+    assert_eq!(ui.menu[0].name, "more");
+    assert_eq!(ui.menu[0].label, "More bars");
+    assert_eq!(ui.menu[0].command, CommandId::of("more"));
+}
+
+#[test]
+fn the_softkey_labels_can_be_replaced() {
+    let ui = parse(&with_menu(
+        "left_softkey = \"Меню\"\nright_softkey = \"Вихід\"",
+    ))
+    .unwrap()
+    .ui
+    .unwrap();
+    assert_eq!(ui.left_softkey, "Меню");
+    assert_eq!(ui.right_softkey, "Вихід");
+}
+
+/// `options-exit` with no menu is the one combination that does not merely look
+/// wrong: the framework dereferences the menu bar the instant the left softkey is
+/// pressed and the application dies with an access violation (experiment 91).
+#[test]
+fn ui_rejects_the_options_softkey_without_a_menu() {
+    reject(&format!(
+        "{HELLO}\n[ui]\nkind = \"avkon\"\nsoftkeys = \"options-exit\"\n"
+    ));
+}
+
+#[test]
+fn ui_rejects_a_menu_item_with_no_name_no_label_or_a_repeated_name() {
+    reject(&format!(
+        "{HELLO}\n[ui]\nkind = \"avkon\"\n[[ui.menu]]\nlabel = \"More\"\n"
+    ));
+    reject(&format!(
+        "{HELLO}\n[ui]\nkind = \"avkon\"\n[[ui.menu]]\nid = \"more\"\n"
+    ));
+    reject(&format!(
+        "{HELLO}\n[ui]\nkind = \"avkon\"\n\
+         [[ui.menu]]\nid = \"more\"\nlabel = \"More\"\n\
+         [[ui.menu]]\nid = \"more\"\nlabel = \"Also more\"\n"
+    ));
+}
+
+#[test]
+fn ui_rejects_an_empty_caption_an_unknown_kind_and_a_missing_kind() {
     reject(&format!(
         "{HELLO}\n[ui]\nkind = \"avkon\"\ncaption = \" \"\n"
     ));
     reject(&format!("{HELLO}\n[ui]\nkind = \"qt\"\n"));
-    reject(&format!(
-        "{HELLO}\n[ui]\nkind = \"avkon\"\nsoftkeys = \"options-exit\"\n"
-    ));
     reject(&format!(
         "{HELLO}\n[ui]\nkind = \"avkon\"\nmenu = \"yes\"\n"
     ));

@@ -68,6 +68,7 @@ pub mod note;
 
 mod abi;
 mod app;
+mod command;
 mod event;
 mod gc;
 mod geom;
@@ -77,7 +78,8 @@ mod vtbl;
 
 pub use abi::AppVtbl;
 pub use app::App;
-pub use event::{EventCode, KeyEvent, KeyResponse, command, key, scan};
+pub use command::Command;
+pub use event::{EventCode, KeyEvent, KeyResponse, key, scan};
 pub use gc::{Gc, MAX_TEXT};
 pub use geom::{Point, Rect, Rgb};
 pub use ui::Ui;
@@ -86,7 +88,8 @@ pub use vtbl::start;
 /// Everything an [`App`] implementation names, in one `use`.
 pub mod prelude {
     pub use crate::app::App;
-    pub use crate::event::{EventCode, KeyEvent, KeyResponse, command, key, scan};
+    pub use crate::command::Command;
+    pub use crate::event::{EventCode, KeyEvent, KeyResponse, key, scan};
     pub use crate::gc::Gc;
     pub use crate::geom::{Point, Rect, Rgb};
     pub use crate::ui::Ui;

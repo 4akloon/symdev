@@ -6,11 +6,12 @@
 //! `shims/s60` and forward every virtual here, and `[ui]` in `symdev.toml` is what
 //! asks for them.
 //!
-//! The acceptance test is a pair of PID-bound screenshots with
-//! `docs/research/acceptance/emukey.py` between them: three bars before, five after
-//! two `Up` presses. It is written against the arrows and the selection key and never
-//! against a softkey, because F1/F2 reach the guest and still do nothing in an
-//! application built here (`docs/research/eka2l1-input.md`).
+//! The acceptance test is a run of PID-bound screenshots with
+//! `docs/research/acceptance/emukey.py` between them: three bars, then five after two
+//! `Up` presses, then the Options menu on the left softkey (F1), a `Down` and a
+//! `Return` to pick an item, and the right softkey (F2) to end the process. The menu
+//! itself is four `[[ui.menu]]` entries in `symdev.toml`; the words in them are the
+//! words `Command::named` repeats below.
 //!
 //! Beside the pixels, `construct` writes the usual result file, so
 //! `symdev test --emulator` also has something to say on every rebuild without a
@@ -29,12 +30,22 @@ use symbian_std::ui::prelude::*;
 /// width below without the last one leaving the screen.
 const MAX_BARS: u8 = 6;
 
+/// The four menu items, named exactly as `[[ui.menu]] id` names them in
+/// `symdev.toml`. The number behind each name is derived from the word by both sides
+/// and written down in neither.
+const MORE: Command = Command::named("more");
+const FEWER: Command = Command::named("fewer");
+const RESET: Command = Command::named("reset");
+const QUIT: Command = Command::named("quit");
+
 struct Bars {
     /// The one piece of state the drawing is derived from.
     bars: u8,
     /// How many keys this application has claimed, drawn so a screenshot says
     /// whether a key arrived even when the chart happens to look the same.
     keys: u32,
+    /// The same, for menu commands.
+    commands: u32,
     /// The view's area, as `size_changed` last reported it. The framework sizes the
     /// view while it is being built, so this is already set when `construct` runs —
     /// which is what lets the report below say how big the client area came out.
@@ -46,6 +57,7 @@ impl App for Bars {
         Self {
             bars: 3,
             keys: 0,
+            commands: 0,
             area: Rect::size(0, 0),
         }
     }
@@ -105,7 +117,29 @@ impl App for Bars {
         note.number(self.bars as u32);
         note.text(" keys=");
         note.number(self.keys);
+        note.text(" cmd=");
+        note.number(self.commands);
         gc.text(note.as_str(), Point::new(left, baseline + 24));
+    }
+
+    /// The Options menu. Only the softkeys and the menu reach this callback; the
+    /// right softkey's `Command::EXIT` never does, because the shim acts on it.
+    fn command(&mut self, command: Command, ui: &Ui) -> symbian_core::Result<()> {
+        match command {
+            MORE if self.bars < MAX_BARS => self.bars += 1,
+            FEWER if self.bars > 1 => self.bars -= 1,
+            RESET => self.bars = 3,
+            // A menu item may end the application itself, which is the same door the
+            // right softkey uses.
+            QUIT => {
+                ui.exit();
+                return Ok(());
+            }
+            _ => return Ok(()),
+        }
+        self.commands += 1;
+        ui.redraw();
+        Ok(())
     }
 
     fn key(&mut self, event: KeyEvent, ui: &Ui) -> KeyResponse {
