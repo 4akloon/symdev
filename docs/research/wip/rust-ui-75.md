@@ -41,6 +41,17 @@ subclasses forwarding virtuals to a Rust vtable, `crates/symbian-ui`, `#[main(gu
   bytes**, against experiment 76's 107 028 for a mixed C++/Rust UI probe. Eleven
   `NEEDED`: the six of the recorded line plus apparc, cone, eikcore, avkon, gdi.
   `uidemo.rsc` 140, `uidemo_reg.rsc` 91, `uidemo_aif.mif` 268.
+- **The acceptance criterion passed, first run.** `symdev build/package/run` on
+  `examples/ui`: the log has `Found app: uidemo, uid: 0xE0000687`, `Panic`/`KERN-EXEC`
+  count 0, and the screenshot shows three blue bars, the baseline and `bars=3 keys=0`
+  painted by the Rust `draw`. `emukey.py keys <pid> Up Up` then gives `bars=5 keys=2`
+  with five bars — **3 767 of 48 000 pixels of the client area changed**, bounding box
+  (63,68)-(152,185) inside it. So `OfferKeyEventL` → Rust `key` → `DrawDeferred` →
+  Rust `draw` all run. (Experiment 76's `uiprobe` never saw a key; this shim's control
+  stack does, and it is the same `AddToStackL(iView)` the C++ `examples/gui` uses.)
+- **The unexplained black band of experiment 76 is reproduced**: a ~42 px black strip
+  across the top of the client area, above everything the Rust `draw` paints.
+  `gc.clear()` with a white brush does not cover it. Still to isolate.
 
 ## Decisions
 

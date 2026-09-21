@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser};
-use symdev_build::{AppTarget, Epocroot, FrozenExports, SisPackage};
+use symdev_build::{AppTarget, Epocroot, FrozenExports, SisPackage, UiResources};
 use symdev_core::{Error, PackageBackend, Project};
 
 use artifacts::package_artifacts;
@@ -167,6 +167,12 @@ fn package_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
         )));
     }
     let icon = m.symbian.icon.clone();
+    let ui = m.ui.clone().map(|ui| UiResources {
+        app: app.name().to_string(),
+        uid3,
+        ui,
+        icon: icon.as_ref().map(|i| cwd.join(i)),
+    });
     let password = std::env::var("SYMDEV_SIGN_PASSWORD").unwrap_or_default();
     let package = SisPackage {
         name: m.package.name,
@@ -189,10 +195,11 @@ fn package_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
     .package(&package_artifacts(
         &project,
         &e32,
-        icon.as_deref(),
+        if ui.is_some() { None } else { icon.as_deref() },
         &m.icons,
         &m.install,
         &epocroot,
+        ui.as_ref(),
     )?)?;
     println!("{}", package.primary.display());
     Ok(ExitCode::SUCCESS)
