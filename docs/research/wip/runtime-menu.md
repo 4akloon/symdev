@@ -27,3 +27,12 @@ Read the current `[[ui.menu]]` path end to end: manifest -> macro -> shim -> res
 - The native `rcomp` accepts `RESOURCE MENU_PANE r_symrs_menupane { items = { }; };`
   — an empty `items` array compiles, `symdev build` on `examples/ui` produced
   `uidemo.rsc` with it. Whether `DynInitMenuPaneL` then fires is the emulator question.
+- **Observed, EKA2L1 pid 2770028:** `DynInitMenuPaneL` DOES fire for an **empty**
+  `MENU_PANE`. F1 opened a pane holding Avkon's own "Show open apps." plus the four
+  lines Rust added through `AddMenuItemL` ("More bars", "Fewer bars", "Reset", "Exit").
+  `Down` `Return` on "Fewer bars" drew `bars=2 keys=0 cmd=1` — experiment 91's proof,
+  through a closure this time. `F1 Down Down Down Return` on the `m.exit("Exit")` line
+  ended the application cleanly (no panic, no KERN-EXEC in the log).
+- So the resource cannot go away *entirely*: what stays is a `MENU_BAR` naming a
+  `MENU_PANE` with no items. Nothing calls `DynInitMenuPaneL` without a pane to show.
+- `uidemo.exe` 12 844 -> 13 714 bytes (+870).
