@@ -36,3 +36,12 @@ Read the current `[[ui.menu]]` path end to end: manifest -> macro -> shim -> res
 - So the resource cannot go away *entirely*: what stays is a `MENU_BAR` naming a
   `MENU_PANE` with no items. Nothing calls `DynInitMenuPaneL` without a pane to show.
 - `uidemo.exe` 12 844 -> 13 714 bytes (+870).
+- **40-character limit, observed.** Temporarily gave one item a 47-character label
+  (`0123456789`×4 + `CUTHERE`), rebuilt and ran: the pane showed the item ellipsised by
+  Avkon, the application did **not** panic, and selecting it still fired the right
+  action (`bars=3 keys=0 cmd=1`). The exact `encode` function from `menu.rs`, compiled
+  for the host: 47 units -> 40; a surrogate pair straddling 40 -> cut at 39, never
+  split; 50 units of surrogate pairs -> 40. So the cut is in Rust, on a character
+  boundary, and the shim's clamp never has to do anything.
+- `symdev package` does **not** rebuild; `symdev build` first, or the sisx carries the
+  previous `.exe` (cost me one emulator run).
