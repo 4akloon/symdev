@@ -12,6 +12,8 @@
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
+pub mod des;
+
 use crate::io as std_io;
 
 /// `KErrGeneral` (`e32err.h`), the reason a Rust panic ends the process with.

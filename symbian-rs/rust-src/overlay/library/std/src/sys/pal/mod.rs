@@ -61,7 +61,10 @@ cfg_select! {
         pub use self::zkvm::*;
     }
     target_os = "symbian" => {
-        mod symbian;
+        // `pub`, unlike every other arm: the per-facility Symbian backends in
+        // `sys::fs`, `sys::stdio` and `sys::time` share the descriptor helpers in
+        // `symbian::des`, and they are not descendants of this module.
+        pub mod symbian;
         pub use self::symbian::*;
     }
     _ => {

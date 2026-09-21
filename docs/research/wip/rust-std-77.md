@@ -35,3 +35,9 @@ Task: make `std` build for `arm-symbian-e32` so an app can drop `#![no_std]` and
 - `Mutex` = one-token `RSemaphore` (the only primitive with a timed wait, so `try_lock` exists); `Condvar` = kernel `RCondVar` plus a private `RMutex` to pair with, because `RCondVar::Wait` will only take an `RMutex`.
 - Gotcha: a `const fn` in std may not call another crate's `const fn` (const-stability). Fixed with `pub const NULL: Self` associated consts on the handle types.
 - Gotcha: `cp -a` preserves mtimes, so cargo can call a rematerialised `library/symbian-sys` fresh. The real materialiser must not rely on mtime.
+
+### fs is real (2026-09-21)
+- `sys/fs/symbian/{mod,file,attr,session}.rs` over `RFs`/`RFile`, plus `sys/pal/symbian/des.rs` for the path and byte descriptors.
+- One `RFs` session **per thread**, in a `thread_local!` — a Symbian session is not shareable between threads until `RFs::ShareProtected`, which is unobserved. Divergence written down: a `File` should be used on the thread that opened it.
+- `pal/symbian` is `pub mod` (unlike every other pal arm) so the per-facility backends can reach `des`.
+- Unsupported with reasons: `read_dir` (`CDir::AddL` leaves → needs a shim), symlinks/hard links (none on 9.3), `set_permissions` (`RFs::SetAtt` unobserved), `set_times` (no `TEntry` timestamp offset measured), `canonicalize`, `rmdir`.
