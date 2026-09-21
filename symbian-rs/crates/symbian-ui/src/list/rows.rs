@@ -117,7 +117,6 @@ pub(super) static CALLBACKS: Callbacks = Callbacks {
 unsafe extern "C" {
     pub(super) fn symrs_list_create(
         app_ui: *mut c_void,
-        view: *mut c_void,
         callbacks: *const Callbacks,
         owner: *mut c_void,
         out: *mut *mut c_void,

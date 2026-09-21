@@ -45,10 +45,16 @@ typedef struct SymRsListCallbacks
 	TInt (*selected)(void* aOwner, TInt aIndex);
 	} SymRsListCallbacks;
 
-// Builds a CAknSingleStyleListBox over the whole of `aView`'s rectangle, puts it on
-// `aAppUi`'s control stack above the view, and writes the opaque handle to `*aOut`.
-// `aView` and `aAppUi` are the two handles the shim passed to the Rust `construct`.
-TInt symrs_list_create(void* aAppUi, void* aView, const SymRsListCallbacks* aCallbacks,
+// Builds a CAknSingleStyleListBox over `aAppUi`'s CLIENT RECT, puts it on that app UI's
+// control stack above the application's view, and writes the opaque handle to `*aOut`.
+// `aAppUi` is the handle symrs_avkon.cpp passed to the Rust `construct`.
+//
+// The rect comes from CEikAppUi::ClientRect() and NOT from the view's own Rect(): a
+// window-owning control's Rect() is window-relative, so the view reports (0,0) for its
+// origin and a list built from it covers the title pane. Observed, 2026-09-21 -- the
+// first run put the list over the status pane, and it is the same ambiguity
+// avkon-rust-spec.md section 5.1 left open for Draw.
+TInt symrs_list_create(void* aAppUi, const SymRsListCallbacks* aCallbacks,
 	void* aOwner, void** aOut);
 
 // Takes the list off the control stack and destroys it, with the item array. Safe on

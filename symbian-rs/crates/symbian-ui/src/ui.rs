@@ -53,17 +53,14 @@ impl Ui {
         self.host
     }
 
-    /// The `CShimView*` the shim passed to `construct`.
+    /// The `CShimAppUi*` the shim passed to `construct`.
     ///
     /// A component that is a control in its own right — [`crate::List`] is the first —
-    /// needs the view to take its rectangle from and the app UI to put itself on the
-    /// control stack of. Handing the raw pointer out is safe; using it is not, which is
-    /// why both are `pub(crate)` and every call site carries a `// SAFETY:` note.
-    pub(crate) const fn view(&self) -> *mut c_void {
-        self.view
-    }
-
-    /// The `CShimAppUi*` the shim passed to `construct`. See [`Ui::view`].
+    /// needs it twice over: to put itself on the control stack, and to ask for
+    /// `ClientRect()`, which is the only honest source of a full-screen rectangle (the
+    /// view's own `Rect()` is window-relative and reports an origin of `(0, 0)`).
+    /// Handing the raw pointer out is safe; using it is not, which is why this is
+    /// `pub(crate)` and every call site carries a `// SAFETY:` note.
     pub(crate) const fn app_ui(&self) -> *mut c_void {
         self.app_ui
     }

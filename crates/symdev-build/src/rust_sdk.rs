@@ -35,8 +35,14 @@ impl RustSdk {
     /// nothing: the post-linker emits an import only for a symbol that is actually
     /// referenced, which is why the recorded C++ line has carried four unused DSOs since
     /// experiment 5 and still produces a 746-byte hello.
-    pub const LIBRARIES: &'static [&'static str] =
-        &["efsrv.dso", "bafl.dso", "esock.dso", "insock.dso"];
+    pub const LIBRARIES: &'static [&'static str] = &[
+        "efsrv.dso",
+        "bafl.dso",
+        "esock.dso",
+        "insock.dso",
+        "eikcoctl.dso",
+        "eikctl.dso",
+    ];
 
     /// What the Avkon shim of `shims/s60` imports, and **only** a project with a
     /// `[ui]` section gets them. The list is the six a minimal Avkon application
@@ -50,20 +56,14 @@ impl RustSdk {
     /// `CFont::AscentInPixels` — which this shim does not yet call, so `--as-needed`
     /// would drop it; it stays named because the moment text is measured it is back.
     ///
-    /// `eikcoctl.dso` is the sixth, and it is the list box's: `CEikListBox`,
-    /// `CEikTextListBox`, `CTextListBoxModel` and `CEikScrollBarFrame` are all exported
-    /// from `eikcoctl.dll`, not from `avkon.dll` — only the `CAkn*StyleListBox` leaves
-    /// are Avkon's (`nm -D` on both, 2026-09-21). An application with no list pays
-    /// nothing for it: `symrs_list.o` is a member of the shim archive that nothing
-    /// references, so it is never pulled and no `DT_NEEDED` is recorded.
-    /// `bafl.dso`, which the item array (`CDesC16ArrayFlat`) needs, is already on every
-    /// Rust link line through [`Self::LIBRARIES`].
+    /// The list box adds no name here: the two DSOs it needs beyond `avkon` are in
+    /// [`Self::LIBRARIES`], which is the `--as-needed` group, so a GUI application
+    /// without a list does not load them.
     pub const UI_LIBRARIES: &'static [&'static str] = &[
         "apparc.dso",
         "cone.dso",
         "eikcore.dso",
         "avkon.dso",
-        "eikcoctl.dso",
         "gdi.dso",
     ];
 

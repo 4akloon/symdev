@@ -51,6 +51,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "listdemo"
+version = "0.1.0"
+dependencies = [
+ "symbian-core",
+ "symbian-std",
+]
+
+[[package]]
 name = "netdemo"
 version = "0.1.0"
 dependencies = [

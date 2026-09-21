@@ -65,14 +65,14 @@ impl List {
             on_select: None,
         }));
         let mut raw: *mut c_void = core::ptr::null_mut();
-        // SAFETY: `ui`'s two handles are the `CShimAppUi*` and `CShimView*` the shim
-        // passed to `construct`, both alive for as long as the application object;
-        // `CALLBACKS` is a `'static` table whose `size` word the shim checks; `owner`
-        // is the box just leaked and is freed only in `Drop`, after `symrs_list_destroy`.
+        // SAFETY: `ui.app_ui()` is the `CShimAppUi*` the shim passed to `construct`,
+        // alive for as long as the application object; `CALLBACKS` is a `'static` table
+        // whose `size` word the shim checks; `owner` is the box just leaked and is freed
+        // only in `Drop`, after `symrs_list_destroy`. The list takes its rectangle from
+        // that app UI's `ClientRect()`, so no coordinate crosses this call.
         let err = unsafe {
             symrs_list_create(
                 ui.app_ui(),
-                ui.view(),
                 &raw const CALLBACKS,
                 owner.cast(),
                 &raw mut raw,

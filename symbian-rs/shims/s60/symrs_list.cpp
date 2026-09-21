@@ -275,10 +275,10 @@ static CSymRsList* List(void* aList)
 	return static_cast<CSymRsList*>(aList);
 	}
 
-extern "C" TInt symrs_list_create(void* aAppUi, void* aView,
-	const SymRsListCallbacks* aCallbacks, void* aOwner, void** aOut)
+extern "C" TInt symrs_list_create(void* aAppUi, const SymRsListCallbacks* aCallbacks,
+	void* aOwner, void** aOut)
 	{
-	if (!aAppUi || !aView || !aOut)
+	if (!aAppUi || !aOut)
 		{
 		return KErrArgument;
 		}
@@ -288,13 +288,18 @@ extern "C" TInt symrs_list_create(void* aAppUi, void* aView,
 		return KErrNotSupported;
 		}
 	*aOut = NULL;
-	// Both casts are from the `void*` symrs_avkon.cpp passed to the Rust `construct`:
-	// `this` of CShimAppUi, whose primary base is CAknAppUi, and `iView`, a CShimView.
-	// The list is full-screen, which is what aknlists.h lines 208-210 require of every
-	// style in this family ("the Rect() of the list must be ClientRect()"), and the view
-	// was itself constructed with ClientRect().
+	// The cast is from the `void*` symrs_avkon.cpp passed to the Rust `construct`:
+	// `this` of CShimAppUi, whose primary base is CAknAppUi.
+	//
+	// ClientRect(), and deliberately not the view's Rect(). aknlists.h lines 208-210
+	// require it of every style in this family ("the Rect() of the list must be
+	// ClientRect()"), and the view cannot supply it: a window-owning control's Rect()
+	// is window-relative, so CShimView -- itself constructed with ClientRect() --
+	// reports an origin of (0,0), and the first run of this shim duly drew the list
+	// over the title pane. CEikAppUi::ClientRect() is the area below the status pane
+	// and above the softkeys, in the coordinates SetRect wants.
 	CAknAppUi* appUi = static_cast<CAknAppUi*>(aAppUi);
-	const TRect rect = static_cast<CCoeControl*>(aView)->Rect();
+	const TRect rect = appUi->ClientRect();
 	CSymRsList* list = NULL;
 	TRAPD(err, list = CSymRsList::NewL(appUi, rect, aCallbacks, aOwner));
 	if (err != KErrNone)
