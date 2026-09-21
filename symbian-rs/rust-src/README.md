@@ -2,8 +2,8 @@
 
 This directory is the whole difference between the standard library rustup installs and
 the one a `language = "rust-std"` project is built against (design spec §11 step 77,
-experiment 89). It is **not** a fork of `rust-src`: it is an overlay of about twenty
-files, and the other 82 MB come from the toolchain at build time.
+experiments 89 and 90). It is **not** a fork of `rust-src`: it is an overlay of some
+forty files, and the other 82 MB come from the toolchain at build time.
 
 ## How a build uses it
 
@@ -59,9 +59,14 @@ conflict with:
 
 | | |
 |---|---|
-| `std/src/sys/pal/symbian/` | process start and end, and the descriptor helpers (`des.rs`) the other backends share |
+| `std/src/sys/pal/symbian/` | process start and end, the descriptor helpers (`des.rs`) the other backends share, the per-thread `CTrapCleanup` (`cleanup.rs`) and the one blocking request/wait (`request.rs`) |
 | `std/src/sys/alloc/symbian/` | `User::Alloc`/`Free`/`ReAlloc`, and the heap lock that goes on when the first thread is created |
-| `std/src/sys/fs/symbian/` | `RFs`/`RFile`, one session per thread |
+| `std/src/sys/args/symbian.rs` | `User::CommandLine`, split on whitespace, with the image's own path first |
+| `std/src/sys/env/symbian.rs` | there is no environment: an empty iterator, and the reason |
+| `std/src/sys/fs/symbian/` | `RFs`/`RFile`, one session per thread, and `read_dir` over `RFs::GetDir` |
+| `std/src/sys/net/connection/symbian/` | `RSocketServ`/`RSocket`/`RHostResolver`, blocking, one session per thread |
+| `std/src/sys/path/symbian/` | backslash separators and a drive letter as `Prefix::Disk` |
+| `std/src/sys/process/symbian/` | `RProcess::Create`/`Resume`/`Logon`; no stdio, because there is no `RPipe` |
 | `std/src/sys/io/error/symbian.rs` | `e32err.h` codes as `io::ErrorKind`, with the `KErr*` names |
 | `std/src/sys/stdio/symbian.rs` | where `println!` goes: `E:\symdev\stdout.txt` |
 | `std/src/sys/sync/{mutex,condvar,thread_parking}/symbian.rs`, `sys/sync/lazy_handle.rs` | `RSemaphore`, `RCondVar` and an `RMutex` to pair with it |
@@ -73,8 +78,10 @@ conflict with:
 
 **Files the overlay replaces**, each a copy of one of `std`'s own with one `cfg_select!`
 arm added — or, for `std/build.rs`, `target_os == "symbian"` added to the list of
-platforms that are not `restricted_std`, and for `std/Cargo.toml`, the `symbian-sys`
-dependency. Those are the ones `overlay.toml` records a SHA-1 for.
+platforms that are not `restricted_std`, for `std/Cargo.toml`, the `symbian-sys`
+dependency, for `std/src/rt.rs`, the `symbian_start` entry point, and for
+`std/src/sys/exit.rs`, `User::Exit` instead of the fallback arm's undefined
+instruction. Those are the ones `overlay.toml` records a SHA-1 for.
 
 ## Bumping the nightly
 
