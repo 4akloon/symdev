@@ -28,3 +28,18 @@ SYMRS_EXPORT TInt symrs_process_file_name(TDes16* aOut)
 	aOut->Copy(name);
 	return KErrNone;
 	}
+
+// e32std.h line 3757: `IMPORT_C TProcessId Id() const;`. TProcessId is a TObjectId,
+// which is a TUint64, and the EABI returns a composite larger than 4 bytes indirectly
+// -- rule 2 again. TObjectId::operator TUint() is the platform's own narrowing to the
+// 32 bits std::process::id() wants, so it is used rather than a truncation invented
+// here. A null argument means the current process (RProcess() is KCurrentProcessHandle).
+SYMRS_EXPORT TUint symrs_process_id(const RProcess* aProcess)
+	{
+	if (!aProcess)
+		{
+		RProcess me;
+		return (TUint)me.Id();
+		}
+	return (TUint)aProcess->Id();
+	}

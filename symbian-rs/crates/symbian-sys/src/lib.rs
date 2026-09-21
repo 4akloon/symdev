@@ -19,6 +19,7 @@ pub mod efsrv;
 pub mod esock;
 pub mod euser;
 pub mod libcalls;
+pub mod process;
 pub mod shim;
 pub mod sync;
 pub mod thread;

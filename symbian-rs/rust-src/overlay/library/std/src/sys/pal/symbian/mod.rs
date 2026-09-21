@@ -14,6 +14,7 @@
 
 pub mod cleanup;
 pub mod des;
+pub mod request;
 
 use crate::io as std_io;
 

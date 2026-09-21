@@ -3,11 +3,12 @@
 # `-Zbuild-std` on the nightly pinned in `rust-toolchain.toml`.
 [workspace]
 resolver = "3"
-# `examples/std-hello` is deliberately **not** a member: it is the one example built
-# against a real `std` (design spec §11 step 77), and cargo unifies features across a
-# workspace, so `symbian-std` would be asked for its `runtime` and its `std` halves at
-# once — two `__start`s and an `extern crate std` in a build that has no `std`. It is
-# its own workspace, with its own `.cargo/config.toml` naming `-Zbuild-std=std`.
+# `examples/std-hello` and `examples/std-net` are deliberately **not** members: they are
+# the examples built against a real `std` (design spec §11 step 77), and cargo unifies
+# features across a workspace, so `symbian-std` would be asked for its `runtime` and its
+# `std` halves at once — two `__start`s and an `extern crate std` in a build that has no
+# `std`. Each is its own workspace, with its own `.cargo/config.toml` naming
+# `-Zbuild-std=std`.
 members = [
     "crates/symbian-sys",
     "crates/symbian-alloc",
@@ -23,6 +24,7 @@ members = [
     "examples/hello-raw",
     "examples/alloc",
     "examples/shim",
+    "examples/spawnee",
     "examples/files",
     "examples/atomics",
     "examples/time",

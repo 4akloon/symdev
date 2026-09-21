@@ -67,6 +67,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "spawnee"
+version = "0.1.0"
+dependencies = [
+ "symbian-std",
+ "symbian-sys",
+]
+
+[[package]]
 name = "symbian-alloc"
 version = "0.1.0"
 dependencies = [

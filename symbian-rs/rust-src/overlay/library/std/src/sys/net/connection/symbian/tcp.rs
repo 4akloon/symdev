@@ -33,7 +33,7 @@ impl TcpStream {
 
     /// `RSocket::Connect` takes no deadline and cancelling it would need a second
     /// outstanding request on this thread, which is the one thing
-    /// [`super::request::blocking`] must not have. See [`no_timeout`].
+    /// `pal::symbian::request::blocking` must not have. See [`no_timeout`].
     pub fn connect_timeout(_: &SocketAddr, _: Duration) -> io::Result<TcpStream> {
         Err(no_timeout())
     }

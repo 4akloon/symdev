@@ -15,6 +15,7 @@
 use crate::des::TDesC16;
 use crate::des16::TDes16;
 use crate::efsrv::{CDir, RFs};
+use crate::process::RProcess;
 use crate::thread::CTrapCleanup;
 
 unsafe extern "C" {
@@ -57,6 +58,16 @@ unsafe extern "C" {
     /// signature. `KErrNone`, `KErrArgument` for a null pointer, or `KErrOverflow` if
     /// `out` is shorter than the name.
     pub fn symrs_process_file_name(out: *mut TDes16) -> i32;
+}
+
+unsafe extern "C" {
+    /// `RProcess::Id()` as a `TUint`, for the current process when `process` is null.
+    ///
+    /// Rule 2: `TProcessId` is an 8-byte `TObjectId`, which the EABI returns
+    /// indirectly through a hidden pointer, so `Id()` is not an `extern "C"`
+    /// signature. The narrowing to a `TUint` is `TObjectId::operator TUint()`, the
+    /// platform's own, and it is what `std::process::id`'s `u32` wants.
+    pub fn symrs_process_id(process: *const RProcess) -> u32;
 }
 
 unsafe extern "C" {

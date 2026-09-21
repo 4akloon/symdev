@@ -13,6 +13,13 @@
 //! It also depends on two crates from crates.io — `itoa` and `ryu` — with nothing
 //! vendored, to show that an ordinary `std`-only dependency compiles for this target.
 //!
+//! **`examples/spawnee` must be installed first** — the process cases spawn it, the
+//! same way `examples/net` needs its two Python peers running:
+//!
+//! ```sh
+//! cd ../spawnee && symdev build && symdev package && symdev run
+//! ```
+//!
 //! It reports through `symbian_std::test_report`, which writes
 //! `E:\symdev\results\<uid3>.json`; `symdev test --emulator` reads that back off the
 //! emulated drive and fails the build if any case failed.
@@ -24,6 +31,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use symbian_std::test_report::Report;
 
 mod platform;
+mod spawn;
 
 /// Symbian paths: a drive letter and backslashes. There is no POSIX root above `E:`.
 const DIR: &str = "E:\\symdev\\std77";
@@ -211,6 +219,7 @@ fn main() -> std::io::Result<()> {
     platform::path_cases(&mut report);
     platform::read_dir_cases(&mut report, DIR, "roundtrip.txt");
     platform::args_and_env_cases(&mut report);
+    spawn::process_cases(&mut report);
 
     fs::remove_file(PATH)?;
     report.check("remove_file", !fs::exists(PATH).unwrap_or(true));

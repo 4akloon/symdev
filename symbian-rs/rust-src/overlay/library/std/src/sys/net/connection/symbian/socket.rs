@@ -3,10 +3,10 @@
 //!
 //! Nothing here leaves (`es_sock.h` declares no leaving member on `RSocket`), so there
 //! is no C++ in the path. Everything that takes a `TRequestStatus&` goes through
-//! [`super::request::blocking`].
+//! `sys::pal::symbian::request::blocking`.
 
 use super::addr::InetAddr;
-use super::request::blocking;
+use crate::sys::pal::symbian::request::blocking;
 use super::session::with_session;
 use crate::cell::UnsafeCell;
 use crate::io;

@@ -91,6 +91,22 @@ and a partial `process` backend in the `symbian-rs/rust-src` overlay, keep `env`
 - `io::Error::other(..)` gives `ErrorKind::Other`, not `Unsupported` — four refusal
   cases failed until `no_option` was changed to `io::Error::new(Unsupported, ..)`.
 
+- **Step 4 done.** `sys/process/symbian/` (mod + status): `Command::spawn`, `wait`,
+  `try_wait`, `kill`, `ExitStatus`, `getpid` over `RProcess`; `Stdio::piped()`,
+  `output()`, `current_dir` and any env change are refused at the spawn.
+  `std::process::exit` is now `User::Exit` (a `sys/exit.rs` replacement) — the default
+  arm was `intrinsics::abort()`, an undefined instruction that loses the code.
+  `stdhello: 50 passed`, E32 73 633 bytes.
+- `examples/spawnee` (3 208 bytes, `no_std`) is the child std-hello spawns, and it has
+  to be a separate image: **EKA2L1 cannot spawn an image with a writable data section
+  through the loader.** `RProcess::Create` succeeds, the emulator gives the child an
+  extra `anonymous` 0x1000-byte chunk at 0x400000 for its data, and the child dies with
+  `KERN-EXEC 3` reading its heap base + 0xA4 before `main`. Every `std` image tried does
+  this; no `no_std` one does (their `runtime data` is logged as `0x0`). The parent then
+  hangs on a `Logon` that never completes.
+- `RProcess::Id()` returns an 8-byte `TProcessId`, which the EABI returns indirectly, so
+  `std::process::id` goes through a shim (`symrs_process_id`) as `FileName()` does.
+
 ## Dead ends
 
 ## Next step

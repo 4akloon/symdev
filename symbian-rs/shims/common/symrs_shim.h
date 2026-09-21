@@ -85,6 +85,7 @@
 class CDir;
 class CTrapCleanup;
 class RFs;
+class RProcess;
 class TDes16;
 class TDesC16;
 class TRequestStatus;
@@ -112,6 +113,11 @@ SYMRS_EXPORT void symrs_cleanup_destroy(CTrapCleanup* aCleanup);
 // Here for rule 2: TFileName is returned by value through an sret pointer. Returns
 // KErrNone, KErrArgument for a null argument, or KErrOverflow if aOut is too short.
 SYMRS_EXPORT TInt symrs_process_file_name(TDes16* aOut);
+
+// RProcess::Id() as a TUint, for the current process when aProcess is null. Here for
+// rule 2: TProcessId is an 8-byte TObjectId and the EABI returns a composite larger
+// than 4 bytes indirectly.
+SYMRS_EXPORT TUint symrs_process_id(const RProcess* aProcess);
 
 // User::LeaveIfError(TInt) from euser.dso, TRAPped: the shim's own self-check.
 // Returns aReason for a negative aReason, KErrNone otherwise.

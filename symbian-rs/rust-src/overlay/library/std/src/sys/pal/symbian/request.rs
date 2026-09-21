@@ -1,11 +1,11 @@
 //! `blocking`: issue one Symbian asynchronous request and wait for it. That pair is
-//! the whole of the "runtime" a `std::net` needs.
+//! the whole of the "runtime" `std::net` and `std::process` need.
 //!
-//! `RSocket::Connect`, `Send`, `RecvOneOrMore`, `Accept` and `Shutdown` return `void`
-//! and report through a `TRequestStatus&`. Issue, then `User::WaitForRequest`, is
-//! Symbian's own blocking idiom: it parks the calling thread on its request semaphore
-//! until the socket server completes the status. There is no `CActive`, no
-//! `CActiveScheduler` and no executor underneath `std::net`.
+//! `RSocket::Connect`, `Send`, `RecvOneOrMore`, `Accept` and `Shutdown`, and
+//! `RProcess::Logon`, all return `void` and report through a `TRequestStatus&`. Issue,
+//! then `User::WaitForRequest`, is Symbian's own blocking idiom: it parks the calling
+//! thread on its request semaphore until the server completes the status. There is no
+//! `CActive`, no `CActiveScheduler` and no executor underneath either facility.
 //!
 //! # Why the status never leaves this function
 //!
@@ -22,17 +22,17 @@
 //! and the scheduler can eat the completion this wait needs, so the call never returns.
 //! Neither failure says anything; the program simply stops.
 //!
-//! So when `CActiveScheduler::Current()` answers with a scheduler, every blocking
-//! socket call returns **`KErrInUse`** instead of waiting. This is the same rule
-//! `symbian_core::net::blocking` has carried since step 73, and `std::net` inherits it:
-//! **an Avkon application, or anything under `symbian_async::block_on`, gets an error
-//! and not a hang.** The fix is to do the socket work on a thread of its own —
+//! So when `CActiveScheduler::Current()` answers with a scheduler, every blocking call
+//! that goes through here returns **`KErrInUse`** instead of waiting. This is the same
+//! rule `symbian_core::net::blocking` has carried since step 73, and `std` inherits
+//! it: **an Avkon application, or anything under `symbian_async::block_on`, gets an
+//! error and not a hang.** The fix is to do the blocking work on a thread of its own —
 //! `std::thread::spawn` gives one with no scheduler — which is what blocking I/O on a
 //! UI thread needed anyway.
 
 use crate::io;
 use symbian_sys::active::CActiveScheduler_Current;
-use symbian_sys::esock::{TRequestStatus, User_WaitForRequest};
+use symbian_sys::thread::{TRequestStatus, User_WaitForRequest};
 
 /// Issues one asynchronous request through `issue` and blocks until it completes,
 /// returning the `TInt` the server wrote — or the error, if it is negative.
@@ -71,8 +71,8 @@ fn nothing_else_is_waiting() -> io::Result<()> {
         Err(io::Error::new(
             io::ErrorKind::ResourceBusy,
             "a CActiveScheduler is installed on this thread, and a blocking socket call \
-             would eat its completions (KErrInUse): do the socket work on a thread of \
-             its own",
+             would eat its completions (KErrInUse): do the blocking work on a thread \
+             of its own",
         ))
     }
 }

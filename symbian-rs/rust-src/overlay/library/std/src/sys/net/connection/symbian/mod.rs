@@ -20,7 +20,7 @@
 //!
 //! Every blocking call here is `issue the request; User::WaitForRequest`. That and a
 //! `CActiveScheduler` must not share a thread — they eat each other's completions —
-//! so [`request::blocking`] **refuses** when a scheduler is installed rather than
+//! so `sys::pal::symbian::request::blocking` **refuses** when a scheduler is installed rather than
 //! risking a hang. An Avkon program, or anything inside `symbian_async::block_on`,
 //! therefore gets an error from the first socket call, not silence. Do the socket work
 //! on a `std::thread::spawn`ed thread, which has no scheduler.
@@ -54,7 +54,6 @@
 //! that code into a message that names the capability and the manifest key.
 
 mod addr;
-mod request;
 mod session;
 mod socket;
 mod tcp;
@@ -225,7 +224,8 @@ impl crate::fmt::Display for NoOption {
 impl crate::error::Error for NoOption {}
 
 /// A deadline needs a second request outstanding on the thread that is already waiting
-/// for the socket's, and that is the one thing [`request::blocking`] may not have.
+/// for the socket's, and that is the one thing `pal::symbian::request::blocking` may not
+/// have.
 fn no_timeout() -> io::Error {
     io::Error::new(
         io::ErrorKind::Unsupported,
