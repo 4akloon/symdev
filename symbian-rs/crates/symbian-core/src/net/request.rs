@@ -51,12 +51,7 @@ use crate::error::{Result, SymbianError, check};
 /// per-thread object and `Current()` is the platform's own answer to "is anything else
 /// waiting for a completion here".
 pub fn blocking(issue: impl FnOnce(*mut TRequestStatus)) -> Result<i32> {
-    // SAFETY: a plain euser static with no arguments, reading the calling thread's own
-    // scheduler slot; null when there is none, which is the case for every program
-    // that does not use `symbian_async` or the Avkon framework.
-    if !unsafe { CActiveScheduler_Current() }.is_null() {
-        return Err(SymbianError::of(ErrorKind::InUse));
-    }
+    nothing_else_is_waiting()?;
     // `TRequestStatus::new` is already `KRequestPending`; a zeroed status would read as
     // `KErrNone`, so a request the server rejected before looking at it would come back
     // as a success.
@@ -69,4 +64,23 @@ pub fn blocking(issue: impl FnOnce(*mut TRequestStatus)) -> Result<i32> {
     // only once this status is no longer `KRequestPending`.
     unsafe { User_WaitForRequest(&raw mut status) };
     check(status.status)
+}
+
+/// `KErrInUse` when this thread has a `CActiveScheduler`, which is the one other thing
+/// that may be waiting for a completion here. See [`blocking`] for what goes wrong when
+/// both wait on one thread's request semaphore.
+///
+/// `#[inline(never)]` because [`blocking`] is generic over its `issue` closure and is
+/// therefore monomorphised per call site: inlined, this check cost `examples/net` 272
+/// bytes of duplicated code for the same four instructions.
+#[inline(never)]
+fn nothing_else_is_waiting() -> Result<()> {
+    // SAFETY: a plain euser static with no arguments, reading the calling thread's own
+    // scheduler slot; null when there is none, which is the case for every program that
+    // uses neither `symbian_async` nor the Avkon framework.
+    if unsafe { CActiveScheduler_Current() }.is_null() {
+        Ok(())
+    } else {
+        Err(SymbianError::of(ErrorKind::InUse))
+    }
 }
