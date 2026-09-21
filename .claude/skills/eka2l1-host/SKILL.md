@@ -80,9 +80,26 @@ launch (symdev run, or --run 0x<uid3>)
 
 Verified end to end on a clean build: an Avkon application's `OfferKeyEventL` counted
 `Down Left Left` and drew `keys 3 code f807 scan 0e`; ROM Notes opens its Options menu on
-F1. **Softkeys (F1/F2 -> `EStdKeyDevice0`/`1`) are shipped but do nothing in our own
-applications** — test with arrows, selection and digits. Full write-up and the measured
-evidence: `docs/research/eka2l1-input.md`.
+F1. **Softkeys work too** (experiment 91): F1 and F2 reach `HandleCommandL`, never
+`OfferKeyEventL` — the button group container is above the view on the control stack and
+consumes the key. An acceptance test may press them. Full write-up and the measured
+evidence: `docs/research/eka2l1-input.md`. The 22 bound keys are F1–F4, Return, the
+arrows, 0–9, `*`, `/` and Backspace; `Escape` is bound to nothing.
+
+## Seeing anything the guest prints
+
+**Check `log-filter` in `~/.local/share/EKA2L1/config.yml` before you believe a probe
+did not run.** The stock profile is
+`*:trace Emulated.Stdout:off Service.EFsrv:warn Service.Cenrep:off Kernel:Warn Service.Track:error`,
+and it has hidden the answer twice:
+
+| Class | Hides | Cost |
+|---|---|---|
+| `Emulated.Stdout:off` | every `RDebug::Print` from the guest (`svc.cpp` `debug_print`) | three sessions of "softkeys do nothing" (experiment 91) |
+| `Kernel:Warn` | the panic line for `E32USER-CBase 69` and friends | three hours of the wrong hypothesis (experiment 90) |
+
+Set the class you need to `trace`, run, and **put the file back** — the emulator reads it
+at startup and rewrites it on exit, so a stale edit leaks into the user's own sessions.
 
 ## Killing
 

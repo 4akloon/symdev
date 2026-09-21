@@ -34,6 +34,14 @@
 //!         }
 //!         KeyResponse::NotConsumed
 //!     }
+//!
+//!     fn command(&mut self, command: Command, ui: &Ui) -> symbian_core::Result<()> {
+//!         if command.is("more") {
+//!             self.bars += 1;
+//!             ui.redraw();
+//!         }
+//!         Ok(())
+//!     }
 //! }
 //!
 //! #[symbian_std::main(gui)]
@@ -41,6 +49,24 @@
 //!     Bars::new()
 //! }
 //! ```
+//!
+//! # The Options menu, and where a softkey goes
+//!
+//! The menu is declared in `symdev.toml`, not here, because it is a compiled resource
+//! that has to exist before any Rust runs:
+//!
+//! ```toml
+//! [[ui.menu]]
+//! id = "more"
+//! label = "More bars"
+//! ```
+//!
+//! and the *word* `more` is what [`Command::named`] matches — symdev and this crate
+//! derive the same number from it, so neither the manifest nor the source writes one
+//! down. The left softkey opens that menu and the right one ends the application; both
+//! are handled below this crate, so neither reaches [`App::key`]. A softkey never
+//! does: the button group container sits above the view on the control stack and
+//! turns the key into a command.
 //!
 //! There is no `E32Main` here and no active scheduler: for a GUI application the shim
 //! owns the entry point and hands the process to `EikStart::RunApplication`, and CONE
