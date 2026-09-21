@@ -1,7 +1,5 @@
 //! The device's UI language: `TLanguage`, and reading it once.
 
-use core::sync::atomic::{AtomicU32, Ordering};
-
 use symbian_sys::euser::User_Language;
 
 use super::lang;
@@ -20,12 +18,6 @@ use super::lang;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Language(u16);
 
-/// The cache behind [`Language::current`]. `u32::MAX` is "not read yet"; it cannot
-/// collide with a language, which is a `u16`.
-static CURRENT: AtomicU32 = AtomicU32::new(u32::MAX);
-
-const UNREAD: u32 = u32::MAX;
-
 impl Language {
     /// The language for a raw `TLanguage` value.
     pub const fn from_code(code: u16) -> Self {
@@ -39,43 +31,39 @@ impl Language {
 
     /// What the device's UI is set to, from `User::Language()`.
     ///
-    /// **Read once.** The first call asks euser and caches the answer; every later
-    /// call is one relaxed load. There is no `std::sync` on this path and no
-    /// `OnceCell` in `core`, so the cache is a plain [`AtomicU32`]: two threads racing
-    /// here both call `User::Language()` and both store the same value, which is why
-    /// `Relaxed` is enough and why no lock is needed. Nothing in this SDK observed the
-    /// language changing under a running process, and the platform offers no
-    /// notification for it that was observed — `TODO: whether a live language change
-    /// is visible to a running process (not observed)`.
+    /// **Not cached, and that is a measurement, not an oversight.** The obvious shape
+    /// — read euser once into a `static` and load it afterwards — was built and
+    /// measured, and on this CPU it is worse in both directions. ARMv5TE has no
+    /// atomic instruction, so `AtomicU32::load(Relaxed)` compiles to
+    /// `bl __atomic_load_4`, and that libcall is `symbian-libcalls`' lock-based
+    /// emulation: an `RFastLock::Wait`/`Signal` pair, a kernel round trip, to avoid
+    /// one call into euser. Linking it costs **794 bytes** of `.exe` in a `hello`-sized
+    /// application (4 024 against 3 230 bytes, experiment 95) — a quarter of the whole
+    /// image — for a read that is then *slower* than the one it replaced: the same
+    /// 100 000-iteration loop takes 16 nanokernel ticks through the cache and **12**
+    /// straight to euser. There is no `OnceCell` in `core` that avoids this, no
+    /// `std::sync` on this path, and `has-thread-local` is false for the target.
     ///
-    /// A value outside `0..=0xFFFF` is not a `TLanguage` and becomes
-    /// [`lang::none`]; `User::Language()` has no error return, so this is a
-    /// belt-and-braces narrowing rather than an observed case.
+    /// So the read is one euser call, measured at **0.12 µs** inside EKA2L1
+    /// (100 000 calls in 12 nanokernel ticks of 1 000 µs, experiment 95; that is the
+    /// emulator's dynarmic JIT, not an E52). An application that
+    /// wants the language read exactly once holds it: `Language` is two bytes and
+    /// `Copy`, so reading it into a local or a field and passing it to
+    /// `Text::get_in` is the cache, and it costs nothing.
+    ///
+    /// A value outside `0..=0xFFFF` is not a `TLanguage` and becomes [`lang::none`];
+    /// `User::Language()` has no error return, so this is a belt-and-braces narrowing
+    /// rather than an observed case. `TODO: whether a language change under a running
+    /// process is visible to it (not observed)` — nothing here assumes either way,
+    /// because nothing here remembers.
     pub fn current() -> Self {
-        match CURRENT.load(Ordering::Relaxed) {
-            UNREAD => {
-                // SAFETY: a euser static member function (plain EABI, no `this`) that
-                // takes nothing, returns the enum in r0, touches no memory of ours and
-                // cannot leave.
-                let raw = unsafe { User_Language() };
-                let language = match u16::try_from(raw) {
-                    Ok(code) => Self(code),
-                    Err(_) => lang::none,
-                };
-                CURRENT.store(u32::from(language.0), Ordering::Relaxed);
-                language
-            }
-            cached => Self(cached as u16),
+        // SAFETY: a euser static member function (plain EABI, no `this`) that takes
+        // nothing, returns the enum in r0, touches no memory of ours and cannot leave.
+        let raw = unsafe { User_Language() };
+        match u16::try_from(raw) {
+            Ok(code) => Self(code),
+            Err(_) => lang::none,
         }
-    }
-
-    /// Pretends the device reports `language`, for a test that cannot reach euser.
-    ///
-    /// It writes the same cache [`Language::current`] reads, so it must run before the
-    /// first `current()` to have any effect. Present so an example can show the
-    /// fallback chain choosing differently without a second device.
-    pub fn set_current(language: Language) {
-        CURRENT.store(u32::from(language.0), Ordering::Relaxed);
     }
 
     /// The language a dialect is a dialect **of**, or `None` for a language that is

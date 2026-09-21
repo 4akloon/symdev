@@ -22,6 +22,7 @@ use alloc::string::String;
 use core::fmt::Write as _;
 
 use symbian_core::locale::{Language, lang};
+use symbian_core::time::NanoTicks;
 use symbian_std::fs;
 use symbian_std::io::Result;
 use symbian_std::test_report::Report;
@@ -56,6 +57,32 @@ fn measure(report: &mut Report, notes: &mut String) {
         Language::current() == current,
     );
     let _ = writeln!(notes, "greeting_here={}", strings::GREETING.get());
+}
+
+/// What one `User::Language()` actually costs, because the answer decides whether the
+/// value is worth caching at all. `NanoTicks` is the finest counter this SDK exposes
+/// (1 000 µs inside EKA2L1), so the loop has to be long enough to move it.
+fn cost(notes: &mut String) {
+    const CALLS: u32 = 100_000;
+    let start = NanoTicks::now().raw();
+    let mut sum: u32 = 0;
+    for _ in 0..CALLS {
+        sum = sum.wrapping_add(u32::from(Language::current().code()));
+    }
+    let asked = NanoTicks::now().raw().wrapping_sub(start);
+    // The same loop over a value already in a register, as the floor to compare with.
+    let held = Language::current();
+    let start = NanoTicks::now().raw();
+    let mut sum2: u32 = 0;
+    for _ in 0..CALLS {
+        sum2 = sum2.wrapping_add(u32::from(core::hint::black_box(held).code()));
+    }
+    let local = NanoTicks::now().raw().wrapping_sub(start);
+    let _ = writeln!(
+        notes,
+        "calls={CALLS} ticks_asking_euser={asked} ticks_local={local}"
+    );
+    let _ = writeln!(notes, "checksum={sum} checksum_local={sum2}");
 }
 
 /// The fallback chain, one case per rule, run without touching the device's setting.
@@ -110,6 +137,7 @@ fn main() -> Result<i32> {
     let mut report = Report::new("locale");
     let mut notes = String::new();
     measure(&mut report, &mut notes);
+    cost(&mut notes);
     chain(&mut report, &mut notes);
     table(&mut notes);
     report.checked("the measurements are written out", write_notes(&notes));

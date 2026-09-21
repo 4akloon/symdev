@@ -85,3 +85,17 @@ must be caught at build time. Language read once from `User::Language()`.
   (all 30 `__atomic_*`, `AtomicLock`, `RFastLock::{CreateLocal,Wait,Signal}`, `__sync_synchronize`,
   16 bytes of `.bss`, 4 more PLT entries, ~43 more dynsyms; `.text` +1 952).
   DEAD END: D2 as written. Next: measure what one `User::Language()` call costs, then decide.
+- **MEASURED: uncached is both smaller and faster.** 100 000 `Language::current()` in the
+  emulator: **12** nanokernel ticks (1 000 µs each) uncached vs **16** through the AtomicU32
+  cache — because `__atomic_load_4` is `symbian-libcalls`' `RFastLock` Wait/Signal pair, a
+  kernel round trip. 0.12 µs per euser call. D2 replaced: no cache; `Language` is two bytes
+  and `Copy`, so "read once" is the *caller* holding it and calling `Text::get_in`.
+- `lang.rs` rewritten as 110 plain `pub const` lines (was a generating macro): the "similarly
+  named constant" note then points at `pub const french: Language = …` instead of at the
+  macro body. 130 lines.
+- Six compile errors captured (mistyped key, key missing a language, undeclared language on a
+  row, non-TLanguage in the language list, duplicate key, non-string translation). The one
+  weakness: E0063's span is the whole `locale!` invocation, not the row; capturing rows as
+  `tt` to inherit the caller's span was tried and changed nothing.
+- Gates on the host workspace: `cargo test --workspace --offline` all ok, 0 failed;
+  `cargo clippy --workspace --all-targets --offline` clean.

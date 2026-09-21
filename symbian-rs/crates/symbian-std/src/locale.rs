@@ -30,9 +30,24 @@
 //! ```
 //!
 //! The first language named is the **default**: the one a device gets when the chain
-//! in [`symbian_core::locale`] runs out. [`get`](Text::get) returns a `&'static str`
-//! and allocates nothing; every string is in the image's read-only data and every
-//! lookup is a comparison against an integer euser was asked for once.
+//! in [`symbian_core::locale`] runs out. `get()` returns a `&'static str` and
+//! allocates nothing; every string is in the image's read-only data and every lookup
+//! is a run of integer comparisons against what euser answered.
+//!
+//! # Reading the language once
+//!
+//! `get()` asks [`Language::current`] each time, which is one `User::Language()` call
+//! — 0.12 µs inside EKA2L1. It is deliberately **not** cached behind the module,
+//! because on ARMv5TE a cache is both bigger and slower than the call; the numbers
+//! and the reason are on [`Language::current`]. An application that wants the
+//! language read exactly once reads it once and keeps it, which costs two bytes:
+//!
+//! ```ignore
+//! struct Screen { language: symbian_std::locale::Language }
+//!
+//! let screen = Screen { language: Language::current() };   // read here, once
+//! let greeting = strings::GREETING.get_in(screen.language);
+//! ```
 //!
 //! # What the compiler refuses
 //!
@@ -44,7 +59,10 @@
 //!   `error[E0063]: missing field ukrainian in initializer of Text`. This is the whole
 //!   reason the table is key-major and lives in Rust: rustc already refuses an
 //!   incomplete struct literal, so there is no completeness checker to write and none
-//!   to get wrong.
+//!   to get wrong. Its one weakness is the span: a `macro_rules!` expansion reports
+//!   at the invocation, so the error underlines the whole block and names the
+//!   *language* rather than the row. Capturing each row as a `tt` so it would carry
+//!   the caller's span was tried and changes nothing.
 //! - **A language nobody declared, on one row.** `error[E0560]: struct Text has no
 //!   field named french`.
 //! - **A language that is not a `TLanguage`.** `languages: english, ukranian;` is
@@ -55,12 +73,14 @@
 //! What it does **not** refuse is a key nothing uses; the constant is simply unused,
 //! and `dead_code` does not fire inside a macro expansion.
 //!
-//! # What one language costs
+//! # What it costs
 //!
-//! Nothing. With a single language declared, [`get`](Text::get) returns the one field
-//! without consulting [`Language::current`], the call to `User::Language()` is never
-//! emitted, and the image is byte-identical to the same program with the strings
-//! written as plain `const`s.
+//! Measured with `symdev build` on a `hello`-shaped program (experiment 95), `.exe`
+//! bytes: 3 187 with the greeting as a plain `const`, **3 183** through a
+//! one-language `locale!`, 3 230 with a second language and 3 309 with a third. One
+//! language costs nothing — `get()` returns the single field without consulting the
+//! device, so `User::Language()` is never even imported — and each further language
+//! costs its own strings plus a handful of instructions.
 pub use symbian_core::locale::{Language, lang};
 
 /// Declares this module's translations. See [the module documentation](self).
@@ -86,12 +106,14 @@ macro_rules! locale {
         impl Text {
             /// The string for the language the device reports.
             ///
-            /// The language is read from `User::Language()` **once** per process and
-            /// cached; see [`Language::current`]($crate::locale::Language::current).
+            /// One `User::Language()` call per lookup; to read the language once and
+            /// keep it, hold a `Language` and call `get_in`. Both are explained in
+            /// [the module documentation]($crate::locale).
             pub fn get(self) -> &'static str {
                 // A module with one language never asks the device anything: this is
-                // a constant, the branch folds, and the euser import disappears with
-                // it.
+                // a constant, the branch folds, and the euser import goes with it —
+                // measured, a one-language `locale!` is 3 183 bytes against the same
+                // program's 3 187 with the string written as a plain `const`.
                 const TRANSLATED: &[$crate::locale::Language] =
                     &[$($crate::locale::lang::$other),*];
                 if TRANSLATED.is_empty() {
