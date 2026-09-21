@@ -1,0 +1,37 @@
+# Its own workspace, not a member of `symbian-rs`: see the comment in that manifest.
+[workspace]
+
+[package]
+name = "stdnet"
+version = "0.1.0"
+edition = "2024"
+# `src/main.rs` is a library: rustc never links, symdev does (design spec §3).
+autobins = false
+
+[lib]
+path = "src/main.rs"
+crate-type = ["staticlib"]
+
+[dependencies]
+# The only SDK crate a `std` application needs, and only for the entry attribute, the
+# prelude and the test harness: `default-features = false` leaves out the `no_std`
+# runtime, because with a real `std` the allocator, the panic handler and the process
+# entry are std's (design spec §11 step 77).
+symbian-std = { path = "../../crates/symbian-std", default-features = false, features = [
+    "std",
+] }
+
+# Only for the one case that installs a CActiveScheduler, to prove that a blocking
+# socket call refuses instead of hanging under one. An ordinary `std` application needs
+# nothing from this crate.
+symbian-sys = { path = "../../crates/symbian-sys" }
+
+# The `symbian-rs` workspace's profile, repeated because this is its own workspace.
+# rustc never links (design spec §3): the crate is a `staticlib` that symdev's recorded
+# `ld` line consumes. Size over speed, one object per archive, no unwinder.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+debug = false

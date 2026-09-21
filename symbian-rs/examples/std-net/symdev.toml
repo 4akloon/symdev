@@ -1,0 +1,17 @@
+[package]
+name = "stdnet"
+version = "0.1.0"
+
+[target]
+device = "nokia-e52"
+
+[language]
+name = "rust-std"
+
+[symbian]
+uid3 = "0xe0000694"
+capabilities = ["NetworkServices"]
+vendor = "symdev"
+
+[signing]
+mode = "self-signed"

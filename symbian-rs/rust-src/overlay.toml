@@ -18,6 +18,7 @@
 "std/src/sys/env/mod.rs" = "22bb96df831441411866cf8b807cc34c5fae990c"
 "std/src/sys/fs/mod.rs" = "91ebf9b1b599a13fb8b57328dfa2771db73a9baa"
 "std/src/sys/io/error/mod.rs" = "2f61809435727d226b35bd3a1a099e0edc6d2a6a"
+"std/src/sys/net/connection/mod.rs" = "23968c138c7bac7f476a8a162cc4eacf6d9a3e3b"
 "std/src/sys/pal/mod.rs" = "892b92bb416e8f9879a00e53de3a0e939899c2fc"
 "std/src/sys/path/mod.rs" = "5f04af490fc1bc6bc349ee7dee1576aa068b8ded"
 "std/src/sys/random/mod.rs" = "8a0da5b911ff5fe0cccf3e5e25becf1aad43c439"

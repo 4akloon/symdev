@@ -82,6 +82,15 @@ and a partial `process` backend in the `symbian-rs/rust-src` overlay, keep `env`
   whole of an object's text. Sharing `symrs_f32.cpp` cost `examples/shim` 26 bytes;
   splitting brought every `no_std` example back to its recorded size to the byte.
 
+- **Step 3 done.** `sys/net/connection/symbian/` (session, request, addr, socket, tcp,
+  udp, mod) is step 74's blocking layer re-hosted; `examples/std-net` reports
+  **31 passed** through `symdev test --emulator`, E32 53 374 bytes.
+- The step-73 refusal is verified, not assumed: the example installs a
+  `CActiveScheduler` through the shim and `TcpStream::connect` answers `ResourceBusy`
+  (`KErrInUse`) instead of hanging.
+- `io::Error::other(..)` gives `ErrorKind::Other`, not `Unsupported` — four refusal
+  cases failed until `no_option` was changed to `io::Error::new(Unsupported, ..)`.
+
 ## Dead ends
 
 ## Next step
