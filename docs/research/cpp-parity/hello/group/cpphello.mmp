@@ -1,0 +1,16 @@
+TARGET            cpphello.exe
+TARGETTYPE        exe
+UID               0 0xef9f2cac
+
+SECUREID          0xef9f2cac
+EPOCSTACKSIZE     0x5000
+
+SOURCEPATH        ..\src
+SOURCE            cpphello.cpp
+
+SYSTEMINCLUDE     \epoc32\include
+
+LIBRARY           euser.lib
+
+VENDORID          0
+CAPABILITY        NONE
