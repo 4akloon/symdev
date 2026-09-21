@@ -1,6 +1,6 @@
 # 87 — `async`/`await` on the active scheduler (2026-09-21)
 
-`asyncdemo.exe`, 21 650 bytes, is `symbian-rs/examples/async`. It awaits `RTimer`s
+`asyncdemo.exe`, 21 659 bytes, is `symbian-rs/examples/async`. It awaits `RTimer`s
 through `symbian_async`: a single-threaded executor whose `CActive` lives in
 `shims/common/symrs_active.cpp` and whose wakers are ordinary `Arc`s. Through
 `symdev test --emulator`:
@@ -14,7 +14,7 @@ asyncdemo: 15 passed
 
 | What | Measured |
 |---|---|
-| one 300 ms sleep | **312 ms** |
+| one 300 ms sleep | **312 ms**, 328 on a second run |
 | two 300 ms sleeps **awaited together** | **312 ms** |
 | the same two, one after the other | **625 ms** |
 | a race between 100 ms and 20 s | **109 ms** |
