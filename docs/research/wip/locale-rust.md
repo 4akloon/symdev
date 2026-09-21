@@ -50,3 +50,9 @@ must be caught at build time. Language read once from `User::Language()`.
 
 ## Next step
 - `symdev build`/`package`/`run` the example in EKA2L1 and read `User::Language()`.
+- **MEASURED (EKA2L1, default config, 2026-09-21):** `User::Language()` returns **1
+  (`ELangEnglish`)**. `symdev test --emulator` on `examples/locale`: `localedemo: 8 passed`.
+  `E:\symdev\locale\measured.txt` shows the whole chain resolving as designed
+  (`english_apac` → English, `french` → default English, `ukrainian` → Ukrainian).
+- `symdev build` of `examples/locale`: `localedemo.exe` = 10 100 bytes (3 keys x 3 languages
+  + fs + Report harness; not comparable with `hello` — size deltas measured separately).
