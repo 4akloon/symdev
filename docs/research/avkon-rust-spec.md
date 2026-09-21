@@ -1,7 +1,10 @@
 # Running an Avkon application whose logic is Rust (design for step 75)
 
 Status: **implemented**, 2026-09-21 — see [experiment 86](experiment-backlog.md) and
-`symbian-rs/corpus/86-ui/`. Written 2026-09-20 on branch `ui-spec` as a specification;
+`symbian-rs/corpus/86-ui/`. Extended the same day by
+[experiment 91](experiment-backlog.md) (`symbian-rs/corpus/91-ui-menu/`), which added
+the Options menu and answered the softkey question 86 left open; its corrections are
+marked **[91]**. Written 2026-09-20 on branch `ui-spec` as a specification;
 the design held, and the places where the implementation contradicted it are marked
 **[86]** in the text below rather than quietly rewritten. It plus
 [experiment 76](experiment-backlog.md#76-the-avkon-shim-abi-a-thumb-c-shim-forwarding-to-arm-rust-t5-rust-sdk)
@@ -128,7 +131,7 @@ No pure virtuals anywhere on the chain. Everything is opt-in.
 | Virtual | Status | Contract |
 |---|---|---|
 | `void ConstructL()` | default (`CAknAppUiBase::ConstructL` just calls `BaseConstructL`) | override to call `BaseConstructL(aFlags)` and build the view. **May leave**; the framework calls it inside its own trap harness. |
-| `void HandleCommandL(TInt aCommand)` | default (`CEikAppUi`, empty) | menu/softkey commands. `EEikCmdExit = 0x100` (`eikon.hrh`), `EAknSoftkeyExit = 3002`, `EAknSoftkeyBack = 3001`, `EAknSoftkeyOptions = 3000`, `EAknCmdExit` (`avkon.hrh`). **May leave.** |
+| `void HandleCommandL(TInt aCommand)` | default (`CEikAppUi`, empty) | menu/softkey commands. `EEikCmdExit = 0x100` (`eikon.hrh:376`); in `avkon.hrh:330-339` `EAknSoftkeyOptions = 3000`, `EAknSoftkeyBack = 3001`, and **`EAknSoftkeyExit = 3009`** — the enum runs Options, Back, Mark, Unmark, Insert, Yes, No, Done, Close, Exit. **[91] The "3002" this table carried until 2026-09-21 was recalled, not read, and 3002 is `EAknSoftkeyMark`.** **May leave.** |
 | `TKeyResponse HandleKeyEventL(const TKeyEvent&, TEventCode)` | default (`CCoeAppUi`) | only for keys no stacked control claimed. **May leave.** |
 | `void Exit()` | `IMPORT_C` virtual on `CEikAppUi`, overridden by `CAknAppUiBase` | call it, do not override. Non-leaving. |
 | `TRect ClientRect() const` | `CEikAppUi`, non-virtual `IMPORT_C` | the area below the status pane and above the softkeys. |
@@ -453,17 +456,45 @@ Codes, probed by compiling `e32keys.h` and printing the enumerators (not recalle
 
 Softkeys in practice: a softkey press is turned into a *command* by the button group
 container declared by `EIK_APP_INFO`'s `cba` in the `.rss`, and arrives at
-`HandleCommandL`, not at `OfferKeyEventL`. `R_AVKON_SOFTKEYS_EXIT` (used by
-`examples/gui`) yields `EAknSoftkeyExit`. A Rust app that wants raw softkey scan codes has
-to ask for them, and that is a later concern.
+`HandleCommandL`, not at `OfferKeyEventL`. A Rust app that wants raw softkey scan codes
+has to ask for them, and that is a later concern.
+
+**[91] And the rest of this paragraph was wrong in the one way that cost three
+sessions.** `R_AVKON_SOFTKEYS_EXIT` does *not* yield `EAknSoftkeyExit` on this ROM: it
+draws `Exit` and delivers **3001**, `EAknSoftkeyBack`. Measured, with EKA2L1's log
+filter changed from `Emulated.Stdout:off` to `trace` so a guest `RDebug::Print` is
+visible at all, and with the probe on `CShimAppUi::HandleWsEventL`:
+
+```
+ws type=3 code=0    scan=a5      EStdKeyDevice1 down — offered to the view, declined
+ws type=1 code=f843 scan=a5      EKeyDevice1 — consumed by the CBA, the view never sees it
+HandleCommandL 3001              EAknSoftkeyBack
+```
+
+Two lessons, in order of importance:
+
+1. **A softkey reaching `OfferKeyEventL` would be the bug.** The CBA is on the control
+   stack at `ECoeStackPriorityCba` = 60 and the view at `ECoeStackPriorityDefault` = 0
+   (`coeaui.h:47-61`), so the CBA is offered the `EEventKey` first and consumes it. The
+   view sees only the `EEventKeyDown`/`Up` pair.
+2. **Do not name a ROM CBA resource.** Whatever `R_AVKON_SOFTKEYS_EXIT` contains in this
+   firmware — not determined; `avkon.rsc` is dictionary-compressed and was not decoded —
+   the command ids in it are not symdev's to predict. A generated application declares
+   its **own** `CBA` in its own `.rss` (§6.3), with `EEikCmdExit` on the right button and
+   `EAknSoftkeyOptions` on the left. Both are compile-time constants out of the SDK's
+   headers, so no resource numbering is involved.
+
+`EAknSoftkeyOptions` is the one id that must not be replaced by a symdev-chosen number:
+the framework itself watches for it and opens the menu bar instead of passing it on.
+With `cba` naming an Options button and `menubar` naming nothing, F1 is
+`Access violation reading address 0x9C`, with no `HandleCommandL` first.
 
 **[86] Solved, by experiment 83, and this whole paragraph is now history.** Keys reach
 the guest with `XSendEvent` to the emulator's toplevel window
 (`docs/research/acceptance/emukey.py`), and step 75's acceptance is a pair of PID-bound
-screenshots either side of `emukey.py keys <pid> Up Up`. **The softkey half is still
-unexplained**: F1/F2 are shipped to the focus group and drive a ROM application's
-softkeys, and do nothing in an application built here — write tests against arrows, the
-selection key and digits. What follows was true of the session that wrote this file.
+screenshots either side of `emukey.py keys <pid> Up Up`. **[91] The softkey half is
+answered too** — see the paragraph above; an acceptance test may press F1 and F2. What
+follows was true of the session that wrote this file.
 
 **Not observed.** No key of any kind could be delivered to the emulated device from this
 session: XTest key events with the emulator window activated (`_NET_ACTIVE_WINDOW` sent,
@@ -541,15 +572,38 @@ icon = "gfx/notes.svg"        # already parsed; today only the C++ path uses it
 kind = "avkon"                # the only value; selects the shim and the E32Main shape
 caption = "Notes"             # LOCALISABLE_APP_INFO caption
 short_caption = "Notes"       # optional, defaults to caption
-softkeys = "exit"             # -> R_AVKON_SOFTKEYS_EXIT; "options-exit" later
+softkeys = "exit"             # or "options-exit"; defaults to whether there is a menu
+left_softkey = "Options"      # [91] the label only; the command is fixed
+right_softkey = "Exit"
+
+[[ui.menu]]                   # [91] one line of the Options menu
+id = "new"                    # the word the Rust source repeats in Command::named
+label = "New note"
 ```
+
+**[91] Command ids.** A menu exists in two places that never meet: the compiled `.rss`
+and the Rust `match`. A number written in both would say nothing and drift silently, so
+both sides derive it from the same word — `0x4000 | (FNV-1a-32(id) & 0x3fff)`, in
+`symdev-manifest`'s `CommandId::of` and in `symbian-ui`'s `Command::named`, with one
+shared table of vectors asserted on each side (a `#[test]` on the host, a `const`
+assertion on the target, because that workspace builds for the phone and never runs
+tests). The range is bounded at both ends on purpose: below `0x4000` is everything the
+platform names (`EEikCmd*` at `0x100`, `EAknSoftkey*` at 3000–3200, the reserved softkey
+ranges at `0x1000`/`0x1100`/`0x1200`), and `0x8000` is where `CBA_BUTTON`'s **`WORD`**
+`id` (`eikon.rh:343`) would stop being representable, so one range serves a menu item
+and a softkey alike. Two names that hash alike are a build error naming both.
 
 and the stage produces, all under `build/`:
 
 1. `<app>.rss` — the text of §6.1 with `caption`/`short_caption` substituted and
    `icon_file = "\\resource\\apps\\<app>_aif.mif"` when `[symbian] icon` is set
    (`number_of_icons = 0` and no `icon_file` when it is not), compiled with `HEADER` so
-   `<app>.rsg` exists;
+   `<app>.rsg` exists. **[91] It also carries the application's own `CBA` and, when
+   `[[ui.menu]]` is non-empty, its own `MENU_BAR`/`MENU_PANE`** (`eikon.rh:97-128` and
+   `335-350`; there is no `AVKON_MENUBAR` struct, that name does not exist). The three
+   named resources come *after* `EIK_APP_INFO`, which has to stay the third resource,
+   and `EIK_APP_INFO` refers forward to them — `rcomp` resolves a forward `LLINK`, which
+   is how every hand-written S60 `.rss` is laid out, and ours does too;
 2. `<app>_reg.rss` → `<app>_reg.rsc`, with `localisable_resource_file` and
    `localisable_resource_id` filled in — this is the part `Rsc::registration` cannot do;
 3. `<app>_aif.mif` + `.mbg` through `compile_icon`, which is already independent of
@@ -583,8 +637,9 @@ archive. Experiment 76 did exactly that, by hand.
 
 `symbian-rs/examples/ui`, built by `symdev build && symdev package && symdev run`.
 
-**What it is.** One `CCoeControl`-backed view, no menu, `R_AVKON_SOFTKEYS_EXIT`.
-Application state is a single `bars: u8` in the Rust app struct.
+**What it is.** One `CCoeControl`-backed view; **[91]** an Options menu of four items
+and an application-owned `CBA`. Application state is a single `bars: u8` in the Rust
+app struct.
 
 **What it draws.** `clear`, then `bars` filled rectangles of increasing height along a
 baseline, then the line, then the text `bars=<n> keys=<m>`. Exactly what experiment 76's
@@ -593,6 +648,10 @@ probe drew, because that picture is already known to render.
 **What key it reacts to.** `EKeyUpArrow` (0xf809) increments `bars` up to 6,
 `EKeyDownArrow` (0xf80a) decrements it down to 1; both return `EKeyWasConsumed` and ask for
 a deferred redraw. Everything else returns `EKeyWasNotConsumed` so the softkeys still work.
+
+**[91] What command it reacts to.** `Command::named("more")`, `"fewer"`, `"reset"` and
+`"quit"` — the same four words `[[ui.menu]]` uses in `symdev.toml`. `"quit"` calls
+`Ui::exit`, which is the same door the right softkey uses.
 
 **How a run is verified.**
 
@@ -641,7 +700,8 @@ between a 5 KB and a 107 KB hello-world GUI app.
 ### 8.2 Risks, in order
 
 1. ~~**Key injection into EKA2L1 is unsolved**~~ (§5.2). **[86] Solved by experiment 83**
-   and used as the acceptance test; the softkey half remains unexplained.
+   and used as the acceptance test; ~~the softkey half remains unexplained~~ **[91] the
+   softkey half is answered**, and an application now owns its own `CBA`.
 2. ~~**The `compiler_builtins` size cliff**~~ (§8.1). **[86] It did not come back**:
    `uidemo.exe` is 12 715 bytes (7 559 without the result-file harness) with a 31 KB C++
    object on the link line. Experiment 77's DSO ordering was the whole of the fix.
@@ -674,9 +734,16 @@ between a 5 KB and a 107 KB hello-world GUI app.
 
 ## 9. What could not be determined
 
-- **Key delivery** (§5.2): no key reached the guest in this session, so `OfferKeyEventL`
-  forwarding is unverified at runtime. Not a property of the design — the stock softkey
-  did nothing either.
+- ~~**Key delivery** (§5.2)~~ **[86]/[91] settled.** Arrows and the selection key reach
+  `OfferKeyEventL`; the softkeys reach `HandleCommandL` and never `OfferKeyEventL`,
+  because the CBA is above the view on the control stack.
+- **[91] What the ROM's `R_AVKON_SOFTKEYS_EXIT` actually contains.** It draws `Exit` and
+  sends `EAknSoftkeyBack` (3001) rather than `EAknSoftkeyExit` (3009). Observed, not
+  explained: the ROM's `avkon.rsc` is dictionary-compressed and was not decoded. It no
+  longer matters to an application, which declares its own `CBA`.
+- **[91] Non-ASCII in a generated resource.** `left_softkey`, a caption or a menu label
+  may hold any text the manifest author wrote; only ASCII has been through `rcomp` and
+  onto a screen. A Cyrillic label is **not observed** to survive the resource compiler.
 - **Draw's coordinate origin** (§5.1): two different rects produced identical pixels.
 - ~~**Why `gc->Clear()` left a black band** across the top of the client area in the
   probe.~~ **[86] Isolated, half-explained.** A red stripe at the top of the area the
@@ -708,4 +775,7 @@ between a 5 KB and a 107 KB hello-world GUI app.
 | Rust text is one `cantunwind` range | `readelf --unwind` on `rawprobe.elf` |
 | A Rust `draw` callback paints a real Avkon view | experiment 76 stage B, `/tmp/claude-1000/ui-spec-work/uiprobe-1.png` |
 | EKA2L1 host key bindings | `~/.local/share/EKA2L1/bindings/default.yml` |
+| **[91]** A softkey reaches `HandleCommandL`, not `OfferKeyEventL`, and `R_AVKON_SOFTKEYS_EXIT` sends 3001 | experiment 91, `RDebug::Print` probes on `CShimAppUi::HandleWsEventL`/`HandleCommandL` with `Emulated.Stdout:trace`; `symbian-rs/corpus/91-ui-menu/README.md` |
+| **[91]** `EAknSoftkeyExit = 3009`, `EAknSoftkeyBack = 3001` | `epoc32/include/avkon.hrh:330-339` |
+| **[91]** An Options softkey with no menu bar is an access violation | experiment 91, EKA2L1 log `Access violation reading address 0x9C in thread Bars` |
 | What symdev generates today | `crates/symdev-build/src/driver/rust_build.rs`, `.../resource.rs`, `.../icon.rs`, `crates/symdev-build/src/package.rs`, `crates/symdev-rcomp/src/resource.rs` |
