@@ -4,7 +4,11 @@ Status: **implemented**, 2026-09-21 — see [experiment 86](experiment-backlog.m
 `symbian-rs/corpus/86-ui/`. Extended the same day by
 [experiment 91](experiment-backlog.md) (`symbian-rs/corpus/91-ui-menu/`), which added
 the Options menu and answered the softkey question 86 left open; its corrections are
-marked **[91]**. Written 2026-09-20 on branch `ui-spec` as a specification;
+marked **[91]**. Then by
+[experiment 95](experiment-backlog.md) (`symbian-rs/corpus/95-runtime-menu/`), which
+took the menu **out of the manifest**: it is declared in Rust and added to an empty
+pane from `DynInitMenuPaneL`, and there is no command id in an application at all.
+Its corrections are marked **[95]** and supersede the **[91]** ones they touch. Written 2026-09-20 on branch `ui-spec` as a specification;
 the design held, and the places where the implementation contradicted it are marked
 **[86]** in the text below rather than quietly rewritten. It plus
 [experiment 76](experiment-backlog.md#76-the-avkon-shim-abi-a-thumb-c-shim-forwarding-to-arm-rust-t5-rust-sdk)
@@ -359,7 +363,8 @@ pure C++ again. This is the only correct direction: Rust can never itself leave.
 | `CShimApplication::CreateDocumentL()` | yes (app startup) | not forwarded | `new (ELeave)`; may leave freely, no Rust on the stack |
 | `CShimDocument::CreateAppUiL()` | yes | not forwarded | `new (ELeave)`; ditto |
 | `CShimAppUi::ConstructL()` | yes | `construct(app, host, view, app_ui) -> TInt` | shim does `BaseConstructL`, `create()`, the view and `AddToStackL` itself (all leaving, no Rust frame), then calls `construct`, then `User::LeaveIfError(err)` **after** it returns |
-| `CShimAppUi::HandleCommandL(TInt)` | yes | `command(app, cmd) -> TInt` | handles `EEikCmdExit`/`EAknSoftkeyExit` itself, else calls Rust and `User::LeaveIfError` after the return |
+| `CShimAppUi::HandleCommandL(TInt)` | yes | `command(app, cmd) -> TInt` | handles `EEikCmdExit`/`EAknSoftkeyExit` itself, else calls Rust and `User::LeaveIfError` after the return. **[95]** Rust reads the number as a position in the menu the application declares, and ignores anything outside that range |
+| **[95]** `CShimAppUi::DynInitMenuPaneL(TInt, CEikMenuPane*)` | yes (`MEikMenuObserver`, through the menu bar) | `menu(app, pane) -> TInt` | the compiled `MENU_PANE` is empty; every line is added here, each time the menu opens, through the host entry `menu_item`, which traps `CEikMenuPane::AddMenuItemL` and returns its error. `User::LeaveIfError` after the Rust frame has returned |
 | `CShimView::OfferKeyEventL(…)` | yes | `offer_key(app, &ev, type) -> TInt` | copies `TKeyEvent` into a `SymRsKeyEvent` (POD, four words), calls Rust, maps 0/1 to `EKeyWasNotConsumed`/`EKeyWasConsumed`. A Rust error has nowhere to go here; the design gives `offer_key` no error channel on purpose |
 | `CShimView::Draw(const TRect&) const` | **no** — the framework calls `Draw` outside a trap harness | `draw(app, gc, rect)`, returns nothing | nothing in `draw` may leave, on either side. Every host entry reachable from `draw` must be non-leaving *by construction*, not by `TRAP` (a `TRAP` inside `Draw` would swallow an error nobody can report) |
 | `CShimView::SizeChanged()` | no (non-leaving virtual) | `size_changed(app, rect)` | same as `Draw` |
@@ -572,26 +577,28 @@ icon = "gfx/notes.svg"        # already parsed; today only the C++ path uses it
 kind = "avkon"                # the only value; selects the shim and the E32Main shape
 caption = "Notes"             # LOCALISABLE_APP_INFO caption
 short_caption = "Notes"       # optional, defaults to caption
-softkeys = "exit"             # or "options-exit"; defaults to whether there is a menu
+softkeys = "exit"             # [95] or "options-exit", which is also how an
+                              # application says it HAS an Options menu; default "exit"
 left_softkey = "Options"      # [91] the label only; the command is fixed
 right_softkey = "Exit"
-
-[[ui.menu]]                   # [91] one line of the Options menu
-id = "new"                    # the word the Rust source repeats in Command::named
-label = "New note"
 ```
 
-**[91] Command ids.** A menu exists in two places that never meet: the compiled `.rss`
-and the Rust `match`. A number written in both would say nothing and drift silently, so
-both sides derive it from the same word — `0x4000 | (FNV-1a-32(id) & 0x3fff)`, in
-`symdev-manifest`'s `CommandId::of` and in `symbian-ui`'s `Command::named`, with one
-shared table of vectors asserted on each side (a `#[test]` on the host, a `const`
-assertion on the target, because that workspace builds for the phone and never runs
-tests). The range is bounded at both ends on purpose: below `0x4000` is everything the
-platform names (`EEikCmd*` at `0x100`, `EAknSoftkey*` at 3000–3200, the reserved softkey
-ranges at `0x1000`/`0x1100`/`0x1200`), and `0x8000` is where `CBA_BUTTON`'s **`WORD`**
-`id` (`eikon.rh:343`) would stop being representable, so one range serves a menu item
-and a softkey alike. Two names that hash alike are a build error naming both.
+**[95] There is no `[[ui.menu]]`, and no command id anywhere.** The rule that decides
+what this section holds is *the manifest holds what the phone needs before the
+application runs*: uid3, capabilities, vendor, caption, icon — the registration
+resource the launcher reads without launching anything — and the two compiled
+resources the framework reads as the application starts, the button group and the menu
+bar. The Options menu itself is only ever needed **while** the application runs, so it
+is declared in Rust (`App::menu`, §7.1) and its lines are added to an empty pane at
+the moment it opens. A line is its label next to the code that acts on it; the number
+`HandleCommandL` carries is the line's position, internal to `symbian-ui`.
+
+That deletes the whole "two compilers must agree on a number" problem experiment 91's
+`CommandId`/`Command::named` hash and the generated `menu` module existed to solve.
+What is left of the range is where the positions start: `0x4000`, because below it is
+everything the platform names (`EEikCmd*` at `0x100`, `EAknSoftkey*` at 3000–3200, the
+reserved softkey ranges at `0x1000`/`0x1100`/`0x1200`), and `0x8000` is where
+`CBA_BUTTON`'s **`WORD`** `id` (`eikon.rh:343`) would stop being representable.
 
 and the stage produces, all under `build/`:
 
@@ -599,7 +606,8 @@ and the stage produces, all under `build/`:
    `icon_file = "\\resource\\apps\\<app>_aif.mif"` when `[symbian] icon` is set
    (`number_of_icons = 0` and no `icon_file` when it is not), compiled with `HEADER` so
    `<app>.rsg` exists. **[91] It also carries the application's own `CBA` and, when
-   `[[ui.menu]]` is non-empty, its own `MENU_BAR`/`MENU_PANE`** (`eikon.rh:97-128` and
+   `softkeys = "options-exit"`, its own `MENU_BAR` and an **[95]** empty `MENU_PANE`**
+   (`eikon.rh:97-128` and
    `335-350`; there is no `AVKON_MENUBAR` struct, that name does not exist). The three
    named resources come *after* `EIK_APP_INFO`, which has to stay the third resource,
    and `EIK_APP_INFO` refers forward to them — `rcomp` resolves a forward `LLINK`, which
@@ -638,7 +646,7 @@ archive. Experiment 76 did exactly that, by hand.
 `symbian-rs/examples/ui`, built by `symdev build && symdev package && symdev run`.
 
 **What it is.** One `CCoeControl`-backed view; **[91]** an Options menu of four items
-and an application-owned `CBA`. Application state is a single `bars: u8` in the Rust
+and an application-owned `CBA`; **[95]** the menu declared in Rust, not in the manifest. Application state is a single `bars: u8` in the Rust
 app struct.
 
 **What it draws.** `clear`, then `bars` filled rectangles of increasing height along a
@@ -649,9 +657,11 @@ probe drew, because that picture is already known to render.
 `EKeyDownArrow` (0xf80a) decrements it down to 1; both return `EKeyWasConsumed` and ask for
 a deferred redraw. Everything else returns `EKeyWasNotConsumed` so the softkeys still work.
 
-**[91] What command it reacts to.** `Command::named("more")`, `"fewer"`, `"reset"` and
-`"quit"` — the same four words `[[ui.menu]]` uses in `symdev.toml`. `"quit"` calls
-`Ui::exit`, which is the same door the right softkey uses.
+**[95] What its menu is.** Four lines in `App::menu`, each a label next to the closure
+that acts on it — `m.item("More bars", |app| …)`, `"Fewer bars"`, `"Reset"` — and
+`m.exit("Exit")`, which carries `EEikCmdExit` so the shim ends the application itself.
+No id, no constant, no number. (**[91]** had `Command::named("more")` and four
+`[[ui.menu]]` entries in `symdev.toml`; both are gone.)
 
 **How a run is verified.**
 
@@ -777,5 +787,7 @@ between a 5 KB and a 107 KB hello-world GUI app.
 | EKA2L1 host key bindings | `~/.local/share/EKA2L1/bindings/default.yml` |
 | **[91]** A softkey reaches `HandleCommandL`, not `OfferKeyEventL`, and `R_AVKON_SOFTKEYS_EXIT` sends 3001 | experiment 91, `RDebug::Print` probes on `CShimAppUi::HandleWsEventL`/`HandleCommandL` with `Emulated.Stdout:trace`; `symbian-rs/corpus/91-ui-menu/README.md` |
 | **[91]** `EAknSoftkeyExit = 3009`, `EAknSoftkeyBack = 3001` | `epoc32/include/avkon.hrh:330-339` |
-| **[91]** An Options softkey with no menu bar is an access violation | experiment 91, EKA2L1 log `Access violation reading address 0x9C in thread Bars` |
+| **[91]** An Options softkey with no menu bar is an access violation | experiment 91, EKA2L1 log `Access violation reading address 0x9C in thread Bars`; **[95]** re-verified on the current emulator build, `Thread Bars terminated … KERN-EXEC … exit code: 3` |
+| **[95]** `DynInitMenuPaneL` fires for an **empty** compiled `MENU_PANE`, and `AddMenuItemL` fills it | experiment 95, `symbian-rs/corpus/95-runtime-menu/01-menu.png` |
+| **[95]** `CEikMenuPaneItem::SData::iText` is a `TBuf<40>` and a longer `Copy` panics, not leaves | `eikmenup.h:76-95`, `e32panic.h:131` (`ETDes16Overflow = 11`) |
 | What symdev generates today | `crates/symdev-build/src/driver/rust_build.rs`, `.../resource.rs`, `.../icon.rs`, `crates/symdev-build/src/package.rs`, `crates/symdev-rcomp/src/resource.rs` |

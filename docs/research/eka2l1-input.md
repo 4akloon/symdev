@@ -158,6 +158,9 @@ and was not decoded.
 `.rss` now declares its own `CBA`, with `EEikCmdExit` on the right button and
 `EAknSoftkeyOptions` on the left, plus the `MENU_BAR`/`MENU_PANE` the left button opens.
 Command ids then come from symdev and no ROM resource's numbering can change them.
+(Experiment 95 took the menu out of `symdev.toml` altogether: the pane is compiled
+empty and filled from Rust, and the id is a line's position. The softkey path below is
+unchanged.)
 F1 opens the menu, `Down` moves the highlight, `Return` selects, F2 ends the process —
 `symbian-rs/corpus/91-ui-menu/`.
 

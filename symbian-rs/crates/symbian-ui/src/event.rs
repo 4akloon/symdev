@@ -7,7 +7,8 @@
 //! A **softkey** does not arrive here. The button group container sits above this
 //! view on the control stack (`ECoeStackPriorityCba` = 60 against the view's 0), turns
 //! `EStdKeyDevice0`/`Device1` into a command and consumes the key, so the left and
-//! right softkeys reach [`crate::App::command`] and never [`crate::App::key`].
+//! right softkeys reach the menu and the shim (`crate::App::menu`) and never
+//! [`crate::App::key`].
 #![forbid(unsafe_code)]
 
 use crate::abi::RawKeyEvent;

@@ -1,5 +1,9 @@
 # 91 — the Options menu and working softkeys (2026-09-21)
 
+**Superseded in part by [95](../95-runtime-menu/):** the menu left `symdev.toml` the
+same day. The softkey answer below still stands — it is what 95 builds on — but the
+`[[ui.menu]]` items, the hashed command ids and `Command::named` are gone.
+
 `uidemo.exe`, 12 844 bytes, is `symbian-rs/examples/ui` grown by an Options menu: four
 items declared in `symdev.toml`, matched in Rust by the same four words. `uidemo.rss`
 is the resource text symdev generated for it and `uidemo.rsc` (364 bytes) is what the
