@@ -24,3 +24,6 @@ Read the current `[[ui.menu]]` path end to end: manifest -> macro -> shim -> res
   so `menu(&self, …)` can be called twice — once to fill the pane, once to look the
   action up by index — and the `fn` pointer is copied out before the `&self` borrow ends.
   No `&mut` alias is ever live with the `&self` one.
+- The native `rcomp` accepts `RESOURCE MENU_PANE r_symrs_menupane { items = { }; };`
+  — an empty `items` array compiles, `symdev build` on `examples/ui` produced
+  `uidemo.rsc` with it. Whether `DynInitMenuPaneL` then fires is the emulator question.
