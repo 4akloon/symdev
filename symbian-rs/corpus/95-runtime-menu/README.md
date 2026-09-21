@@ -33,5 +33,8 @@ non-capturing closure, so it is a `fn(&mut Bars)` the crate copies out of a seco
 | `04-long-label.png` | one item temporarily given a 47-character label. Avkon ellipsises it; the application does **not** panic, which is what a `TBuf<40>` overflow would have done |
 | `05-long-fired.png` | that truncated item still fires the right action: `bars=3 keys=0 cmd=1` |
 
+Beside the pixels, `symdev test --emulator` reports `uidemo: 3 passed` — the entry path
+is untouched by any of this.
+
 Emulator only; no device. EKA2L1 from `~/src/EKA2L1-build`, N00 (RM-469), 900×600
 window, keys through `docs/research/acceptance/emukey.py`.
