@@ -11,8 +11,18 @@
 //! two `Up` presses. It is written against the arrows and the selection key and never
 //! against a softkey, because F1/F2 reach the guest and still do nothing in an
 //! application built here (`docs/research/eka2l1-input.md`).
+//!
+//! Beside the pixels, `construct` writes the usual result file, so
+//! `symdev test --emulator` also has something to say on every rebuild without a
+//! person looking at a screenshot. It can only report what is knowable before the
+//! first key: that the framework got this far without a leave, in the order the ABI
+//! promises, with a view of a plausible size. **The screenshot pair is the test of
+//! `draw` and `key`; the report is the test of the entry path.**
 #![no_std]
 
+extern crate alloc;
+
+use symbian_std::test_report::Report;
 use symbian_std::ui::prelude::*;
 
 /// How many bars the chart may show. Six is what fits the E52's client area at the
@@ -25,11 +35,43 @@ struct Bars {
     /// How many keys this application has claimed, drawn so a screenshot says
     /// whether a key arrived even when the chart happens to look the same.
     keys: u32,
+    /// The view's area, as `size_changed` last reported it. The framework sizes the
+    /// view while it is being built, so this is already set when `construct` runs —
+    /// which is what lets the report below say how big the client area came out.
+    area: Rect,
 }
 
 impl App for Bars {
     fn new() -> Self {
-        Self { bars: 3, keys: 0 }
+        Self {
+            bars: 3,
+            keys: 0,
+            area: Rect::size(0, 0),
+        }
+    }
+
+    fn construct(&mut self, ui: &Ui) -> symbian_core::Result<()> {
+        let mut report = Report::new("uidemo");
+        // Reaching this callback at all is four facts at once: the shim found
+        // `symrs_app_vtbl`, its size word was long enough, `create` returned an object
+        // and `BaseConstructL` did not leave.
+        report.check("the framework reached the Rust construct", true);
+        // The ABI's order (avkon-rust-spec.md §3.3): the view exists and has been
+        // sized before `construct`, so `size_changed` has already run.
+        report.check_detail(
+            "the view was sized before construct",
+            self.area.width > 0 && self.area.height > 0,
+            format_args!("{}x{}", self.area.width, self.area.height),
+        );
+        // A redraw may be asked for from anywhere but `draw`; this is the first one.
+        ui.redraw();
+        report.check("a redraw can be asked for from construct", true);
+        report.finish()?;
+        Ok(())
+    }
+
+    fn size_changed(&mut self, area: Rect) {
+        self.area = area;
     }
 
     fn draw(&self, gc: &mut Gc<'_>, area: Rect) {
