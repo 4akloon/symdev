@@ -1,0 +1,15 @@
+user_language_raw=2
+user_language_name=ELangFrench
+user_language_base=65535
+greeting_here=Bonjour depuis Rust
+calls=100000 ticks_asking_euser=12 ticks_local=0
+checksum=200000 checksum_local=200000
+chain[ukrainian]=Привіт з Rust
+chain[french]=Bonjour depuis Rust
+chain[english]=Hello from Rust
+chain[english_apac]=Hello from Rust
+chain[german]=Hello from Rust
+chain[none]=Hello from Rust
+GREETING=Bonjour depuis Rust
+LANGUAGE_IS=langue
+OK=d'accord
