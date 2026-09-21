@@ -16,12 +16,14 @@ use proc_macro::TokenStream;
 
 mod cursor;
 mod entry;
+mod menu;
 mod signature;
 
 #[cfg(test)]
 mod tests;
 
-use entry::Entry;
+use entry::{Entry, Shape};
+use menu::Menu;
 
 /// Declares a function as the application's entry point.
 ///
@@ -68,7 +70,15 @@ use entry::Entry;
 #[proc_macro_attribute]
 pub fn main(attribute: TokenStream, item: TokenStream) -> TokenStream {
     let generated = match Entry::parse(&attribute.to_string(), &item.to_string()) {
-        Ok(entry) => entry.wrapper(),
+        Ok(entry) => match entry.shape() {
+            Shape::Console => entry.wrapper(),
+            // An Avkon application also gets its menu: the `menu` module of constants
+            // read from the same `symdev.toml` symdev generates the `.rss` from.
+            Shape::Gui => match manifest_dir().and_then(|dir| Menu::load(&dir)) {
+                Ok(menu) => entry.wrapper() + &menu.module(),
+                Err(message) => compile_error(&message),
+            },
+        },
         Err(message) => compile_error(&message),
     };
     // The user's function is passed through as the token stream it arrived as, so a
@@ -78,6 +88,18 @@ pub fn main(attribute: TokenStream, item: TokenStream) -> TokenStream {
     let mut out = tokens(&generated);
     out.extend(item);
     out
+}
+
+/// Where `symdev.toml` is: next to the `Cargo.toml` cargo is compiling, which cargo
+/// names in `CARGO_MANIFEST_DIR` for rustc and therefore for every macro rustc runs.
+fn manifest_dir() -> Result<std::path::PathBuf, String> {
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| {
+            "`CARGO_MANIFEST_DIR` is not set: the `gui` shape reads `symdev.toml` from \
+             the package root, which only cargo names"
+                .to_string()
+        })
 }
 
 /// Rust source this crate wrote itself, back as tokens. The input is generated here

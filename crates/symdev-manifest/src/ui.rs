@@ -76,6 +76,14 @@ pub struct MenuItem {
     pub command: CommandId,
 }
 
+impl MenuItem {
+    /// The Rust constant `#[symbian_std::main(gui)]` writes for this item: the id in
+    /// upper case with `-` as `_`, so `new-note` is matched as `menu::NEW_NOTE`.
+    pub fn constant(&self) -> String {
+        self.name.to_ascii_uppercase().replace('-', "_")
+    }
+}
+
 impl UiApp {
     pub(crate) fn validate(raw: Option<RawUi>, package: &str) -> Result<Option<Self>> {
         let Some(raw) = raw else {
@@ -124,10 +132,18 @@ fn menu(raw: Option<Vec<RawMenuItem>>) -> Result<Vec<MenuItem>> {
         let name = required(entry.id, "ui.menu.id")?;
         let label = required(entry.label, "ui.menu.label")?;
         let command = CommandId::of(&name);
+        identifier(&name)?;
         if let Some(clash) = items.iter().find(|i| i.name == name) {
             return Err(Error::Invalid(format!(
                 "ui.menu has two items named {:?} ({:?} and {:?})",
                 name, clash.label, label
+            )));
+        }
+        let constant = name.to_ascii_uppercase().replace('-', "_");
+        if let Some(clash) = items.iter().find(|i| i.constant() == constant) {
+            return Err(Error::Invalid(format!(
+                "ui.menu ids {:?} and {:?} would both be the constant `menu::{constant}`; rename one",
+                clash.name, name
             )));
         }
         if let Some(clash) = items.iter().find(|i| i.command == command) {
@@ -143,6 +159,24 @@ fn menu(raw: Option<Vec<RawMenuItem>>) -> Result<Vec<MenuItem>> {
         });
     }
     Ok(items)
+}
+
+/// An id becomes a Rust constant (`menu::NEW_NOTE` for `new-note`), so it is a lower
+/// case ASCII word: a letter, then letters, digits, `-` or `_`. Anything else would be
+/// a constant the source cannot spell.
+fn identifier(name: &str) -> Result<()> {
+    let mut chars = name.chars();
+    let well_formed = chars.next().is_some_and(|c| c.is_ascii_lowercase())
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_');
+    if well_formed {
+        Ok(())
+    } else {
+        Err(Error::Invalid(format!(
+            "ui.menu.id {name:?} must be a lower case ASCII word (a letter, then letters, \
+             digits, `-` or `_`): it becomes the Rust constant `menu::{}`",
+            name.to_ascii_uppercase().replace('-', "_")
+        )))
+    }
 }
 
 /// A caption is shown to a person, so it may hold anything but nothing: an empty one

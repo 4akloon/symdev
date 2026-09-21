@@ -6,3 +6,8 @@ description = "The #[main] attribute behind symbian_std::main: the E32Main wrapp
 
 [lib]
 proc-macro = true
+
+[dependencies]
+# The same reader symdev itself runs over `symdev.toml`, so the menu the macro sees is
+# the menu the resource compiler sees — one definition, as the C++ `.hrh` was.
+symdev-manifest = { path = "../../../crates/symdev-manifest" }
