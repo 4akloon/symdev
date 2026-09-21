@@ -49,3 +49,5 @@ Read the four Rust examples and the SDK `helloworldbasic` skeleton.
   9 DLLs / 219 ordinals. Rust 2.07x code, 1.88x e32, but marginally FEWER ordinals.
 - Next step: heap (User::AllocSize) and startup (User::NTickCount) probes on both sides,
   then write docs/research/cpp-parity.md.
+- 2026-09-21 Probe commit made (Rust side instrumented in-place; to be reverted after the run,
+  the C++ side stays behind `MACRO SYMDEV_CPP_PARITY_PROBE`, off by default).
