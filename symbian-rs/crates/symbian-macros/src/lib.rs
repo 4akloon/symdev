@@ -47,13 +47,24 @@ use entry::Entry;
 ///
 /// # The second shape
 ///
-/// `#[symbian_std::main(gui)]` is reserved for an Avkon application (step 75) and is
-/// refused until it exists. It cannot be the same generated code: a console
-/// application creates and runs its own `CActiveScheduler`, while an Avkon one must
-/// not, because CONE creates and runs `CCoeScheduler` and `CCoeEnv` is itself a
-/// `CActive` on it. `gui` will therefore hand the process to the framework instead of
-/// running `main` to completion, and `main` will become the place the application is
-/// built rather than the place it ends.
+/// `#[symbian_std::main(gui)]` is an Avkon application (step 75), and it is not the
+/// same generated code at all. A console application creates and runs its own
+/// `CActiveScheduler`; an Avkon one must not, because CONE creates and runs
+/// `CCoeScheduler` and `CCoeEnv` is itself a `CActive` on it. So the GUI shape writes
+/// **no** `E32Main`: the C++ shim owns the entry point and hands the process to
+/// `EikStart::RunApplication`, and `main` becomes the place the application object is
+/// built rather than the place the program ends.
+///
+/// ```ignore
+/// #[symbian_std::main(gui)]
+/// fn main() -> Notes {
+///     Notes::new()
+/// }
+/// ```
+///
+/// The return type is the `impl symbian_std::ui::App` the framework will call, and the
+/// attribute writes the `symrs_app_vtbl` the shim imports, whose `create` is this
+/// `main`.
 #[proc_macro_attribute]
 pub fn main(attribute: TokenStream, item: TokenStream) -> TokenStream {
     let generated = match Entry::parse(&attribute.to_string(), &item.to_string()) {

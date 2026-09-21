@@ -10,28 +10,39 @@ pub const ATTRIBUTE: &str = "symbian_std::main";
 /// pulled; that flag is `RustBuild`'s, and this is the definition it looks for.
 pub const E32MAIN: &str = "_Z7E32Mainv";
 
+/// The one symbol `shims/s60/symrs_avkon.cpp` imports from the Rust side. The link line
+/// names it with `-u symrs_app_vtbl` so the Rust archive is searched for it before the
+/// shim archive, which is where the reference comes from, is reached.
+pub const VTBL: &str = "symrs_app_vtbl";
+
+/// The path the generated GUI entry names the UI crate by. It is reached through
+/// `symbian-std` so that an application depends on one crate, exactly as the console
+/// shape reaches `ExitCode` through `::symbian_std`.
+pub const UI: &str = "::symbian_std::ui";
+
 /// Which of the two process shapes the application is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shape {
     /// A console application: `main` runs to completion and its value is the exit code.
     Console,
-    /// An Avkon application, reserved for step 75. It cannot be the console shape,
-    /// because CONE creates and runs the `CCoeScheduler` itself and `CCoeEnv` is a
-    /// `CActive` on it — a second `CActiveScheduler` would panic the thread.
+    /// An Avkon application (step 75). It cannot be the console shape, because CONE
+    /// creates and runs the `CCoeScheduler` itself and `CCoeEnv` is a `CActive` on it —
+    /// a second `CActiveScheduler` would panic the thread. So this shape writes **no**
+    /// `E32Main` at all: for a GUI application the C++ shim owns the entry point and
+    /// hands the process to `EikStart::RunApplication`, and what Rust exports instead
+    /// is the one symbol that shim imports, `symrs_app_vtbl`.
     Gui,
 }
 
 impl Shape {
-    /// The attribute's whole grammar: nothing, or one word naming the shape. It is
-    /// written out here, rather than only where a shape is generated, so that adding
-    /// the GUI entry in step 75 changes what `gui` *does* and not what it *is*.
+    /// The attribute's whole grammar: nothing, or one word naming the shape.
     fn parse(arguments: &str) -> Result<Self, String> {
         match arguments.trim() {
             "" => Ok(Self::Console),
             "gui" => Ok(Self::Gui),
             other => Err(format!(
-                "`#[{ATTRIBUTE}]` takes no arguments, or `gui` for an Avkon application \
-                 (step 75); found `{other}`"
+                "`#[{ATTRIBUTE}]` takes no arguments, or `gui` for an Avkon application; \
+                 found `{other}`"
             )),
         }
     }
@@ -40,6 +51,8 @@ impl Shape {
 /// The application's entry point: the shape it asked for and the function it names.
 pub struct Entry {
     shape: Shape,
+    /// For [`Shape::Gui`], the application type `fn main` returns.
+    app: String,
 }
 
 impl Entry {
@@ -52,14 +65,6 @@ impl Entry {
     /// rendered form of their token streams.
     pub fn parse(arguments: &str, item: &str) -> Result<Self, String> {
         let shape = Shape::parse(arguments)?;
-        if shape == Shape::Gui {
-            return Err(format!(
-                "`#[{ATTRIBUTE}(gui)]` is not implemented yet: an Avkon application's entry \
-                 point must not create a `CActiveScheduler`, because CONE creates and runs \
-                 `CCoeScheduler` itself and `CCoeEnv` is a `CActive` on it (step 75). Write \
-                 `#[{ATTRIBUTE}]` for a console application."
-            ));
-        }
         let signature = Signature::parse(item, ATTRIBUTE)?;
         if signature.name != Self::NAME {
             return Err(format!(
@@ -81,7 +86,24 @@ impl Entry {
         for qualifier in &signature.qualifiers {
             Self::reject_qualifier(qualifier)?;
         }
-        Ok(Self { shape })
+        let app = match shape {
+            Shape::Console => String::new(),
+            // The type is read from the signature rather than from the attribute: the
+            // application object is what `fn main` returns, and writing the name twice
+            // is a way for the two to drift apart.
+            Shape::Gui => signature
+                .returns
+                .ok_or_else(|| {
+                    format!(
+                        "`#[{ATTRIBUTE}(gui)]`: `fn {}` must return the application type, \
+                         which is what the framework builds and calls — an `impl App` \
+                         struct, for example `fn main() -> Notes {{ Notes::new() }}`",
+                        Self::NAME
+                    )
+                })?
+                .to_string(),
+        };
+        Ok(Self { shape, app })
     }
 
     fn reject_qualifier(qualifier: &str) -> Result<(), String> {
@@ -111,10 +133,25 @@ impl Entry {
                  }}\n",
                 Self::NAME
             ),
-            // Unreachable: `parse` refuses `gui` until step 75 says what it generates —
-            // a `CAknApplication` handed to `EikStart::RunApplication`, with no active
-            // scheduler of our own. This arm is where that code will go.
-            Shape::Gui => String::new(),
+            // No `E32Main`, and no active scheduler: the C++ shim owns both, and CONE
+            // is already inside `CActiveScheduler::Start()` by the time any of this
+            // runs. What Rust exports is the one symbol the shim imports — the vtable
+            // of `extern "C"` thunks it forwards each Avkon virtual to.
+            //
+            // `create` is written here rather than taken from `App::new` so that the
+            // application's own `fn main` stays the place its object is built.
+            Shape::Gui => format!(
+                "#[unsafe(export_name = \"{VTBL}\")]\n\
+                 pub extern \"C\" fn __symbian_app_vtbl() -> *const {UI}::AppVtbl {{\n    \
+                 extern \"C\" fn create() -> *mut ::core::ffi::c_void {{\n        \
+                 {UI}::start::<{app}>({main}())\n    \
+                 }}\n    \
+                 static VTBL: {UI}::AppVtbl = {UI}::AppVtbl::of::<{app}>(create);\n    \
+                 &VTBL\n\
+                 }}\n",
+                app = self.app,
+                main = Self::NAME
+            ),
         }
     }
 }

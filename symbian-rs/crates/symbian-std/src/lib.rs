@@ -85,6 +85,15 @@ pub mod test_report;
 pub mod time;
 
 pub use symbian_async as task;
+/// An Avkon application: the [`ui::App`] trait, the drawing context and the keys the
+/// C++ shim forwards (design spec §11 step 75). It is a module here, rather than a
+/// crate an application names itself, so that a program's first line stays one `use`.
+///
+/// It is the one part of this facade with no `std` analogue at all, and the crate's
+/// own documentation says why: an Avkon application is not a `fn main` running to
+/// completion, but a framework that owns the event loop and calls into the program.
+pub use symbian_ui as ui;
+
 pub use symbian_macros::main;
 /// What a `fn main` may return, and the `TInt` it becomes. An application implements
 /// [`IntoExitCode`] for its own error type to return it from `main`; `()`, `i32`,

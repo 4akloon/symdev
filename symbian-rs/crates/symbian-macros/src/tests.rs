@@ -4,7 +4,7 @@
 //! are spaced the way a token stream prints (`Result < () >`, `#[doc = " …"]`) rather
 //! than the way a person writes them: that is exactly what the macro will see.
 
-use crate::entry::{E32MAIN, Entry};
+use crate::entry::{E32MAIN, Entry, VTBL};
 
 fn wrapper(arguments: &str, item: &str) -> String {
     match Entry::parse(arguments, item) {
@@ -123,13 +123,58 @@ fn an_unsafe_or_extern_main_is_refused() {
 }
 
 #[test]
-fn the_gui_shape_is_grammar_today_and_code_in_step_75() {
+fn the_gui_shape_exports_the_vtable_and_no_e32main() {
+    let out = wrapper("gui", "fn main () -> Notes { Notes :: new () }");
+    assert!(out.contains(&format!("export_name = \"{VTBL}\"")), "{out}");
+    assert!(
+        !out.contains(E32MAIN),
+        "a GUI application's E32Main belongs to the shim: {out}"
+    );
+    assert!(
+        out.contains("::symbian_std::ui::start::<Notes>(main())"),
+        "{out}"
+    );
+    assert!(
+        out.contains("::symbian_std::ui::AppVtbl::of::<Notes>(create)"),
+        "{out}"
+    );
+}
+
+/// The application type is read out of the signature, whatever shape it has, so that
+/// it is never written a second time beside the one in `fn main`.
+#[test]
+fn the_gui_shape_reads_the_application_type_from_the_return_type() {
+    for (item, app) in [
+        ("fn main () -> app :: Notes { todo ! () }", "app :: Notes"),
+        ("fn main () -> Notes < 4 > { todo ! () }", "Notes < 4 >"),
+        (
+            "fn main () -> Notes where Notes : Sized { todo ! () }",
+            "Notes",
+        ),
+    ] {
+        let out = wrapper("gui", item);
+        assert!(out.contains(&format!("start::<{app}>")), "{item}: {out}");
+    }
+}
+
+#[test]
+fn a_gui_main_that_returns_nothing_says_what_it_must_return() {
     let message = refusal("gui", "fn main () { }");
     assert!(
-        message.contains("not implemented yet")
-            && message.contains("CActiveScheduler")
-            && message.contains("step 75"),
+        message.contains("must return the application type") && message.contains("impl App"),
         "{message}"
+    );
+}
+
+/// Everything the console shape refuses, the GUI shape refuses the same way: the
+/// checks are on the signature, not on the shape.
+#[test]
+fn the_gui_shape_keeps_the_console_shapes_refusals() {
+    assert!(refusal("gui", "async fn main () -> Notes { todo ! () }").contains("`async fn`"));
+    assert!(refusal("gui", "fn run () -> Notes { todo ! () }").contains("must be called `main`"));
+    assert!(
+        refusal("gui", "fn main (a : i32) -> Notes { todo ! () }")
+            .contains("must take no arguments")
     );
 }
 

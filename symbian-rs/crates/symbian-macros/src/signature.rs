@@ -1,8 +1,12 @@
 //! `Signature`: the header of the function the attribute was applied to.
 //!
-//! Only as much of it as the entry point cares about — the qualifiers, the name and
-//! the parameter list. The return type is deliberately not read: whether it can become
-//! a `TInt` is `IntoExitCode`'s question, and rustc asks it better than a macro could.
+//! Only as much of it as the entry point cares about — the qualifiers, the name, the
+//! parameter list and, for a GUI application, the return type.
+//!
+//! For a console entry the return type is deliberately *not* looked at: whether it can
+//! become a `TInt` is `IntoExitCode`'s question, and rustc asks it better than a macro
+//! could. A GUI entry is the exception, because the type it returns is the application
+//! type the vtable has to be built for, and only the signature says which it is.
 
 use crate::cursor::Cursor;
 
@@ -18,6 +22,9 @@ pub struct Signature<'a> {
     pub name: &'a str,
     /// The text between the parentheses, trimmed; empty when it takes none.
     pub parameters: &'a str,
+    /// What follows `->`, trimmed, up to the `where` clause or the body; `None` when
+    /// the function returns `()` by writing nothing.
+    pub returns: Option<&'a str>,
 }
 
 impl<'a> Signature<'a> {
@@ -66,6 +73,7 @@ impl<'a> Signature<'a> {
             qualifiers,
             name,
             parameters: parameters.trim(),
+            returns: return_type(&mut cursor),
         })
     }
 
@@ -76,6 +84,46 @@ impl<'a> Signature<'a> {
         cursor.skip_space();
         !cursor.rest().is_empty()
     }
+}
+
+/// What `-> …` names, if anything: everything between the arrow and the body, minus a
+/// `where` clause. `<`, `(` and `[` are followed through with [`Cursor::skip_atom`], so
+/// a `Result<(), E>` or an `impl Trait + 'static` arrives whole and a `{` inside a
+/// const-generic argument does not end the scan.
+fn return_type<'a>(cursor: &mut Cursor<'a>) -> Option<&'a str> {
+    cursor.skip_space();
+    let rest = cursor.rest();
+    let after_arrow = rest.strip_prefix("->")?;
+    let mut depth = 0usize;
+    let mut scan = Cursor::new(after_arrow);
+    let mut end = after_arrow.len();
+    loop {
+        scan.skip_space();
+        match scan.peek() {
+            None => break,
+            Some('<' | '(' | '[') => depth += 1,
+            Some('>' | ')' | ']') => depth = depth.saturating_sub(1),
+            Some('{') if depth == 0 => {
+                end = after_arrow.len() - scan.rest().len();
+                break;
+            }
+            Some(c) if depth == 0 && is_ident_start(c) => {
+                let before = scan.rest().len();
+                if scan.ident() == "where" {
+                    end = after_arrow.len() - before;
+                    break;
+                }
+                continue;
+            }
+            Some(_) => {}
+        }
+        scan.skip_atom();
+    }
+    Some(after_arrow[..end].trim()).filter(|t| !t.is_empty())
+}
+
+fn is_ident_start(c: char) -> bool {
+    c == '_' || c.is_alphabetic()
 }
 
 /// `extern "C"` and `pub(crate)` carry a token of their own before the next word.
