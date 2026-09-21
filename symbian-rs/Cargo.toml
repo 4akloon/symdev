@@ -56,6 +56,13 @@ debug = false
 # bytes carries none of it. `lto = false` is what makes that possible: under the
 # workspace's `lto = true` an rlib holds LLVM bitcode, which `ld` cannot read, and
 # `staticlib` would need its own `#[panic_handler]` and collide with the application's.
+# `compiler_builtins` is pulled from the application's own archive as one object, so a
+# single reference brings all of it: `examples/time` divides once (`__aeabi_uidiv`) and
+# receives 9 516 bytes — `__divdf3`, `__adddf3`, `__muldf3`, `u64_div_rem`, a second
+# `memcpy`. Its own codegen-unit count, so the archive has one member per builtin.
+[profile.release.package.compiler_builtins]
+codegen-units = 10000
+
 [profile.libcalls]
 inherits = "release"
 lto = false

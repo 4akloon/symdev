@@ -87,6 +87,14 @@ fn cargo_manifest(name: &str, sdk: &RustSdk) -> String {
          panic = \"abort\"\n\
          debug = false\n\
          \n\
+         # `compiler_builtins` comes out of `-Zbuild-std` as one object under the\n\
+         # workspace's `codegen-units = 1`, so one reference pulls all of it: a single\n\
+         # integer division cost `examples/time` 9 168 bytes of soft-float it never\n\
+         # calls. One codegen unit per builtin, and the linker takes only the member\n\
+         # it needs.\n\
+         [profile.release.package.compiler_builtins]\n\
+         codegen-units = 10000\n\
+         \n\
          [profile.dev]\n\
          panic = \"abort\"\n",
         sdk.crate_dir("symbian-core").display(),

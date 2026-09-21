@@ -63,3 +63,20 @@ among them. They are reachable **through the vtable**, so section granularity ca
 help; the 284–329 B of experiment 95 is the vtable's fault, not the object's.
 Also: all four GUI examples declare `softkeys`, so none of them is a "GUI example with
 no menu" anyway.
+
+### L2 — one codegen unit per `compiler_builtins` builtin (KEEP, big)
+
+`[profile.release.package.compiler_builtins] codegen-units = 10000` in
+`symbian-rs/Cargo.toml` and in the scaffold's template
+(`crates/symdev-cli/src/scaffold_rust.rs`).
+
+**`time`: exe 20 583 -> 14 791 (-5 792, -28 %), text 27 972 -> 18 804 (-9 168).**
+Every other example unchanged (±16 B of deflate noise).
+
+Mechanism: `build/timedemo.exe.map`'s "Archive member included to satisfy reference"
+names `__aeabi_uidiv` as the one reference into
+`libtimedemo.a(compiler_builtins-….cgu.0.rcgu.o)`, and that single object was 9 516 B:
+`__divdf3` 1 056, `__adddf3` 908, `__muldf3` 836, `u64_div_rem` 636, `__divsf3` 588,
+`__addsf3` 528, a second `memcpy` 432, `__mulsf3` 412, `__truncdfsf2` 324 … After the
+split, `nm` finds exactly two builtins left in the image: `u32_div_rem` (212) and
+`__udivsi3` (16) — 228 B instead of 9 516.
