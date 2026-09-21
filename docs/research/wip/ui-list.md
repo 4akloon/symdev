@@ -93,9 +93,22 @@ surface, proven in the emulator with arrow keys and Return.
 - The list goes on the stack at `ECoeStackPriorityDefault + 1` so it is offered keys
   before `CShimView` by the documented priority rule.
 
+- A full-screen list COVERS the application's view, so a selection cannot be shown by
+  drawing in `App::draw` — the only visible surface is the list itself. That is why
+  `on_select` is `FnMut(usize, &mut Rows)` and not `FnMut(usize)`: the callback has to
+  be able to rewrite the thing that owns it, and `Rows` borrows only the control handle,
+  never the closure beside it, so no `Rc`/`Weak` cycle is needed in the application.
+- `selected_thunk` MOVES the closure out of the `Owner` for the length of the call and
+  puts it back. Whether anything a callback does can make the list report a second event
+  before the first returns was never observed; this makes a nested call a no-op instead
+  of a second `&mut` to the same box.
+- `bafl.dso` was already on every Rust link line through `RustSdk::LIBRARIES`; only
+  `eikcoctl.dso` had to be added, and it went into `UI_LIBRARIES`.
+
 ## Dead ends
 
 ## Next step
 
-- Write `shims/s60/symrs_list.cpp` + `symrs_list.h` (own host/callback tables) and
-  `crates/symbian-ui/src/list.rs`; add `eikcoctl.dso`/`bafl.dso` to `UI_LIBRARIES`.
+- DONE: shim, `list/{mod,rows}.rs`, `eikcoctl.dso`. Host + symbian-rs gates clean.
+- NEXT: `symbian-rs/examples/ui-list` (own example, not `examples/ui`, which three other
+  agents also touch), uid3 0xe0000696, then build/package/run and the emukey acceptance.

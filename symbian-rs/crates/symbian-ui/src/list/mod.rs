@@ -31,78 +31,18 @@
 use core::ffi::c_void;
 
 use alloc::boxed::Box;
-use symbian_core::des::encode_utf16_into;
 use symbian_core::{ErrorKind, Result, SymbianError, check};
 
 use crate::ui::Ui;
 
-/// The greatest number of UTF-16 code units one row's label may hold.
-///
-/// A row is one line of a 240-pixel-wide screen, so this is far past what can be read;
-/// text longer than it is an [`ErrorKind::Overflow`] rather than a silent truncation,
-/// because unlike `Gc::text` this call has somewhere to report a failure.
-pub const MAX_ITEM_TEXT: usize = 128;
+mod rows;
 
-/// The Rust half of `SymRsListCallbacks` in `shims/s60/symrs_list.h`.
-///
-/// It is a table of function pointers handed over at create time rather than a symbol
-/// the shim imports, which is why adding a list costs the link line nothing: the one
-/// call that runs from C++ into Rust needs no `-u` (experiment 86 needed one for
-/// `symrs_app_vtbl` and this deliberately avoids a second).
-#[repr(C)]
-struct Callbacks {
-    size: u32,
-    selected: extern "C" fn(*mut c_void, i32) -> i32,
-}
+pub use rows::{MAX_ITEM_TEXT, Rows};
 
-/// What the shim's opaque `aOwner` really points at. Boxed once, so its address is
-/// stable for as long as C++ holds it.
-struct Owner {
-    on_select: Option<Box<dyn FnMut(usize)>>,
-}
-
-/// The `selected` callback, called from the list's own `OfferKeyEventL`.
-///
-/// Nothing here may unwind: a Rust panic is `abort` and a C++ exception crossing this
-/// frame ends the process with no diagnostic. The application object is **not** borrowed
-/// while this runs — the list is the control the framework called, not the view — so the
-/// closure can touch anything it captured without aliasing an outer `&mut`.
-extern "C" fn selected_thunk(owner: *mut c_void, index: i32) -> i32 {
-    if owner.is_null() || index < 0 {
-        return 0;
-    }
-    // SAFETY: `owner` is the `Box<Owner>` leaked in `List::new` for this list; the shim
-    // passes back exactly that pointer and never after `symrs_list_destroy`, which
-    // `Drop` calls before the box is reclaimed. The framework is single-threaded, and
-    // no other borrow of this `Owner` is live: `List`'s own methods never take one.
-    let owner = unsafe { &mut *owner.cast::<Owner>() };
-    if let Some(on_select) = owner.on_select.as_mut() {
-        on_select(index as usize);
-    }
-    0
-}
-
-static CALLBACKS: Callbacks = Callbacks {
-    size: size_of::<Callbacks>() as u32,
-    selected: selected_thunk,
+use rows::{
+    CALLBACKS, Owner, selected, set_items, symrs_list_count, symrs_list_create, symrs_list_destroy,
+    symrs_list_set_selected,
 };
-
-unsafe extern "C" {
-    fn symrs_list_create(
-        app_ui: *mut c_void,
-        view: *mut c_void,
-        callbacks: *const Callbacks,
-        owner: *mut c_void,
-        out: *mut *mut c_void,
-    ) -> i32;
-    fn symrs_list_destroy(list: *mut c_void);
-    fn symrs_list_clear(list: *mut c_void);
-    fn symrs_list_add(list: *mut c_void, text: *const u16, len: i32) -> i32;
-    fn symrs_list_commit(list: *mut c_void) -> i32;
-    fn symrs_list_count(list: *mut c_void) -> i32;
-    fn symrs_list_selected(list: *mut c_void) -> i32;
-    fn symrs_list_set_selected(list: *mut c_void, index: i32) -> i32;
-}
 
 /// A list box filling the application's view.
 ///
@@ -120,7 +60,10 @@ impl List {
     /// (`KErrNoMemory` and the like) and reaches the application as a leave only after
     /// its frame has returned.
     pub fn new(ui: &Ui, items: &[&str]) -> Result<Self> {
-        let owner = Box::into_raw(Box::new(Owner { on_select: None }));
+        let owner = Box::into_raw(Box::new(Owner {
+            raw: core::ptr::null_mut(),
+            on_select: None,
+        }));
         let mut raw: *mut c_void = core::ptr::null_mut();
         // SAFETY: `ui`'s two handles are the `CShimAppUi*` and `CShimView*` the shim
         // passed to `construct`, both alive for as long as the application object;
@@ -146,6 +89,10 @@ impl List {
                 err => SymbianError::from_code(err),
             });
         }
+        // SAFETY: the box is alive and unborrowed — C++ has the pointer but calls
+        // nothing through it until the list reports an event, which cannot happen
+        // before this function has returned the list to the application.
+        unsafe { (*owner).raw = raw };
         let mut list = Self { raw, owner };
         list.set_items(items)?;
         Ok(list)
@@ -158,35 +105,12 @@ impl List {
     /// and the list is left holding whatever was appended before it — call it again
     /// with a shorter label rather than reading the half-filled list.
     pub fn set_items(&mut self, items: &[&str]) -> Result<()> {
-        // SAFETY: `self.raw` is the handle `symrs_list_create` wrote and is destroyed
-        // only in `Drop`. `Reset` on the item array is non-leaving.
-        unsafe { symrs_list_clear(self.raw) };
-        for item in items {
-            self.push(item)?;
-        }
-        // SAFETY: as above; the shim TRAPs `HandleItemAdditionL` and returns its code.
-        check(unsafe { symrs_list_commit(self.raw) }).map(drop)
-    }
-
-    /// Appends one row, without telling the list yet. The shim writes the column
-    /// separators, because the row format belongs to the list style: for
-    /// `list_single_pane` a row is `"\tLabel"`, the leading empty column being where a
-    /// graphic style would put its icon index.
-    fn push(&mut self, item: &str) -> Result<()> {
-        let mut units = [0u16; MAX_ITEM_TEXT];
-        let len = encode_utf16_into(item, &mut units)?;
-        // SAFETY: `units` is a live stack array of `MAX_ITEM_TEXT` elements and
-        // `len <= MAX_ITEM_TEXT`; the shim wraps the pair in a `TPtrC16`, copies it into
-        // the item array and does not keep the pointer beyond the call.
-        check(unsafe { symrs_list_add(self.raw, units.as_ptr(), len as i32) }).map(drop)
+        set_items(self.raw, items)
     }
 
     /// The highlighted row's index, or 0 when the list is empty.
     pub fn selected(&self) -> usize {
-        // SAFETY: `CurrentItemIndex` is a non-leaving `const` member reached through the
-        // shim, and `self.raw` is live.
-        let index = unsafe { symrs_list_selected(self.raw) };
-        if index < 0 { 0 } else { index as usize }
+        selected(self.raw)
     }
 
     /// Moves the highlight and redraws. An index past the end is an
@@ -216,9 +140,10 @@ impl List {
     /// key, or a tap on a device that has a touch screen.
     ///
     /// The application object is not borrowed while this runs, so the closure cannot
-    /// reach it: give it what it needs to record, for example an
-    /// `alloc::rc::Rc<core::cell::Cell<usize>>` the application also holds.
-    pub fn on_select(&mut self, on_select: impl FnMut(usize) + 'static) {
+    /// reach it; what it is given instead is [`Rows`], which can rewrite the list. On a
+    /// full-screen list that is the only surface a selection can show itself on, since
+    /// the list covers the application's own view.
+    pub fn on_select(&mut self, on_select: impl FnMut(usize, &mut Rows<'_>) + 'static) {
         // SAFETY: `self.owner` came from `Box::into_raw` in `new` and is alive until
         // `Drop`. `&mut self` is proof no other borrow is live — the only other one is
         // taken by `selected_thunk`, which the framework can only call between our
