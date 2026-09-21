@@ -28,6 +28,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dirprobe"
+version = "0.1.0"
+dependencies = [
+ "symbian-core",
+ "symbian-std",
+ "symbian-sys",
+]
+
+[[package]]
 name = "filesdemo"
 version = "0.1.0"
 dependencies = [
