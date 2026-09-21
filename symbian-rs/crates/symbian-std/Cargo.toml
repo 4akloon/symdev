@@ -7,11 +7,22 @@ description = "std's module tree over Symbian OS 9.3: io, fs and a prelude, so p
 [lib]
 crate-type = ["rlib"]
 
+[features]
+default = ["runtime"]
+# The `no_std` SDK: this crate brings the global allocator, the panic handler and the
+# `E32Main` that runs `fn main`.
+runtime = ["dep:symbian-runtime"]
+# There is a real `std` for this target (design spec §11 step 77), so `std` owns the
+# allocator, the panic handler and the process entry and this crate must supply none of
+# them. Used with `default-features = false`; what is left is the entry attribute, the
+# prelude and the test harness, all three over `std`'s own `fs` and `io`.
+std = []
+
 [dependencies]
 symbian-alloc = { path = "../symbian-alloc" }
 symbian-async = { path = "../symbian-async" }
 symbian-core = { path = "../symbian-core" }
 symbian-macros = { path = "../symbian-macros" }
-symbian-runtime = { path = "../symbian-runtime" }
+symbian-runtime = { path = "../symbian-runtime", optional = true }
 symbian-sys = { path = "../symbian-sys" }
 symbian-ui = { path = "../symbian-ui" }

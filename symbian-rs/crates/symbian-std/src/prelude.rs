@@ -9,4 +9,7 @@
 //! It deliberately does not re-export `Vec`, `String` or `Box`: those come from
 //! `alloc`, which an application already has, and shadowing them here would make it
 //! harder, not easier, to see where a type comes from.
+#[cfg(not(feature = "std"))]
 pub use crate::io::{Read, Result, Seek, Write};
+#[cfg(feature = "std")]
+pub use std::io::{Read, Result, Seek, Write};

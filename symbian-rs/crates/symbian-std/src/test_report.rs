@@ -23,8 +23,14 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt::Write as _;
 
+#[cfg(not(feature = "std"))]
 use crate::fs;
+#[cfg(not(feature = "std"))]
 use crate::io::Result;
+#[cfg(feature = "std")]
+use std::fs;
+#[cfg(feature = "std")]
+use std::io::Result;
 
 /// The version of the shape above, so a later change is visible to an older reader.
 pub const SCHEMA: u32 = 1;

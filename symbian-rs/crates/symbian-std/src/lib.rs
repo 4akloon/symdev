@@ -40,31 +40,6 @@
 //!
 //! ```ignore
 //! #![no_std]
-//!
-//! use symbian_std::prelude::*;
-//!
-//! #[symbian_std::main]
-//! fn main() -> Result<()> {
-//!     Ok(())
-//! }
-//! ```
-//!
-//! [`macro@main`] writes the `E32Main()` `eexe.lib` calls; there is no `#![no_main]`
-//! and no entry macro to remember, because the crate is compiled as a `staticlib` and
-//! rustc never looks for a `main` of its own. `#![no_std]` stays, and stays honest:
-//! there is no `std` for this target.
-//! [`sync`] and [`thread`] are step 72: `Arc`, `Mutex`, `Once` and `thread::spawn` over
-//! the atomics the SDK's compiler-runtime archive provides on a CPU that has no atomic
-//! instruction. Both modules say plainly what they cannot do — see their own
-//! documentation before reaching for them, because every atomic operation on this
-//! device is a kernel call.
-//!
-//! [`thread_local!`](crate::thread_local) and [`thread::LocalKey`] are step 76: per-thread
-//! state over `UserSvr::DllTls`, one kernel call per access and no compiler support.
-//!
-//! [`test_report`] is the other half of step 71: how an example says whether it passed,
-//! in a file `symdev test --emulator` can read back off the emulated drive.
-#![no_std]
 // Everything an application touches is safe, and the modules that make up the file and
 // I/O facade say so with their own `#![forbid(unsafe_code)]`. [`sync`] and [`thread`]
 // are the exception CLAUDE.md names: a mutex and a thread are built out of kernel
@@ -74,16 +49,36 @@
 #![deny(unsafe_code)]
 
 extern crate alloc;
+/// With a real `std` for this target there is no facade to build: `std::fs`,
+/// `std::io`, `std::sync`, `std::thread` and `std::time` are the genuine articles, and
+/// the modules below would be a second, subtly different copy of each. Worse than
+/// different — *wrong*: `symbian_std::thread::spawn` and `std::thread::spawn` each
+/// switch heap serialisation on behind their own flag, and a program that used both
+/// would have two locks over one heap.
+///
+/// So under this feature the crate is only what `std` has no answer for: the entry
+/// point attribute, the prelude and [`test_report`].
+#[cfg(feature = "std")]
+extern crate std;
 
+#[cfg(not(feature = "std"))]
 pub mod fs;
+#[cfg(not(feature = "std"))]
 pub mod io;
+#[cfg(not(feature = "std"))]
 pub mod net;
 pub mod prelude;
+#[cfg(not(feature = "std"))]
 #[allow(unsafe_code)]
 pub mod sync;
 pub mod test_report;
+#[cfg(not(feature = "std"))]
 pub mod time;
+#[cfg(not(feature = "std"))]
+#[allow(unsafe_code)]
+pub mod thread;
 
+#[cfg(not(feature = "std"))]
 pub use symbian_async as task;
 /// An Avkon application: the [`ui::App`] trait, the drawing context and the keys the
 /// C++ shim forwards (design spec §11 step 75). It is a module here, rather than a
@@ -92,12 +87,33 @@ pub use symbian_async as task;
 /// It is the one part of this facade with no `std` analogue at all, and the crate's
 /// own documentation says why: an Avkon application is not a `fn main` running to
 /// completion, but a framework that owns the event loop and calls into the program.
+#[cfg(not(feature = "std"))]
 pub use symbian_ui as ui;
 
 pub use symbian_macros::main;
 /// What a `fn main` may return, and the `TInt` it becomes. An application implements
 /// [`IntoExitCode`] for its own error type to return it from `main`; `()`, `i32`,
-/// `SymbianError`, [`io::Error`] and any `Result` of those are already covered.
+/// `SymbianError`, `io::Error` and any `Result` of those are already covered.
+#[cfg(feature = "runtime")]
 pub use symbian_runtime::{ExitCode, IntoExitCode};
-#[allow(unsafe_code)]
-pub mod thread;
+
+/// What `#[symbian_std::main]` calls. Not part of the API an application writes.
+///
+/// There are two of it, one per shape of the SDK, and the attribute expands to the same
+/// line for both so that a program moving from `#![no_std]` to `std` changes nothing
+/// but its `use` lines.
+#[cfg(feature = "runtime")]
+#[doc(hidden)]
+pub fn __start<T: IntoExitCode>(main: fn() -> T) -> i32 {
+    ExitCode::from_main(main())
+}
+
+/// The `std` shape: `std`'s own runtime start-up, which initialises the runtime, runs
+/// `main`, converts its `Termination` to an exit code, flushes `stdout` and runs the
+/// main thread's thread-local destructors — the last of which nothing in this kernel
+/// does by itself (experiment 88).
+#[cfg(feature = "std")]
+#[doc(hidden)]
+pub fn __start<T: std::process::Termination + 'static>(main: fn() -> T) -> i32 {
+    std::os::symbian::start(main)
+}

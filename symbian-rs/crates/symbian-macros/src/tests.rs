@@ -33,7 +33,7 @@ fn the_wrapper_exports_the_mangled_e32main_and_calls_main() {
         "{out}"
     );
     assert!(
-        out.contains("::symbian_std::ExitCode::from_main(main())"),
+        out.contains("::symbian_std::__start(main)"),
         "{out}"
     );
 }
@@ -51,13 +51,13 @@ fn the_wrapper_is_the_same_whatever_main_returns() {
 #[test]
 fn attributes_docs_and_a_pub_const_main_are_all_read_through() {
     let item = "#[doc = \" a note with ] and \\\" in it\"] #[inline] pub const fn main () { }";
-    assert!(wrapper("", item).contains("from_main(main())"));
+    assert!(wrapper("", item).contains("__start(main)"));
 }
 
 #[test]
 fn a_body_that_mentions_fn_or_a_brace_does_not_confuse_the_reader() {
     let item = "fn main () -> Result < () > { let s = \") fn main (\" ; Ok (()) }";
-    assert!(wrapper("", item).contains("from_main(main())"));
+    assert!(wrapper("", item).contains("__start(main)"));
 }
 
 /// A token stream renders as the source it came from, so the macro sees the comments
@@ -65,7 +65,7 @@ fn a_body_that_mentions_fn_or_a_brace_does_not_confuse_the_reader() {
 #[test]
 fn doc_comments_and_comments_are_read_through() {
     let item = "/// What the program does.\n// a note\n#[inline]\n/* and a block /* nested */ */\nfn main(/* nothing */) -> Result<()> {\n    Ok(())\n}";
-    assert!(wrapper("", item).contains("from_main(main())"));
+    assert!(wrapper("", item).contains("__start(main)"));
 }
 
 #[test]

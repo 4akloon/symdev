@@ -122,14 +122,21 @@ impl Entry {
         ))
     }
 
-    /// The `E32Main()` the loader calls: it runs `main` and hands the value to
-    /// `IntoExitCode`, which is the one place a Rust value becomes a `TInt`.
+    /// The `E32Main()` the loader calls: it hands `main` to `symbian_std::__start`,
+    /// which is the one place a Rust `fn main` becomes a `TInt`.
+    ///
+    /// The line is the same whether the application is `#![no_std]` or has a real
+    /// `std` (design spec §11 step 77). `symbian-std` has one `__start` per shape:
+    /// without `std` it converts through `IntoExitCode`, with `std` it is
+    /// `std::os::symbian::start`, which is `lang_start` plus the main thread's
+    /// thread-local destructors. Writing the choice here instead would make the
+    /// attribute have to know which half of the SDK the application built against.
     pub fn wrapper(&self) -> String {
         match self.shape {
             Shape::Console => format!(
                 "#[unsafe(export_name = \"{E32MAIN}\")]\n\
                  pub extern \"C\" fn __symbian_e32main() -> i32 {{\n    \
-                 ::symbian_std::ExitCode::from_main({}())\n\
+                 ::symbian_std::__start({})\n\
                  }}\n",
                 Self::NAME
             ),

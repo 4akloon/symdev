@@ -41,3 +41,11 @@ Task: make `std` build for `arm-symbian-e32` so an app can drop `#![no_std]` and
 - One `RFs` session **per thread**, in a `thread_local!` — a Symbian session is not shareable between threads until `RFs::ShareProtected`, which is unobserved. Divergence written down: a `File` should be used on the thread that opened it.
 - `pal/symbian` is `pub mod` (unlike every other pal arm) so the per-facility backends can reach `des`.
 - Unsupported with reasons: `read_dir` (`CDir::AddL` leaves → needs a shim), symlinks/hard links (none on 9.3), `set_permissions` (`RFs::SetAtt` unobserved), `set_times` (no `TEntry` timestamp offset measured), `canonicalize`, `rmdir`.
+
+### Milestone: a no-`no_std` application compiles (2026-09-21)
+- `symbian-rs/examples/std-hello`: no `#![no_std]`, `use std::fs::File`, plus `itoa` and `ryu` **from crates.io**, unvendored, compiling unchanged. Archive 1.2 MB before the link.
+- `std/build.rs` needed `target_os == "symbian"` added to the not-`restricted_std` list, else every `use std::…` is `error[E0658] restricted_std`.
+- `symbian-std` gained features `runtime` (default, the `no_std` half) and `std`; an app uses `default-features = false, features = ["std"]`. Under `std` the crate is only the entry attribute, the prelude and `test_report`, because `symbian_std::thread` and `std::thread` would each switch heap serialisation behind their own flag.
+- `#[symbian_std::main]` now expands to `::symbian_std::__start(main)` for both halves; `__start` is `ExitCode::from_main` without `std` and `std::os::symbian::start` with it.
+- New public API in the patched std: `std::os::symbian::start`, `#[stable]`, over a new `rt::symbian_start` (private `lang_start` + `sys::thread::drop_thread_locals`).
+- Dev-loop hazard: cargo will not rebuild `library/symbian-sys` or `library/std` on a rematerialised tree unless the build unit is removed; the real materialiser must write fresh files.

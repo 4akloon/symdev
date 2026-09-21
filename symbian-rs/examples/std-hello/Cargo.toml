@@ -1,0 +1,25 @@
+[package]
+name = "stdhello"
+version.workspace = true
+edition.workspace = true
+# `src/main.rs` is a library: rustc never links, symdev does (design spec §3).
+autobins = false
+
+[lib]
+path = "src/main.rs"
+crate-type = ["staticlib"]
+
+[dependencies]
+# The only SDK crate a `std` application needs, and only for the entry attribute, the
+# prelude and the test harness: `default-features = false` leaves out the `no_std`
+# runtime, because with a real `std` the allocator, the panic handler and the process
+# entry are std's (design spec §11 step 77).
+symbian-std = { path = "../../crates/symbian-std", default-features = false, features = [
+    "std",
+] }
+
+# Three crates from crates.io that need nothing but `std`, added and not vendored, to
+# find out whether the target can build an ordinary dependency (the second half of
+# step 77's acceptance).
+itoa = "1"
+ryu = "1"
