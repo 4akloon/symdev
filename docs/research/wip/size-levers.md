@@ -41,3 +41,25 @@ ui-list        14773   17600   2292     16    200      0     24
 ## Next step
 
 - Read the hello/ui link maps and attribute the bytes.
+
+### L1 — `-ffunction-sections -fdata-sections` on our own C++ shims (KEEP, small)
+
+`crates/symdev-build/src/driver/rust_shims.rs`, `RustBuild::SHIM_SECTIONS`, fed through
+the `OPTION GCCE` slot so the recorded C++ line for real C++ projects is untouched.
+
+Result across the corpus: **exe -150 B, text -236 B**. All of it is `ui-list`
+(exe -163, text -220, exidx -40) plus `async` (text -16). `notes` +4, `query` +11,
+`ui` -11 with *identical* section sizes — deflate noise from a changed emission order.
+
+Mechanism, read out of `build/*.map`'s "Discarded input sections": what `--gc-sections`
+now drops from `symrs_list.o` is the **out-of-line copies of methods gcc already inlined
+into their only caller** — `CSymRsList::NewL` 80, `SetSelected` 40, the ctor 32,
+`Selected` 20, `Clear` 16, `Count` 16, plus their `.ARM.exidx`/`.extab`.
+
+**The brief's hypothesis for experiment 95 is wrong.** Nothing of `symrs_avkon.o` is
+collected even with the flags: the kept sections are `.rodata._ZTV10CShimAppUi` (344)
+and the *virtual* methods it names, `DynInitMenuPaneL` (160) and `HostMenuItem` (180)
+among them. They are reachable **through the vtable**, so section granularity cannot
+help; the 284–329 B of experiment 95 is the vtable's fault, not the object's.
+Also: all four GUI examples declare `softkeys`, so none of them is a "GUI example with
+no menu" anyway.

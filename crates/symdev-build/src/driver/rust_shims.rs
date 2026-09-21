@@ -37,6 +37,17 @@ impl RustBuild {
     /// host, and `SYMRS_UID3`, the application's own UID3. The UID is generated onto
     /// the compile line rather than written into a source, because the manifest
     /// already holds it and two copies drift apart.
+    /// **Not a reproduction.** Every other flag on this line is the SDK's own, recorded
+    /// from the real tools; these two are symdev's choice for symdev's own C++, and the
+    /// rule against inventing argv does not reach them — nothing in the SDK compiles
+    /// `symbian-rs/shims/**`. Without them a whole shim source becomes one `.text`, so
+    /// `--gc-sections` — already on the Rust link line — can only keep or drop it
+    /// whole: experiment 95's runtime menu grew *every* GUI example by 284–329 bytes,
+    /// including ones with no menu, because `CShimAppUi::DynInitMenuPaneL` shares an
+    /// object with the entry path. One section per function and per datum is what lets
+    /// the collector work at the granularity the archive already implies.
+    pub const SHIM_SECTIONS: [&'static str; 2] = ["-ffunction-sections", "-fdata-sections"];
+
     pub fn shim_compile_args(
         &self,
         source: &Path,
@@ -52,7 +63,7 @@ impl RustBuild {
                 Some(_) => vec![format!("SYMRS_UID3=0x{:08x}", self.gcce.uid3)],
                 None => Vec::new(),
             },
-            option: Vec::new(),
+            option: Self::SHIM_SECTIONS.iter().map(|o| (*o).into()).collect(),
         };
         let dir = match source.parent() {
             Some(dir) => dir.to_path_buf(),
