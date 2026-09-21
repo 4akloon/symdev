@@ -4,7 +4,17 @@ Task: a single-threaded executor on `CActiveScheduler` (own or join), `TRequestS
 
 ## Findings
 
+- `TRequestStatus`, `User_WaitForRequest`, `RFastLock`, `RSemaphore` all live in `symbian-sys/src/thread.rs`; `esock/mod.rs` re-exports the first two. Do not redeclare.
+- `symbian-core/src/net/request.rs::blocking` is the synchronous twin: one private status per call, documented reason (a thread's request semaphore is shared between outstanding requests).
+- `symrs_shim.h` rule: a file belongs in `shims/common/` only when it needs `TRAP` or (step 75) a C++ subclass with virtuals. `CActive` is exactly the second case.
+- `avkon-rust-spec` §1.3: CONE installs `CCoeScheduler` and `CCoeEnv` is a `CActive` on it -> a GUI app must never `Install`/`Start`/`Stop`; the executor must be able to just `CActiveScheduler::Add`.
+- Experiment 78 member ABI: non-virtual member = AAPCS with `this` as argument 0; sret displaces `this`. Experiment 80: `codegen-units=16`/`lto=false` profile keeps unused archive members out.
+- Experiment 85: `Instant` = `User::TickCount` + `UserHal::TickPeriod`, resolution 15.625 ms, so a 300 ms measurement quantises to +-15.625 ms; `Instant::now()` returns `io::Result`.
+
 ## Decisions
+
+- Waker is `Arc<W>` where `W`'s only state is an `AtomicU32` flag, so `Wake`'s `Send + Sync` is honest rather than an `unsafe impl`; the executor scans flags instead of keeping a shared ready queue.
+- One driver: the shim's `RunL` records the completion and drains the executor. `block_on` additionally installs a scheduler and uses `Start`/`Stop`; the joined form does neither.
 
 ## Dead ends
 
