@@ -136,9 +136,9 @@ impl<'a, A> Menu<'a, A> {
     /// can do to itself.
     pub fn exit(&mut self, label: &str) {
         // The position is spent either way, so that `Fill` and `Find` count alike.
-        let Some(_) = self.take_index() else {
+        if self.take_index().is_none() {
             return;
-        };
+        }
         if let Purpose::Fill(host, pane) = self.purpose {
             self.add(host, pane, label, EXIT);
         }
