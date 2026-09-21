@@ -39,6 +39,14 @@
 //!   ends the whole process, so `join` never sees a panicking thread; what it can see
 //!   is a thread killed some other way, and that is an [`Error`] carrying the exit
 //!   reason, not `Box<dyn Any>`.
+//! # Thread-locals
+//!
+//! [`thread_local!`](crate::thread_local) and [`LocalKey`] are step 76's own half:
+//! per-thread state over `UserSvr::DllTls`, one kernel call per access and no
+//! compiler support at all. The values a thread initialised are dropped when it ends
+//! — see [`local`](self) — which is the one thing [`spawn`] does after the closure
+//! returns and before the thread exits.
+//!
 //! - **Not implemented:** `Builder` (no name, stack size or spawn options — every
 //!   thread gets `KDefaultStackSize`, 8 kB), `Thread`/`ThreadId`/`current`, `park`,
 //!   `scope`, `available_parallelism`. Nothing needed them, and each would be a guess.
@@ -56,6 +64,11 @@ use symbian_sys::thread::{
 };
 
 use crate::io::{Error, Result};
+
+mod local;
+mod table;
+
+pub use local::{AccessError, LocalKey, drop_thread_locals, live_thread_locals};
 
 /// `EExitKill` = 0 of `TExitType` (`e32const.h` line 2241): the thread ran to the end
 /// of its function, or `User::Exit` ended it.
@@ -100,6 +113,11 @@ unsafe extern "C" fn trampoline<T>(arg: *mut c_void) -> i32 {
             (*packet).result = Some(body());
         }
     }
+    // The thread is about to end, so this is where `Drop` runs for whatever it put in
+    // a `thread_local!`. It happens after the closure's own result is stored, so a
+    // destructor cannot change what `join` returns, and before the thread exits, so
+    // the values are freed on the heap they were allocated from.
+    drop_thread_locals();
     0
 }
 
