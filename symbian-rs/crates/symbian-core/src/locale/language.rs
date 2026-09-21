@@ -38,14 +38,14 @@ impl Language {
     /// `bl __atomic_load_4`, and that libcall is `symbian-libcalls`' lock-based
     /// emulation: an `RFastLock::Wait`/`Signal` pair, a kernel round trip, to avoid
     /// one call into euser. Linking it costs **794 bytes** of `.exe` in a `hello`-sized
-    /// application (4 024 against 3 230 bytes, experiment 95) — a quarter of the whole
+    /// application (4 024 against 3 230 bytes, experiment 96) — a quarter of the whole
     /// image — for a read that is then *slower* than the one it replaced: the same
     /// 100 000-iteration loop takes 16 nanokernel ticks through the cache and **12**
     /// straight to euser. There is no `OnceCell` in `core` that avoids this, no
     /// `std::sync` on this path, and `has-thread-local` is false for the target.
     ///
     /// So the read is one euser call, measured at **0.12 µs** inside EKA2L1
-    /// (100 000 calls in 12 nanokernel ticks of 1 000 µs, experiment 95; that is the
+    /// (100 000 calls in 12 nanokernel ticks of 1 000 µs, experiment 96; that is the
     /// emulator's dynarmic JIT, not an E52). An application that
     /// wants the language read exactly once holds it: `Language` is two bytes and
     /// `Copy`, so reading it into a local or a field and passing it to

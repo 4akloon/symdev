@@ -75,7 +75,7 @@
 //!
 //! # What it costs
 //!
-//! Measured with `symdev build` on a `hello`-shaped program (experiment 95), `.exe`
+//! Measured with `symdev build` on a `hello`-shaped program (experiment 96), `.exe`
 //! bytes: 3 187 with the greeting as a plain `const`, **3 183** through a
 //! one-language `locale!`, 3 230 with a second language and 3 309 with a third. One
 //! language costs nothing — `get()` returns the single field without consulting the
