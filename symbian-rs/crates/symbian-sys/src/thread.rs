@@ -8,28 +8,6 @@
 use crate::des::TDesC16;
 use crate::euser::RHandleBase;
 
-/// The opaque `CTrapCleanup` a thread's trap handler and cleanup stack live in; only
-/// ever seen behind a pointer, because it is a `CBase` with a `CCleanup` inside it.
-#[repr(C)]
-pub struct CTrapCleanup {
-    _private: [u8; 0],
-}
-
-unsafe extern "C" {
-    /// `0000030c T _ZN12CTrapCleanup3NewEv` — `CTrapCleanup::New()`, euser.dso: a
-    /// static that allocates the calling thread's trap handler and cleanup stack and
-    /// installs them.
-    ///
-    /// **Every thread needs one of its own.** Without it, the first
-    /// `CleanupStack::PushL` anywhere below — including inside a framework call's own
-    /// `TRAP` — panics `E32USER-CBase 69` (`EClnNoTrapHandlerInstalled`), and a panic
-    /// is not a leave, so nothing catches it. Non-leaving: it returns null on a full
-    /// heap. Destroying it goes through the C++ shim, because `~CTrapCleanup` is
-    /// virtual.
-    #[link_name = "_ZN12CTrapCleanup3NewEv"]
-    pub fn CTrapCleanup_New() -> *mut CTrapCleanup;
-}
-
 /// `typedef TInt (*TThreadFunction)(TAny*);` — `e32const.h` line 2734.
 pub type TThreadFunction = unsafe extern "C" fn(*mut core::ffi::c_void) -> i32;
 

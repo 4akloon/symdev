@@ -33,6 +33,23 @@ fn alloc_error(_: core::alloc::Layout) -> ! {
     symbian_alloc::oom()
 }
 
+/// The body of a `no_std` `E32Main`: install the thread's cleanup stack, run `main`,
+/// convert what it returned, free the cleanup stack.
+///
+/// Both entry points call this so that there is one answer to "what does starting a
+/// Rust program on this platform do": [`entry!`] for a crate that names its own
+/// function, and `#[symbian_std::main]` through `symbian_std::__start`. The `std`
+/// shape's own `__start` reaches `std::os::symbian::start`, which installs the same
+/// [`symbian_sys::cleanup::TrapCleanup`] — that equality is the point, and
+/// `examples/dirprobe` is the test that holds it.
+pub fn start<T: IntoExitCode>(main: fn() -> T) -> i32 {
+    // Held for the whole of `main` and dropped after it: the destructor uninstalls
+    // the handler and frees the stack, so it must outlive every frame that could push
+    // onto it.
+    let _cleanup = symbian_sys::cleanup::TrapCleanup::install();
+    ExitCode::from_main(main())
+}
+
 /// Declares a function as the application's entry point, by name.
 ///
 /// ```ignore
@@ -45,12 +62,28 @@ fn alloc_error(_: core::alloc::Layout) -> ! {
 /// this macro stays for a crate that wants to name its own function, and for the
 /// layer below `symbian-std`. Both write the same wrapper and both convert through
 /// [`IntoExitCode`].
+///
+/// # The cleanup stack
+///
+/// The wrapper opens with `CTrapCleanup::New()`, exactly as a C++ `E32Main`
+/// conventionally does, and frees it after `main` returns. Without it the first
+/// `CleanupStack::PushL` anywhere below — including inside an SDK call's own `TRAP`,
+/// where the application never sees the call — panics `E32USER-CBase 69` and takes
+/// the thread with it, uncatchably. That is measured: `RFs::GetDir` from a `no_std`
+/// console application died with exactly that line until this was here, while the
+/// same call under `std` worked, because `std` had been installing one all along.
+/// See [`symbian_sys::cleanup`].
+///
+/// An Avkon application does not come through here: `#[symbian_std::main(gui)]`
+/// writes no `E32Main` at all, because the C++ shim owns the entry point and hands
+/// the process to `EikStart::RunApplication`, which installs the thread's cleanup
+/// stack itself.
 #[macro_export]
 macro_rules! entry {
     ($main:path) => {
         #[unsafe(export_name = "_Z7E32Mainv")]
         pub extern "C" fn __symbian_e32main() -> i32 {
-            $crate::ExitCode::from_main($main())
+            $crate::start($main)
         }
     };
 }

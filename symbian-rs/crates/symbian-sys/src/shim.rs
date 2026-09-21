@@ -16,7 +16,7 @@ use crate::des::TDesC16;
 use crate::des16::TDes16;
 use crate::efsrv::{CDir, RFs};
 use crate::process::RProcess;
-use crate::thread::CTrapCleanup;
+use crate::cleanup::CTrapCleanup;
 
 unsafe extern "C" {
     /// `BaflUtils::EnsurePathExistsL(RFs&, const TDesC&)`
@@ -40,7 +40,7 @@ unsafe extern "C" {
 
 unsafe extern "C" {
     /// `delete aCleanup` for the `CTrapCleanup` a thread installed with
-    /// [`crate::thread::CTrapCleanup_New`].
+    /// [`crate::cleanup::CTrapCleanup_New`].
     ///
     /// Rule 3, as `symrs_f32_dir_delete`: `~CTrapCleanup` is virtual, so destroying
     /// one dispatches through the vtable. It uninstalls the thread's trap handler and

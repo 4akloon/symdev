@@ -147,7 +147,7 @@ pub use symbian_runtime::{ExitCode, IntoExitCode};
 #[cfg(feature = "runtime")]
 #[doc(hidden)]
 pub fn __start<T: IntoExitCode>(main: fn() -> T) -> i32 {
-    ExitCode::from_main(main())
+    symbian_runtime::start(main)
 }
 
 /// The `std` shape: `std`'s own runtime start-up, which initialises the runtime, runs

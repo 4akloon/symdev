@@ -12,6 +12,7 @@
 #![no_std]
 
 pub mod active;
+pub mod cleanup;
 pub mod des;
 pub mod des16;
 pub mod des8;
