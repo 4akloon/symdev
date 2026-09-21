@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use crate::{HELLO, IconContainer, IconSource, parse, reject};
+use crate::tests::{HELLO, reject};
+use crate::{IconContainer, IconSource, parse};
 
 fn with(icons: &str) -> String {
     format!("{HELLO}\n{icons}")

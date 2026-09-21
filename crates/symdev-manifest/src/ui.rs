@@ -92,3 +92,6 @@ pub(crate) struct RawUi {
     pub(crate) short_caption: Option<String>,
     pub(crate) softkeys: Option<Softkeys>,
 }
+
+#[cfg(test)]
+mod tests;
