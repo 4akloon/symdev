@@ -40,7 +40,9 @@ the model holds all thirteen rows, that row 0 is current to begin with, that the
 highlight can be moved from Rust and moved back, and that an index past the end is
 refused rather than accepted.
 
-Sizes, all rebuilt in the same tree: `listdemo` 14 489. Unchanged to the byte by this
-work: `uidemo` 12 715, `hello` 3 187, `hello-raw` 752, `files` 10 552, `net` 13 379.
-`uidemo` also records **no** `eikcoctl`/`eikctl` `DT_NEEDED` — a GUI application with no
+Sizes, all rebuilt in one tree after rebasing onto the menu, notes and query slices:
+`listdemo` 14 489. Unchanged to the byte by this work: `uidemo` 12 844 (experiment 91's
+figure — the menu added 129 bytes before this branch rebased onto it), `notes` 15 298,
+`query` 20 120, `hello` 3 187, `hello-raw` 752. `uidemo` and `notes` both record **no**
+`eikcoctl`/`eikctl` `DT_NEEDED`, and `listdemo` records both: a GUI application with no
 list pays nothing for the two libraries the list needs.
