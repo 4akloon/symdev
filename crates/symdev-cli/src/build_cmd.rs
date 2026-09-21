@@ -10,7 +10,7 @@ pub fn build_project(m: Manifest) -> Result<ExitCode, Error> {
         .symbian
         .uid3
         .ok_or_else(|| Error::Other("uid3 required for build (set symbian.uid3)".into()))?;
-    if m.ui.is_some() && m.language != Language::Rust {
+    if m.ui.is_some() && !m.language.is_rust() {
         return Err(Error::Other(
             "[ui] is for a `language = \"rust\"` project: a C++ project declares its \
              application resources in its .mmp with START RESOURCE, and symdev would \
@@ -42,12 +42,14 @@ pub fn build_project(m: Manifest) -> Result<ExitCode, Error> {
     };
     let artifacts = match m.language {
         Language::Cpp => gcce.build(&project)?,
-        Language::Rust => RustBuild {
+        language => RustBuild {
             gcce,
             sdk: RustSdk::from_env()?,
             cargo: RustBuild::cargo_from_env(),
+            rustc: RustBuild::rustc_from_env(),
             name: m.package.name,
             ui,
+            std: language.has_std(),
         }
         .build(&project)?,
     };

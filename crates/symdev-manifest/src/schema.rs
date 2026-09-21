@@ -54,6 +54,25 @@ pub enum Language {
     /// A `no_std` Rust application built by `RustBuild` (experiment 65).
     #[serde(rename = "rust")]
     Rust,
+    /// A Rust application with a real `std` for `target_os = "symbian"`, built from
+    /// the patched standard library source (experiment 89, design spec §11 step 77).
+    /// The only difference from [`Language::Rust`] is the `-Zbuild-std` set and the
+    /// source cargo reads it from; the link line, the post-linker and the packaging
+    /// are the same.
+    #[serde(rename = "rust-std")]
+    RustStd,
+}
+
+impl Language {
+    /// Whether `RustBuild` is the backend for this language.
+    pub fn is_rust(self) -> bool {
+        matches!(self, Self::Rust | Self::RustStd)
+    }
+
+    /// Whether the application is built against a real `std`.
+    pub fn has_std(self) -> bool {
+        matches!(self, Self::RustStd)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

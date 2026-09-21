@@ -13,8 +13,10 @@ pub(super) fn rust() -> RustBuild {
         gcce: fake(),
         sdk: RustSdk::from_env().unwrap(),
         cargo: PathBuf::from("/rustup/bin/cargo"),
+        rustc: PathBuf::from("/rustup/bin/rustc"),
         name: "hello".into(),
         ui: None,
+        std: false,
     }
 }
 

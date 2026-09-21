@@ -9,6 +9,7 @@ mod project;
 mod required_capability;
 mod resources;
 mod rust_sdk;
+mod std_src;
 mod toolchain;
 mod ui_resources;
 
@@ -21,5 +22,6 @@ pub use model::{BldExport, BldInf, Mmp, MmpBitmap, MmpBitmapSource, MmpOption, M
 pub use package::SisPackage;
 pub use resources::{AppTarget, BuildOutputs, GeneratedCaseFold, MmpPath, SdkIncludeCaseFold};
 pub use rust_sdk::RustSdk;
+pub use std_src::StdSrc;
 pub use toolchain::{Epocroot, Toolchain};
 pub use ui_resources::UiResources;

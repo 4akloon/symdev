@@ -102,6 +102,12 @@ impl RustSdk {
     /// as an ordinary dependency it cost every program 756 bytes (measured on `hello`).
     pub const LIBCALLS_CRATE: &'static str = "symbian-libcalls";
 
+    /// The SDK crate that holds the raw `extern "C"` declarations. It is copied into
+    /// the patched `library/` when a `rust-std` project is built ([`crate::StdSrc`]),
+    /// because `std`'s platform layer calls it and a crate outside the sysroot build
+    /// graph gets no `core`.
+    pub const SYS_CRATE: &'static str = "symbian-sys";
+
     /// The cargo profile the libcall crate is built under. It exists only to turn LTO
     /// off: under the workspace's `lto = true` an rlib holds LLVM bitcode, which `ld`
     /// cannot read.
@@ -115,6 +121,12 @@ impl RustSdk {
     /// `crates/<name>` inside the SDK, for a path dependency.
     pub fn crate_dir(&self, name: &str) -> PathBuf {
         self.root.join("crates").join(name)
+    }
+
+    /// `rust-src`: the patched-`std` overlay and the hashes of the toolchain files it
+    /// replaces. See `symbian-rs/rust-src/README.md`.
+    pub fn std_overlay_dir(&self) -> PathBuf {
+        self.root.join("rust-src")
     }
 
     /// `shims/common`: the C++ the SDK compiles into every Rust application so that a

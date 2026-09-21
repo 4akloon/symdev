@@ -1,0 +1,31 @@
+# The SHA-1 of each toolchain file the overlay replaces, as it was when the overlay
+# copy was taken. `StdSrc::materialise` checks every one before it copies, so a
+# toolchain bump that touches one of these stops the build and names the file
+# instead of quietly undoing whatever upstream changed in it.
+#
+# Regenerate a line after re-deriving its overlay copy:
+#   sha1sum <sysroot>/lib/rustlib/src/rust/library/<path>
+#
+# Files the overlay adds rather than replaces are not listed.
+
+[replaces]
+"std/build.rs" = "a776e5cd7fb353c25052b05d8b9b39c20b315a6d"
+"std/Cargo.toml" = "9e8d2f533f867dbf6121d444d7ede2dfe19eece1"
+"std/src/os/mod.rs" = "0b00c28565e3b4710123ac5ef74b144081d7064b"
+"std/src/rt.rs" = "b4ca619955ac0f1c9594fcc2a44cae2fa1c3cab0"
+"std/src/sys/alloc/mod.rs" = "be4a251915fdf4ec5eb064b0baf31086e7956724"
+"std/src/sys/fs/mod.rs" = "91ebf9b1b599a13fb8b57328dfa2771db73a9baa"
+"std/src/sys/io/error/mod.rs" = "2f61809435727d226b35bd3a1a099e0edc6d2a6a"
+"std/src/sys/pal/mod.rs" = "892b92bb416e8f9879a00e53de3a0e939899c2fc"
+"std/src/sys/path/mod.rs" = "5f04af490fc1bc6bc349ee7dee1576aa068b8ded"
+"std/src/sys/random/mod.rs" = "8a0da5b911ff5fe0cccf3e5e25becf1aad43c439"
+"std/src/sys/stdio/mod.rs" = "bbec76cc5754cd95b739aef90d6d0e0bb7414d37"
+"std/src/sys/sync/condvar/mod.rs" = "43c3c7f28e7726517fe0f97b3f68d386c17984f8"
+"std/src/sys/sync/mod.rs" = "16b4461c1124bcc6d9cfa580212472889e449e68"
+"std/src/sys/sync/mutex/mod.rs" = "003e09856db52692443b28864defc0a729c1386c"
+"std/src/sys/sync/once/mod.rs" = "6465277c0db15a9fac0ed7dc6615397be98cfa73"
+"std/src/sys/sync/rwlock/mod.rs" = "5e92b7a88e5e159f0d7e92d20a6425f3b4877eee"
+"std/src/sys/sync/thread_parking/mod.rs" = "ba6f3979cad82c70a678b7c71e4648c1ecb56ff1"
+"std/src/sys/thread_local/mod.rs" = "94befb2fb9d88dc6cfbc8faef0307fa16901571d"
+"std/src/sys/thread/mod.rs" = "d8267c3aa401c28fbd5b407c62a5ffc4e5a594fb"
+"std/src/sys/time/mod.rs" = "e1a5ac296c127f0c594416741e1af60e4175a77e"

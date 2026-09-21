@@ -49,3 +49,10 @@ Task: make `std` build for `arm-symbian-e32` so an app can drop `#![no_std]` and
 - `#[symbian_std::main]` now expands to `::symbian_std::__start(main)` for both halves; `__start` is `ExitCode::from_main` without `std` and `std::os::symbian::start` with it.
 - New public API in the patched std: `std::os::symbian::start`, `#[stable]`, over a new `rt::symbian_start` (private `lang_start` + `sys::thread::drop_thread_locals`).
 - Dev-loop hazard: cargo will not rebuild `library/symbian-sys` or `library/std` on a rematerialised tree unless the build unit is removed; the real materialiser must write fresh files.
+
+### MILESTONE REACHED (2026-09-21): 20 passed in the emulator
+- `symdev test --emulator` on `examples/std-hello`: **20 passed, 0 failed**, including `fs::read` round trip, `metadata`, `seek`+`read_exact`, `NotFound` keeping `raw_os_error() == -1`, `Instant` measuring a 120 ms sleep as 125 ms, `SystemTime` = 1 789 982 620 s, `thread_local!`, `thread::spawn`+`join`, two threads through a `Mutex` reaching 2000/2000, `BTreeMap`, `HashMap` (so `sys::random`), and **itoa and ryu from crates.io**.
+- `println!` reached `~/.local/share/EKA2L1/data/drives/e/symdev/stdout.txt`, both lines.
+- **`stdhello.exe` is 52 206 bytes.** Corpus copy in `symbian-rs/corpus/89-std/`.
+- symdev: `[language] name = "rust-std"`, `StdSrc` materialiser, `RustBuild { rustc, std }`. Host `cargo test --workspace` green (125 + the CLI suites).
+- Remaining: check the no_std examples still build byte-identically, what dominates the 52 kB, the gates, backlog 89, spec §11.

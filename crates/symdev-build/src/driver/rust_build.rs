@@ -11,6 +11,7 @@ use symdev_core::{Artifact, BuildBackend, Error, Project, RemotePath, Result};
 use super::{GcceBuild, LibcallArchive, arg, io, produced};
 use crate::required_capability::RequiredCapability;
 use crate::rust_sdk::RustSdk;
+use crate::std_src::StdSrc;
 use crate::ui_resources::UiResources;
 
 /// The C++-mangled `E32Main()` that `eexe.lib`'s startup calls. The reference to it comes
@@ -33,9 +34,16 @@ pub struct RustBuild {
     /// `SYMDEV_CARGO`, else `cargo` on `PATH` (the rustup proxy, which honours the
     /// project's `rust-toolchain.toml`).
     pub cargo: PathBuf,
+    /// `SYMDEV_RUSTC`, else `rustc` on `PATH`. Only a `std` build uses it, to find the
+    /// `rust-src` component the patched standard library is copied from.
+    pub rustc: PathBuf,
     /// The manifest's `package.name`: the Cargo package, the archive `lib<name>.a`, and
     /// the E32 `build/<name>.exe`.
     pub name: String,
+    /// `language = "rust-std"`: build a real `std` for this target from the patched
+    /// source ([`StdSrc`]) instead of just `core` and `alloc`. Everything after cargo
+    /// — the link line, the post-linker, the packaging — is identical.
+    pub std: bool,
     /// `[ui]`: present makes this an Avkon application — the `shims/s60` subclasses,
     /// the five extra import libraries, and the `.rsc`/`_reg.rsc`/`.mif` a captioned
     /// application needs. Absent, nothing of the UI is linked or generated.
@@ -44,9 +52,31 @@ pub struct RustBuild {
 
 impl RustBuild {
     pub fn cargo_from_env() -> PathBuf {
-        match std::env::var_os("SYMDEV_CARGO") {
+        Self::tool_from_env("SYMDEV_CARGO", "cargo")
+    }
+
+    pub fn rustc_from_env() -> PathBuf {
+        Self::tool_from_env("SYMDEV_RUSTC", "rustc")
+    }
+
+    fn tool_from_env(variable: &str, default: &str) -> PathBuf {
+        match std::env::var_os(variable) {
             Some(v) if !v.is_empty() => PathBuf::from(v),
-            _ => PathBuf::from("cargo"),
+            _ => PathBuf::from(default),
+        }
+    }
+
+    /// Which crates `-Zbuild-std` builds.
+    ///
+    /// `core,alloc` for a `#![no_std]` application, `std,panic_abort` for one with a
+    /// real `std` — `panic_abort` is named explicitly because the target's
+    /// `panic-strategy` is `abort` and `std` would otherwise ask for the unwinding
+    /// runtime, which this link line has no unwinder for.
+    fn build_std(&self) -> &'static str {
+        if self.std {
+            "-Zbuild-std=std,panic_abort"
+        } else {
+            "-Zbuild-std=core,alloc"
         }
     }
 
@@ -62,7 +92,7 @@ impl RustBuild {
             "--release".into(),
             "--target".into(),
             arg(&self.sdk.target_spec()),
-            "-Zbuild-std=core,alloc".into(),
+            self.build_std().into(),
             "-Zjson-target-spec".into(),
             "--target-dir".into(),
             "build/cargo".into(),
@@ -86,13 +116,24 @@ impl RustBuild {
             .join(format!("lib{}.a", self.name))
     }
 
-    fn run_cargo(&self, cwd: &RemotePath) -> Result<()> {
-        self.run_cargo_args(&self.cargo_args(), cwd)
+    fn run_cargo(&self, project: &Project, cwd: &RemotePath) -> Result<()> {
+        let src = match self.std {
+            true => Some(StdSrc::materialise(&self.sdk, &self.rustc, &project.root)?),
+            false => None,
+        };
+        self.run_cargo_in(&self.cargo_args(), cwd, src.as_ref())
     }
 
     fn run_cargo_args(&self, args: &[String], cwd: &RemotePath) -> Result<()> {
+        self.run_cargo_in(args, cwd, None)
+    }
+
+    fn run_cargo_in(&self, args: &[String], cwd: &RemotePath, src: Option<&StdSrc>) -> Result<()> {
         let mut cmd = Command::new(&args[0]);
         cmd.args(&args[1..]);
+        if let Some(src) = src {
+            cmd.env(StdSrc::SRC_ROOT_ENV, src.src_root());
+        }
         // A symdev started through a rustup proxy carries the host toolchain in
         // `RUSTUP_TOOLCHAIN`, which would override the project's pinned nightly.
         cmd.env_remove("RUSTUP_TOOLCHAIN");
@@ -118,7 +159,7 @@ impl BuildBackend for RustBuild {
         let build_dir = project.root.join("build");
         std::fs::create_dir_all(&build_dir).map_err(io)?;
         let cwd = RemotePath::new(arg(&project.root));
-        self.run_cargo(&cwd)?;
+        self.run_cargo(project, &cwd)?;
         let archive = produced(
             self.archive(project),
             &format!(

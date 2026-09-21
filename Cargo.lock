@@ -888,6 +888,7 @@ name = "symdev-build"
 version = "0.1.0"
 dependencies = [
  "der",
+ "sha1",
  "symdev-core",
  "symdev-elf2e32",
  "symdev-makekeys",
