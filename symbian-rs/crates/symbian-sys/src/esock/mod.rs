@@ -22,8 +22,10 @@
 //! `std::net` is — is the pair `RSocket::Connect(addr, status); User::WaitForRequest
 //! (status);` with no `CActive` and no scheduler — [`TRequestStatus`] and
 //! [`User_WaitForRequest`], both euser's, both declared once in [`crate::thread`] where
-//! step 72 needed them first and re-exported here. Step 73's
-//! executor will sit on these same declarations rather than replace them.
+//! step 72 needed them first and re-exported here. Step 73's executor sits on these
+//! same declarations rather than replacing them: its `CActive` is in
+//! [`crate::active`] and an asynchronous socket would be a `symbian_async::Source`
+//! over the very same `Connect`/`Send`/`RecvOneOrMore`/`Accept` below.
 //!
 //! # Sizes
 //!

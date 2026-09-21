@@ -12,8 +12,9 @@
 //! `TRequestStatus&` and complete later. The blocking form of that is the request
 //! followed by `User::WaitForRequest`, which is what [`request::blocking`] does and what
 //! `std::net` means. No `CActive`, no `CActiveScheduler`, no Rust executor: step 73's
-//! async layer will sit beside this on the same `symbian-sys` declarations rather than
-//! underneath it.
+//! async layer (`symbian_async`) sits **beside** this on the same `symbian-sys`
+//! declarations rather than underneath it, and the two may not share a thread — see
+//! [`request::blocking`], which refuses under an active scheduler.
 //!
 //! # What this layer does not decide
 //!
