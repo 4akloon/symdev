@@ -21,11 +21,81 @@ surface, proven in the emulator with arrow keys and Return.
 - exp 86: link needs `-u symrs_app_vtbl`; `-l:euser.dso -l:drtaeabi.dso` must stay BEFORE
   the Rust archive (that ordering is the whole reason the E32 is 12 KB and not 107 KB).
 
+### From the SDK, 2026-09-21
+
+- **Class: `CAknSingleStyleListBox`** (`aknlists.h:224`) — `list_single_pane`, the
+  simplest style that shows only text. Header comment at `aknlists.h:218-222`:
+  `list item string format: "\tTextLabel\t0\t1"` / `where 0 and 1 are indexes to icon
+  array`. So a row is TAB-separated columns: **[0] icon-ish column (empty for
+  single_pane), [1] the text, [2] and [3] icon-array indices.** With no icon array set
+  we emit `"\t" + text` only; columns 2/3 index an array that does not exist. To be
+  CONFIRMED in pixels, not assumed.
+- `aknlists.h:208-210`: "These are only for full screen lists -- the Rect() of the list
+  must be ClientRect()". Matches the view's own rect.
+- **Ownership:** `CTextListBoxModel::SetItemTextArray(MDesCArray*)` "Panics if NULL" and
+  only **assigns** — it does not delete the previous array. `SetOwnershipType` takes
+  `TListBoxModelItemArrayOwnership` (`eiklbm.h:26`): `ELbmOwnsItemArray = 0`,
+  `ELbmDoesNotOwnItemArray = 1`. Decision below.
+- **Observer:** `MEikListBoxObserver::HandleListBoxEventL(CEikListBox*, TListBoxEvent)`
+  is pure virtual (`eiklbo.h`). `TListBoxEvent` has no explicit values, so
+  `EEventEnterKeyPressed = 0`, `EEventItemClicked = 1`, `EEventItemDoubleClicked = 2`,
+  `EEventItemActioned = 3`, `EEventEditingStarted = 4`, `EEventEditingStopped = 5`,
+  `EEventPenDownOnItem = 6`, `EEventItemDraggingActioned = 7`.
+- **Scrollbars:** `CEikListBox::CreateScrollBarFrameL(TBool aPreAlloc=EFalse)` then
+  `CEikScrollBarFrame::SetScrollBarVisibilityL(TScrollBarVisibility, TScrollBarVisibility)`
+  with `EOff = 0`, `EOn = 1`, `EAuto = 2` (`eiksbfrm.h:107`).
+- **Key priority is DOCUMENTED, not insertion order.** `coeaui.h:36-38`: "Controls with
+  higher priorities get offered key events before controls with lower priorities."
+  `ECoeStackPriorityDefault = 0` (`coeaui.h:47`), which is what `symrs_avkon.cpp` uses
+  for `CShimView`. So the list goes on at `ECoeStackPriorityDefault + 1` and wins by a
+  documented rule.
+- **`CEikTextListBox::ConstructL(const CCoeControl* aParent, TInt aFlags = 0)` is public**
+  (`eiktxlbx.h:68`, inside the `public:` at line 33) even though
+  `CEikListBox::ConstructL` is protected. `CEikTextListBox::Model()` is public and
+  returns `CTextListBoxModel*`.
+
+### Mangled names, `nm -D` on `epoc32/release/armv5/lib/`
+
+- `avkon.dso`: `_ZN22CAknSingleStyleListBoxC1Ev`,
+  `_ZN23AknListBoxLinesTemplateI17CAknColumnListBoxE11SizeChangedEv`,
+  `_ZTV22CAknSingleStyleListBox`.
+- `eikcoctl.dso`: `_ZN15CEikTextListBox10ConstructLEPK11CCoeControli`,
+  `_ZNK15CEikTextListBox5ModelEv`,
+  `_ZN17CTextListBoxModel16SetItemTextArrayEP12MDesC16Array`,
+  `_ZN17CTextListBoxModel16SetOwnershipTypeE31TListBoxModelItemArrayOwnership`,
+  `_ZN11CEikListBox21CreateScrollBarFrameLEi`,
+  `_ZN18CEikScrollBarFrame23SetScrollBarVisibilityLENS_20TScrollBarVisibilityES0_`,
+  `_ZN11CEikListBox18SetListBoxObserverEP19MEikListBoxObserver`,
+  `_ZNK11CEikListBox16CurrentItemIndexEv`,
+  `_ZNK11CEikListBox26SetCurrentItemIndexAndDrawEi`,
+  `_ZN11CEikListBox19HandleItemAdditionLEv`.
+- `bafl.dso`: `_ZN16CDesC16ArrayFlatC1Ei`, `_ZN12CDesC16Array7AppendLERK7TDesC16`,
+  `_ZN12CDesC16Array5ResetEv`. (`badesca.h:237,246`: `CDesCArray` is `CDesC16Array`,
+  `CDesCArrayFlat` is `CDesC16ArrayFlat`.)
+- **So `UI_LIBRARIES` needs `eikcoctl.dso` and `bafl.dso` added** — today it is
+  `apparc cone eikcore avkon gdi` (`crates/symdev-build/src/rust_sdk.rs:52`). That is an
+  edit OUTSIDE my lane; flag it.
+
 ## Decisions
+
+- Use `CAknSingleStyleListBox`: only style in the single-line family that needs no icon
+  array (`list_single_pane`); `CAknSingleGraphicStyleListBox` etc. all put an icon index
+  in column 0 and would need a `CAknIconArray` we have nothing to put in.
+- **The shim owns the item array.** `CDesCArrayFlat` allocated by the shim,
+  `SetItemTextArray(iItems)` + `SetOwnershipType(ELbmDoesNotOwnItemArray)` once; the shim
+  deletes it in its own destructor. `set_items` does `Reset()` + `AppendL` into the SAME
+  array, so no ownership ever changes hands and `SetItemTextArray`'s non-deleting
+  assignment can never leak or double-free.
+- **The list is its own stacked control, not a child of `CShimView`.** `CShimView`
+  returns 0 from `CountComponentControls` and does not forward it to Rust, so a child
+  would need a change to `symrs_avkon.cpp`. A window-owning list added to the app UI's
+  own control stack needs NOTHING from that file.
+- The list goes on the stack at `ECoeStackPriorityDefault + 1` so it is offered keys
+  before `CShimView` by the documented priority rule.
 
 ## Dead ends
 
 ## Next step
 
-- Read the spec (§3 forwarding ABI, §4 control/key contracts, §5 per-virtual leave rule),
-  `eka2l1-input.md`, experiments 83 and 86, then `symbian-ui/` and `symrs_avkon.cpp` 198-200.
+- Write `shims/s60/symrs_list.cpp` + `symrs_list.h` (own host/callback tables) and
+  `crates/symbian-ui/src/list.rs`; add `eikcoctl.dso`/`bafl.dso` to `UI_LIBRARIES`.
