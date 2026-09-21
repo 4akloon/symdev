@@ -1,9 +1,12 @@
 # Running an Avkon application whose logic is Rust (design for step 75)
 
-Status: **specification**, written 2026-09-20 on branch `ui-spec`. Nothing here is
-implemented; this document plus [experiment 76](experiment-backlog.md#76-the-avkon-shim-abi-a-thumb-c-shim-forwarding-to-arm-rust-t5-rust-sdk)
+Status: **implemented**, 2026-09-21 — see [experiment 86](experiment-backlog.md) and
+`symbian-rs/corpus/86-ui/`. Written 2026-09-20 on branch `ui-spec` as a specification;
+the design held, and the places where the implementation contradicted it are marked
+**[86]** in the text below rather than quietly rewritten. It plus
+[experiment 76](experiment-backlog.md#76-the-avkon-shim-abi-a-thumb-c-shim-forwarding-to-arm-rust-t5-rust-sdk)
 is what step 75 of the [Rust SDK design](../superpowers/specs/2026-09-20-rust-sdk-design.md)
-should be built from. Every SDK fact below was read from
+was built from. Every SDK fact below was read from
 `~/sdk/S60_3rd_FP2/epoc32/include/` or `nm -D` on `~/sdk/S60_3rd_FP2/epoc32/release/armv5/lib/`,
 or observed from a probe compiled with symdev's own GCCE argv and run in EKA2L1. Where
 something was not observed it says so; nothing is recalled.
@@ -11,6 +14,10 @@ something was not observed it says so; nothing is recalled.
 Prerequisites from the design spec's §11 that this step assumes: 70 (the C++ shim and the
 `TRAP` rule) and 73 (the async executor on the framework's scheduler). Experiment 76 shows
 that the mechanics work without either, but a usable API needs both.
+
+**[86] 73 was not a prerequisite.** A view that draws and handles keys is called *by* the
+scheduler CONE already runs and awaits nothing, so step 75 shipped with 73 still open.
+What 73 buys an Avkon application is work *between* callbacks.
 
 ---
 
@@ -205,9 +212,9 @@ typedef struct { TUint code; TInt scan_code; TUint modifiers; TInt repeats; } Sy
    shim TRAPs anything that can leave before returning (§5). */
 typedef struct {
     TUint32 size;                                  /* sizeof(SymRsHost) */
-    void (*clear)(void* gc);
+    void (*clear)(void* gc, SymRsRect r);          /* [86] the rect form; see 5.1 */
     void (*set_pen_color)(void* gc, TUint32 argb);
-    void (*set_brush_color)(void* gc, TUint32 argb);
+    void (*set_brush_color)(void* gc, TUint32 argb, TInt solid);  /* [86] style + colour */
     void (*draw_rect)(void* gc, SymRsRect r);
     void (*draw_line)(void* gc, TInt x1, TInt y1, TInt x2, TInt y2);
     void (*draw_text)(void* gc, const TUint16* text, TInt len, TInt x, TInt y);
@@ -385,7 +392,7 @@ The first Rust drawing API, in the order the header declares the primitives:
 
 | Rust | `CGraphicsContext` virtual | Note |
 |---|---|---|
-| `gc.clear()` / `gc.clear_rect(r)` | `Clear()` / `Clear(const TRect&)` | clears with the brush; set the brush first or the result depends on what the framework left behind (observed in experiment 76 as an unexplained black band) |
+| `gc.clear()` | **[86]** `Clear(const TRect&)` over the view's area, **never** the no-argument `Clear()` | clears with the brush; set the brush first or the result depends on what the framework left behind. The no-argument form is what produced experiment 76's black band: it leaves the top ~40 px of a window-owning control unpainted, isolated in experiment 86 with a red probe stripe and fixed by using the rect form |
 | `gc.set_pen(Rgb)` | `SetPenColor(const TRgb&)` | `TRgb` is a one-word value class (`gdi.h`); cross it as `u32` |
 | `gc.set_brush(Rgb)` | `SetBrushStyle(ESolidBrush)` + `SetBrushColor(const TRgb&)` | one Rust call, two gc calls: a null brush makes `draw_rect` an outline |
 | `gc.rect(r)` | `DrawRect(const TRect&)` | filled with the brush, outlined with the pen |
@@ -401,6 +408,13 @@ Coordinates: **not isolated.** The probe drew once with `Rs(Rect())` and once wi
 `Rs(TRect(TPoint(0,0), Size()))` and produced identical pixels, so which of the two is the
 general rule for a window-owning control was not determined. The implementation must pin it
 with a control whose rect does not start at the window origin.
+
+**[86] Settled for the application, not for the framework.** The shim hands Rust
+`TRect(TPoint(0,0), Size())` and nothing else: drawing through a `CWindowGc` is
+window-relative, so a view that always lays out from `(0,0)` has no second coordinate
+system to get wrong. A bar drawn at `y = area.height - 40` lands exactly above the
+softkeys, and the measured client area is **240x245**. Which of the two `Rs()` forms the
+framework itself means is still not determined, and no longer matters to an application.
 
 ### 5.2 How a key arrives
 
@@ -442,6 +456,14 @@ container declared by `EIK_APP_INFO`'s `cba` in the `.rss`, and arrives at
 `HandleCommandL`, not at `OfferKeyEventL`. `R_AVKON_SOFTKEYS_EXIT` (used by
 `examples/gui`) yields `EAknSoftkeyExit`. A Rust app that wants raw softkey scan codes has
 to ask for them, and that is a later concern.
+
+**[86] Solved, by experiment 83, and this whole paragraph is now history.** Keys reach
+the guest with `XSendEvent` to the emulator's toplevel window
+(`docs/research/acceptance/emukey.py`), and step 75's acceptance is a pair of PID-bound
+screenshots either side of `emukey.py keys <pid> Up Up`. **The softkey half is still
+unexplained**: F1/F2 are shipped to the focus group and drive a ROM application's
+softkeys, and do nothing in an application built here — write tests against arrows, the
+selection key and digits. What follows was true of the session that wrote this file.
 
 **Not observed.** No key of any kind could be delivered to the emulated device from this
 session: XTest key events with the emulator window activated (`_NET_ACTIVE_WINDOW` sent,
@@ -537,9 +559,18 @@ and the stage produces, all under `build/`:
 5. UID2 `0x100039CE` on the link and post-link (a GUI EXE's UID2), which the C++ path gets
    from the `.mmp`'s `UID` line and the Rust path has nowhere to get today — note that
    symdev's EXE `elf2e32` argv passes no `--uid2` at all and `examples/gui` runs anyway, so
-   whether it matters on a device is **unverified**;
+   whether it matters on a device is **unverified**. **[86] Not done, deliberately**: the
+   post-linker passes no `--uid2` for any EXE, C++ or Rust, and `examples/ui` installs,
+   registers and runs without one. Inventing an argv flag to set a value nothing was
+   observed to read would be a guess;
 6. the six-library link list of §1.2, which `RustBuild::link_args` must add (it passes an
-   empty `libraries` slice today).
+   empty `libraries` slice today). **[86] Done**, as `RustSdk::UI_LIBRARIES` through the
+   recorded line's own `libraries` slot — five names, because `euser.dso` is already on
+   it. The shim also needs the `epoc32/include` case-fold overlay, which `shims/common`
+   does not: without it the Avkon chain stops at `fbs.h`'s `#include <FbsMessage.h>`.
+7. **[86] not in this list and needed anyway:** `-u symrs_app_vtbl`. The shim archive
+   follows the Rust archive, so the shim's one reference *back* into it would never
+   resolve — ld 2.29.1 does not rescan.
 
 The shim itself is a build input, not a generated file: one `.cpp` in the Rust SDK tree,
 compiled with `GcceBuild::compile_args_for` (so it sees the same headers, the same
@@ -592,7 +623,7 @@ Measured on experiment 76's probe, which is the real shape of the thing:
 |---|---|
 | `shims/s60/avkon_app.cpp` — four subclasses, the host table, the ABI header | ~200 lines of C++, one file |
 | `shims/s60/symrs_avkon.h` — the two structs and the one `extern "C"` declaration | ~40 lines, shared with the Rust side by hand (no bindgen; the structs are eight fields) |
-| `symbian-ui` Rust crate — the vtable, the `Gc` façade, `Rect`/`KeyEvent`/`Rgb`, the `avkon_app!` macro | ~250 lines |
+| `symbian-ui` Rust crate — the vtable, the `Gc` façade, `Rect`/`KeyEvent`/`Rgb`, the `avkon_app!` macro | ~250 lines (**[86]** 7 files, ~600 lines with the documentation; there is no `avkon_app!` — `#[symbian_std::main(gui)]` writes the export and reads the application type from `fn main`'s return type) |
 | `symdev-build` — the resource/icon stage for Rust, the library list, UID2 | ~200 lines of Rust plus tests |
 | `.o` of the shim / E32 of the whole app | 30 996 B / 107 028 B |
 
@@ -609,18 +640,21 @@ between a 5 KB and a 107 KB hello-world GUI app.
 
 ### 8.2 Risks, in order
 
-1. **Key injection into EKA2L1 is unsolved** (§5.2). It blocks the acceptance criterion,
-   not the implementation. Solve it first.
-2. **The `compiler_builtins` size cliff** (§8.1). Cosmetic for the emulator, serious for a
-   phone.
+1. ~~**Key injection into EKA2L1 is unsolved**~~ (§5.2). **[86] Solved by experiment 83**
+   and used as the acceptance test; the softkey half remains unexplained.
+2. ~~**The `compiler_builtins` size cliff**~~ (§8.1). **[86] It did not come back**:
+   `uidemo.exe` is 12 715 bytes (7 559 without the result-file harness) with a 31 KB C++
+   object on the link line. Experiment 77's DSO ordering was the whole of the fix.
 3. **Two runtime shapes.** A GUI app must not install an active scheduler and a console app
    must; `symbian-runtime`'s `entry!` currently assumes the console shape. The manifest's
    `[ui]` section is what has to select between them, and getting that wrong is a hang, not
    an error.
 4. **Vtable versioning.** §3.2's `size` word is the whole defence. If it is skipped, a Rust
-   SDK newer than the shim calls off the end of the table.
-5. **Drawing coordinates** (§5.1) — unresolved, and a wrong answer puts everything 44
-   pixels off without any error.
+   SDK newer than the shim calls off the end of the table. **[86] Both tables carry it**
+   and both sides check the other's — but **no short table was ever built**, so the
+   check has never been seen to fire.
+5. ~~**Drawing coordinates**~~ (§5.1) — **[86] settled for the application**: the shim
+   passes an origin-zeroed rect and nothing else.
 6. **`Draw` must not leave and must not panic.** It is the only forwarded virtual the
    framework calls outside a trap harness, and it is `const`. A Rust `draw` that allocates
    and OOMs has no legal way to report it.
@@ -644,8 +678,12 @@ between a 5 KB and a 107 KB hello-world GUI app.
   forwarding is unverified at runtime. Not a property of the design — the stock softkey
   did nothing either.
 - **Draw's coordinate origin** (§5.1): two different rects produced identical pixels.
-- **Why `gc->Clear()` left a black band** across the top of the client area in the probe.
-  Most likely the brush state the framework left behind, but not isolated.
+- ~~**Why `gc->Clear()` left a black band** across the top of the client area in the
+  probe.~~ **[86] Isolated, half-explained.** A red stripe at the top of the area the
+  shim passes landed *at the top of the band*, so the band is inside the control; a
+  filled `DrawRect(area)` in its place covered it. So the no-argument `Clear()` paints
+  a smaller region than the control's area on this platform, and `Clear(const TRect&)`
+  does not. *Why* its region is narrower is still not determined. It was not the brush.
 - **Whether UID2 `0x100039CE` matters** (§6.3 item 5): symdev's EXE post-link argv passes
   no `--uid2` and `examples/gui` runs in the emulator regardless. Unverified on a device.
 - **A transient install failure**: the first `symdev run` of the probe logged
