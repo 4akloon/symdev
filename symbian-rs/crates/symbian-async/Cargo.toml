@@ -1,0 +1,12 @@
+[package]
+name = "symbian-async"
+version.workspace = true
+edition.workspace = true
+description = "async/await on Symbian's active objects: a single-threaded executor on CActiveScheduler"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+symbian-core = { path = "../symbian-core" }
+symbian-sys = { path = "../symbian-sys" }

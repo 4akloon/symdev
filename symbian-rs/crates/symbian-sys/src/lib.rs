@@ -11,6 +11,7 @@
 //! observed in experiment 78 rather than assumed.
 #![no_std]
 
+pub mod active;
 pub mod des;
 pub mod des16;
 pub mod des8;

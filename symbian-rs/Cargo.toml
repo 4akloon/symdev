@@ -7,6 +7,7 @@ members = [
     "crates/symbian-sys",
     "crates/symbian-alloc",
     "crates/symbian-libcalls",
+    "crates/symbian-async",
     "crates/symbian-core",
     "crates/symbian-std",
     "crates/symbian-runtime",

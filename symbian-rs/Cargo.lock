@@ -65,6 +65,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "symbian-async"
+version = "0.1.0"
+dependencies = [
+ "symbian-core",
+ "symbian-sys",
+]
+
+[[package]]
 name = "symbian-core"
 version = "0.1.0"
 dependencies = [
