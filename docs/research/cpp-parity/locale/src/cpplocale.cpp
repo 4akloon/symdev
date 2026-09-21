@@ -13,6 +13,10 @@
 #include <bautils.h>
 
 #include "symdevreport.h"
+#ifdef SYMDEV_CPP_PARITY_PROBE
+#include "symdevprobe.h"
+static TSymdevProbe gEntry;
+#endif
 #include "cpplocale.rsg"
 
 const TUint KUid3 = 0xe00006a3;
@@ -148,6 +152,19 @@ static void RunL(CSymdevReport& aReport, RFs& aFs, TDes8& aNotes)
     // here at all, and the chain is exercised only for whatever the device is set to.
     aReport.CheckDetail(_L8("the fallback chain can only be exercised for the device language"),
                         ETrue, _L8("no per-language lookup exists in the C++ API"));
+
+#ifdef SYMDEV_CPP_PARITY_PROBE
+    TSymdevProbe end = TSymdevProbe::Now();
+    TBuf8<64> detail;
+    detail.Format(_L8("cells %d bytes %d"), gEntry.iCells, gEntry.iBytes);
+    aReport.CheckDetail(_L8("probe:heap at entry"), ETrue, detail);
+    detail.Format(_L8("cells %d bytes %d"), end.iCells, end.iBytes);
+    aReport.CheckDetail(_L8("probe:heap at end"), ETrue, detail);
+    detail.Format(_L8("%u"), end.TicksSince(gEntry));
+    aReport.CheckDetail(_L8("probe:nanoticks entry to end"), ETrue, detail);
+    detail.Format(_L8("%d us"), TSymdevProbe::SystemTickPeriodMicros());
+    aReport.CheckDetail(_L8("probe:UserHal::TickPeriod"), ETrue, detail);
+#endif
     }
 
 static void MainL()
@@ -190,6 +207,9 @@ static void MainL()
 
 GLDEF_C TInt E32Main()
     {
+#ifdef SYMDEV_CPP_PARITY_PROBE
+    gEntry = TSymdevProbe::Now();
+#endif
     CTrapCleanup* cleanup = CTrapCleanup::New();
     if (cleanup == NULL)
         {

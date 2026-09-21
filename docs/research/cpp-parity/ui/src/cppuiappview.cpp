@@ -5,6 +5,9 @@
 #include "cppuiappview.h"
 #include "cppui.hrh"
 #include "symdevreport.h"
+#ifdef SYMDEV_CPP_PARITY_PROBE
+#include "symdevprobe.h"
+#endif
 
 const TUint KUid3 = 0xe00006a2;
 
@@ -31,10 +34,20 @@ CCppUiAppView::~CCppUiAppView()
 
 void CCppUiAppView::ConstructL(const TRect& aRect)
     {
+#ifdef SYMDEV_CPP_PARITY_PROBE
+    // The GUI shape has no `E32Main` of its own to measure from: EikStart owns the
+    // process. The probe therefore brackets the application's own construct, which
+    // is the same bracket the Rust side uses.
+    TSymdevProbe entry = TSymdevProbe::Now();
+#endif
     CreateWindowL();
     SetRect(aRect);
     ActivateL();
-    ReportStartupL();
+#ifdef SYMDEV_CPP_PARITY_PROBE
+    ReportStartupL(&entry);
+#else
+    ReportStartupL(NULL);
+#endif
     }
 
 void CCppUiAppView::SizeChanged()
@@ -45,7 +58,7 @@ void CCppUiAppView::SizeChanged()
 
 /// The same three cases `Bars::construct` records, so `symdev test` compares like
 /// with like.
-void CCppUiAppView::ReportStartupL() const
+void CCppUiAppView::ReportStartupL(const void* aEntry) const
     {
     CSymdevReport* report = CSymdevReport::NewL(_L8("uidemo"), KUid3);
     CleanupStack::PushL(report);
@@ -56,6 +69,23 @@ void CCppUiAppView::ReportStartupL() const
                         Rect().Width() > 0 && Rect().Height() > 0, size);
     DrawDeferred();
     report->Check(_L8("a redraw can be asked for from construct"), ETrue);
+#ifdef SYMDEV_CPP_PARITY_PROBE
+        {
+        const TSymdevProbe& entry = *static_cast<const TSymdevProbe*>(aEntry);
+        TSymdevProbe end = TSymdevProbe::Now();
+        TBuf8<64> detail;
+        detail.Format(_L8("cells %d bytes %d"), entry.iCells, entry.iBytes);
+        report->CheckDetail(_L8("probe:heap at entry"), ETrue, detail);
+        detail.Format(_L8("cells %d bytes %d"), end.iCells, end.iBytes);
+        report->CheckDetail(_L8("probe:heap at end"), ETrue, detail);
+        detail.Format(_L8("%u"), end.TicksSince(entry));
+        report->CheckDetail(_L8("probe:nanoticks entry to end"), ETrue, detail);
+        detail.Format(_L8("%d us"), TSymdevProbe::SystemTickPeriodMicros());
+        report->CheckDetail(_L8("probe:UserHal::TickPeriod"), ETrue, detail);
+        }
+#else
+    (void)aEntry;
+#endif
     report->Finish();
     CleanupStack::PopAndDestroy(report);
     }

@@ -8,6 +8,10 @@
 #include <f32file.h>
 
 #include "symdevreport.h"
+#ifdef SYMDEV_CPP_PARITY_PROBE
+#include "symdevprobe.h"
+static TSymdevProbe gEntry;
+#endif
 
 const TUint KUid3 = 0xe00006a1;
 
@@ -72,6 +76,24 @@ static TInt ReadFromMiddle(RFs& aFs, TDes8& aOut)
     file.Close();
     return err;
     }
+
+#ifdef SYMDEV_CPP_PARITY_PROBE
+/// The heap/startup probe, recorded as passing cases whose detail carries the number
+/// (`docs/research/cpp-parity.md`). The Rust side records the identical four.
+static void ReportProbe(CSymdevReport& aReport)
+    {
+    TSymdevProbe end = TSymdevProbe::Now();
+    TBuf8<64> detail;
+    detail.Format(_L8("cells %d bytes %d"), gEntry.iCells, gEntry.iBytes);
+    aReport.CheckDetail(_L8("probe:heap at entry"), ETrue, detail);
+    detail.Format(_L8("cells %d bytes %d"), end.iCells, end.iBytes);
+    aReport.CheckDetail(_L8("probe:heap at end"), ETrue, detail);
+    detail.Format(_L8("%u"), end.TicksSince(gEntry));
+    aReport.CheckDetail(_L8("probe:nanoticks entry to end"), ETrue, detail);
+    detail.Format(_L8("%d us"), TSymdevProbe::SystemTickPeriodMicros());
+    aReport.CheckDetail(_L8("probe:UserHal::TickPeriod"), ETrue, detail);
+    }
+#endif
 
 static void RunL(CSymdevReport& aReport, RFs& aFs)
     {
@@ -139,6 +161,10 @@ static void RunL(CSymdevReport& aReport, RFs& aFs)
     aReport.Checked(_L8("remove_file"), aFs.Delete(KRenamed));
     TEntry gone;
     aReport.Check(_L8("the file is gone"), aFs.Entry(KRenamed, gone) == KErrNotFound);
+
+#ifdef SYMDEV_CPP_PARITY_PROBE
+    ReportProbe(aReport);
+#endif
     }
 
 static void MainL()
@@ -157,6 +183,9 @@ static void MainL()
 
 GLDEF_C TInt E32Main()
     {
+#ifdef SYMDEV_CPP_PARITY_PROBE
+    gEntry = TSymdevProbe::Now();
+#endif
     CTrapCleanup* cleanup = CTrapCleanup::New();
     if (cleanup == NULL)
         {

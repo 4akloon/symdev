@@ -17,6 +17,14 @@ use symbian_std::io::{self, ErrorKind, SeekFrom};
 use symbian_std::prelude::*;
 use symbian_std::test_report::Report;
 
+/// The heap/startup probe of `docs/research/cpp-parity.md`, pulled in from one shared
+/// file so the four examples and their C++ counterparts measure the same two things
+/// in the same order. TEMPORARY: this commit exists to take the parity numbers and is
+/// reverted immediately after.
+#[path = "../../../../docs/research/cpp-parity/probe.rs"]
+mod probe;
+
+
 /// Symbian paths: a drive letter and backslashes, which is why the literals are
 /// escaped. There is no POSIX root above `E:`.
 const DIR: &str = "E:\\symdev\\files71";
@@ -202,7 +210,27 @@ fn run(report: &mut Report) {
 /// exits 0 or 1, so that the exit code and the `failed` count in the file agree.
 #[symbian_std::main]
 fn main() -> Result<i32> {
+    let entry = probe::Probe::now();
     let mut report = Report::new("files");
     run(&mut report);
+    let end = probe::Probe::now();
+    report.check_detail(
+        "probe:heap at entry",
+        true,
+        format_args!("cells {} bytes {}", entry.cells, entry.bytes),
+    );
+    report.check_detail(
+        "probe:heap at end",
+        true,
+        format_args!("cells {} bytes {}", end.cells, end.bytes),
+    );
+    report.check_detail(
+        "probe:nanoticks entry to end",
+        true,
+        format_args!("{}", end.ticks_since(entry)),
+    );
+    // No `probe:UserHal::TickPeriod` case here: `filesdemo` does not depend on
+    // `symbian-core`, and adding the dependency would change what is being measured.
+    // `locale` and `ui` report the period.
     Ok(if report.finish()? { 0 } else { 1 })
 }

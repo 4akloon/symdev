@@ -18,7 +18,7 @@ private:
     CCppUiAppView();
     void ConstructL(const TRect& aRect);
     void SizeChanged();
-    void ReportStartupL() const;
+    void ReportStartupL(const void* aEntry) const;
 
     TInt iBars;
     TUint iKeys;
