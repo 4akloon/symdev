@@ -1,0 +1,25 @@
+# The manifest `symbian-sys` gets when it is copied into the sysroot build graph.
+#
+# The crate's own manifest (`symbian-rs/crates/symbian-sys/Cargo.toml`) inherits its
+# version and edition from the `symbian-rs` workspace and depends on nothing, which is
+# right for the `no_std` SDK and wrong here: inside `library/` a crate must name `core`
+# by path, the way `rustc-std-workspace-core` does, or rustc has no `core` to give it
+# (there is no prebuilt sysroot for this target). The source files are the crate's own,
+# copied verbatim; only this file differs, and it is the whole difference.
+[package]
+name = "symbian-sys"
+version = "0.1.0"
+edition = "2024"
+description = "Raw declarations of Symbian OS 9.3 user-side exports, as a dependency of std"
+
+[lib]
+path = "src/lib.rs"
+test = false
+bench = false
+doc = false
+
+[dependencies]
+core = { path = "../core" }
+compiler_builtins = { path = "../compiler-builtins/compiler-builtins", features = [
+  "compiler-builtins",
+] }

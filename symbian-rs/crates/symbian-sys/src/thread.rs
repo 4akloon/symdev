@@ -237,10 +237,15 @@ pub struct RSemaphore {
 }
 
 impl RSemaphore {
+    /// An unopened semaphore, as a value rather than a call: `std`'s platform layer
+    /// needs it inside a `const fn` that must stay const-stable, and a `const fn` of
+    /// another crate cannot be called from one.
+    pub const NULL: Self = Self {
+        base: RHandleBase { handle: 0 },
+    };
+
     /// An unopened semaphore.
     pub const fn null() -> Self {
-        Self {
-            base: RHandleBase { handle: 0 },
-        }
+        Self::NULL
     }
 }
