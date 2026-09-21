@@ -1,0 +1,43 @@
+TARGET            cppui.exe
+TARGETTYPE        exe
+UID               0x100039CE 0xe00006a2
+
+SECUREID          0xe00006a2
+
+SOURCEPATH        ..\src
+SOURCE            cppui.cpp
+SOURCE            cppuiapplication.cpp
+SOURCE            cppuidocument.cpp
+SOURCE            cppuiappui.cpp
+SOURCE            cppuiappview.cpp
+
+SOURCEPATH        ..\..\common
+SOURCE            symdevreport.cpp
+
+SOURCEPATH        ..\data
+
+START RESOURCE    cppui.rss
+HEADER
+TARGETPATH        resource\apps
+END //RESOURCE
+
+START RESOURCE    cppui_reg.rss
+TARGETPATH        \private\10003a3f\import\apps
+END //RESOURCE
+
+USERINCLUDE       ..\inc
+USERINCLUDE       ..\..\common
+
+SYSTEMINCLUDE     \epoc32\include
+
+LIBRARY           euser.lib
+LIBRARY           apparc.lib
+LIBRARY           cone.lib
+LIBRARY           eikcore.lib
+LIBRARY           avkon.lib
+LIBRARY           efsrv.lib
+
+LANG SC 01
+
+VENDORID          0
+CAPABILITY        NONE

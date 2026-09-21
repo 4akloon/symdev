@@ -1,0 +1,20 @@
+//d:Caption string for app.
+rls_string STRING_r_caption "C++ bars"
+
+//d:Short caption string for app.
+rls_string STRING_r_short_caption "Bars"
+
+//d:First item in the Options menu.
+rls_string STRING_r_more_bars "More bars"
+
+//d:Second item in the Options menu.
+rls_string STRING_r_fewer_bars "Fewer bars"
+
+//d:Third item in the Options menu.
+rls_string STRING_r_reset "Reset"
+
+//d:Fourth item in the Options menu.
+rls_string STRING_r_exit "Exit"
+
+//d:Where the localisable resource file is installed.
+rls_string STRING_r_loc_resource_file "\\resource\\apps\\cppui"

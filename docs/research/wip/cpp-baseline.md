@@ -44,3 +44,8 @@ Read the four Rust examples and the SDK `helloworldbasic` skeleton.
   one: `CTrapCleanup::New()`. `delete cleanup` adds no import — the destructor is a vtable
   call and `CBase::operator delete` is inline. Rust's reported +44 whole-image is +13 (1.42x)
   over the C++ +31, which the 16-byte `symrs_cleanup_destroy` shim accounts for.
+- 2026-09-21 ui pair builds (Avkon, 4 classes + hrh + rss + reg.rss + rls + svg icon).
+  C++ code 9888 B / e32 7313 B / 8 DLLs / 225 ordinals; Rust code 20436 B / e32 13714 B /
+  9 DLLs / 219 ordinals. Rust 2.07x code, 1.88x e32, but marginally FEWER ordinals.
+- Next step: heap (User::AllocSize) and startup (User::NTickCount) probes on both sides,
+  then write docs/research/cpp-parity.md.

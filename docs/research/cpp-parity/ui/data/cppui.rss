@@ -1,0 +1,50 @@
+NAME CPUI
+
+#include <eikon.rh>
+#include <eikon.hrh>
+#include <avkon.rh>
+#include <avkon.rsg>
+#include <avkon.hrh>
+#include <appinfo.rh>
+#include "cppui.hrh"
+#include "cppui.rls"
+
+RESOURCE RSS_SIGNATURE { }
+
+RESOURCE TBUF r_default_document_name { buf = "CPUI"; }
+
+RESOURCE EIK_APP_INFO
+    {
+    menubar = r_cppui_menubar;
+    cba = R_AVKON_SOFTKEYS_OPTIONS_EXIT;
+    }
+
+RESOURCE MENU_BAR r_cppui_menubar
+    {
+    titles =
+        {
+        MENU_TITLE { menu_pane = r_cppui_menu; }
+        };
+    }
+
+RESOURCE MENU_PANE r_cppui_menu
+    {
+    items =
+        {
+        MENU_ITEM { command = ECppUiMoreBars;  txt = STRING_r_more_bars;  },
+        MENU_ITEM { command = ECppUiFewerBars; txt = STRING_r_fewer_bars; },
+        MENU_ITEM { command = ECppUiReset;     txt = STRING_r_reset;      },
+        MENU_ITEM { command = EAknSoftkeyExit; txt = STRING_r_exit;       }
+        };
+    }
+
+RESOURCE LOCALISABLE_APP_INFO r_cppui_localisable_app_info
+    {
+    short_caption = STRING_r_short_caption;
+    caption_and_icon = CAPTION_AND_ICON_INFO
+        {
+        caption = STRING_r_caption;
+        number_of_icons = 1;
+        icon_file = "\\resource\\apps\\cppui_aif.mif";
+        };
+    }

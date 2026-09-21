@@ -1,0 +1,18 @@
+[package]
+name = "cppui"
+version = "0.1.0"
+
+[target]
+device = "nokia-e52"
+
+[language]
+name = "cpp"
+
+[symbian]
+uid3 = "0xe00006a2"
+capabilities = []
+vendor = "symdev"
+icon = "gfx/cppui.svg"
+
+[signing]
+mode = "self-signed"

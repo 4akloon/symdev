@@ -1,0 +1,16 @@
+#include "cppui.rls"
+#include <appinfo.rh>
+#include <cppui.rsg>
+
+UID2 KUidAppRegistrationResourceFile
+UID3 0xe00006a2
+
+RESOURCE APP_REGISTRATION_INFO
+    {
+    app_file = "cppui";
+    localisable_resource_file = STRING_r_loc_resource_file;
+    localisable_resource_id = R_CPPUI_LOCALISABLE_APP_INFO;
+
+    embeddability = KAppNotEmbeddable;
+    newfile = KAppDoesNotSupportNewFile;
+    }

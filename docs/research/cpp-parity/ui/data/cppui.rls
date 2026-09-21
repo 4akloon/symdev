@@ -1,0 +1,6 @@
+//  LOCALISATION STRINGS
+#ifdef LANGUAGE_SC
+#include "cppui_01.rls"
+#elif defined LANGUAGE_01
+#include "cppui_01.rls"
+#endif
