@@ -56,7 +56,7 @@ typedef struct SymRsKeyEvent
 typedef struct SymRsHost
 	{
 	TUint32 iSize;
-	void (*clear)(void* aGc);
+	void (*clear)(void* aGc, SymRsRect aRect);
 	void (*set_pen)(void* aGc, TUint32 aRgb);
 	void (*set_brush)(void* aGc, TUint32 aRgb, TInt aSolid);
 	void (*draw_rect)(void* aGc, SymRsRect aRect);

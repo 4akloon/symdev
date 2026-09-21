@@ -33,8 +33,8 @@ impl App for Bars {
     }
 
     fn draw(&self, gc: &mut Gc<'_>, area: Rect) {
-        // The brush before the clear: `Clear()` fills with whatever brush the
-        // framework left behind, which is the unexplained black band of experiment 76.
+        // The brush before the clear: a clear paints with whatever brush the
+        // framework left behind otherwise.
         gc.set_brush(Rgb::WHITE);
         gc.clear();
 

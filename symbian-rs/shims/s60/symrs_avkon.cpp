@@ -52,9 +52,15 @@ static TRect Rect(SymRsRect aRect)
 	return TRect(TPoint(aRect.x, aRect.y), TSize(aRect.w, aRect.h));
 	}
 
-static void HostClear(void* aGc)
+// The rect form, and not the no-argument Clear(). Observed in EKA2L1 with a red
+// probe stripe at the top of the control: `Clear()` leaves the top ~40 pixels of a
+// window-owning control's area unpainted -- the black band experiment 76 saw and
+// could not isolate -- while `Clear(aRect)` and `DrawRect(aRect)` over the same area
+// both cover it. Whatever narrows the no-argument form's clipping region, the rect
+// form is the one that means "my whole view".
+static void HostClear(void* aGc, SymRsRect aRect)
 	{
-	Gc(aGc)->Clear();
+	Gc(aGc)->Clear(Rect(aRect));
 	}
 
 static void HostSetPen(void* aGc, TUint32 aRgb)

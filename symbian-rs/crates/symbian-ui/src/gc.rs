@@ -25,6 +25,8 @@ pub const MAX_TEXT: usize = 128;
 pub struct Gc<'a> {
     host: &'a Host,
     gc: *mut c_void,
+    /// The view's own area, so that [`Gc::clear`] can mean "all of it".
+    area: Rect,
 }
 
 impl<'a> Gc<'a> {
@@ -32,18 +34,22 @@ impl<'a> Gc<'a> {
     ///
     /// `gc` is the `CWindowGc*` the shim passed to `draw` and is valid for the whole
     /// call; `host` is the shim's `.rodata` table, already length-checked.
-    pub(crate) const unsafe fn new(host: &'a Host, gc: *mut c_void) -> Self {
-        Self { host, gc }
+    pub(crate) const unsafe fn new(host: &'a Host, gc: *mut c_void, area: Rect) -> Self {
+        Self { host, gc, area }
     }
 
-    /// `CWindowGc::Clear()` — the whole clipping region, filled with the brush.
+    /// Fills the whole view with the brush colour, so set the brush first: what a
+    /// clear paints otherwise is whatever brush the framework left behind.
     ///
-    /// Set the brush first: the colour a bare `clear` uses is whatever the framework
-    /// left behind, which showed up in experiment 76 as an unexplained black band.
+    /// It is `CGraphicsContext::Clear(const TRect&)` over the view's area, and **not**
+    /// the no-argument `Clear()`. Observed in EKA2L1 with a probe stripe at the top of
+    /// the control: the no-argument form leaves the top ~40 pixels of a window-owning
+    /// control unpainted — the black band experiment 76 recorded and could not isolate
+    /// — while the rect form covers them.
     pub fn clear(&mut self) {
         // SAFETY: `clear` is a non-leaving pure virtual of `CGraphicsContext` reached
         // through the shim, and `self.gc` is live for this call by construction.
-        unsafe { (self.host.clear)(self.gc) }
+        unsafe { (self.host.clear)(self.gc, self.area.raw()) }
     }
 
     /// `SetPenColor` — the colour of lines and of a rectangle's outline.

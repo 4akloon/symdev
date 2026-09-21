@@ -38,7 +38,7 @@ pub struct RawKeyEvent {
 #[repr(C)]
 pub struct Host {
     pub size: u32,
-    pub clear: unsafe extern "C" fn(*mut c_void),
+    pub clear: unsafe extern "C" fn(*mut c_void, RawRect),
     pub set_pen: unsafe extern "C" fn(*mut c_void, u32),
     pub set_brush: unsafe extern "C" fn(*mut c_void, u32, i32),
     pub draw_rect: unsafe extern "C" fn(*mut c_void, RawRect),

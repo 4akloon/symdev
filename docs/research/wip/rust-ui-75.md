@@ -49,9 +49,17 @@ subclasses forwarding virtuals to a Rust vtable, `crates/symbian-ui`, `#[main(gu
   (63,68)-(152,185) inside it. So `OfferKeyEventL` → Rust `key` → `DrawDeferred` →
   Rust `draw` all run. (Experiment 76's `uiprobe` never saw a key; this shim's control
   stack does, and it is the same `AddToStackL(iView)` the C++ `examples/gui` uses.)
-- **The unexplained black band of experiment 76 is reproduced**: a ~42 px black strip
-  across the top of the client area, above everything the Rust `draw` paints.
-  `gc.clear()` with a white brush does not cover it. Still to isolate.
+- **The black band of experiment 76 is isolated and fixed.** Probe 1: a red stripe at
+  `Rect::new(0, 0, area.width, 6)` landed at the *top of the band*, so the band is
+  inside the control's own area. Probe 2: a filled `DrawRect(area)` in place of
+  `Clear()` covered it completely. So the no-argument `CGraphicsContext::Clear()`
+  leaves the top ~40 px of a window-owning control unpainted on this platform, while
+  `Clear(aRect)` and `DrawRect(aRect)` over the same rectangle do not. The host entry
+  is now `Clear(const TRect&)` over the view's area and the band is gone. *Why* the
+  no-argument form's region is narrower is still not determined.
+- **The caption comes from the generated resource**: the title pane reads `Bars`, the
+  `short_caption` of `[ui]`. (The very first run showed `uidemo` — a stale registration
+  from before this build; a fresh install shows the caption.)
 
 ## Decisions
 

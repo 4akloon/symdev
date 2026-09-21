@@ -97,8 +97,9 @@ extern "C" fn draw<A: App>(app: *mut c_void, gc: *mut c_void, area: RawRect) {
     };
     // SAFETY: `gc` is the `CWindowGc&` the framework handed `Draw` and is valid for
     // exactly this call, which is the lifetime `Gc` carries.
-    let mut gc = unsafe { Gc::new(ui.host(), gc) };
-    state.app.draw(&mut gc, Rect::from_raw(area));
+    let area = Rect::from_raw(area);
+    let mut gc = unsafe { Gc::new(ui.host(), gc, area) };
+    state.app.draw(&mut gc, area);
 }
 
 extern "C" fn offer_key<A: App>(app: *mut c_void, event: *const RawKeyEvent, kind: i32) -> i32 {
