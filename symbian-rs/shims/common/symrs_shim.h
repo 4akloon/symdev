@@ -62,7 +62,9 @@
 // crates/symbian-libcalls/src/cstring.rs. Neither can leave: RFastLock::CreateLocal,
 // Wait and Signal are non-leaving euser members, and the member ABI is ordinary AAPCS
 // with `this` as argument 0 (observed, experiment 78), so Rust calls them directly.
-// What remains in this directory is the two TRAPs, in symrs_leave.cpp and symrs_f32.cpp.
+// What remains in this directory is the two TRAPs, in symrs_leave.cpp and symrs_f32.cpp,
+// and the one C++ subclass, in symrs_active.cpp -- which is rule 3 and carries the third
+// TRAP, around CActiveScheduler::Start().
 //
 // A panic is NOT a leave and a TRAP does not catch it: e32panic.h line 131 documents
 // ETDes16Overflow = 11 (category USER) for "any of the copying, appending or formatting
@@ -75,6 +77,7 @@
 
 class RFs;
 class TDesC16;
+class TRequestStatus;
 
 // The shim is an implementation detail of the SDK, not an export of the application.
 // Hidden visibility keeps these symbols out of the E32's dynamic table, so --gc-sections
@@ -90,6 +93,51 @@ SYMRS_EXPORT TInt symrs_bafl_ensure_path_exists(RFs* aFs, const TDesC16* aPath);
 // User::LeaveIfError(TInt) from euser.dso, TRAPped: the shim's own self-check.
 // Returns aReason for a negative aReason, KErrNone otherwise.
 SYMRS_EXPORT TInt symrs_leave_if_error(TInt aReason);
+
+
+// ---------------------------------------------------------------------------
+// THE ACTIVE OBJECT (symrs_active.cpp, step 73)
+// ---------------------------------------------------------------------------
+//
+// Here for rule 3: CActive::RunL and DoCancel are pure virtual, its constructor and
+// SetActive() are protected, so a subclass is the only way to have one, and a Rust type
+// cannot be a C++ subclass. The virtuals forward to a Rust-owned vtable of function
+// pointers with one opaque context, the shape experiment 76 settled.
+//
+// The Rust callbacks may not leave and may not panic. iRun returns a TInt and the leave,
+// if there ever is one, happens in RunL after the Rust frame has returned.
+struct SymRsActiveVTable
+    {
+    // Called from RunL with the completion code the service wrote into iStatus.
+    TInt (*iRun)(TAny* aContext, TInt aStatus);
+    // Called from DoCancel: cancel the service that holds the request. It must complete
+    // the status immediately, which is what RTimer::Cancel and RSocket::CancelAll do.
+    void (*iCancel)(TAny* aContext);
+    };
+
+// Creates one active object and adds it to the scheduler installed on this thread.
+// NULL when there is no scheduler, when the vtable is incomplete, or on a full heap.
+SYMRS_EXPORT TAny* symrs_active_new(const SymRsActiveVTable* aVTable, TAny* aContext,
+                                    TInt aPriority);
+// Cancels the request if it is outstanding, dequeues and deletes. Null-safe.
+SYMRS_EXPORT void symrs_active_destroy(TAny* aActive);
+// The object's own iStatus, to hand to an asynchronous service.
+SYMRS_EXPORT TRequestStatus* symrs_active_status(TAny* aActive);
+// CActive::SetActive(), after the request has been issued.
+SYMRS_EXPORT void symrs_active_issued(TAny* aActive);
+// CActive::Cancel(): DoCancel, then consume the completion. Null-safe, and a no-op when
+// the request is not outstanding.
+SYMRS_EXPORT void symrs_active_cancel(TAny* aActive);
+
+// The scheduler a CONSOLE application owns. A GUI application must never call these:
+// CONE installs CCoeScheduler before any application code runs (avkon-rust-spec.md 1.3).
+// KErrInUse when one is already installed, KErrNoMemory on a full heap.
+SYMRS_EXPORT TInt symrs_scheduler_install(TAny** aScheduler);
+SYMRS_EXPORT void symrs_scheduler_uninstall(TAny* aScheduler);
+// CActiveScheduler::Start(), TRAPped: e32base.h says nothing either way about it
+// leaving, and every RunL in the program runs underneath it.
+SYMRS_EXPORT TInt symrs_scheduler_start(void);
+SYMRS_EXPORT void symrs_scheduler_stop(void);
 
 
 #endif // SYMRS_SHIM_H
