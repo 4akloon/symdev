@@ -64,3 +64,11 @@ must be caught at build time. Language read once from `User::Language()`.
   back as `language: 1` and `User::Language()` still returned 1.
   The RM-469 ROM's `languages.txt` (UTF-16LE) is: `01,d 02 03 14 18 05` — English (default),
   French, German, Turkish, Dutch, Italian. Six, and no Ukrainian or Russian.
+- **MEASURED: the value follows the setting, and the strings follow the value.** Same
+  `localedemo.sisx`, three runs, changing only `config.yml`'s `language:`:
+  | config | `User::Language()` | GREETING | LANGUAGE_IS | OK |
+  |---|---|---|---|---|
+  | 1 | 1 ELangEnglish | Hello from Rust | language | ok |
+  | 2 | 2 ELangFrench | Bonjour depuis Rust | langue | d'accord |
+  | 3 | 3 ELangGerman (in ROM, NOT in the table) | Hello from Rust | language | ok |
+  All three runs `localedemo: 8 passed`. The config was restored to `language: 1` afterwards.

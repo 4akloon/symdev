@@ -9,7 +9,7 @@
 //!    [`Text::get_in`], which takes a language instead of asking for one, so the
 //!    fallback rule is exercised for languages this device is not set to and could
 //!    not be set to — a dialect (`ELangEnglish_Apac`), a language the table has
-//!    (`ELangUkrainian`), and one it does not (`ELangFrench`).
+//!    (`ELangUkrainian`), and one it does not (`ELangGerman`).
 //!
 //! The strings themselves are in [`strings`], and the point of the whole design is in
 //! that file: one row per key, one column per language, and rustc refusing a row that
@@ -63,12 +63,12 @@ fn chain(report: &mut Report, notes: &mut String) {
     let cases: [(&str, Language, &str); 6] = [
         // 1. The language itself, when the table has it.
         ("ukrainian", lang::ukrainian, "Привіт з Rust"),
-        ("russian", lang::russian, "Привет из Rust"),
+        ("french", lang::french, "Bonjour depuis Rust"),
         ("english", lang::english, "Hello from Rust"),
         // 2. A dialect falls back to the language it is a dialect of.
         ("english_apac", lang::english_apac, "Hello from Rust"),
         // 3. Anything else falls back to the declared default, which is english.
-        ("french", lang::french, "Hello from Rust"),
+        ("german", lang::german, "Hello from Rust"),
         ("none", lang::none, "Hello from Rust"),
     ];
     for (name, language, expected) in cases {
@@ -92,8 +92,8 @@ fn name_of(language: Language) -> Option<&'static str> {
     let named: [(Language, &str); 8] = [
         (lang::test, "ELangTest"),
         (lang::english, "ELangEnglish"),
-        (lang::american, "ELangAmerican"),
-        (lang::russian, "ELangRussian"),
+        (lang::french, "ELangFrench"),
+        (lang::german, "ELangGerman"),
         (lang::ukrainian, "ELangUkrainian"),
         (lang::english_apac, "ELangEnglish_Apac"),
         (lang::other, "ELangOther"),
