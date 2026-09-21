@@ -148,3 +148,10 @@ dependencies = [
  "symbian-std",
  "symbian-sys",
 ]
+
+[[package]]
+name = "uidemo"
+version = "0.1.0"
+dependencies = [
+ "symbian-std",
+]

@@ -23,6 +23,7 @@ members = [
     "examples/time",
     "examples/net",
     "examples/tls",
+    "examples/ui",
 ]
 
 [workspace.package]

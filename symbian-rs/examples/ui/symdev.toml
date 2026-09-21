@@ -1,0 +1,27 @@
+[package]
+name = "uidemo"
+version = "0.1.0"
+
+[target]
+device = "nokia-e52"
+
+[language]
+name = "rust"
+
+[symbian]
+uid3 = "0xe0000687"
+capabilities = []
+vendor = "symdev"
+icon = "gfx/uidemo.svg"
+
+# Present = this is an Avkon application: the C++ subclasses, the six Avkon import
+# libraries, and the application and registration resources a captioned application
+# needs. Without it the same crate would build as a console program.
+[ui]
+kind = "avkon"
+caption = "Rust bars"
+short_caption = "Bars"
+softkeys = "exit"
+
+[signing]
+mode = "self-signed"

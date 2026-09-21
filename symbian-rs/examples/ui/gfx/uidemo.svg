@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- examples/ui: the bar chart the application draws, as its icon (SVG Tiny). -->
+<svg baseProfile="tiny" xmlns="http://www.w3.org/2000/svg" width="88" height="88" viewBox="0 0 88 88">
+<rect x="4" y="4" width="80" height="80" rx="18" ry="18" fill="#1f6feb"/>
+<rect x="20" y="50" width="12" height="18" fill="#ffffff"/>
+<rect x="38" y="36" width="12" height="32" fill="#ffffff"/>
+<rect x="56" y="22" width="12" height="46" fill="#ffffff"/>
+</svg>

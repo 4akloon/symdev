@@ -37,6 +37,10 @@ subclasses forwarding virtuals to a Rust vtable, `crates/symbian-ui`, `#[main(gu
 - Link order problem found by reading: the shim archive follows the Rust archive, so
   the shim's reference to `symrs_app_vtbl` would never be resolved (ld does not
   rescan). `-u symrs_app_vtbl` before the Rust archive is the fix.
+- **`examples/ui` builds and the size cliff did not come back: `uidemo.exe` is 7 542
+  bytes**, against experiment 76's 107 028 for a mixed C++/Rust UI probe. Eleven
+  `NEEDED`: the six of the recorded line plus apparc, cone, eikcore, avkon, gdi.
+  `uidemo.rsc` 140, `uidemo_reg.rsc` 91, `uidemo_aif.mif` 268.
 
 ## Decisions
 
