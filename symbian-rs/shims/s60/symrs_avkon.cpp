@@ -17,6 +17,7 @@
 #include <e32base.h>
 #include <eikenv.h>
 #include <eikon.hrh>
+#include <eikmenup.h>
 #include <eikstart.h>
 #include <gdi.h>
 
@@ -112,11 +113,48 @@ static void HostExit(void* aAppUi)
 	static_cast<CAknAppUi*>(aAppUi)->Exit();
 	}
 
+// The one host entry that can fail. AddMenuItemL leaves on no memory, so it is
+// trapped here and the code is returned: nothing throws while a Rust frame is on the
+// stack, and DynInitMenuPaneL raises it once that frame has gone.
+//
+// `SData` is a plain struct, and eikmenup.h says so in as many words: "NOTICE that
+// SData is a structure so all fields in it should be set to avoid any unexpected
+// behaviour." A plain line is iCascadeId = 0 and iFlags = 0 -- the same defaults
+// eikon.rh gives `STRUCT MENU_ITEM` (`LLINK cascade=0; LONG flags=0;`) -- and an
+// empty iExtraText, which is where CEikMenuPane would otherwise show a hotkey name.
+static TInt HostMenuItem(void* aPane, const TUint16* aText, TInt aLength, TInt aCommand)
+	{
+	CEikMenuPane* pane = static_cast<CEikMenuPane*>(aPane);
+	if (!pane || !aText)
+		{
+		return KErrArgument;
+		}
+	if (aLength < 0)
+		{
+		aLength = 0;
+		}
+	// iText is a TBuf<40>; TDes16::Copy of anything longer PANICS (ETDes16Overflow),
+	// which no TRAP catches. The Rust side already cuts the label on a character
+	// boundary, and this is the descriptor's own invariant kept where it lives.
+	if (aLength > CEikMenuPaneItem::SData::ENominalTextLength)
+		{
+		aLength = CEikMenuPaneItem::SData::ENominalTextLength;
+		}
+	CEikMenuPaneItem::SData data;
+	data.iCommandId = aCommand;
+	data.iCascadeId = 0;
+	data.iFlags = 0;
+	data.iText.Copy(TPtrC16(aText, aLength));
+	data.iExtraText.Zero();
+	TRAPD(err, pane->AddMenuItemL(data));
+	return err;
+	}
+
 static const SymRsHost KSymRsHost =
 	{
 	sizeof(SymRsHost),
 	HostClear, HostSetPen, HostSetBrush, HostDrawRect, HostDrawLine, HostDrawText,
-	HostRedraw, HostExit
+	HostRedraw, HostExit, HostMenuItem
 	};
 
 // The Rust table, checked once. A table shorter than this shim expects is a Rust SDK
@@ -224,6 +262,23 @@ private:
 			return;
 			}
 		const TInt err = Vtbl()->command(iApp, aCommand);
+		User::LeaveIfError(err);
+		}
+	// MEikMenuObserver, through CAknAppUi. The application's Options menu is not in
+	// any resource: the generated MENU_PANE is empty and every line is added here,
+	// each time the menu opens, which is what AddMenuItemL calls adding an item
+	// "dynamically". The resource id is not checked because this application has
+	// exactly one pane -- the one symdev generated -- so there is no other pane this
+	// call can be about.
+	void DynInitMenuPaneL(TInt /*aResourceId*/, CEikMenuPane* aMenuPane)
+		{
+		if (!aMenuPane)
+			{
+			return;
+			}
+		// The Rust frame runs with no harness open around it; its error becomes a
+		// leave only after it has returned, on a stack that is pure C++ again.
+		const TInt err = Vtbl()->menu(iApp, aMenuPane);
 		User::LeaveIfError(err);
 		}
 	CShimView* iView;

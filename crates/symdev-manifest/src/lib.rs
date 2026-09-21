@@ -1,4 +1,3 @@
-mod command_id;
 mod error;
 mod icons;
 mod install;
@@ -6,7 +5,6 @@ mod schema;
 mod ui;
 mod validate;
 
-pub use command_id::CommandId;
 pub use error::{Error, Result};
 pub use icons::{IconContainer, IconSource};
 pub use install::InstallFile;
@@ -14,7 +12,7 @@ pub use schema::{
     Compiler, Device, Language, Manifest, Package, Platform, Signing, SigningMode, Symbian, Target,
     Toolchain,
 };
-pub use ui::{MenuItem, Softkeys, UiApp, UiKind};
+pub use ui::{Softkeys, UiApp, UiKind};
 pub use validate::USER_GRANTABLE;
 
 use std::path::Path;

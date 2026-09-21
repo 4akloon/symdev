@@ -85,12 +85,17 @@ impl UiResources {
         // `menubar` and `cba` are forward references to resources further down this
         // file; `rcomp` resolves them, which is how every S60 application's `.rss` is
         // written (`EIK_APP_INFO` has to stay the third resource).
-        if !self.ui.menu.is_empty() {
+        // The menu bar and the Options softkey are emitted together or not at all.
+        // That pair is the whole of what experiment 91 found: `EAknSoftkeyOptions`
+        // with no `menubar` here makes the framework dereference a menu bar that does
+        // not exist, and the application dies with an access violation. The manifest
+        // used to refuse the combination; now it cannot be written down.
+        if self.has_menu() {
             out.push_str("    menubar = r_symrs_menubar;\n");
         }
         out.push_str("    cba = r_symrs_cba;\n    }\n\n");
         out.push_str(&self.cba_rss());
-        if !self.ui.menu.is_empty() {
+        if self.has_menu() {
             out.push_str(&self.menu_rss());
         }
         out.push_str(&format!(
@@ -151,30 +156,31 @@ impl UiResources {
         )
     }
 
-    /// The Options menu: one `MENU_BAR` with one `MENU_TITLE`, and the `MENU_PANE` it
-    /// names. Every item's `command` is the number its manifest name hashes to
-    /// (`CommandId`), which is the same number `Command::named` computes in the
-    /// application's own source — the menu is declared once and matched by word.
+    /// Whether this application has an Options menu at all, which is the same
+    /// question as whether its left softkey opens one.
+    fn has_menu(&self) -> bool {
+        self.ui.softkeys == Softkeys::OptionsExit
+    }
+
+    /// The Options menu: one `MENU_BAR` with one `MENU_TITLE`, and an **empty**
+    /// `MENU_PANE`.
+    ///
+    /// Empty on purpose. The lines are not in the manifest and not in any resource:
+    /// the application declares them in Rust and the shim adds them with
+    /// `CEikMenuPane::AddMenuItemL` from `DynInitMenuPaneL`, each time the menu opens
+    /// (`eikmenup.h:456`, experiment 95). What still has to be compiled is the pane
+    /// itself, because nothing calls `DynInitMenuPaneL` for a menu bar that has no
+    /// pane to show.
     fn menu_rss(&self) -> String {
-        let mut out = format!(
+        format!(
             "RESOURCE MENU_BAR r_symrs_menubar\n    \
              {{\n    titles =\n        {{\n        \
              MENU_TITLE {{ menu_pane = r_symrs_menupane; txt = \"{}\"; }}\n        \
              }};\n    }}\n\n\
              RESOURCE MENU_PANE r_symrs_menupane\n    \
-             {{\n    items =\n        {{\n",
+             {{\n    items =\n        {{\n        }};\n    }}\n\n",
             rss_string(&self.ui.left_softkey)
-        );
-        for (i, item) in self.ui.menu.iter().enumerate() {
-            let comma = if i + 1 == self.ui.menu.len() { "" } else { "," };
-            out.push_str(&format!(
-                "        MENU_ITEM {{ command = 0x{:04x}; txt = \"{}\"; }}{comma}\n",
-                item.command.value(),
-                rss_string(&item.label)
-            ));
-        }
-        out.push_str("        };\n    }\n\n");
-        out
+        )
     }
 
     /// The registration resource, with the two fields the generated fallback cannot

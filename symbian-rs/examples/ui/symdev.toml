@@ -21,25 +21,10 @@ icon = "gfx/uidemo.svg"
 kind = "avkon"
 caption = "Rust bars"
 short_caption = "Bars"
-
-# Each item's `id` is the word the Rust source repeats in `Command::named`; the number
-# behind it is derived from that word and appears in neither place. A menu turns the
-# left softkey into Options on its own.
-[[ui.menu]]
-id = "more"
-label = "More bars"
-
-[[ui.menu]]
-id = "fewer"
-label = "Fewer bars"
-
-[[ui.menu]]
-id = "reset"
-label = "Reset"
-
-[[ui.menu]]
-id = "quit"
-label = "Exit"
+# The left softkey opens an Options menu. That is all the manifest knows about the
+# menu — the lines are declared in `App::menu` and added when it opens — and it has to
+# be said here because the button group and the menu bar are compiled resources.
+softkeys = "options-exit"
 
 [signing]
 mode = "self-signed"

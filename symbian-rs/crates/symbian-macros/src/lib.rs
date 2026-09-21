@@ -11,19 +11,22 @@
 //! A proc macro is compiled for the *host* even though every other crate in this
 //! workspace is compiled for `arm-symbian-e32` with `-Zbuild-std`; cargo does that on
 //! its own, with no change to the target JSON or the build flags (experiment 81).
+//!
+//! It reads no file. It once read `symdev.toml` to write a `menu` module of command
+//! constants; the menu is declared in Rust now (`symbian_ui::App::menu`), so there is
+//! no number for two sides to agree on and no dependency on symdev's manifest reader
+//! (experiment 95).
 
 use proc_macro::TokenStream;
 
 mod cursor;
 mod entry;
-mod menu;
 mod signature;
 
 #[cfg(test)]
 mod tests;
 
-use entry::{Entry, Shape};
-use menu::Menu;
+use entry::Entry;
 
 /// Declares a function as the application's entry point.
 ///
@@ -70,15 +73,7 @@ use menu::Menu;
 #[proc_macro_attribute]
 pub fn main(attribute: TokenStream, item: TokenStream) -> TokenStream {
     let generated = match Entry::parse(&attribute.to_string(), &item.to_string()) {
-        Ok(entry) => match entry.shape() {
-            Shape::Console => entry.wrapper(),
-            // An Avkon application also gets its menu: the `menu` module of constants
-            // read from the same `symdev.toml` symdev generates the `.rss` from.
-            Shape::Gui => match manifest_dir().and_then(|dir| Menu::load(&dir)) {
-                Ok(menu) => entry.wrapper() + &menu.module(),
-                Err(message) => compile_error(&message),
-            },
-        },
+        Ok(entry) => entry.wrapper(),
         Err(message) => compile_error(&message),
     };
     // The user's function is passed through as the token stream it arrived as, so a
@@ -88,18 +83,6 @@ pub fn main(attribute: TokenStream, item: TokenStream) -> TokenStream {
     let mut out = tokens(&generated);
     out.extend(item);
     out
-}
-
-/// Where `symdev.toml` is: next to the `Cargo.toml` cargo is compiling, which cargo
-/// names in `CARGO_MANIFEST_DIR` for rustc and therefore for every macro rustc runs.
-fn manifest_dir() -> Result<std::path::PathBuf, String> {
-    std::env::var_os("CARGO_MANIFEST_DIR")
-        .map(std::path::PathBuf::from)
-        .ok_or_else(|| {
-            "`CARGO_MANIFEST_DIR` is not set: the `gui` shape reads `symdev.toml` from \
-             the package root, which only cargo names"
-                .to_string()
-        })
 }
 
 /// Rust source this crate wrote itself, back as tokens. The input is generated here

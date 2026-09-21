@@ -10,10 +10,9 @@
 //! `docs/research/acceptance/emukey.py` between them: three bars, then five after two
 //! `Up` presses, then the Options menu on the left softkey (F1), a `Down` and a
 //! `Return` to pick an item, and the right softkey (F2) to end the process. The menu
-//! itself is four `[[ui.menu]]` entries in `symdev.toml`; `#[symbian_std::main(gui)]`
-//! reads them and writes `menu::MORE`, `menu::FEWER`, `menu::RESET` and `menu::QUIT`,
-//! so a menu item this source misspells, or one the manifest no longer has, is a
-//! compile error rather than a line that never fires.
+//! itself is the four `m.item` / `m.exit` lines in [`App::menu`] below: nothing about
+//! it is in `symdev.toml`, which only says that the left softkey opens one
+//! (`softkeys = "options-exit"`).
 //!
 //! Beside the pixels, `construct` writes the usual result file, so
 //! `symdev test --emulator` also has something to say on every rebuild without a
@@ -116,24 +115,32 @@ impl App for Bars {
         gc.text(note.as_str(), Point::new(left, baseline + 24));
     }
 
-    /// The Options menu. Only the softkeys and the menu reach this callback; the
-    /// right softkey's `Command::EXIT` never does, because the shim acts on it.
-    fn command(&mut self, command: Command, ui: &Ui) -> symbian_core::Result<()> {
-        match command {
-            menu::MORE if self.bars < MAX_BARS => self.bars += 1,
-            menu::FEWER if self.bars > 1 => self.bars -= 1,
-            menu::RESET => self.bars = 3,
-            // A menu item may end the application itself, which is the same door the
-            // right softkey uses.
-            menu::QUIT => {
-                ui.exit();
-                return Ok(());
+    /// The Options menu, declared here and nowhere else.
+    ///
+    /// No id, no constant and no number: the label sits next to the code that acts on
+    /// it. The action is a non-capturing closure, so it is a plain `fn(&mut Self)`
+    /// that the crate runs after this `&self` call has returned — and the repaint
+    /// afterwards is the crate's too.
+    fn menu(&self, m: &mut Menu<Self>) {
+        m.item("More bars", |app| {
+            if app.bars < MAX_BARS {
+                app.bars += 1;
+                app.commands += 1;
             }
-            _ => return Ok(()),
-        }
-        self.commands += 1;
-        ui.redraw();
-        Ok(())
+        });
+        m.item("Fewer bars", |app| {
+            if app.bars > 1 {
+                app.bars -= 1;
+                app.commands += 1;
+            }
+        });
+        m.item("Reset", |app| {
+            app.bars = 3;
+            app.commands += 1;
+        });
+        // The same door the right softkey uses: `EEikCmdExit`, which the shim acts on
+        // itself, so no Rust frame is on the stack while the framework tears down.
+        m.exit("Exit");
     }
 
     fn key(&mut self, event: KeyEvent, ui: &Ui) -> KeyResponse {

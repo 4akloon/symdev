@@ -34,7 +34,6 @@ pub(super) fn gui() -> RustBuild {
                 softkeys: Softkeys::Exit,
                 left_softkey: "Options".into(),
                 right_softkey: "Exit".into(),
-                menu: Vec::new(),
             },
             icon: None,
         }),

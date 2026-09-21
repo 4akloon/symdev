@@ -17,10 +17,10 @@ use symbian_core::ErrorKind;
 
 use crate::abi::{AppVtbl, Host, RawKeyEvent, RawRect};
 use crate::app::App;
-use crate::command::Command;
 use crate::event::{KeyEvent, KeyResponse};
 use crate::gc::Gc;
 use crate::geom::Rect;
+use crate::menu::{Menu, index_of};
 use crate::ui::Ui;
 
 /// What the opaque `void*` really points at: the application and the handles it was
@@ -120,18 +120,59 @@ extern "C" fn offer_key<A: App>(app: *mut c_void, event: *const RawKeyEvent, kin
     state.app.key(KeyEvent::from_raw(raw, kind), ui) as i32
 }
 
+/// `DynInitMenuPaneL`: the framework is about to show the Options menu.
+///
+/// The application declares it afresh each time, which is what `AddMenuItemL`'s own
+/// documentation calls adding an item "dynamically". A failure is returned, and the
+/// shim raises it once this frame has gone.
+extern "C" fn menu<A: App>(app: *mut c_void, pane: *mut c_void) -> i32 {
+    // SAFETY: as `construct`.
+    let Some(state) = (unsafe { state::<A>(app) }) else {
+        return ErrorKind::Argument.code();
+    };
+    if pane.is_null() {
+        return ErrorKind::Argument.code();
+    }
+    let Some(ui) = state.ui.as_ref() else {
+        return 0;
+    };
+    // SAFETY: `pane` is the `CEikMenuPane*` the framework handed `DynInitMenuPaneL`
+    // and is valid for exactly this call, which is the lifetime `Menu` carries.
+    let mut items = unsafe { Menu::fill(ui.host(), pane) };
+    state.app.menu(&mut items);
+    items.error()
+}
+
+/// `HandleCommandL`, for everything the shim did not act on itself.
+///
+/// The application never sees the number. It is the position of a line of the menu the
+/// application last declared, so the menu is declared once more — with `&self`, which
+/// is all [`App::menu`] ever gets — the action at that position is **copied out** as a
+/// `fn` pointer, and only then, with no borrow of the application left alive, is it
+/// called with `&mut`. That is why an action can take `&mut A` at all.
+///
+/// The repaint afterwards is the crate's, not the action's: an action is handed the
+/// application and nothing else, so it has no way to ask for one — and no way to
+/// re-enter the framework, which is what makes a nested callback impossible while
+/// that `&mut` is live.
 extern "C" fn command<A: App>(app: *mut c_void, command: i32) -> i32 {
     // SAFETY: as `construct`.
     let Some(state) = (unsafe { state::<A>(app) }) else {
         return ErrorKind::Argument.code();
     };
-    let Some(ui) = state.ui.as_ref() else {
+    let Some(index) = index_of(command) else {
         return 0;
     };
-    match state.app.command(Command::from_raw(command), ui) {
-        Ok(()) => 0,
-        Err(e) => e.code(),
+    let mut lookup = Menu::find(index);
+    state.app.menu(&mut lookup);
+    let Some(action) = lookup.action() else {
+        return 0;
+    };
+    action(&mut state.app);
+    if let Some(ui) = state.ui.as_ref() {
+        ui.redraw();
     }
+    0
 }
 
 extern "C" fn size_changed<A: App>(app: *mut c_void, area: RawRect) {
@@ -158,6 +199,7 @@ impl AppVtbl {
             offer_key: offer_key::<A>,
             command: command::<A>,
             size_changed: size_changed::<A>,
+            menu: menu::<A>,
         }
     }
 }

@@ -35,12 +35,9 @@
 //!         KeyResponse::NotConsumed
 //!     }
 //!
-//!     fn command(&mut self, command: Command, ui: &Ui) -> symbian_core::Result<()> {
-//!         if command == menu::MORE {
-//!             self.bars += 1;
-//!             ui.redraw();
-//!         }
-//!         Ok(())
+//!     fn menu(&self, m: &mut Menu<Self>) {
+//!         m.item("More bars", |app| app.bars += 1);
+//!         m.exit("Exit");
 //!     }
 //! }
 //!
@@ -52,23 +49,26 @@
 //!
 //! # The Options menu, and where a softkey goes
 //!
-//! The menu is declared in `symdev.toml`, not here, because it is a compiled resource
-//! that has to exist before any Rust runs:
+//! The menu is nowhere but [`App::menu`]. `symdev.toml` holds what the phone needs
+//! *before* the application runs — uid3, capabilities, vendor, caption, icon — and an
+//! Options menu is only ever needed while it runs, so the compiled resource carries an
+//! **empty** pane and the framework asks the application to fill it each time it is
+//! opened (`CEikMenuPane::AddMenuItemL`, through `DynInitMenuPaneL`). There is no
+//! command id in an application: a line is its label and the code that acts on it, and
+//! the number is the line's position, internal to this crate.
+//!
+//! The manifest still decides whether there is a left softkey at all, because the
+//! button group is a compiled resource:
 //!
 //! ```toml
-//! [[ui.menu]]
-//! id = "more"
-//! label = "More bars"
+//! [ui]
+//! softkeys = "options-exit"   # the left softkey sends EAknSoftkeyOptions
 //! ```
 //!
-//! and `#[symbian_std::main(gui)]` reads that manifest and writes a `menu` module
-//! beside the application: one `Command` constant per item, `menu::MORE` here. So the
-//! number is written down nowhere, and a word this source misspells — or an item the
-//! manifest no longer has — is a compile error rather than a match arm that never
-//! fires (`docs/research/command-id-design.md`). The left softkey opens that menu and the right one ends the application; both
-//! are handled below this crate, so neither reaches [`App::key`]. A softkey never
-//! does: the button group container sits above the view on the control stack and
-//! turns the key into a command.
+//! The left softkey opens the menu and the right one ends the application; both are
+//! handled below this crate, so neither reaches [`App::key`]. A softkey never does:
+//! the button group container sits above the view on the control stack and turns the
+//! key into a command.
 //!
 //! There is no `E32Main` here and no active scheduler: for a GUI application the shim
 //! owns the entry point and hands the process to `EikStart::RunApplication`, and CONE
@@ -96,32 +96,32 @@ pub mod note;
 
 mod abi;
 mod app;
-mod command;
 mod event;
 mod gc;
 mod geom;
 mod list;
+mod menu;
 pub mod query;
 mod ui;
 mod vtbl;
 
 pub use abi::AppVtbl;
 pub use app::App;
-pub use command::Command;
 pub use event::{EventCode, KeyEvent, KeyResponse, key, scan};
 pub use gc::{Gc, MAX_TEXT};
 pub use geom::{Point, Rect, Rgb};
 pub use list::{List, MAX_ITEM_TEXT, Rows};
+pub use menu::{MAX_LABEL, Menu};
 pub use ui::Ui;
 pub use vtbl::start;
 
 /// Everything an [`App`] implementation names, in one `use`.
 pub mod prelude {
     pub use crate::app::App;
-    pub use crate::command::Command;
     pub use crate::event::{EventCode, KeyEvent, KeyResponse, key, scan};
     pub use crate::gc::Gc;
     pub use crate::geom::{Point, Rect, Rgb};
     pub use crate::list::{List, Rows};
+    pub use crate::menu::Menu;
     pub use crate::ui::Ui;
 }

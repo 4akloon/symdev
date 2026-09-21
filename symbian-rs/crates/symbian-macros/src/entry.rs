@@ -106,10 +106,6 @@ impl Entry {
         Ok(Self { shape, app })
     }
 
-    pub fn shape(&self) -> Shape {
-        self.shape
-    }
-
     fn reject_qualifier(qualifier: &str) -> Result<(), String> {
         let reason = match qualifier {
             "pub" | "const" => return Ok(()),

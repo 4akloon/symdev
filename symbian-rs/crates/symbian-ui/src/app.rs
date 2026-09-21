@@ -8,17 +8,17 @@
 
 use symbian_core::Result;
 
-use crate::command::Command;
 use crate::event::{KeyEvent, KeyResponse};
 use crate::gc::Gc;
 use crate::geom::Rect;
+use crate::menu::Menu;
 use crate::ui::Ui;
 
 /// The application object the framework owns.
 ///
 /// The order the framework calls these in is fixed (`avkon-rust-spec.md` §3.3): the
 /// object is made, then [`App::construct`] is called once with the handles, then any
-/// number of [`App::draw`], [`App::key`], [`App::command`] and [`App::size_changed`],
+/// number of [`App::draw`], [`App::key`], [`App::menu`] and [`App::size_changed`],
 /// and finally it is dropped.
 pub trait App: Sized {
     /// Builds the application's state, before the framework has told it anything.
@@ -58,20 +58,30 @@ pub trait App: Sized {
         KeyResponse::NotConsumed
     }
 
-    /// An item of the Options menu, named by the word `[[ui.menu]] id` gave it.
+    /// The Options menu, declared afresh every time it is opened.
     ///
-    /// `symdev.toml` declares the menu, because it is a compiled resource that has to
-    /// exist before any Rust runs; this is where it is acted on. Match on the `menu`
-    /// module `#[symbian_std::main(gui)]` writes from that manifest — `menu::MORE` for
-    /// `id = "more"` — and a word the manifest does not have is a compile error.
+    /// Nothing about the menu is in `symdev.toml`: the manifest holds what the phone
+    /// needs *before* the application runs, and a menu is only ever needed while it
+    /// runs. Each line is its label and the code that acts on it, side by side.
     ///
-    /// Two commands never arrive: the right softkey's [`Command::EXIT`], which the
-    /// shim acts on itself, and [`Command::OPTIONS`], which the framework consumes to
-    /// open the menu. An error here is turned into a leave **after** this call has
-    /// returned.
-    fn command(&mut self, command: Command, ui: &Ui) -> Result<()> {
-        let (_, _) = (command, ui);
-        Ok(())
+    /// ```ignore
+    /// fn menu(&self, m: &mut Menu<Self>) {
+    ///     m.item("More bars", |app| app.bars += 1);
+    ///     m.item("Reset", |app| app.bars = 3);
+    ///     m.exit("Exit");
+    /// }
+    /// ```
+    ///
+    /// It is called with `&self` — the framework asks each time the menu opens
+    /// (`MEikMenuObserver::DynInitMenuPaneL`), so a menu may depend on the state — and
+    /// the action is a plain `fn(&mut Self)`, which is what lets the crate run it
+    /// **after** this call has returned rather than aliasing that `&self`. The view is
+    /// repainted once the action has returned, so an action never has to ask.
+    ///
+    /// The left softkey is what opens this, and it exists only when the manifest says
+    /// `ui.softkeys = "options-exit"`.
+    fn menu(&self, m: &mut Menu<Self>) {
+        let _ = m;
     }
 
     /// The view was resized; `area` is the new one, origin at `(0, 0)`.

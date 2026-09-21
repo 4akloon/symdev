@@ -64,6 +64,14 @@ typedef struct SymRsHost
 	void (*draw_text)(void* aGc, const TUint16* aText, TInt aLength, TInt aX, TInt aY);
 	void (*redraw)(void* aView);
 	void (*exit)(void* aAppUi);
+	// The one entry that is a TRAP unit rather than non-leaving by construction:
+	// CEikMenuPane::AddMenuItemL leaves on no memory. The error is RETURNED, and the
+	// Rust side carries it back out of `menu` so that the shim can raise it after the
+	// Rust frame has gone -- which is the leave rule above, not an exception to it.
+	// `aText` is UTF-16 and at most CEikMenuPaneItem::SData::ENominalTextLength (40)
+	// units long; the Rust side cuts it there, and this shim clamps again because the
+	// descriptor whose invariant it is lives here.
+	TInt (*menu_item)(void* aPane, const TUint16* aText, TInt aLength, TInt aCommand);
 	} SymRsHost;
 
 // "Up": what the framework calls on the Rust application object. The object is opaque
@@ -79,6 +87,9 @@ typedef struct SymRsAppVtbl
 	TInt (*offer_key)(void* aApp, const SymRsKeyEvent* aEvent, TInt aType);
 	TInt (*command)(void* aApp, TInt aCommand);
 	void (*size_changed)(void* aApp, SymRsRect aArea);
+	// DynInitMenuPaneL: the Options menu is about to be shown, so fill it. `aPane` is
+	// the CEikMenuPane* and is valid for this call only.
+	TInt (*menu)(void* aApp, void* aPane);
 	} SymRsAppVtbl;
 
 // The single symbol this shim imports from the Rust side. Written by

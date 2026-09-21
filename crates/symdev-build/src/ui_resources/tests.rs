@@ -2,7 +2,7 @@
 //! known to install and run.
 use std::path::{Path, PathBuf};
 
-use symdev_manifest::{CommandId, MenuItem, Softkeys, UiApp, UiKind};
+use symdev_manifest::{Softkeys, UiApp, UiKind};
 
 use super::UiResources;
 
@@ -17,25 +17,17 @@ fn gui(icon: bool) -> UiResources {
             softkeys: Softkeys::Exit,
             left_softkey: "Options".into(),
             right_softkey: "Exit".into(),
-            menu: Vec::new(),
         },
         icon: icon.then(|| PathBuf::from("/p/gfx/gui.svg")),
     }
 }
 
-/// The same application with a two-item Options menu, which is what turns the left
-/// softkey on.
+/// The same application with an Options menu. There is nothing to list: the lines
+/// are declared in Rust and added at runtime, so all the manifest says is that the
+/// left softkey opens a menu.
 fn with_menu() -> UiResources {
     let mut r = gui(false);
     r.ui.softkeys = Softkeys::OptionsExit;
-    r.ui.menu = ["more", "fewer"]
-        .into_iter()
-        .map(|name| MenuItem {
-            name: name.into(),
-            label: format!("{name} bars"),
-            command: CommandId::of(name),
-        })
-        .collect();
     r
 }
 
@@ -140,8 +132,12 @@ fn without_a_menu_the_left_softkey_is_empty_and_no_menu_bar_is_named() {
 /// resources. That is the whole of the softkey fix: with `cba = R_AVKON_SOFTKEYS_EXIT`
 /// the command that reached `HandleCommandL` on this ROM was 3001
 /// (`EAknSoftkeyBack`), which nothing handled (experiment 91).
+///
+/// The pane is **empty**, and the menu bar is emitted for the same value that puts
+/// `EAknSoftkeyOptions` on the left button, so the access violation experiment 91
+/// found — an Options softkey with no menu bar — has nowhere left to come from.
 #[test]
-fn the_menu_and_its_softkey_are_generated_with_our_own_command_ids() {
+fn the_options_softkey_brings_a_menu_bar_and_an_empty_pane() {
     let rss = with_menu().app_rss();
     for expected in [
         "menubar = r_symrs_menubar;",
@@ -151,12 +147,12 @@ fn the_menu_and_its_softkey_are_generated_with_our_own_command_ids() {
         "RESOURCE MENU_BAR r_symrs_menubar",
         "MENU_TITLE { menu_pane = r_symrs_menupane; txt = \"Options\"; }",
         "RESOURCE MENU_PANE r_symrs_menupane",
-        "MENU_ITEM { command = 0x41e0; txt = \"more bars\"; },",
-        "MENU_ITEM { command = 0x7612; txt = \"fewer bars\"; }",
     ] {
         assert!(rss.contains(expected), "missing {expected:?} in:\n{rss}");
     }
     assert!(!rss.contains("R_AVKON_SOFTKEYS"), "{rss}");
+    // No line is compiled in: every one is added from Rust when the menu opens.
+    assert!(!rss.contains("MENU_ITEM"), "{rss}");
 }
 
 /// `EIK_APP_INFO` has to stay the third resource, so it names the button group and
@@ -174,14 +170,13 @@ fn the_app_info_stays_third_and_refers_forward() {
     assert!(at("RESOURCE MENU_PANE r_symrs_menupane") < at("RESOURCE LOCALISABLE_APP_INFO"));
 }
 
-/// A label is text a person wrote, so it goes through the same escaping the caption
-/// does rather than ending the string literal early.
+/// A softkey label is text a person wrote, so it goes through the same escaping the
+/// caption does rather than ending the string literal early. It is also the menu
+/// title, so it is escaped in both places it is written.
 #[test]
-fn a_menu_label_and_a_softkey_label_are_escaped() {
+fn a_softkey_label_is_escaped_in_the_button_and_in_the_menu_title() {
     let mut r = with_menu();
-    r.ui.menu[0].label = "say \"hi\"".into();
-    r.ui.left_softkey = "a\\b".into();
+    r.ui.left_softkey = "say \"hi\"\\".into();
     let rss = r.app_rss();
-    assert!(rss.contains("txt = \"say \\\"hi\\\"\";"), "{rss}");
-    assert!(rss.contains("txt = \"a\\\\b\";"), "{rss}");
+    assert_eq!(rss.matches("\"say \\\"hi\\\"\\\\\"").count(), 2, "{rss}");
 }

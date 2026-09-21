@@ -46,6 +46,14 @@ pub struct Host {
     pub draw_text: unsafe extern "C" fn(*mut c_void, *const u16, i32, i32, i32),
     pub redraw: unsafe extern "C" fn(*mut c_void),
     pub exit: unsafe extern "C" fn(*mut c_void),
+    /// Adds one line to the Options menu the framework is showing.
+    ///
+    /// The exception to "every entry is non-leaving": `CEikMenuPane::AddMenuItemL`
+    /// leaves on no memory, so the shim traps it and **returns** the error, which the
+    /// crate carries back out of `menu` for the shim to raise once the Rust frame has
+    /// gone. That is the leave rule of `avkon-rust-spec.md` §4.3, not an exception to
+    /// it: nothing throws while a Rust frame is on the stack.
+    pub menu_item: unsafe extern "C" fn(*mut c_void, *const u16, i32, i32) -> i32,
 }
 
 impl Host {
@@ -87,4 +95,6 @@ pub struct AppVtbl {
     pub offer_key: extern "C" fn(*mut c_void, *const RawKeyEvent, i32) -> i32,
     pub command: extern "C" fn(*mut c_void, i32) -> i32,
     pub size_changed: extern "C" fn(*mut c_void, RawRect),
+    /// `DynInitMenuPaneL`: the Options menu is about to be shown, so fill it.
+    pub menu: extern "C" fn(*mut c_void, *mut c_void) -> i32,
 }
