@@ -8,6 +8,11 @@ EPOCSTACKSIZE     0x5000
 SOURCEPATH        ..\src
 SOURCE            cpphello.cpp
 
+// Uncomment to price the conventional `CTrapCleanup::New()` / `delete cleanup` pair
+// (docs/research/cpp-parity.md, "CTrapCleanup" row). Off by default because the Rust
+// `hello` this is the counterpart of installs no cleanup stack either.
+// MACRO         SYMDEV_CPP_PARITY_CLEANUP
+
 SYSTEMINCLUDE     \epoc32\include
 
 LIBRARY           euser.lib

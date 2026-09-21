@@ -36,3 +36,11 @@ Read the four Rust examples and the SDK `helloworldbasic` skeleton.
 - Non-equivalence recorded: the C++ API has no per-language lookup — BaflUtils::
   NearestLanguageFile reads User::Language() itself — so the six `get_in(language)` cases
   the Rust example checks cannot be written in C++ at all.
+- 2026-09-21 (coordinator's extra row) CTrapCleanup in C++ `cpphello`, same harness, toggled by
+  `MACRO SYMDEV_CPP_PARITY_CLEANUP` in the mmp:
+    without: e32 802, code_size 736, .text 232, .plt 112, 14 ordinals, E32Main 0x34 = 52 B
+    with:    e32 833, code_size 768, .text 256, .plt 120, 15 ordinals, E32Main 0x4c = 76 B
+  Delta: e32 +31, code +32 (.text +24 in E32Main, .plt +8 for one stub), imports +1 and only
+  one: `CTrapCleanup::New()`. `delete cleanup` adds no import — the destructor is a vtable
+  call and `CBase::operator delete` is inline. Rust's reported +44 whole-image is +13 (1.42x)
+  over the C++ +31, which the 16-byte `symrs_cleanup_destroy` shim accounts for.

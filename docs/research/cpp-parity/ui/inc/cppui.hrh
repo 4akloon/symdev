@@ -1,0 +1,14 @@
+#ifndef __CPPUI_HRH__
+#define __CPPUI_HRH__
+
+// The command codes the menu resource names and the AppUi switches on. The numbers
+// live here because the resource compiler and the compiler both have to see them;
+// keeping them in step is the author's job.
+enum TCppUiIds
+    {
+    ECppUiMoreBars = 0x6001,   // start value must not be 0
+    ECppUiFewerBars,
+    ECppUiReset
+    };
+
+#endif // __CPPUI_HRH__
