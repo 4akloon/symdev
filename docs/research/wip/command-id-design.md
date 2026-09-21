@@ -28,3 +28,4 @@ Task: find the best design that ties a menu item's command number in the generat
 - ELF-section candidate on the REAL target: `#[used] #[unsafe(link_section = ".symdev.menu")] static` in examples/ui survives into `target/arm-symbian-e32/release/libuidemo.a` (arm objdump -h: section 97 `.symdev.menu` 0x16 bytes, CONTENTS/ALLOC/LOAD/READONLY/DATA; -s shows the bytes). Feasible; reverted.
 - `libuidemo.d` dep-info lists `examples/ui/symdev.toml` (the include_str tracker); archive does not contain the manifest text ("More bars" absent).
 - Next: symdev build + symdev test --emulator on examples/ui; write docs/research/command-id-design.md.
+- `symdev build` (release CLI, env from the brief) on examples/ui: OK in 16.1 s wall, `.rss` has the four MENU_ITEMs with 0x41e0/0x7612/0x73c0/0x4736; `uidemo.exe` 12 844 bytes = experiment 91's corpus size (cmp result recorded in the note).
