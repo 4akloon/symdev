@@ -1,7 +1,10 @@
+# Its own workspace, not a member of `symbian-rs`: see the comment in that manifest.
+[workspace]
+
 [package]
 name = "stdhello"
-version.workspace = true
-edition.workspace = true
+version = "0.1.0"
+edition = "2024"
 # `src/main.rs` is a library: rustc never links, symdev does (design spec §3).
 autobins = false
 
@@ -23,3 +26,13 @@ symbian-std = { path = "../../crates/symbian-std", default-features = false, fea
 # step 77's acceptance).
 itoa = "1"
 ryu = "1"
+
+# The `symbian-rs` workspace's profile, repeated because this is its own workspace.
+# rustc never links (design spec §3): the crate is a `staticlib` that symdev's recorded
+# `ld` line consumes. Size over speed, one object per archive, no unwinder.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+debug = false

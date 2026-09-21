@@ -29,6 +29,24 @@ const PATH: &str = "E:\\symdev\\std77\\roundtrip.txt";
 
 const BYTES: &[u8] = "symdev step 77 — std::fs::File with no no_std.\n".as_bytes();
 
+// `const { … }` is written and clippy still asks for it: this target has
+// `has-thread-local: false`, so `thread_local!` expands through `std`'s key-based
+// storage, where the const and the lazy initialiser produce the same code and the
+// `const` block leaves no trace for the lint to find. It is kept because it is right
+// everywhere else and costs nothing here.
+#[allow(clippy::missing_const_for_thread_local)]
+mod tls {
+    thread_local! {
+        /// Per-thread state over `UserSvr::DllTls`, one kernel slot per key. Nothing
+        /// in this kernel runs a destructor for any thread, so
+        /// `std::os::symbian::start` sweeps the main thread's keys after `main`
+        /// returns.
+        pub static COUNTER: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    }
+}
+
+use tls::COUNTER;
+
 #[symbian_std::main]
 fn main() -> std::io::Result<()> {
     let mut report = Report::new("stdhello");
@@ -104,7 +122,9 @@ fn main() -> std::io::Result<()> {
         elapsed >= std::time::Duration::from_millis(80),
         format_args!("{} ms", elapsed.as_millis()),
     );
-    let wall = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let wall = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     report.check_detail(
         "SystemTime is after 2010",
         wall.as_secs() > 1_262_304_000,
@@ -113,9 +133,6 @@ fn main() -> std::io::Result<()> {
 
     // A `thread_local!`, whose destructor `std::os::symbian::start` has to run because
     // nothing in the kernel will.
-    thread_local! {
-        static COUNTER: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
-    }
     COUNTER.with(|c| c.set(c.get() + 41));
     report.check("thread_local!", COUNTER.with(|c| c.get()) == 41);
 
@@ -128,7 +145,11 @@ fn main() -> std::io::Result<()> {
         format!("{sum}")
     });
     let from_worker = worker.join().unwrap_or_else(|_| String::from("panicked"));
-    report.check_detail("thread::spawn + join", from_worker == "5050", format_args!("{from_worker}"));
+    report.check_detail(
+        "thread::spawn + join",
+        from_worker == "5050",
+        format_args!("{from_worker}"),
+    );
 
     // A `Mutex` and an `Arc`, which is what `sys::sync` is for.
     let shared = std::sync::Arc::new(std::sync::Mutex::new(0u32));
@@ -147,24 +168,42 @@ fn main() -> std::io::Result<()> {
     }
     let _ = bumper.join();
     let total = shared.lock().map(|n| *n).unwrap_or(0);
-    report.check_detail("two threads through a Mutex", total == 2000, format_args!("{total}"));
+    report.check_detail(
+        "two threads through a Mutex",
+        total == 2000,
+        format_args!("{total}"),
+    );
 
     // Two crates from crates.io, compiled unchanged for this target.
     let mut itoa_buf = itoa::Buffer::new();
     let itoa_text = itoa_buf.format(-4242).to_owned();
-    report.check_detail("itoa from crates.io", itoa_text == "-4242", format_args!("{itoa_text}"));
+    report.check_detail(
+        "itoa from crates.io",
+        itoa_text == "-4242",
+        format_args!("{itoa_text}"),
+    );
     let mut ryu_buf = ryu::Buffer::new();
     let ryu_text = ryu_buf.format(1.5f64).to_owned();
-    report.check_detail("ryu from crates.io", ryu_text == "1.5", format_args!("{ryu_text}"));
+    report.check_detail(
+        "ryu from crates.io",
+        ryu_text == "1.5",
+        format_args!("{ryu_text}"),
+    );
 
     // A `BTreeMap` and a `HashMap`, the second of which needs `sys::random`.
     let mut sorted = std::collections::BTreeMap::new();
     sorted.insert("b", 2);
     sorted.insert("a", 1);
-    report.check("BTreeMap orders its keys", sorted.keys().copied().eq(["a", "b"]));
+    report.check(
+        "BTreeMap orders its keys",
+        sorted.keys().copied().eq(["a", "b"]),
+    );
     let mut hashed = std::collections::HashMap::new();
     hashed.insert("answer", 42);
-    report.check("HashMap needs sys::random", hashed.get("answer") == Some(&42));
+    report.check(
+        "HashMap needs sys::random",
+        hashed.get("answer") == Some(&42),
+    );
 
     fs::remove_file(PATH)?;
     report.check("remove_file", !fs::exists(PATH).unwrap_or(true));

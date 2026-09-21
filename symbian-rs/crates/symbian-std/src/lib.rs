@@ -38,8 +38,49 @@
 //!
 //! # Where an application starts
 //!
+//! Two shapes, and [`macro@main`] is the same line in both.
+//!
+//! **With `std`** (design spec §11 step 77), which is what a new application should
+//! use: there is no `#![no_std]`, no `extern crate alloc` and no allocator or panic
+//! handler to install, because a real `std` for `target_os = "symbian"` brings all of
+//! them. The manifest says `[language] name = "rust-std"`, this crate is depended on
+//! with `default-features = false, features = ["std"]`, and what is left of it is the
+//! entry attribute, the prelude and [`test_report`] — everything else `std` itself
+//! does better.
+//!
+//! ```ignore
+//! use std::fs::File;
+//!
+//! #[symbian_std::main]
+//! fn main() -> std::io::Result<()> {
+//!     Ok(())
+//! }
+//! ```
+//!
+//! **Without it**, which is still supported and still smaller — a `#![no_std]` hello
+//! is 3 187 bytes against a `std` one's 52 206:
+//!
 //! ```ignore
 //! #![no_std]
+//!
+//! use symbian_std::prelude::*;
+//!
+//! #[symbian_std::main]
+//! fn main() -> Result<()> {
+//!     Ok(())
+//! }
+//! ```
+//!
+//! [`macro@main`] writes the `E32Main()` `eexe.lib` calls, in both shapes; there is no
+//! `#![no_main]` and no entry macro to remember, because the crate is compiled as a
+//! `staticlib` and rustc never looks for a `main` of its own.
+//!
+//! [`test_report`] is how an example says whether it passed, in a file
+//! `symdev test --emulator` can read back off the emulated drive.
+//!
+//! What follows is the `#![no_std]` half of the crate, and none of it is built under
+//! the `std` feature.
+#![no_std]
 // Everything an application touches is safe, and the modules that make up the file and
 // I/O facade say so with their own `#![forbid(unsafe_code)]`. [`sync`] and [`thread`]
 // are the exception CLAUDE.md names: a mutex and a thread are built out of kernel
@@ -73,10 +114,10 @@ pub mod prelude;
 pub mod sync;
 pub mod test_report;
 #[cfg(not(feature = "std"))]
-pub mod time;
-#[cfg(not(feature = "std"))]
 #[allow(unsafe_code)]
 pub mod thread;
+#[cfg(not(feature = "std"))]
+pub mod time;
 
 #[cfg(not(feature = "std"))]
 pub use symbian_async as task;

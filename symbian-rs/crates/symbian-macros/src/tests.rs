@@ -32,10 +32,7 @@ fn the_wrapper_exports_the_mangled_e32main_and_calls_main() {
             || out.contains("extern \"C\" fn __symbian_e32main() -> i32"),
         "{out}"
     );
-    assert!(
-        out.contains("::symbian_std::__start(main)"),
-        "{out}"
-    );
+    assert!(out.contains("::symbian_std::__start(main)"), "{out}");
 }
 
 #[test]

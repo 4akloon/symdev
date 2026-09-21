@@ -1,0 +1,10 @@
+# The same flags `symdev build` passes for a `language = "rust-std"` project, so a hand
+# `cargo build` here matches — except for the one thing a config file cannot express:
+# the patched standard library source. `symdev build` materialises it and points cargo
+# at it with `__CARGO_TESTS_ONLY_SRC_ROOT`; by hand, see `symbian-rs/rust-src/README.md`.
+[build]
+target = "../../targets/arm-symbian-e32.json"
+
+[unstable]
+build-std = ["std", "panic_abort"]
+json-target-spec = true
