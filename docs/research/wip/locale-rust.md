@@ -20,3 +20,25 @@ must be caught at build time. Language read once from `User::Language()`.
 - `TLanguage` in `e32const.h`: enum at 1439, `ELangTest = 0` (1444), `ELangEnglish = 1` (1447),
   `ELangRussian = 16`, `ELangPolish = 27`, `ELangUkrainian = 93` (1723), `ELangOther = 99`,
   `ELangNone = 0xFFFF` (1783). Needs `LC_ALL=C grep -a`.
+- Full `TLanguage` list extracted (108 enumerators, 0..101 contiguous + `ELangEnglish_Apac=129`,
+  `_Taiwan=157`, `_HongKong=158`, `_Prc=159`, `_Japan=160`, `_Thailand=161`, `ELangMalay_Apac=326`,
+  `ELangNone=0xFFFF`). Dialects are the only declared parent/child relation in the header
+  (`ELangX_Suffix`). `ELangAmerican=10`, `ELangCanadianEnglish=46` etc. have NO declared parent.
+- `TLocale::LanguageDowngrade(0..2)` (`e32std.h:2278`, inline over `iLanguageDowngrade[3]`) is the
+  platform's own downgrade list, but reading it needs the `TLocale` layout + `TLocale::Refresh`,
+  neither observed → TODO (not observed), not used.
+- Target `arm-symbian-e32.json`: `atomic-cas: true`, `max-atomic-width: 32` → `AtomicU32`
+  Relaxed load/store available for the read-once cache (no `__sync_*` libcall for load/store).
+- `symbian-macros` is owned by another slice → proc-macro route is closed to me anyway; decide
+  on merit.
+
+## Decisions
+- D1: pure-Rust declaration via a **`macro_rules!`**, not `locales/uk.toml`. Reasons: (a) rustc's
+  own struct-literal rule gives "key missing from one language" for free (E0063), no cross-file
+  checker to write; (b) no `build.rs`/`include!` boilerplate per application, no `toml`/`serde` in
+  the host build; (c) plain `cargo build` works; (d) `no_std` trivially; (e) symdev never sees the
+  strings, which is the point of this half.
+- D2: language read lazily at first use, cached in an `AtomicU32` (sentinel `u32::MAX`), so an
+  application that never asks never calls euser, and the single-language case folds away.
+- D3: fallback chain = exact code → dialect base (suffix stripped, read off the enum's names) →
+  the declared default language.
