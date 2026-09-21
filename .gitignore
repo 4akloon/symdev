@@ -10,6 +10,9 @@
 /.claude/settings.local.json
 /examples/*/build/
 /symbian-rs/target/
+# `examples/std-hello` is its own cargo workspace (see `symbian-rs/Cargo.toml`), so it
+# has a `target/` of its own that the line above does not cover.
+/symbian-rs/examples/*/target/
 /symbian-rs/examples/*/build/
 
 __pycache__/
