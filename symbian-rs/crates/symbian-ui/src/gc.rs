@@ -55,8 +55,9 @@ impl<'a> Gc<'a> {
     /// — while the rect form covers them.
     pub fn clear(&mut self) {
         // SAFETY: `clear` is a non-leaving pure virtual of `CGraphicsContext` reached
-        // through the shim, and `self.gc` is live for this call by construction.
-        unsafe { symrs_gc_clear(self.gc, self.area.raw()) }
+        // through the shim, and `self.gc` is live for this call by construction. The
+        // rect is a `TRect` on this frame, which the shim reads for the call only.
+        unsafe { symrs_gc_clear(self.gc, &self.area.raw()) }
     }
 
     /// `SetPenColor` — the colour of lines and of a rectangle's outline.
@@ -79,9 +80,8 @@ impl<'a> Gc<'a> {
 
     /// `DrawRect` — filled with the brush, outlined with the pen.
     pub fn rect(&mut self, rect: Rect) {
-        // SAFETY: as `clear`; `RawRect` is four `TInt`s passed by value, the layout
-        // `symrs_avkon.h` declares.
-        unsafe { symrs_gc_draw_rect(self.gc, rect.raw()) }
+        // SAFETY: as `clear`.
+        unsafe { symrs_gc_draw_rect(self.gc, &rect.raw()) }
     }
 
     /// `DrawLine`, in the pen colour.

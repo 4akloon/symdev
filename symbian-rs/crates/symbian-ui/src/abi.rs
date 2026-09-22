@@ -9,14 +9,16 @@
 //! loud failure the old tables' `size` words gave at startup, found a step earlier.
 use core::ffi::c_void;
 
-/// `TRect` as four `TInt`s.
+/// `TRect` itself: `iTl` then `iBr`, two `TPoint`s of two `TInt`s each (`e32std.h`
+/// line 2557, `e32cmn.h` line 2137). The shim takes it by pointer and hands it to
+/// `CGraphicsContext` untouched.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RawRect {
-    pub x: i32,
-    pub y: i32,
-    pub w: i32,
-    pub h: i32,
+    pub left: i32,
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
 }
 
 /// `TKeyEvent`, which `w32std.h` line 974 declares as exactly these four words; the
@@ -37,10 +39,10 @@ pub struct RawKeyEvent {
 // from outside a trap harness at all (`avkon-rust-spec.md` §4.3). The one exception is
 // `symrs_menu_add`, documented where it is declared.
 unsafe extern "C" {
-    pub(crate) fn symrs_gc_clear(gc: *mut c_void, rect: RawRect);
+    pub(crate) fn symrs_gc_clear(gc: *mut c_void, rect: *const RawRect);
     pub(crate) fn symrs_gc_set_pen(gc: *mut c_void, rgb: u32);
     pub(crate) fn symrs_gc_set_brush(gc: *mut c_void, rgb: u32, solid: i32);
-    pub(crate) fn symrs_gc_draw_rect(gc: *mut c_void, rect: RawRect);
+    pub(crate) fn symrs_gc_draw_rect(gc: *mut c_void, rect: *const RawRect);
     pub(crate) fn symrs_gc_draw_line(gc: *mut c_void, x1: i32, y1: i32, x2: i32, y2: i32);
     pub(crate) fn symrs_gc_draw_text(gc: *mut c_void, text: *const u16, len: i32, x: i32, y: i32);
     pub(crate) fn symrs_view_redraw(view: *mut c_void);

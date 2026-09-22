@@ -29,6 +29,8 @@ const TUid KSymRsAppUid = { static_cast<TInt32>(SYMRS_UID3) };
 
 // The Rust side reads a TKeyEvent as four words (abi.rs `RawKeyEvent`).
 __ASSERT_COMPILE(sizeof(TKeyEvent) == 4 * sizeof(TInt));
+// ... and a TRect as four words, top-left then bottom-right (abi.rs `RawRect`).
+__ASSERT_COMPILE(sizeof(TRect) == 4 * sizeof(TInt));
 
 // --------------------------------------------------------------------------
 // The "down" functions: what Rust may ask of the framework.
@@ -51,10 +53,6 @@ static TRgb Rgb(TUint32 aRgb)
 		static_cast<TInt>(aRgb & 0xff));
 	}
 
-static TRect Rect(SymRsRect aRect)
-	{
-	return TRect(TPoint(aRect.x, aRect.y), TSize(aRect.w, aRect.h));
-	}
 
 // The rect form, and not the no-argument Clear(). Observed in EKA2L1 with a red
 // probe stripe at the top of the control: `Clear()` leaves the top ~40 pixels of a
@@ -62,9 +60,9 @@ static TRect Rect(SymRsRect aRect)
 // could not isolate -- while `Clear(aRect)` and `DrawRect(aRect)` over the same area
 // both cover it. Whatever narrows the no-argument form's clipping region, the rect
 // form is the one that means "my whole view".
-void symrs_gc_clear(void* aGc, SymRsRect aRect)
+void symrs_gc_clear(void* aGc, const TRect* aRect)
 	{
-	Gc(aGc)->Clear(Rect(aRect));
+	Gc(aGc)->Clear(*aRect);
 	}
 
 void symrs_gc_set_pen(void* aGc, TUint32 aRgb)
@@ -79,9 +77,9 @@ void symrs_gc_set_brush(void* aGc, TUint32 aRgb, TInt aSolid)
 	Gc(aGc)->SetBrushColor(Rgb(aRgb));
 	}
 
-void symrs_gc_draw_rect(void* aGc, SymRsRect aRect)
+void symrs_gc_draw_rect(void* aGc, const TRect* aRect)
 	{
-	Gc(aGc)->DrawRect(Rect(aRect));
+	Gc(aGc)->DrawRect(*aRect);
 	}
 
 void symrs_gc_draw_line(void* aGc, TInt aX1, TInt aY1, TInt aX2, TInt aY2)

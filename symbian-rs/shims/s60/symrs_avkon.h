@@ -33,14 +33,10 @@
 
 extern "C" {
 
-// One-for-one with TRect, as four TInts rather than two TPoints.
-typedef struct SymRsRect
-	{
-	TInt x;
-	TInt y;
-	TInt w;
-	TInt h;
-	} SymRsRect;
+// A rectangle crosses as the framework's own TRect, by pointer: e32std.h line 2557
+// declares it as two TPoints (iTl, iBr), each two TInts (e32cmn.h line 2137), and no
+// virtuals -- the four words crates/symbian-ui/src/abi.rs `RawRect` mirrors.
+class TRect;
 
 // A key crosses as the framework's own TKeyEvent, by pointer: w32std.h line 974
 // declares it as exactly four words (iCode, iScanCode, iModifiers, iRepeats), which is
@@ -52,10 +48,10 @@ struct TKeyEvent;
 // CWindowGc the framework handed Draw and is valid only for that call; `aView` and
 // `aAppUi` live as long as the app UI. Colours cross as 0x00RRGGBB and are unpacked into
 // TRgb(r, g, b) by the shim, so no assumption is made about TRgb's internal word.
-void symrs_gc_clear(void* aGc, SymRsRect aRect);
+void symrs_gc_clear(void* aGc, const TRect* aRect);
 void symrs_gc_set_pen(void* aGc, TUint32 aRgb);
 void symrs_gc_set_brush(void* aGc, TUint32 aRgb, TInt aSolid);
-void symrs_gc_draw_rect(void* aGc, SymRsRect aRect);
+void symrs_gc_draw_rect(void* aGc, const TRect* aRect);
 void symrs_gc_draw_line(void* aGc, TInt aX1, TInt aY1, TInt aX2, TInt aY2);
 void symrs_gc_draw_text(void* aGc, const TUint16* aText, TInt aLength, TInt aX, TInt aY);
 void symrs_view_redraw(void* aView);

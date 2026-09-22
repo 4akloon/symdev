@@ -51,10 +51,10 @@ impl Rect {
 
     pub(crate) const fn raw(&self) -> RawRect {
         RawRect {
-            x: self.x,
-            y: self.y,
-            w: self.width,
-            h: self.height,
+            left: self.x,
+            top: self.y,
+            right: self.x.wrapping_add(self.width),
+            bottom: self.y.wrapping_add(self.height),
         }
     }
 }
