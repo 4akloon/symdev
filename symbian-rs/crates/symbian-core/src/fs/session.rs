@@ -13,8 +13,13 @@
 //! still alive would be the bug, not the leak.
 use core::cell::{Cell, UnsafeCell};
 
+use symbian_sys::des::TDesC16;
+use symbian_sys::efsrv::{RFs, RFs_Delete, RFs_MkDirAll, RFs_Rename};
+
+use super::path_of;
 use super::request::Request;
 use super::server::FileServer;
+use crate::des::DesC16;
 use crate::error::Result;
 use crate::{ErrorKind, SymbianError};
 
@@ -63,11 +68,20 @@ fn borrowed<T>(f: impl FnOnce(&mut FileServer) -> Result<T>) -> Result<T> {
     // thread (see the `Sync` note above) and `panic = "abort"` means nothing unwinds
     // out of `f` to leave the flag set with a reference still live.
     let slot = unsafe { &mut *SESSION.slot.get() };
-    let session = match slot {
-        Some(session) => session,
-        none => none.insert(FileServer::connect()?),
-    };
-    f(session)
+    f(connected(slot)?)
+}
+
+/// The session in `slot`, connected first if it is not yet.
+///
+fn connected(slot: &mut Option<FileServer>) -> Result<&mut FileServer> {
+    if slot.is_none() {
+        let session = FileServer::connect()?;
+        // SAFETY: `slot` is a live `&mut` and holds `None`, which owns nothing, so
+        // writing over it without a drop loses nothing. (`*slot = …` would drop it,
+        // and the compiler does not see that it is still `None` after the call.)
+        unsafe { core::ptr::from_mut(slot).write(Some(session)) };
+    }
+    slot.as_mut().ok_or(SymbianError::of(ErrorKind::General))
 }
 
 /// Makes `request` on the process's session, connecting it on first use: the one
@@ -75,16 +89,18 @@ fn borrowed<T>(f: impl FnOnce(&mut FileServer) -> Result<T>) -> Result<T> {
 ///
 /// `KErrInUse` inside [`with_session`], as `with_session` itself is: the session is
 /// lent out there as `&mut`, and a second user would alias it.
-///
-/// # Safety
-///
-/// Every pointer `request` carries is live and valid for what its call writes, as
-/// [`Request::on`] requires.
 #[inline(never)]
-pub(crate) unsafe fn request(path: &str, request: Request<'_>) -> Result<i32> {
-    // SAFETY: `with_session` lends the session exclusively for the closure, so nothing
-    // else uses it during the call; the pointers are the caller's promise.
-    with_session(|fs| unsafe { request.on(fs.as_rfs(), path) })
+pub(crate) fn request(path: &str, request: Request<'_>) -> Result<i32> {
+    if SESSION.borrowed.get() {
+        return Err(SymbianError::of(ErrorKind::InUse));
+    }
+    // SAFETY: the flag is clear, so `with_session` has lent no reference to the slot,
+    // and this one ends before the function does: `Request::on` runs only this
+    // module's own calls, none of which comes back here or to `with_session`. One
+    // thread (the `Sync` note above).
+    let session = connected(unsafe { &mut *SESSION.slot.get() })?;
+    // SAFETY: the session is connected and nothing else uses it for the call.
+    unsafe { request.on(session.as_rfs(), path) }
 }
 
 /// The process's session, for the calls that need nothing from it but the path: an
@@ -99,19 +115,34 @@ impl ProcessSession {
     /// Creates every missing directory of `path` (`RFs::MkDirAll`); the last component is
     /// taken as a file name and is not created. An existing path is `KErrAlreadyExists`.
     pub fn make_dir_all(path: &str) -> Result<()> {
-        // SAFETY: the request carries no pointer.
-        unsafe { request(path, Request::MakeDirAll) }.map(|_| ())
+        // SAFETY: `this` first per the observed member ABI, the path borrowed and only
+        // read. Non-leaving, every failure is the returned `TInt`; likewise below.
+        let mut call = |fs: *mut RFs, path: *const TDesC16| unsafe { RFs_MkDirAll(fs, path) };
+        request(path, Request::new(&mut call)).map(|_| ())
+    }
+
+    /// [`ProcessSession::make_dir_all`] of the directory `path` names, the last
+    /// component included: a backslash is added when `path` does not end with one.
+    pub fn make_dir(path: &str) -> Result<()> {
+        // SAFETY: as `make_dir_all`.
+        let mut call = |fs: *mut RFs, path: *const TDesC16| unsafe { RFs_MkDirAll(fs, path) };
+        request(path, Request::new(&mut call).of_directory(path)).map(|_| ())
     }
 
     /// Removes one file (`RFs::Delete`): `KErrInUse` while it is open.
     pub fn delete(path: &str) -> Result<()> {
-        // SAFETY: the request carries no pointer.
-        unsafe { request(path, Request::Delete) }.map(|_| ())
+        // SAFETY: as `make_dir_all`.
+        let mut call = |fs: *mut RFs, path: *const TDesC16| unsafe { RFs_Delete(fs, path) };
+        request(path, Request::new(&mut call)).map(|_| ())
     }
 
     /// Renames a file or directory (`RFs::Rename`): `KErrAlreadyExists` if `to` is taken.
     pub fn rename(from: &str, to: &str) -> Result<()> {
-        // SAFETY: the request carries a `&str`, not a pointer.
-        unsafe { request(from, Request::Rename(to)) }.map(|_| ())
+        let mut call = |fs: *mut RFs, from: *const TDesC16| match path_of(to) {
+            // SAFETY: as `make_dir_all`, with a second descriptor, also only read.
+            Ok(to) => unsafe { RFs_Rename(fs, from, to.as_tdesc16()) },
+            Err(e) => e.code(),
+        };
+        request(from, Request::new(&mut call)).map(|_| ())
     }
 }

@@ -3,16 +3,17 @@
 //! Every member used here returns a `TInt` and none of them leaves (`f32file.h`), so
 //! there is no C++ in the path. The handle is closed when the value is dropped;
 //! `RFile::Close` also commits what the file server still holds for this handle.
+use symbian_sys::des::TDesC16;
 use symbian_sys::efsrv::{
     EFILE_READ, EFILE_SHARE_ANY, EFILE_WRITE, ESEEK_CURRENT, ESEEK_END, ESEEK_START, RFile,
-    RFile_Close, RFile_Flush, RFile_Open, RFile_Read, RFile_ReadAt, RFile_Seek, RFile_SetSize,
-    RFile_Size, RFile_Write,
+    RFile_Close, RFile_Create, RFile_Flush, RFile_Open, RFile_Read, RFile_ReadAt, RFile_Replace,
+    RFile_Seek, RFile_SetSize, RFile_Size, RFile_Write, RFs,
 };
 
+use super::MAX_FILE_NAME;
 use super::request::{Opening, Request};
 use super::server::FileServer;
 use super::session::request;
-use super::MAX_FILE_NAME;
 use crate::des::{Buf16, DesC16};
 use crate::des8::{DesC8, Ptr8, PtrC8};
 use crate::error::{Result, check};
@@ -87,11 +88,35 @@ impl File {
     /// `KErrNotFound` for [`Opening::Existing`] when the file is not there,
     /// `KErrAlreadyExists` for [`Opening::New`] when it is. [`Opening::Replace`] needs
     /// the directory to exist already.
+    ///
+    /// `#[inline]` so that a caller naming one `how` links one call: each is its own
+    /// closure, and the ones a constant `how` rules out are dropped with their arms.
+    #[inline]
     pub fn opened(path: &str, how: Opening, mode: FileMode) -> Result<Self> {
         let mut file = Self::closed();
-        // SAFETY: `file.file` is a closed `RFile` that lives across the call and is
-        // written only by it.
-        unsafe { request(path, Request::Open(&mut file.file, mode.bits(), how)) }?;
+        let (handle, mode) = (&raw mut file.file, mode.bits());
+        // SAFETY, every arm: `this` first per the observed member ABI, then the session
+        // `request` lends, the path (only read) and the mode; `handle` is the closed
+        // `RFile` above, live across the call and written only by it. None of the three
+        // calls leaves (`f32file.h`).
+        match how {
+            Opening::Existing => request(
+                path,
+                Request::new(&mut |fs, path| unsafe { RFile_Open(handle, fs, path, mode) }),
+            ),
+            Opening::New => request(
+                path,
+                Request::new(&mut |fs, path| unsafe { RFile_Create(handle, fs, path, mode) }),
+            ),
+            Opening::Replace => request(
+                path,
+                Request::new(&mut |fs, path| unsafe { RFile_Replace(handle, fs, path, mode) }),
+            ),
+            Opening::OpenOrCreate => request(
+                path,
+                Request::new(&mut |fs, path| unsafe { open_or_create(handle, fs, path, mode) }),
+            ),
+        }?;
         Ok(file)
     }
 
@@ -202,5 +227,30 @@ impl Drop for File {
         // SAFETY: `RFile::Close` is a non-leaving member taking only `this`, and it is
         // safe on a handle that was never opened (both words are zero then).
         unsafe { RFile_Close(&mut self.file) }
+    }
+}
+
+/// `RFile::Open`, and `RFile::Create` if that said `KErrNotFound`: the pair of calls
+/// [`Opening::OpenOrCreate`] is, on one encoded path.
+///
+/// # Safety
+///
+/// As each call: `file` a live, closed `RFile`; `fs` a connected session; `path` a live
+/// descriptor.
+unsafe fn open_or_create(file: *mut RFile, fs: *mut RFs, path: *const TDesC16, mode: u32) -> i32 {
+    // SAFETY: the caller's promise; non-leaving.
+    let code = unsafe { RFile_Open(file, fs, path, mode) };
+    if code != SymbianError::of(ErrorKind::NotFound).code() {
+        return code;
+    }
+    // What a failed `Open` leaves in the handle is not documented, so `Create` gets a
+    // closed one, as it did when the two calls had a handle each.
+    // SAFETY: `file` is live (the caller's promise); the same call shape as above.
+    unsafe {
+        file.write(RFile {
+            handle: 0,
+            sub_session_handle: 0,
+        });
+        RFile_Create(file, fs, path, mode)
     }
 }

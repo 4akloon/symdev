@@ -1,7 +1,8 @@
 //! `Entry`: what `RFs::Entry` knows about one file or directory (`TEntry`).
+use symbian_sys::des::TDesC16;
 use symbian_sys::efsrv::{
-    KENTRY_ATT_DIR, KENTRY_ATT_VOLUME, TENTRY_OFFSET_ATT, TENTRY_OFFSET_SIZE, TEntry, TEntry_ctor,
-    TEntryStorage,
+    KENTRY_ATT_DIR, KENTRY_ATT_VOLUME, RFs, RFs_Entry, TENTRY_OFFSET_ATT, TENTRY_OFFSET_SIZE,
+    TEntry, TEntry_ctor, TEntryStorage,
 };
 
 use super::request::Request;
@@ -36,9 +37,12 @@ impl Entry {
     /// the process's session.
     pub fn of(path: &str) -> Result<Self> {
         let mut entry = Self::new();
-        // SAFETY: the `TEntry` was built by its constructor just above and is borrowed
-        // mutably for the call, which fills it and keeps nothing.
-        unsafe { request(path, Request::Entry(entry.as_tentry())) }?;
+        let tentry = entry.as_tentry();
+        // SAFETY: a `const` member, `this` first; the path is only read, and the
+        // `TEntry` was built by its constructor just above and is live across the call,
+        // which fills it and keeps nothing. Non-leaving.
+        let mut call = |fs: *mut RFs, path: *const TDesC16| unsafe { RFs_Entry(fs, path, tentry) };
+        request(path, Request::new(&mut call))?;
         Ok(entry)
     }
 

@@ -35,6 +35,23 @@ Keep experiment 98's `read_dir` borrowing from the `CDir`. Stay out of `symbian-
   Enum dispatch defeats dead-code elimination. -> dead end as a shape; the call must be
   passed in (fn pointer / `dyn FnMut`), so only the calls an image uses are linked.
 
+- Candidate 1b (`&mut dyn FnMut` call passed in): report-only images still +185..+330.
+  `dyn FnMut`'s vtable holds a `call_once` shim that is a second copy of every closure body
+  (File::opened closure 188 B twice), and `Opening` passed through the closure is not
+  constant-folded (all three RFile calls linked). -> own trait `Call` (vtable = one fn),
+  one closure per opening in an `#[inline]` `File::opened`.
+- Candidate 1c: files -431, report-only images -56..+109; shared `request` body 380 B.
+  Base cost of 2 inlined calls (create_dir_all + fs::write) in atomics was only ~372 B incl.
+  `connect`, so the shared body must be small to win at 2 calls.
+- Candidate 1d/1e (commit): the `None` slot overwritten with `ptr::write` (no drop check,
+  `*slot =` kept a `RHandleBase::Close` branch even with a `&mut` param), the
+  flag checked but not set in `request` (its calls never re-enter), the path built in place
+  (no 516-byte memcpy), the directory suffix chosen by the caller (one `push_str` of a
+  `&'static str` in the body). `request` = 252 B. Sizes (exe, vs base): alloc 0, async -58,
+  atomics +4, cleanup -126, files -484 (8857), fmt -91, hello/hello-raw 0, locale -36,
+  net -118, notes -54, panic +39, query +7, shim -26, spawnee +8, time -49, tls -118,
+  ui-list -73, ui -12.
+
 ## Decisions
 
 ## Dead ends

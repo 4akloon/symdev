@@ -40,8 +40,9 @@ use core::ptr;
 
 use symbian_sys::des::{KMASK_DES_LENGTH_16, TDesC16, TDesC16_Compare, TDesC16_Ptr};
 use symbian_sys::efsrv::{
-    CDir, CDir_At, CDir_Count, KENTRY_ATT_DIR, KENTRY_ATT_VOLUME, TENTRY_OFFSET_ATT,
-    TENTRY_OFFSET_NAME, TENTRY_OFFSET_SIZE, TEntry,
+    CDir, CDir_At, CDir_Count, ESORT_NONE, KENTRY_ATT_DIR, KENTRY_ATT_MATCH_MASK,
+    KENTRY_ATT_VOLUME, RFs, RFs_GetDir, TENTRY_OFFSET_ATT, TENTRY_OFFSET_NAME, TENTRY_OFFSET_SIZE,
+    TEntry,
 };
 use symbian_sys::shim::symrs_f32_dir_delete;
 
@@ -72,7 +73,11 @@ impl Dir {
         // across the call. `GetDir` is non-leaving (efsrv traps its private `GetDirL`
         // itself) and uses the cleanup stack inside that trap, which is why every Rust
         // entry point installs one (`symbian_sys::cleanup`, experiment 97).
-        unsafe { request(path, Request::GetDir(&mut dir)) }?;
+        let slot = &raw mut dir;
+        let mut call = |fs: *mut RFs, path: *const TDesC16| unsafe {
+            RFs_GetDir(fs, path, KENTRY_ATT_MATCH_MASK, ESORT_NONE, slot)
+        };
+        request(path, Request::new(&mut call).of_every_entry(path))?;
         // TODO: success with a null `CDir` (not observed). Refused rather than
         // treated as empty, because an empty directory is a `CDir` with no entries.
         if dir.is_null() {
