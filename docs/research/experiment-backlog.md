@@ -2726,3 +2726,137 @@ EKA2L1, not on a phone; what a stock E52 shows for astral characters in `InfoPri
 `symbian-rs/examples/{hello,fmt}`. Scripts and results outside git, in
 `~/.cache/utf16-literals-agent/` (`measure.sh`, `runall.sh`, `res-*.txt`, `run-*/`);
 the C++ `Append` probe in this session's scratchpad (`appendprobe/`).
+## 105. The `std`-shaped file layer at C++'s size: one request body, nothing moved, no builder at run time (T5, Rust SDK)
+
+**Requires:** the toolchain, `SYMDEV_EKA2L1`; for `net`, the peers in `examples/net/peer`.
+
+**Why.** The C++ parity baseline put `examples/files` at 9 341 bytes against C++'s 6 058
+(1.54×) and named the `std`-shaped file layer (`symbian-std/src/fs/**` over
+`symbian-core/src/fs/**`) as ~2.1 kB of static Rust around the same efsrv calls C++ makes
+directly. The application API had to stay as it is: `fs::File::create/open`,
+`OpenOptions`, `read`, `write`, `metadata`, `read_dir`, `create_dir_all`, `rename`,
+`remove_file`, `io::Read`/`Write`/`Seek`.
+
+**Where the bytes were** (`nm -S` on `filesdemo.elf` at `main` de45e20):
+`OpenOptions::open` 984, `read_dir` 420, `create_dir_all` 392, `metadata` 388,
+`symbian_core::fs::File::open` 228 and `create_new` 228, `fs::write` 152,
+`write_all<File>` 168, `File::read` 136, `Name::eq` 116, `FileServer::connect` 84,
+`ErrorKind::of` 48, plus `rename` and `remove_file` inlined into `E32Main`. Three mechanisms:
+
+1. `with_session<T>` is generic and was inlined at every call: flag check and set, slot
+   check, the `RFs::Connect` call, the drop of the `None` it overwrites (a branch and an
+   `RHandleBase::Close` that never runs), flag clear — six copies in `files`.
+2. `path_of` returned the `Buf16<256>` by value: `memclr` of 512 bytes, `push_str`, then a
+   516-byte `memcpy` at every call site. `Entry` (552 bytes) was moved the same way, and
+   `create_dir_all` built a heap `String` only to append a backslash.
+3. `File::open`/`create` built an `OpenOptions` and `open` decided at run time, so an image
+   with two opening call sites linked all five strategies.
+
+No `#[inline]` was copying anything (there was none in the layer), and the error mapping
+was not duplicated: `io::Error` is a newtype over `SymbianError` and `ErrorKind::of` one
+48-byte function.
+
+**What changed.**
+
+- `symbian_core::fs::request` (`fs/session.rs`) is the one non-generic body every path call
+  goes through: it checks the re-entrancy flag (`KErrInUse` inside `with_session`, as
+  before), connects on first use, encodes the path into a `TFileName` in its own frame
+  and makes the call. The call is passed in as `&mut dyn Call`, a one-method trait with
+  a blanket impl for closures (`fs/request.rs`). `ProcessSession::{make_dirs, delete,
+  rename}`, `Entry::of`, `Dir::read(path)` and `File::opened(path, Opening, FileMode)` use
+  it; `with_session` stays for `locale`'s strings reader and callers of their own.
+- `File::opened` is `#[inline]` with one closure per `Opening`, so a call site naming one
+  links one `RFile` call. `symbian_std::fs::File::{open, create, create_new}` name their
+  `Opening` and `FileMode` directly; `OpenOptions::open` maps its flags to the same
+  `Opening` and is linked only by a program that uses the builder.
+- `create_dir_all` adds the trailing backslash in the request's stack buffer
+  (`Request::of_directory`); `read_dir`'s `\*` the same way (`of_every_entry`). The same
+  `KErrOverflow` for a 256-unit path without a separator.
+- `Entry::of` constructs its `TEntry` in the frame that returns it; `rename`'s second path is
+  encoded in the frame that uses it (`request::rename`). `path_of` is gone: a path buffer is
+  always built where the call is made.
+- `FileServer`'s own methods (an explicit session, the `shim` example) call efsrv directly,
+  not through `request`: for one call a closure and its vtable cost more than the call.
+
+**What was measured and not kept.**
+
+| candidate | result |
+|---|---|
+| one `enum Request` and a `match` over every call in the shared body | `files` −643, every report-only image +154…+354: the `match` links every efsrv call into every image that makes any |
+| the call as `&mut dyn FnMut` | report-only images still +185…+330: `FnMut`'s vtable carries a `call_once` shim, a second copy of each closure (188 B twice for the opening closure), and an `Opening` passed through it is not constant-folded |
+| `*slot = Some(connect()?)` (also with the slot as a `&mut` parameter) | keeps the drop check of the `None`; `ptr::write` removes it |
+| `impl Write for File { fn write_all }` as one `RFile::Write` | mixed: E32 code `atomics` −96, `files` −64, but `query` +40, `cleanup`/`fmt`/`tls`/`ui`/`ui-list` +24, `notes` +16 (inlining moves). Reverted |
+| one non-inline `File::opened_by(path, fn pointer, mode)` shared by every opening | `files` code −112, every image with one opening site +64…+128. Reverted |
+| `OpenOptions` as one `u8` bit word instead of six `bool`s | identical code (E32 code 13 948 both ways, with an uncommitted probe in `files` whose flags are known only at run time): LLVM already keeps the bools in registers |
+| `FileServer` methods through `request` | `shim` +40 B of code over `main` for its one call; they call efsrv directly |
+
+**Resources — every example, `main` at de45e20 against this branch.** `.exe` bytes (what
+ships, deflate-compressed) and E32 `iCodeSize` (uncompressed; the compressed size moves by
+±10–40 bytes with layout alone):
+
+| example | `.exe` main | `.exe` now | Δ | code main | code now | Δ |
+|---|---:|---:|---:|---:|---:|---:|
+| `alloc` | 3 767 | 3 767 | 0 | 5 532 | 5 532 | 0 |
+| `async` | 18 603 | 18 479 | −124 | 33 032 | 32 812 | −220 |
+| `atomics` | 8 903 | 8 839 | −64 | 15 236 | 15 048 | −188 |
+| `cleanup` | 4 472 | 4 266 | −206 | 6 676 | 6 312 | −364 |
+| `files` | 9 341 | **8 297** | **−1 044** | 15 320 | 13 492 | −1 828 |
+| `fmt` | 100 031 | 99 805 | −226 | 242 316 | 242 104 | −212 |
+| `hello` | 1 245 | 1 245 | 0 | 1 352 | 1 352 | 0 |
+| `hello-raw` | 808 | 808 | 0 | 760 | 760 | 0 |
+| `locale` | 8 202 | 8 124 | −78 | 12 732 | 12 536 | −196 |
+| `net` | 10 640 | 10 507 | −133 | 16 940 | 16 728 | −212 |
+| `notes` | 12 805 | 12 684 | −121 | 19 516 | 19 312 | −204 |
+| `panic` | 2 010 | 2 017 | +7 | 2 576 | 2 540 | −36 |
+| `query` | 14 031 | 13 970 | −61 | 21 388 | 21 200 | −188 |
+| `shim` | 4 517 | 4 468 | −49 | 6 636 | 6 572 | −64 |
+| `spawnee` | 3 076 | 2 606 | −470 | 4 852 | 3 996 | −856 |
+| `time` | 10 256 | 10 148 | −108 | 15 976 | 15 764 | −212 |
+| `tls` | 14 114 | 13 979 | −135 | 25 100 | 24 896 | −204 |
+| `ui` | 11 645 | 11 564 | −81 | 17 592 | 17 380 | −212 |
+| `ui-list` | 12 624 | 12 467 | −157 | 18 736 | 18 540 | −196 |
+
+**`files` against C++: 8 297 against 6 058, 1.37× (was 1.54×).** No example's code grows.
+`panic`'s `.exe` is +7 with its code −36: it makes two calls (`metadata`, `read_dir`) that
+`main` inlined into `E32Main`, and pays two 16-byte `Call` vtables in `.rodata` for the
+shared body — the smallest image with file calls is the one case where sharing does not
+yet win on the compressed file. `spawnee` loses 470 because the `String` in
+`create_dir_all` was its only heap use, so `RawVec`'s growth code left the image. What the
+layer costs in `files` now: `request` 252, `metadata` 204, `read_dir` 188, `File::create`
+172, `File::open` 168, `write_all<File>` 168, `File::read` 136, `fs::write` 124,
+`Name::eq` 116, the `rename` closure 112, `create_dir_all` 104, the other five closures
+24–52 each.
+
+**Run-time cost.** Derived from the code, not timed (the emulator's tick is 1 ms): each
+call no longer copies its 516-byte path (and `metadata` its 552-byte `TEntry`, `rename`
+its second path); `create_dir_all` no longer allocates and frees a heap cell; an opening
+call no longer walks the builder. Added: one indirect call through the `Call` vtable and
+a `push_str` of an empty tail. The 512-byte `memclr` of a fresh `Buf16` stays (see below).
+`read_dir` still costs the `CDir`'s cells and nothing per entry — experiment 98's borrowing
+is unchanged.
+
+**Behaviour.** The same efsrv call with the same arguments for every public function, the
+same error codes (`KErrOverflow` for a long path, `KErrInUse` inside `with_session`, the
+server's `TInt` otherwise), `OpenOrCreate` still resets the handle before `Create`.
+Emulator, `symdev test --emulator`: `files` 26, `locale` 7, `cleanup` 2, `time` 29,
+`async` 15, `atomics` 23, `fmt` 14, `net` 22, `notes` 3, `query` 4, `tls` 45, `ui` 3,
+`ui-list` 6 — all passed, the counts of experiment 103. `kept.bin` on the emulated `E:`
+holds the bytes written. `panic` and `spawnee` write no report and were not run; their
+file calls are the functions `files` and `cleanup` exercise. Host: `cargo test
+--workspace` (478 passed) and `cargo clippy --workspace --all-targets` clean;
+`symbian-rs`: `cargo clippy --release --workspace` clean (the `compiler_builtins`
+profile warning is pre-existing). Not run on an E52.
+
+**Left, and not in this layer.** `Buf16::new()` zeroes all 512 bytes before `push_str`
+overwrites the front (a `memclr` call per path, in code and at run time), and
+`Buf16<256>::push_str` is 448 bytes of the image; both are `symbian-core/src/des/**`.
+`Name == &str` builds a `Buf16<256>` per comparison for the same reason. A clippy ICE
+("upvar_tys called before capture types are inferred", nightly-2026-09-19) hit a
+`let` closure with untyped parameters coerced to the trait object; closures are written
+in the argument of `Request::new`, whose `FnMut` bound types them.
+
+**Evidence.** `symbian-rs/crates/symbian-core/src/fs/{request,session,file,entry,dir,server}.rs`,
+`symbian-rs/crates/symbian-std/src/fs/{mod,file,open_options}.rs`. Measurement scripts
+outside git, in `~/.cache/fs-size-agent/` (`measure.sh`, `symdiff.sh`, `dis.sh`,
+`runall.sh`, `res-*.txt` for every candidate, the result JSON of every run in
+`run-final/`).
