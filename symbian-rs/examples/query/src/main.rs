@@ -28,6 +28,7 @@ use symbian_core::ErrorKind;
 use symbian_std::test_report::{Evidence, Report, detail};
 use symbian_std::ui::prelude::*;
 use symbian_std::ui::query;
+use symbian_std::write;
 
 /// How many UTF-16 code units the name query accepts. It is here, in the application,
 /// because that is the point: `query::text` takes the maximum rather than inventing one.

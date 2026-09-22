@@ -5,8 +5,9 @@ use core::fmt::Write as _;
 
 use symbian_core::time::Ttime;
 use symbian_core::user::after;
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Evidence, Report};
 use symbian_std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use symbian_std::{write, writeln};
 
 use crate::{NOT_AFTER, NOT_BEFORE, SAMPLES, SAMPLES_PER_SLEEP};
 
@@ -214,8 +215,8 @@ pub(crate) fn a_clock_change(report: &mut Report, notes: &mut String) {
     let outcome = moved.as_ttime().set_universal();
     let _ = writeln!(
         notes,
-        "set_universal={:?} before={} ",
-        outcome.map_err(|e| e.code()),
+        "set_universal={} before={} ",
+        outcome.map_err(|e| e.code()).shown(),
         before.as_ttime().micros_since_year_zero()
     );
     if outcome.is_err() {
@@ -224,8 +225,8 @@ pub(crate) fn a_clock_change(report: &mut Report, notes: &mut String) {
         let mut name = String::new();
         let _ = write!(
             name,
-            "the device clock cannot be set from here ({:?}), so a clock change is untested",
-            outcome.map_err(|e| e.code())
+            "the device clock cannot be set from here ({}), so a clock change is untested",
+            outcome.map_err(|e| e.code()).shown()
         );
         report.check(&name, true);
         return;

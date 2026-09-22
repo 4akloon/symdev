@@ -19,8 +19,9 @@ use core::fmt::Write as _;
 use symbian_core::time::{NanoTicks, SystemTicks};
 use symbian_std::fs;
 use symbian_std::io::Result;
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Evidence, Report};
 use symbian_std::time::{Duration, SystemTime, UNIX_EPOCH};
+use symbian_std::writeln;
 
 mod checks;
 
@@ -44,8 +45,8 @@ pub(crate) const SAMPLES_PER_SLEEP: usize = 200;
 fn run(report: &mut Report, notes: &mut String) {
     let _ = writeln!(
         notes,
-        "tick_period={:?} first_tick={} first_nano={}",
-        SystemTicks::period_micros().map_err(|e| e.code()),
+        "tick_period={} first_tick={} first_nano={}",
+        SystemTicks::period_micros().map_err(|e| e.code()).shown(),
         SystemTicks::now().raw(),
         NanoTicks::now().raw()
     );
