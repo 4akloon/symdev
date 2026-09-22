@@ -33,6 +33,8 @@ shims/s60, macros/entry.rs, std/src/fs, core/src/fs.
 - examples/fmt gained case 13 "text known at compile time, appended as UTF-16" (astral literal pieces straddling every capacity, a utf16! constant as `{MIXED}` and `{}`): 15 passed. Deliberate break (append_units passes len-1 to euser): 12 failed, 3 passed (every group with literal text, incl. the new one with 48 mismatches). Reverted.
 - C++ hello rebuilt from docs/research/cpp-parity/hello: 802 (E32Main 52 + KFormat 32 + KGreeting 44). Rust hello 971: E32Main 260 (CTrapCleanup pair of #[main], memclr4 of Buf16::new's [0; 64], a room check per piece), put_utf16<64> 48, rodata 56 (the UTF-16 text).
 
+- shim variant (not applied): its six `note.push_str("…")` as fast `write!(note, "…")` -> 4517 -> 4450 (-67; its Buf16<160>::push_str monomorph goes, the shared encoder stays for FileServer paths). Left as is: the example demonstrates the shim and euser's appends, and it is not a parity pair.
+
 ## Decisions
 
 - Design to try: `symbian_fmt::Utf16Str` = `&'static str` + its `&'static [u16]`, built only by `utf16!(expr)` (const items: `[u16; utf16_len(S)]` from a const fn), `Deref<Target = str>` and `Display` = str's, `Arg` -> new `Sink::put_utf16(text, units)` whose default is `put_str(text)` (so every non-Buf16 destination sees the same `write_str`), `Buf16` overrides with a room check + unit copy. The fast `write!` emits each literal piece as a `utf16!` const. `hello` changes one line: `const GREETING: Utf16Str = utf16!("…")`.
@@ -42,4 +44,4 @@ shims/s60, macros/entry.rs, std/src/fs, core/src/fs.
 
 ## Next step
 
-Measure every example (final), run symdev test --emulator on every report writer, read hello's notifier line, weigh shim.
+Write experiment 106 into docs/research/experiment-backlog.md from this note, delete this note, final gates, commit.
