@@ -16,6 +16,10 @@ Task: a `write!`-compatible macro in `symbian_std::prelude` that turns plain `{}
 - Host identity tests pass (16): call sequences equal under 56 failure modes each, plus Formatter/generic/io/eval-order/two-phase cases.
 - DEAD END (conflicts with the user's «у prelude»): a macro named `write` in a glob-imported prelude does NOT shadow core's `write!`: rustc E0659 "`write` is ambiguous ... conflict between a name from a glob import and an outer scope during import or macro resolution" (nightly-2026-09-19 on hello; stable 1.98.1 in scratchpad/proto/mu: glob -> E0659, explicit `use dep::prelude::write` -> works, `#[macro_use] extern crate dep` -> works). Worse: exporting it from the prelude would BREAK every existing `use symbian_std::prelude::*` program that calls `write!`.
 
+- hello: 2567 -> 1245 (.text 2972 -> 884): no core::fmt symbol left, not even panic_fmt; E32Main is 3 push_str calls + one AppendNum with the room check folded (ceiling was 1193).
+- First cut grew every harness example (core::fmt stays because of Report::check_detail(format_args!) and {e:?}): alloc +273, async +733, locale +606, query +226, time +1035. Causes found by nm diff: core::str::from_utf8 572 B in Decimal::as_str (fixed with from_utf8_unchecked), 64-bit limb division 320 B used for every width (split Sink into put_u32/put_i64/put_u64), String::push_str inlined per piece (Generic methods #[inline(never)]).
+- After fixes (res-fast3): alloc 3876->3748, async 20422->20971, locale 8486->8670, query 19372->19532, time 13523->14406, hello 1245; others unchanged. Remaining growth = per-piece call (~24 B each vs one Arguments build) + put_u32 188 + prepend_u32 88 + 64-bit path (of_u64 312, put_i64 164) when core::fmt is linked anyway.
+
 ## Decisions
 
 - Shape: `macro_rules! write` in symbian_std (matches `$dst:expr, $fmt:literal, $($arg:expr),*`; anything else -> `::core::write!` verbatim so rustc's own errors stay) calling a proc macro with `$crate`. Receiver evaluated once by one method call on `$dst` (two-phase borrow like write_fmt); per-piece dispatch by autoref specialisation on a probe returning a tag; slow piece = a closure `|d, a| d.write_fmt(format_args!("{spec}", a))` written at the call site.
@@ -27,4 +31,4 @@ Task: a `write!`-compatible macro in `symbian_std::prelude` that turns plain `{}
 
 ## Next step
 
-- Identity tests (recording sink, call sequences), then Buf16 Sink impl in symbian-core, prelude export, measure.
+- examples/fmt (uid 0xe00006a2): device identity of the Buf16 path vs core::write! + tick perf; harness share measurement; gates; emulator runs; docs.
