@@ -8,4 +8,6 @@ description = "Safe Symbian OS 9.3 domain types: system error codes and the 16-b
 crate-type = ["rlib"]
 
 [dependencies]
+# `Buf16` is the fast `write!`'s native destination (experiment 99).
+symbian-fmt = { path = "../symbian-fmt" }
 symbian-sys = { path = "../symbian-sys" }

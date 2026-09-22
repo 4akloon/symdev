@@ -6,7 +6,7 @@
 //! is divided in 16-bit limbs, each step dividing a number below `10 << 16` — a 32-bit
 //! value — by 10.
 
-/// Up to 20 digits, `u64::MAX`'s count.
+/// A `u64`'s decimal digits: up to 20, `u64::MAX`'s count.
 pub struct Decimal {
     digits: [u8; 20],
     start: usize,

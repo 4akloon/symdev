@@ -44,25 +44,30 @@ impl<T: Arg + ?Sized> Arg for &mut T {
     }
 }
 
-macro_rules! unsigned {
+macro_rules! fits_i64 {
     ($($t:ty)*) => {$(
         impl Arg for $t {
             fn put<S: Sink + ?Sized>(&self, sink: &mut S) -> fmt::Result {
-                sink.put_int(*self as u64, false)
+                sink.put_int(*self as i64)
             }
         }
     )*};
 }
 
-macro_rules! signed {
+fits_i64!(u8 u16 u32 i8 i16 i32 i64 isize);
+
+/// Up to `i64::MAX` a `u64` is an `i64`; above it, [`Sink::put_large`].
+macro_rules! up_to_u64 {
     ($($t:ty)*) => {$(
         impl Arg for $t {
             fn put<S: Sink + ?Sized>(&self, sink: &mut S) -> fmt::Result {
-                sink.put_int(self.unsigned_abs() as u64, *self < 0)
+                match i64::try_from(*self) {
+                    Ok(value) => sink.put_int(value),
+                    Err(_) => sink.put_large(*self as u64),
+                }
             }
         }
     )*};
 }
 
-unsigned!(u8 u16 u32 u64 usize);
-signed!(i8 i16 i32 i64 isize);
+up_to_u64!(u64 usize);

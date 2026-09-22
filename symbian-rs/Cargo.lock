@@ -216,6 +216,7 @@ dependencies = [
 name = "symbian-core"
 version = "0.1.0"
 dependencies = [
+ "symbian-fmt",
  "symbian-sys",
 ]
 
@@ -257,6 +258,7 @@ dependencies = [
  "symbian-alloc",
  "symbian-async",
  "symbian-core",
+ "symbian-fmt",
  "symbian-macros",
  "symbian-runtime",
  "symbian-sys",

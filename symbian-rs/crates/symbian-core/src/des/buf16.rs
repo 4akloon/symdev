@@ -7,6 +7,8 @@ use symbian_sys::des16::{TDes16, TDes16_Append, TDes16_AppendNum, TDes16_Copy, T
 use super::{DesC16, EBUF, MAX_LENGTH, header, sealed, utf16};
 use crate::{ErrorKind, Result, SymbianError};
 
+mod sink;
+
 /// A modifiable descriptor holding up to `N` UTF-16 code units inside itself.
 ///
 /// The layout is the observed `TBuf16<N>`: the header word (`0x3xxxxxxx`, `EBuf`), then
@@ -190,14 +192,20 @@ impl<const N: usize> Buf16<N> {
 
 /// How many code units a signed decimal `value` takes: the digits plus a minus sign.
 ///
-/// Used as the bound for the overflow check, so it must never be too small.
-/// `i64::MIN.unsigned_abs()` is why the magnitude is taken as a `u64`.
+/// Used as the bound for the overflow check, so it must never be too small, and it is
+/// exact, because the fast `write!` relies on it to fail exactly when `core` would.
+/// `i64::MIN.unsigned_abs()` is why the magnitude is taken as a `u64`. It counts by
+/// multiplying, not dividing: a 64-bit division here is `compiler_builtins`'
+/// `__aeabi_uldivmod`, 636 bytes, in every image that appends a number that is not a
+/// constant (experiment 99).
 const fn decimal_len(value: i64) -> usize {
-    let mut len = if value < 0 { 2 } else { 1 };
-    let mut rest = value.unsigned_abs() / 10;
-    while rest > 0 {
-        len += 1;
-        rest /= 10;
+    let magnitude = value.unsigned_abs();
+    let mut digits = 1;
+    let mut next: u64 = 10;
+    // 10^19 is the largest power of ten a `u64` holds, so the loop ends at 20 digits.
+    while digits < 20 && magnitude >= next {
+        digits += 1;
+        next = next.wrapping_mul(10);
     }
-    len
+    digits + (value < 0) as usize
 }

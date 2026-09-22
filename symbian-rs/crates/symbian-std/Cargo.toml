@@ -22,6 +22,7 @@ std = []
 symbian-alloc = { path = "../symbian-alloc" }
 symbian-async = { path = "../symbian-async" }
 symbian-core = { path = "../symbian-core" }
+symbian-fmt = { path = "../symbian-fmt" }
 symbian-macros = { path = "../symbian-macros" }
 symbian-runtime = { path = "../symbian-runtime", optional = true }
 symbian-sys = { path = "../symbian-sys" }

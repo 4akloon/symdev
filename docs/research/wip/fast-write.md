@@ -14,12 +14,16 @@ Task: a `write!`-compatible macro in `symbian_std::prelude` that turns plain `{}
 - symbian-rs cannot run host integration tests (build-std forced by config; `--target host --config unstable.build-std=[]` still duplicates core). Host tests live in the host workspace: `crates/symdev-build/tests/fast_write*.rs` with a path dev-dependency on `symbian-rs/crates/symbian-fmt`; it builds on stable 1.98.1 and the smoke test passes.
 - `$dst` re-emitted as a bare invisible group lost its precedence: `write!(&mut h.line, ..)` became `&mut (h.line.method(..))` (E0716). Fixed by emitting `(@dst).__symbian_fmt_enter(..)`; parentheses keep a place expression a place.
 - Host identity tests pass (16): call sequences equal under 56 failure modes each, plus Formatter/generic/io/eval-order/two-phase cases.
+- DEAD END (conflicts with the user's «у prelude»): a macro named `write` in a glob-imported prelude does NOT shadow core's `write!`: rustc E0659 "`write` is ambiguous ... conflict between a name from a glob import and an outer scope during import or macro resolution" (nightly-2026-09-19 on hello; stable 1.98.1 in scratchpad/proto/mu: glob -> E0659, explicit `use dep::prelude::write` -> works, `#[macro_use] extern crate dep` -> works). Worse: exporting it from the prelude would BREAK every existing `use symbian_std::prelude::*` program that calls `write!`.
 
 ## Decisions
 
 - Shape: `macro_rules! write` in symbian_std (matches `$dst:expr, $fmt:literal, $($arg:expr),*`; anything else -> `::core::write!` verbatim so rustc's own errors stay) calling a proc macro with `$crate`. Receiver evaluated once by one method call on `$dst` (two-phase borrow like write_fmt); per-piece dispatch by autoref specialisation on a probe returning a tag; slow piece = a closure `|d, a| d.write_fmt(format_args!("{spec}", a))` written at the call site.
+- Export at `symbian_std::{write, writeln}` (crate root), not in the prelude; a program opts in with one explicit `use symbian_std::{write, writeln};`. Report the conflict to the user.
 
 ## Dead ends
+
+- Glob prelude export of `write`/`writeln` (E0659, see Findings).
 
 ## Next step
 
