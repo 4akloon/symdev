@@ -82,6 +82,13 @@ Keep experiment 98's `read_dir` borrowing from the `CDir`. Stay out of `symbian-
 
 ## Dead ends
 
+- Candidate 5, `impl Write for File { fn write_all }` as one `RFile::Write` (the default's
+  short-write loop and `Interrupted` retry cannot run): mixed, E32 code vs c4 atomics -96,
+  files -64, net -16, but cleanup/fmt/tls/ui/ui-list +24, notes +16, query +40 (inlining
+  moves). Not kept: nothing may grow without a reason. Reverted.
+- The compressed `.exe` size moves by ±10-40 B with layout alone; judge candidates on E32
+  `iCodeSize` too (measure.sh now prints it as the last column).
+
 ## Next step
 
 Measure baseline sizes of every example; `nm -S --size-sort` on filesdemo.elf.
