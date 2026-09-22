@@ -21,6 +21,7 @@ pub fn build_project(m: Manifest) -> Result<ExitCode, Error> {
     let tools = Toolchain::from_env()?;
     let epocroot = tools.epocroot.clone();
     let project = crate::current_project()?;
+    ignore_build_dir(&project.root)?;
     // A `[ui]` project's icon is built by the Rust backend's own resource stage,
     // which names it after the application rather than after an MMP target there is
     // none of; `GcceBuild` must not also try, or `AppIcon::of` fails looking for one.
@@ -72,4 +73,51 @@ pub fn build_project(m: Manifest) -> Result<ExitCode, Error> {
         }
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// Makes `build/` invisible to git before anything is written into it.
+///
+/// `build/` holds `sdk-include-casefold/`, a tree of symlinks into `SYMDEV_EPOCROOT`'s
+/// headers, beside the objects and images. A project's own `.gitignore` is the
+/// project's business, and one that does not name `build/` — any project outside this
+/// repository's `examples/` — would commit those links with the first `git add -A`.
+/// That happened: a branch here once added 1 044 of them. So the directory ignores
+/// itself, the way a build tool's output directory should. An existing
+/// `build/.gitignore` is left alone: if someone wrote one, it is theirs.
+fn ignore_build_dir(root: &std::path::Path) -> Result<(), Error> {
+    let dir = root.join("build");
+    let io = |e: std::io::Error| Error::Other(format!("{}: {e}", dir.display()));
+    std::fs::create_dir_all(&dir).map_err(io)?;
+    let ignore = dir.join(".gitignore");
+    if !ignore.exists() {
+        std::fs::write(
+            &ignore,
+            "# Written by symdev: everything here is build output.\n*\n",
+        )
+        .map_err(io)?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ignore_build_dir;
+
+    #[test]
+    fn the_build_directory_ignores_itself() {
+        let root = tempfile::tempdir().unwrap();
+        ignore_build_dir(root.path()).unwrap();
+        let text = std::fs::read_to_string(root.path().join("build/.gitignore")).unwrap();
+        assert!(text.lines().any(|l| l == "*"));
+    }
+
+    #[test]
+    fn an_existing_ignore_file_is_not_overwritten() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("build")).unwrap();
+        std::fs::write(root.path().join("build/.gitignore"), "mine\n").unwrap();
+        ignore_build_dir(root.path()).unwrap();
+        let text = std::fs::read_to_string(root.path().join("build/.gitignore")).unwrap();
+        assert_eq!(text, "mine\n");
+    }
 }
