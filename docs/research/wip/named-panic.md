@@ -31,9 +31,15 @@ backlog (next free number on main: 99). Branch `named-panic`, base main 7231c84.
 - panicdemo.exe 2 011 B; uid3 0xe00006a8 (a0..a3 taken on this and other branches).
 - Scratchpad dir is shared with other agents' files; mine are in scratchpad/np/.
 
+- OBSERVED: examples/panic OOM path (vec! of 576 MiB, then 9 MiB) -> `Access violation reading address 0x8000A4 in thread Main` + `Thread Main terminated peacefully with category: KERN-EXEC and exit code: 3`. Probes: try_reserve + User::Exit(44) -> same; User::Exit(44) with no alloc -> same; User::Exit(45) first thing in main (no fs) -> same (0x7000A4). So **User::Exit called while the thread's CTrapCleanup is installed dies KERN-EXEC 3 in EKA2L1**; hello's normal return (cleanup dropped first, then eexe's User::Exit) logs `Thread Main forcefully killed with category: None and exit code: 0`.
+- C++ scratch (copy of cpp-parity/hello, uid 0xe00006a9, np/cpp): PANIC_NOW -> `Thread Main panicked with category: CPP and exit code: 42`; EXIT_WITH_CLEANUP (CTrapCleanup::New(); User::Exit(45)) -> access violation 0x7000A4 + KERN-EXEC 3 (same as Rust); EXIT_NO_CLEANUP -> `forcefully killed with category: None and exit code: 46`; LEAVE_NO_TRAP (CTrapCleanup + User::LeaveNoMemory()) -> `panicked with category: E32USER-CBase and exit code: 65` (EClnLevelUnderflow, e32panic.h) — not USER 0, not USER 175; LEAVE_TRAPPED (TRAPD, delete cleanup, return err) -> `forcefully killed with category: None and exit code: -4`.
+- C++ size: baseline 802 B .exe (.text 232 .rodata 76); + one `if (note.Length() > 60) User::Panic(_LIT "CPP", 42)`: 831 B (+29), .text +24, .rodata +12 (the _LIT), imports unchanged (eexe already imports User::Panic).
+- spawnee's doc blames "EKA2L1 cannot spawn an image with a writable data section" for a KERN-EXEC 3 "reading its own heap base + 0xA4"; spawnee calls User_Exit inside main with the cleanup installed — same signature as above. Hypothesis only, not checked.
+
 ## Decisions
 - Category `RUST` (same as std PAL abort_internal, 4 of 16 units). Reason KErrGeneral (-2), same as std. Line-number reason rejected: +1.5..3.9 KB corpus for a line without a file.
 - Handler + alloc handler moved to symbian-runtime/src/panic.rs.
+- OOM -> User::Panic("RUST", KErrNoMemory=-4): Exit(-4) from inside main is KERN-EXEC 3 here (C++ too); C++'s -4 exit exists only after a top-level TRAPD returns, which abort-on-OOM cannot do; an untrapped C++ leave is itself a panic. Distinct reason (-4 vs -2), same category. symbian_alloc::oom deleted (no other user).
 - No lever applied: immediate-abort loses the category; patched core -776 is not worth a core patch + OOM loss.
 
 ## Dead ends
@@ -42,4 +48,4 @@ backlog (next free number on main: 99). Branch `named-panic`, base main 7231c84.
 
 ## Next step
 
-OOM run of examples/panic (create ~/.local/share/EKA2L1/data/drives/e/symdev/panic/oom), then C++ scratch (User::Panic cost + LeaveNoMemory without TRAP).
+Implement OOM panic, observe it, restore examples/panic (TOO_MUCH 64 MiB, no probes, drop symbian-sys dep), run all report examples with symdev test --emulator, gates, backlog entry 99.
