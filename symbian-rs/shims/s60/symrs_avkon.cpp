@@ -178,18 +178,20 @@ public:
 private:
 	// Private virtual of CCoeControl, called OUTSIDE any trap harness and const.
 	// Nothing here may leave, on either side, and there is deliberately no TRAP.
-	// The rect handed to Rust is the control's own area with its origin at (0,0):
-	// drawing through a window gc is window-relative, and a view that always lays out
-	// from (0,0) has no second coordinate system to get wrong.
+	// Only the control's size crosses; Rust makes it the rect at (0,0): drawing through
+	// a window gc is window-relative, and a view that always lays out from (0,0) has no
+	// second coordinate system to get wrong. Two words rather than a four-word struct
+	// on the stack is experiment 104.
 	void Draw(const TRect& /*aRect*/) const
 		{
-		SymRsRect area = { 0, 0, Size().iWidth, Size().iHeight };
-		symrs_app_draw(iApp, &const_cast<CShimView*>(this)->SystemGc(), area);
+		const TSize size = Size();
+		symrs_app_draw(iApp, &const_cast<CShimView*>(this)->SystemGc(), size.iWidth,
+			size.iHeight);
 		}
 	void SizeChanged()
 		{
-		SymRsRect area = { 0, 0, Size().iWidth, Size().iHeight };
-		symrs_app_size_changed(iApp, area);
+		const TSize size = Size();
+		symrs_app_size_changed(iApp, size.iWidth, size.iHeight);
 		}
 	TInt CountComponentControls() const { return 0; }
 	void* iApp; // borrowed; the app UI owns it and outlives this control

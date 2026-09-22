@@ -21,7 +21,7 @@ use core::ffi::c_void;
 use alloc::boxed::Box;
 use symbian_core::ErrorKind;
 
-use crate::abi::{RawKeyEvent, RawRect};
+use crate::abi::RawKeyEvent;
 use crate::app::App;
 use crate::event::{KeyEvent, KeyResponse};
 use crate::gc::Gc;
@@ -94,7 +94,7 @@ pub unsafe fn construct<A: App>(app: *mut c_void, view: *mut c_void, app_ui: *mu
 /// `app` came from [`start`] for this `A` and is alive, and every other pointer is
 /// what `symrs_avkon.h` documents for this call.
 #[doc(hidden)]
-pub unsafe fn draw<A: App>(app: *mut c_void, gc: *mut c_void, area: RawRect) {
+pub unsafe fn draw<A: App>(app: *mut c_void, gc: *mut c_void, width: i32, height: i32) {
     // SAFETY: as `construct`.
     let Some(state) = (unsafe { state::<A>(app) }) else {
         return;
@@ -106,7 +106,7 @@ pub unsafe fn draw<A: App>(app: *mut c_void, gc: *mut c_void, area: RawRect) {
     }
     // SAFETY: `gc` is the `CWindowGc&` the framework handed `Draw` and is valid for
     // exactly this call, which is the lifetime `Gc` carries.
-    let area = Rect::from_raw(area);
+    let area = Rect::size(width, height);
     let mut gc = unsafe { Gc::new(gc, area) };
     state.app.draw(&mut gc, area);
 }
@@ -204,12 +204,12 @@ pub unsafe fn command<A: App>(app: *mut c_void, command: i32) -> i32 {
 /// `app` came from [`start`] for this `A` and is alive, and every other pointer is
 /// what `symrs_avkon.h` documents for this call.
 #[doc(hidden)]
-pub unsafe fn size_changed<A: App>(app: *mut c_void, area: RawRect) {
+pub unsafe fn size_changed<A: App>(app: *mut c_void, width: i32, height: i32) {
     // SAFETY: as `construct`.
     let Some(state) = (unsafe { state::<A>(app) }) else {
         return;
     };
-    state.app.size_changed(Rect::from_raw(area));
+    state.app.size_changed(Rect::size(width, height));
 }
 
 /// Exports the eight `symrs_app_*` functions `symbian-rs/shims/s60/symrs_avkon.h`
@@ -224,7 +224,7 @@ macro_rules! __export_app {
     ($app:ty, $main:path) => {
         const _: () = {
             use ::core::ffi::c_void;
-            use $crate::__abi::{RawKeyEvent, RawRect};
+            use $crate::__abi::RawKeyEvent;
             use $crate::__glue as glue;
 
             #[unsafe(export_name = "symrs_app_create")]
@@ -242,8 +242,8 @@ macro_rules! __export_app {
                 unsafe { glue::construct::<$app>(app, view, ui) }
             }
             #[unsafe(export_name = "symrs_app_draw")]
-            extern "C" fn draw(app: *mut c_void, gc: *mut c_void, area: RawRect) {
-                unsafe { glue::draw::<$app>(app, gc, area) }
+            extern "C" fn draw(app: *mut c_void, gc: *mut c_void, width: i32, height: i32) {
+                unsafe { glue::draw::<$app>(app, gc, width, height) }
             }
             #[unsafe(export_name = "symrs_app_offer_key")]
             extern "C" fn offer_key(app: *mut c_void, event: *const RawKeyEvent, kind: i32) -> i32 {
@@ -254,8 +254,8 @@ macro_rules! __export_app {
                 unsafe { glue::command::<$app>(app, command) }
             }
             #[unsafe(export_name = "symrs_app_size_changed")]
-            extern "C" fn size_changed(app: *mut c_void, area: RawRect) {
-                unsafe { glue::size_changed::<$app>(app, area) }
+            extern "C" fn size_changed(app: *mut c_void, width: i32, height: i32) {
+                unsafe { glue::size_changed::<$app>(app, width, height) }
             }
             #[unsafe(export_name = "symrs_app_menu")]
             extern "C" fn menu(app: *mut c_void, pane: *mut c_void) -> i32 {

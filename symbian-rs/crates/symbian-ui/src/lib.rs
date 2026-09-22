@@ -97,7 +97,7 @@ pub mod note;
 #[doc(hidden)]
 pub mod __abi {
     //! The two C structs of the boundary, for [`crate::__export_app`]'s expansion.
-    pub use crate::abi::{RawKeyEvent, RawRect};
+    pub use crate::abi::RawKeyEvent;
 }
 #[doc(hidden)]
 pub mod __glue {

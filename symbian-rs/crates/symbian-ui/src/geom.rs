@@ -57,10 +57,6 @@ impl Rect {
             h: self.height,
         }
     }
-
-    pub(crate) const fn from_raw(raw: RawRect) -> Self {
-        Self::new(raw.x, raw.y, raw.w, raw.h)
-    }
 }
 
 /// A colour as 8 bits each of red, green and blue.

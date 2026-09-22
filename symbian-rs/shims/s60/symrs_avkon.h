@@ -77,10 +77,10 @@ TInt symrs_menu_add(void* aPane, const TUint16* aText, TInt aLength, TInt aComma
 void* symrs_app_create(void);
 void symrs_app_destroy(void* aApp);
 TInt symrs_app_construct(void* aApp, void* aView, void* aAppUi);
-void symrs_app_draw(void* aApp, void* aGc, SymRsRect aArea);
+void symrs_app_draw(void* aApp, void* aGc, TInt aWidth, TInt aHeight);
 TInt symrs_app_offer_key(void* aApp, const TKeyEvent* aEvent, TInt aType);
 TInt symrs_app_command(void* aApp, TInt aCommand);
-void symrs_app_size_changed(void* aApp, SymRsRect aArea);
+void symrs_app_size_changed(void* aApp, TInt aWidth, TInt aHeight);
 // DynInitMenuPaneL: the Options menu is about to be shown, so fill it. `aPane` is the
 // CEikMenuPane* and is valid for this call only.
 TInt symrs_app_menu(void* aApp, void* aPane);
