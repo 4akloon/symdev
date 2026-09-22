@@ -8,7 +8,7 @@ use core::time::Duration;
 
 use symbian_async::{Either, block_on, join, race, sleep, spawn};
 use symbian_core::{ErrorKind, Result, SymbianError};
-use symbian_std::test_report::{Report, detail};
+use symbian_std::test_report::{Evidence, Report, detail};
 
 use crate::{SLACK_MS, millis, start_of};
 
@@ -37,7 +37,7 @@ fn a_value_comes_back(report: &mut Report) {
     report.check_detail(
         "block_on returns what the future produced",
         got == Ok(42),
-        detail!("{got:?}"),
+        detail!("{}", got.shown()),
     );
 }
 
@@ -51,7 +51,7 @@ fn one_timer(report: &mut Report, notes: &mut String) {
     let outcome = block_on(async { sleep(Duration::from_millis(SPAN_MS)).await });
     let took = millis(start.elapsed());
     let _ = writeln!(notes, "one_timer_ms={took}");
-    report.check_detail(case, outcome == Ok(Ok(())), detail!("{outcome:?}"));
+    report.check_detail(case, outcome == Ok(Ok(())), detail!("{}", outcome.shown()));
     report.check_detail(
         "one 300 ms sleep takes about 300 ms",
         near(took, SPAN_MS),
@@ -77,7 +77,7 @@ fn two_at_once(report: &mut Report, notes: &mut String) {
     });
     let took = millis(start.elapsed());
     let _ = writeln!(notes, "two_at_once_ms={took}");
-    report.check_detail(case, outcome == Ok(Ok(())), detail!("{outcome:?}"));
+    report.check_detail(case, outcome == Ok(Ok(())), detail!("{}", outcome.shown()));
     report.check_detail(
         "two 300 ms sleeps awaited together take about 300 ms, not 600",
         near(took, SPAN_MS),
@@ -101,7 +101,7 @@ fn one_after_the_other(report: &mut Report, notes: &mut String) {
     report.check_detail(
         case,
         outcome == Ok(Ok(())) && near(took, 2 * SPAN_MS),
-        detail!("{took} ms, {outcome:?}"),
+        detail!("{took} ms, {}", outcome.shown()),
     );
 }
 
@@ -130,7 +130,7 @@ fn the_shorter_one_finishes_first(report: &mut Report) {
     report.check_detail(
         "the shorter of two concurrent timers finishes first",
         outcome == Ok(Ok(())) && finished.as_slice() == [100u32, 400],
-        detail!("{:?}, {outcome:?}", finished.as_slice()),
+        detail!("{}, {}", finished.as_slice().shown(), outcome.shown()),
     );
 }
 
@@ -155,7 +155,7 @@ fn the_loser_of_a_race_is_cancelled(report: &mut Report, notes: &mut String) {
     report.check_detail(
         case,
         matches!(outcome, Ok(Either::Left(Ok(())))) && took < 1_000,
-        detail!("{took} ms, {outcome:?}"),
+        detail!("{took} ms, {}", outcome.shown()),
     );
 }
 
@@ -176,7 +176,7 @@ fn a_spawned_task_runs_beside_the_root(report: &mut Report) {
     report.check_detail(
         "a spawned task runs on the same scheduler as the root future",
         outcome == Ok(Ok(())) && done.get(),
-        detail!("done={}, {outcome:?}", done.get()),
+        detail!("done={}, {}", done.get().shown(), outcome.shown()),
     );
 }
 
@@ -187,7 +187,7 @@ fn spawn_needs_a_scheduler(report: &mut Report) {
     report.check_detail(
         "spawn outside any scheduler is refused",
         outcome.map_err(SymbianError::kind) == Err(ErrorKind::NotReady),
-        detail!("{outcome:?}"),
+        detail!("{}", outcome.shown()),
     );
 }
 
@@ -199,7 +199,7 @@ fn block_on_does_not_nest(report: &mut Report) {
     report.check_detail(
         "a nested block_on is refused rather than installing a second scheduler",
         matches!(&outcome, Ok(Err(error)) if error.kind() == ErrorKind::InUse),
-        detail!("{outcome:?}"),
+        detail!("{}", outcome.shown()),
     );
 }
 
@@ -211,7 +211,7 @@ fn a_blocking_wait_is_refused(report: &mut Report) {
     report.check_detail(
         "a blocking User::WaitForRequest under a scheduler is refused",
         matches!(&outcome, Ok(Err(error)) if error.kind() == ErrorKind::InUse),
-        detail!("{outcome:?}"),
+        detail!("{}", outcome.shown()),
     );
 }
 
@@ -222,7 +222,7 @@ fn too_long_a_sleep(report: &mut Report) {
     report.check_detail(
         "a sleep longer than RTimer::After can express is an error",
         matches!(&outcome, Ok(Err(error)) if error.kind() == ErrorKind::Overflow),
-        detail!("{outcome:?}"),
+        detail!("{}", outcome.shown()),
     );
 }
 
@@ -248,7 +248,7 @@ fn the_scheduler_can_be_owned_again(report: &mut Report, notes: &mut String) {
     report.check_detail(
         case,
         failed.is_none(),
-        detail!("{failed:?} after {took} ms"),
+        detail!("{} after {took} ms", failed.shown()),
     );
 }
 

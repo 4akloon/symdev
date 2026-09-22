@@ -50,30 +50,43 @@ pub(super) fn document(report: &Report) -> String {
 /// `0x20` — and passes the rest through, since the file is UTF-8 and so is a Rust
 /// `str`.
 fn escape_into(out: &mut String, text: &str) {
-    for c in text.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => {
-                out.push_str("\\u");
-                push_hex(out, c as u32, 4);
-            }
-            c => out.push(c),
+    // Byte by byte, appending the runs between escapes whole: decoding and re-encoding
+    // every character was 668 bytes of `examples/atomics`.
+    let mut start = 0;
+    for (i, byte) in text.bytes().enumerate() {
+        let escape = match byte {
+            b'"' => "\\\"",
+            b'\\' => "\\\\",
+            b'\n' => "\\n",
+            b'\r' => "\\r",
+            b'\t' => "\\t",
+            0..0x20 => "\\u00",
+            _ => continue,
+        };
+        // `i` is a character boundary: every byte escaped is ASCII, and an ASCII byte is
+        // never part of a longer UTF-8 sequence. So `get` is always `Some` here.
+        out.push_str(text.get(start..i).unwrap_or_default());
+        out.push_str(escape);
+        // `\u00` is the one escape that is followed by digits.
+        if escape.len() == 4 {
+            push_hex(out, u32::from(byte), 2);
         }
+        start = i + 1;
     }
+    out.push_str(text.get(start..).unwrap_or_default());
 }
 
 /// `value` in lowercase hex, zero-padded to at least `width` digits: `{:0width$x}`.
-pub(super) fn push_hex(out: &mut String, value: u32, width: usize) {
-    let digits = (8 - value.leading_zeros() as usize / 4).max(1);
-    for _ in digits..width {
-        out.push('0');
-    }
+pub(super) fn push_hex(out: &mut String, value: u32, width: u32) {
+    let digits = (8 - value.leading_zeros() / 4).max(width);
     for shift in (0..digits).rev() {
-        let nibble = (value >> (shift * 4)) & 0xf;
-        out.push(char::from(b"0123456789abcdef"[nibble as usize]));
+        // Nibbles beyond the value's own are zero, which is the padding.
+        let nibble = value.checked_shr(shift * 4).unwrap_or(0) & 0xf;
+        let digit = if nibble < 10 {
+            b'0' + nibble as u8
+        } else {
+            b'a' - 10 + nibble as u8
+        };
+        out.push(char::from(digit));
     }
 }

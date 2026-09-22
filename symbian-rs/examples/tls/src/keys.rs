@@ -9,7 +9,7 @@ use alloc::string::String;
 use core::cell::{Cell, RefCell};
 use core::sync::atomic::{AtomicU32, Ordering};
 
-use symbian_std::test_report::{Report, detail};
+use symbian_std::test_report::{Evidence, Report, detail};
 use symbian_std::thread;
 use symbian_std::thread_local;
 
@@ -114,7 +114,10 @@ pub fn reentrancy(report: &mut Report) {
     report.check_detail(
         "an initialiser that asks for its own key is refused, not looped",
         value == 0,
-        detail!("the initialiser saw try_with succeed: {}", value == 1),
+        detail!(
+            "the initialiser saw try_with succeed: {}",
+            (value == 1).shown()
+        ),
     );
     report.check(
         "and the key works normally afterwards",
@@ -220,7 +223,7 @@ pub fn main_thread_teardown(report: &mut Report) {
     report.check_detail(
         "and it says which error",
         COUNTER.try_with(Cell::get).err().map(|e| e.reason()) == Some(-13),
-        detail!("{:?}", COUNTER.try_with(Cell::get).err()),
+        detail!("{}", COUNTER.try_with(Cell::get).err().shown()),
     );
     thread::drop_thread_locals();
     report.check(

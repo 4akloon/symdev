@@ -7,7 +7,7 @@
 
 use core::ffi::c_void;
 
-use symbian_std::test_report::{Report, detail};
+use symbian_std::test_report::{Evidence, Hex, Report, detail};
 use symbian_std::thread;
 use symbian_sys::tls::{
     UserSvr_DllFreeTls, UserSvr_DllSetTls, UserSvr_DllSetTlsWithUid, UserSvr_DllTls,
@@ -46,7 +46,7 @@ pub fn one_thread(report: &mut Report) {
     report.check_detail(
         "nothing is stored under an untouched handle",
         get(H3).is_null(),
-        detail!("{:#x}", get(H3) as usize),
+        detail!("{}", Hex(get(H3) as u32).shown()),
     );
 
     let rc = set(H1, marker(1));
@@ -54,14 +54,22 @@ pub fn one_thread(report: &mut Report) {
     report.check_detail(
         "and DllTls reads the same pointer back",
         get(H1) == marker(1),
-        detail!("{:#x} wanted {:#x}", get(H1) as usize, marker(1) as usize),
+        detail!(
+            "{} wanted {}",
+            Hex(get(H1) as u32).shown(),
+            Hex(marker(1) as u32).shown()
+        ),
     );
 
     set(H2, marker(2));
     report.check_detail(
         "a second handle does not overwrite the first",
         get(H1) == marker(1) && get(H2) == marker(2),
-        detail!("h1={:#x} h2={:#x}", get(H1) as usize, get(H2) as usize),
+        detail!(
+            "h1={} h2={}",
+            Hex(get(H1) as u32).shown(),
+            Hex(get(H2) as u32).shown()
+        ),
     );
 
     set(H1, marker(3));
@@ -73,7 +81,11 @@ pub fn one_thread(report: &mut Report) {
     report.check_detail(
         "DllFreeTls empties that handle and leaves the other",
         get(H1).is_null() && get(H2) == marker(2),
-        detail!("h1={:#x} h2={:#x}", get(H1) as usize, get(H2) as usize),
+        detail!(
+            "h1={} h2={}",
+            Hex(get(H1) as u32).shown(),
+            Hex(get(H2) as u32).shown()
+        ),
     );
     // SAFETY: as above.
     unsafe { UserSvr_DllFreeTls(H2) };
@@ -115,15 +127,15 @@ pub fn the_uid_overloads(report: &mut Report) {
     report.check_detail(
         "the uid overloads round-trip",
         rc == 0 && with_uid == marker(7),
-        detail!("rc={rc} value={:#x}", with_uid as usize),
+        detail!("rc={rc} value={}", Hex(with_uid as u32).shown()),
     );
     report.check_detail(
         "and the one-argument read of the same handle",
         true,
         detail!(
-            "{:#x} (marker is {:#x}; equal means the uid is ignored on read)",
-            get(H1) as usize,
-            marker(7) as usize
+            "{} (marker is {}; equal means the uid is ignored on read)",
+            Hex(get(H1) as u32).shown(),
+            Hex(marker(7) as u32).shown()
         ),
     );
 
@@ -134,9 +146,9 @@ pub fn the_uid_overloads(report: &mut Report) {
         "a one-argument set read with uid = handle",
         true,
         detail!(
-            "{:#x} (marker is {:#x})",
-            cross as usize,
-            marker(8) as usize
+            "{} (marker is {})",
+            Hex(cross as u32).shown(),
+            Hex(marker(8) as u32).shown()
         ),
     );
     // SAFETY: as above.
@@ -166,17 +178,24 @@ pub fn per_thread(report: &mut Report) {
     report.check_detail(
         "a new thread does not inherit the creator's slot",
         before == 0,
-        detail!("the worker read {before:#x} before storing anything"),
+        detail!(
+            "the worker read {} before storing anything",
+            Hex(before as u32).shown()
+        ),
     );
     report.check_detail(
         "the worker's own store is visible to itself",
         after == marker(12) as usize,
-        detail!("{after:#x}"),
+        detail!("{}", Hex(after as u32).shown()),
     );
     report.check_detail(
         "and it did not overwrite the creator's slot",
         get(H1) == marker(11),
-        detail!("{:#x} wanted {:#x}", get(H1) as usize, marker(11) as usize),
+        detail!(
+            "{} wanted {}",
+            Hex(get(H1) as u32).shown(),
+            Hex(marker(11) as u32).shown()
+        ),
     );
     // SAFETY: a euser static taking one scalar.
     unsafe { UserSvr_DllFreeTls(H1) };

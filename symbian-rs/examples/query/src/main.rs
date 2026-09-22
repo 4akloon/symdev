@@ -25,7 +25,7 @@ use alloc::string::String;
 use core::fmt::Write as _;
 
 use symbian_core::ErrorKind;
-use symbian_std::test_report::{Report, detail};
+use symbian_std::test_report::{Evidence, Report, detail};
 use symbian_std::ui::prelude::*;
 use symbian_std::ui::query;
 
@@ -155,7 +155,7 @@ impl Form {
         report.check_detail(
             "a query with no room for an answer is refused",
             matches!(query::text("", 0), Err(e) if e.kind() == ErrorKind::Argument),
-            detail!("{:?}", query::text("", 0)),
+            detail!("{}", query::text("", 0).shown()),
         );
         report.check_detail(
             "a query wanting more than the surface allows is refused",
@@ -163,16 +163,16 @@ impl Form {
                 query::text("", query::MAX_TEXT_LEN + 1),
                 Err(e) if e.kind() == ErrorKind::Argument
             ),
-            detail!("{:?}", query::text("", query::MAX_TEXT_LEN + 1)),
+            detail!("{}", query::text("", query::MAX_TEXT_LEN + 1).shown()),
         );
         let long: String = core::iter::repeat_n('x', query::MAX_TEXT_LEN + 1).collect();
         report.check_detail(
             "a prompt longer than the surface allows is refused",
             matches!(query::text(&long, 8), Err(e) if e.kind() == ErrorKind::Overflow),
-            detail!("{:?}", query::text(&long, 8)),
+            detail!("{}", query::text(&long, 8).shown()),
         );
         if let Some(name) = &self.name {
-            report.check_detail("a text query came back", true, detail!("{name:?}"));
+            report.check_detail("a text query came back", true, detail!("{}", name.shown()));
         }
         if let Some(age) = self.age {
             report.check_detail("a number query came back", true, detail!("{age}"));
