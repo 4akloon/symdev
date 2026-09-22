@@ -84,6 +84,30 @@ static void AppendLine(TDes8& aNotes, const TDesC8& aKey, const TDesC& aValue)
     aNotes.Append((TUint8)'\n');
     }
 
+/// Opens the language variant the loader picked and writes its three strings out.
+static void ReadTableL(RResourceFile& file, TDes8& aNotes)
+    {
+    // UNRESOLVED (docs/research/cpp-parity.md, "locale: C++ resource read"):
+    // `ConfirmSignatureL` is what teaches `RResourceFile` the NAME offset the `.rsg`
+    // ids carry, but on this file, inside EKA2L1, it panics BAFL 4 — with no
+    // argument, with 4 (`EEikResourceSignatureValue`), and with a small NAME alike.
+    // Without it `Offset()` stays 0 and every read leaves KErrNotFound, which the
+    // caller records as a failed case instead of killing the run.
+
+    HBufC* greeting = ReadStringL(file, R_GREETING);
+    CleanupStack::PushL(greeting);
+    HBufC* languageIs = ReadStringL(file, R_LANGUAGE_IS);
+    CleanupStack::PushL(languageIs);
+    HBufC* ok = ReadStringL(file, R_OK);
+    CleanupStack::PushL(ok);
+
+    AppendLine(aNotes, _L8("GREETING"), *greeting);
+    AppendLine(aNotes, _L8("LANGUAGE_IS"), *languageIs);
+    AppendLine(aNotes, _L8("OK"), *ok);
+
+    CleanupStack::PopAndDestroy(3);  // ok, languageIs, greeting
+    }
+
 static void RunL(CSymdevReport& aReport, RFs& aFs, TDes8& aNotes)
     {
     // 1. What the device is set to, as the device answers it.
@@ -121,29 +145,36 @@ static void RunL(CSymdevReport& aReport, RFs& aFs, TDes8& aNotes)
     aNotes.AppendFormat(_L8("checksum=%u checksum_local=%u\n"), sum, sum2);
 
     // 3. The strings themselves, out of the language variant the loader picked.
-    TFileName resource(KResource);
+    // The drive has to be supplied by hand. A path with no drive letter resolves
+    // against the session drive, which is not where the package installed the
+    // resources; the SDK idiom is to take the drive off the running binary.
+    TFileName resource;
+    resource.Copy(RProcess().FileName().Left(2));
+    resource.Append(KResource);
     BaflUtils::NearestLanguageFile(aFs, resource);
     aNotes.Append(_L8("resource_file="));
     AppendLine(aNotes, _L8(""), resource);
 
+    // Opening and reading the resource file leaves on every error, so it runs inside
+    // its own TRAP: a failure has to become a recorded case, not a dead process with
+    // no report. The Rust side's `fs`/`Result` chain needs no such bracket.
     RResourceFile file;
-    file.OpenL(aFs, resource);
-    CleanupClosePushL(file);
-    file.ConfirmSignatureL();
-
-    HBufC* greeting = ReadStringL(file, R_GREETING);
-    CleanupStack::PushL(greeting);
-    HBufC* languageIs = ReadStringL(file, R_LANGUAGE_IS);
-    CleanupStack::PushL(languageIs);
-    HBufC* ok = ReadStringL(file, R_OK);
-    CleanupStack::PushL(ok);
-
-    AppendLine(aNotes, _L8("GREETING"), *greeting);
-    AppendLine(aNotes, _L8("LANGUAGE_IS"), *languageIs);
-    AppendLine(aNotes, _L8("OK"), *ok);
-    aReport.Check(_L8("the table came through"), greeting->Length() > 0);
-
-    CleanupStack::PopAndDestroy(4);  // ok, languageIs, greeting, file
+    TRAPD(err, file.OpenL(aFs, resource));
+    aReport.Checked(_L8("the resource file opens"), err);
+    if (err == KErrNone)
+        {
+        // Diagnostics for the KErrNotFound below: what RResourceFile believes about
+        // the file symdev's rcomp wrote. None of these can panic.
+        aNotes.AppendFormat(_L8("rsc_offset=0x%x owns_greeting=%d uid3=0x%x\n"),
+                            file.Offset(), file.OwnsResourceId(R_GREETING),
+                            file.UidType()[2].iUid);
+        TBuf8<64> raw;
+        TRAPD(readErr, file.ReadL(raw, R_GREETING));
+        aNotes.AppendFormat(_L8("readl_greeting_err=%d len=%d\n"), readErr, raw.Length());
+        TRAP(err, ReadTableL(file, aNotes));
+        aReport.Checked(_L8("the table came through"), err);
+        }
+    file.Close();
 
     // 4. The fallback chain. There is no way to ask for a language the device is not
     // set to: `NearestLanguageFile` reads `User::Language()` itself, and rcomp has

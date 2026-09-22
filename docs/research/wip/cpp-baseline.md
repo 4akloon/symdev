@@ -51,3 +51,16 @@ Read the four Rust examples and the SDK `helloworldbasic` skeleton.
   then write docs/research/cpp-parity.md.
 - 2026-09-21 Probe commit made (Rust side instrumented in-place; to be reverted after the run,
   the C++ side stays behind `MACRO SYMDEV_CPP_PARITY_PROBE`, off by default).
+- 2026-09-22 History rewritten: filter-branch removed every cpp-parity/*/build path from
+  main..cpp-baseline and from refs/autosave/cpp-baseline; `git log main..HEAD --diff-filter=A
+  --name-only | grep -c /build/` = 0; .git 12648573 -> 8271431 bytes after gc; fsck clean.
+  refs/stash still holds 7 pre-rewrite commits (stash drop was refused by the permission
+  classifier) — the user must `git stash drop` + gc to purge the last copies.
+- 2026-09-22 C++ files runs 16/16 behavioural cases in EKA2L1. Probe: heap entry 1 cell/36 B,
+  end 7 cells/1324 B, 6 nanoticks. Rust files: entry 1/36, end 19 cells/1132 B, 9 nanoticks.
+  UserHal::TickPeriod = 15625 us.
+- 2026-09-22 Dead end: C++ locale cannot read its own resources inside EKA2L1.
+  Path had no drive (fixed: drive from RProcess().FileName()); then RResourceFile::
+  ConfirmSignatureL panics BAFL 4 (no-arg, arg 4, NAME CPLC and APLC alike); without it
+  Offset()=0, OwnsResourceId=0, ReadL(full id) leaves -1; AllocReadL(index) panics BAFL 4.
+  Left UNRESOLVED and recorded as a failed case. Heap C++ locale end 8 cells/1840 B, 29 ticks.
