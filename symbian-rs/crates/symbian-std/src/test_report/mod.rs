@@ -20,7 +20,7 @@
 //! A deliberately failing case must come out as a failure, and that is the property the
 //! harness is verified against — a harness that cannot fail is not a harness.
 //!
-//! On the `no_std` path none of it formats through `core::fmt` (experiment 102): a
+//! On the `no_std` path none of it formats through `core::fmt` (experiment 103): a
 //! detail is written by the fast [`crate::write!`] through [`detail!`], an error by its
 //! [`Evidence`], and the file by plain appends. An example that formats nothing else
 //! therefore carries no `core::fmt` at all, which is what lets its size be compared

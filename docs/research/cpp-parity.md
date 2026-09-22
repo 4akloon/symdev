@@ -243,7 +243,7 @@ failure. C++ additionally needs the 191-line report helper that Rust's SDK provi
    calls `TDes::Format`/`AppendFormat`/`Num` in euser (ROM) — zero image bytes. In `files`,
    `locale` and `ui` a large share is reached through `symbian_std::test_report`
    (`checked` → `{e:?}`, `check_detail(fmt::Arguments)`, `to_json` → `write!`).
-   *Since experiment 102 the harness links none of it:* `files` 9 376, `locale` 10 233,
+   *Since experiment 103 the harness links none of it:* `files` 9 376, `locale` 10 233,
    `ui` 11 653 bytes, with no `core::fmt` symbol left in any of the three.
 2. **Generic Avkon glue monomorphised per app**: `symbian_ui::vtbl::construct<App>` 2 212 B,
    `draw<App>` 1 360 B, `offer_key<App>` 184 B, `menu::item<App>` 160 B in `uidemo`, on top of a

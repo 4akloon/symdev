@@ -43,7 +43,7 @@ the noise described above.
 
 **The largest remaining gap was `core::fmt` (L8).** In `hello` it was 1 330 of the 2 523 bytes
 that were left. The macro it needed was decided and built in experiment 101: `hello` is now
-1 245 bytes with no `core::fmt` in it (see L8). Experiment 102 took it out of the test harness, and with it out of
+1 245 bytes with no `core::fmt` in it (see L8). Experiment 103 took it out of the test harness, and with it out of
 every example that reports (see L8).
 
 ## Every lever
@@ -158,7 +158,7 @@ else `core::write!`. `hello` **2 567 → 1 245** (C++ 802; the hand-written ceil
 `alloc` −128, but `async` +548, `locale` +230, `query` +161, `time` +880, because the test
 harness (`check_detail(fmt::Arguments)`, `checked`'s `{e:?}`, the JSON writer's `{:08x}`)
 keeps `core::fmt` in every example that reports, and is **all** of it in eight of them.
-*Harness (experiment 102):* `check_detail` now takes `detail!(…)` (the fast `write!` in a
+*Harness (experiment 103):* `check_detail` now takes `detail!(…)` (the fast `write!` in a
 closure), `checked` records an error through `test_report::Evidence` (`KErrNotFound (-1)`),
 and the JSON is plain appends. `core::fmt` is gone from every example that reports;
 `async` −1 848, `atomics` −1 794, `cleanup` −1 318, `files` −1 726, `locale` −1 812, `net`
@@ -215,7 +215,7 @@ counterpart (`RUNTIME_SYMBOL_VISIBILITY_OPTION=` is empty in `gcce.mk`).
 ### Not a lever: the `KErr*` name table
 
 About 1.2 kB of `.rodata` (`KErrNotSupported…`) sits in every example that calls
-`Report::checked`, which reaches it through `ErrorKind::name()` (since experiment 102 from
+`Report::checked`, which reaches it through `ErrorKind::name()` (since experiment 103 from
 `SymbianError`'s `Evidence`, before that from its `Debug`): the name is how a failed case
 identifies the error. That
 is the **test harness**. `hello` does not use `Report` and carries none of it, so a shipped
@@ -286,7 +286,7 @@ In those images `{:?}` is a separate cost from `Display`, and a larger one.
 any `debug_tuple`/`debug_struct`/`Option` shape, because it implements the `{:#?}`
 indentation. A plain integer `{}` added nothing, because `Report` already linked it. So
 L6's -19 427 is mostly this, plus the `KErr*` table. The cheap habit that follows: SDK
-examples and docs should write an error as `{}` of its code or name, not as `{:?}`. Since experiment 102 the
+examples and docs should write an error as `{}` of its code or name, not as `{:?}`. Since experiment 103 the
 examples show errors and outcomes through `test_report::Evidence` (`.shown()`), which
 writes `Debug`'s text without `core::fmt`.
 

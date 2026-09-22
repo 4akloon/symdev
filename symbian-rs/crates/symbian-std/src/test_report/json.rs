@@ -1,5 +1,5 @@
 //! The report as JSON, written by appends alone: the file must not be why an example
-//! links `core::fmt` (experiment 102). The shape is the module's; symdev's reader
+//! links `core::fmt` (experiment 103). The shape is the module's; symdev's reader
 //! (`crates/symdev-emulator/src/results.rs`) is the other half of it.
 use alloc::string::String;
 // What the fast `write!` falls back to for a piece not on its list; nothing here has one.
