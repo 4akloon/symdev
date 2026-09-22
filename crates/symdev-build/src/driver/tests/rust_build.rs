@@ -54,6 +54,7 @@ fn cargo_args_are_the_recorded_build_std_invocation() {
             "--target",
             &spec.display().to_string(),
             "-Zbuild-std=core,alloc",
+            "-Zbuild-std-features=optimize_for_size",
             "-Zjson-target-spec",
             "--target-dir",
             "build/cargo",
@@ -253,9 +254,10 @@ fn the_sdk_owns_the_shim_sources_and_compiles_them_with_the_cpp_argv() {
     assert_eq!(obj.extension().unwrap(), "o");
 
     // The same argv a C++ project's source gets, with the shim directory as the source
-    // directory and nothing of the user's project on the include path.
+    // directory and nothing of the user's project on the include path — plus symdev's own
+    // section flags in the `OPTION GCCE` slot, right after `-mapcs`.
     let got = b.shim_compile_args(&sources[0], &obj, None).unwrap();
-    let want = b
+    let mut want = b
         .gcce
         .compile_args(
             &b.sdk.shim_dir(),
@@ -264,6 +266,8 @@ fn the_sdk_owns_the_shim_sources_and_compiles_them_with_the_cpp_argv() {
             &obj,
         )
         .unwrap();
+    let at = want.iter().position(|a| a == "-mapcs").unwrap() + 1;
+    want.splice(at..at, s(&RustBuild::SHIM_SECTIONS));
     assert_eq!(got, want);
     assert!(got.contains(&"-include".to_string()));
     assert!(got.iter().any(|x| x.ends_with("gcce/gcce.h")));

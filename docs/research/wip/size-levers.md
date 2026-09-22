@@ -175,3 +175,38 @@ it (`-Zfmt-debug=none` moved it by 0 bytes). A shipped application does not pay 
 
 Measured at the baseline: `.data` is 0 everywhere except `async` (40 B), `.bss` is 0–72
 (`atomics` 72, `tls` 52, `async` 40, most 24, `hello` 0). Nothing to take.
+
+### Resumed 2026-09-22 after a user stop
+
+The uncommitted `symbian-rs/.cargo/config.toml` was the L9 experiment below, stopped
+before it produced a number; reverted, the committed state re-measured (identical to
+L4final byte for byte), then L9 re-run from clean. Harness now in
+`~/.cache/size-levers-agent/` (private env file, not the shared scratchpad).
+
+### L9 — `-Zdefault-visibility=hidden` (KEEP, scoped to the libcalls archive, tiny)
+
+Workspace-wide: exe -72, text -72 — exactly 24 B of text in `async`, `atomics`, `tls`,
+nothing else. `nm` diff on `atomics`: the one symbol gone is
+`<symbian_libcalls::lock::AtomicLock as Drop>::drop` (0x18): an out-of-line copy of a
+guard inlined into every `__atomic_*` entry point, kept only because the non-LTO
+libcalls rlib (16 codegen units) exports it globally and every global is a
+`--gc-sections` root in a `-shared` link. Applied only on the libcalls cargo line
+(`--config build.rustflags=["-Zdefault-visibility=hidden"]` in
+`LibcallArchive::cargo_args`); re-measured: the same -72, so the whole effect is there.
+
+### Does C++ already get it? (read off the SDK, not built)
+
+- L1 function/data sections: **no.** `epoc32/tools/compilation_config/gcce.mk` has
+  `REL_OPTIMISATION=-O2 -fno-unit-at-a-time`, no `-ffunction-sections`, and the
+  recorded link line has no `--gc-sections` (symdev adds it for Rust only,
+  `rust_link.rs`). A C++ app keeps every function of every object it links.
+- L2 builtins per member: **yes, by default.** The C++ link ends in `-lgcc`
+  (`driver/link.rs:104`), and `libgcc.a` has 1 758 members — `_udivsi3.o`,
+  `divdf3.o`, `adddf3.o` separate — so one division pulls one routine.
+- L4 `optimize_for_size`: **no counterpart needed.** C++ formats through euser's
+  `TDes::AppendNum`/`Format` in ROM; nothing of it is in the image. Same for L8:
+  `hello` hand-expanded to euser calls is what C++ does by default.
+- L9: **no counterpart** — `RUNTIME_SYMBOL_VISIBILITY_OPTION=` is empty in gcce.mk,
+  and C++ has no gc to feed anyway.
+- Profile: the SDK compiles C++ at `-O2`, not `-Os`; the Rust side is already at
+  `opt-level = "s"`.

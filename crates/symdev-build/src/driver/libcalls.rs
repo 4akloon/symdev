@@ -55,6 +55,13 @@ impl<'a> LibcallArchive<'a> {
             // The same `core` switch the application is built with, so the two
             // halves of one program agree on which `core` they saw.
             "-Zbuild-std-features=optimize_for_size".into(),
+            // Hidden by default, so a mangled function the archive still carries out of
+            // line — `AtomicLock`'s `Drop`, inlined into every entry point — is not a
+            // `--gc-sections` root of the `-shared` link. The `no_mangle` entry points
+            // stay `GLOBAL DEFAULT` regardless, which is what the application links to.
+            // Measured: 24 bytes off each of `atomics`, `async` and `tls`.
+            "--config".into(),
+            "build.rustflags=[\"-Zdefault-visibility=hidden\"]".into(),
             "-Zjson-target-spec".into(),
             "--target-dir".into(),
             "build/cargo".into(),
