@@ -64,3 +64,10 @@ Read the four Rust examples and the SDK `helloworldbasic` skeleton.
   ConfirmSignatureL panics BAFL 4 (no-arg, arg 4, NAME CPLC and APLC alike); without it
   Offset()=0, OwnsResourceId=0, ReadL(full id) leaves -1; AllocReadL(index) panics BAFL 4.
   Left UNRESOLVED and recorded as a failed case. Heap C++ locale end 8 cells/1840 B, 29 ticks.
+- 2026-09-22 Probe results: Rust locale entry 1/36, end 12 cells/1200 B, 21 ticks, 12/12 pass;
+  User::Language x100000 = 12 nanoticks on BOTH sides (identical syscall cost).
+  ui construct bracket: C++ entry 775 cells/61916 B -> end 778/62248 (+3/+332), 2 ticks;
+  Rust entry 776/62080 -> end 782/62416 (+6/+336), 2 ticks. View 240x245 both.
+  files repeated x3: C++ end 7 cells 1324/1292/1292 B, ticks 6/8/8; Rust 19 cells 1132 B x3,
+  ticks 9/8/9 — startup indistinguishable at 1 ms tick.
+- Next: revert Rust probe commit, MACRO off, rebuild, re-verify sizes, write cpp-parity.md.
