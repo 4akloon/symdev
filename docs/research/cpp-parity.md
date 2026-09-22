@@ -287,3 +287,24 @@ or run-time file I/O; DX on every axis counted.
   them (since purged from history; `docs/research/cpp-parity/.gitignore` now has `build/`).
 * The resource-read failure in the locale section, pending isolation between rcomp output and
   EKA2L1/ROM bafl.
+
+## Re-measured by the coordinator, on `main` at `50455de`
+
+The C++ side reproduced exactly from a clean build of each project
+(`rm -rf build && symdev build`): `hello` 802, `files` 6 058, `locale` 6 647, `ui` 7 317.
+
+The Rust numbers above were taken at `4c5fc5e`. Two slices landed since, and the table
+should be read with these beside it:
+
+| | C++ | Rust at `4c5fc5e` | Rust at `50455de` | why it moved |
+|---|---|---|---|---|
+| `hello` | 802 | 3 187 | **3 231** | +44: `CTrapCleanup` in the `no_std` entry (experiment 97) |
+| `files` | 6 058 | 10 552 | **12 171** | `read_dir` and its ten new cases (experiment 98) |
+| `locale` | 6 647 | 9 684 | **9 713** | +29: `CTrapCleanup` |
+| `ui` | 7 317 | 13 714 | **13 714** | GUI entry never went through the `no_std` start |
+
+**The `CTrapCleanup` pair, re-measured:** C++ `hello` with `MACRO
+SYMDEV_CPP_PARITY_CLEANUP` in its `.mmp` is **833** against 802 — **+31**, one new import
+(`_ZN12CTrapCleanup3NewEv`), no import for the `delete` because `~CTrapCleanup` is reached
+through the vtable. Rust pays +44, so **13 bytes more**, which is the hop into the
+16-byte `symrs_cleanup_destroy` shim that the virtual destructor forces.

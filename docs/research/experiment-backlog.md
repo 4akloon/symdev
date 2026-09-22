@@ -1825,8 +1825,11 @@ the emulator's `log-filter`.
 **C++ comparison.** This is a cost C++ pays too: a Symbian `E32Main` conventionally
 opens with `CTrapCleanup::New()` and ends with `delete cleanup`. The difference is that
 C++'s `delete` is an inlined vtable call while ours is a cross-language hop into the
-shim, so C++ should be up to ~16 bytes cheaper. **Measured C++ delta: TODO (not yet
-measured)** — requested from the C++ baseline work; do not quote a number until it is.
+shim, so C++ should be up to ~16 bytes cheaper. **Measured:** the C++ console baseline
+(`docs/research/cpp-parity/hello`) is 802 bytes without the pair and **833 with it
+(+31)**, one new import (`_ZN12CTrapCleanup3NewEv`) and none for the `delete`, which goes
+through the vtable. Rust's +44 is **13 bytes more** — the hop into the 16-byte shim.
+Parity within 13 bytes; the gap is the cost of a virtual destructor called from Rust.
 
 **Evidence.** `symbian-rs/examples/cleanup`, `symbian-rs/crates/symbian-sys/src/cleanup.rs`,
 `symbian-rs/crates/symbian-runtime/src/lib.rs`.
