@@ -19,6 +19,7 @@ Task: a `write!`-compatible macro in `symbian_std::prelude` that turns plain `{}
 - hello: 2567 -> 1245 (.text 2972 -> 884): no core::fmt symbol left, not even panic_fmt; E32Main is 3 push_str calls + one AppendNum with the room check folded (ceiling was 1193).
 - First cut grew every harness example (core::fmt stays because of Report::check_detail(format_args!) and {e:?}): alloc +273, async +733, locale +606, query +226, time +1035. Causes found by nm diff: core::str::from_utf8 572 B in Decimal::as_str (fixed with from_utf8_unchecked), 64-bit limb division 320 B used for every width (split Sink into put_u32/put_i64/put_u64), String::push_str inlined per piece (Generic methods #[inline(never)]).
 - After fixes (res-fast3): alloc 3876->3748, async 20422->20971, locale 8486->8670, query 19372->19532, time 13523->14406, hello 1245; others unchanged. Remaining growth = per-piece call (~24 B each vs one Arguments build) + put_u32 188 + prepend_u32 88 + 64-bit path (of_u64 312, put_i64 164) when core::fmt is linked anyway.
+- examples/fmt (uid 0xe00006a2) on the emulator: all 12 identity cases pass at 26 Buf16 capacities (0..=24, 64); the test can fail: dropping the lone '-' rule in Buf16's put_i64 gave 5 FAILs (e.g. 'negative numbers cut after the sign: 6 mismatches'). Ticks for 100 000 writes of "i={} neg={} s={}" (EKA2L1 1 ms NanoTicks): Buf16 core 65 / fast 55, String core 39 / fast 35.
 
 ## Decisions
 

@@ -38,6 +38,7 @@ members = [
     "examples/notes",
     "examples/query",
     "examples/panic",
+    "examples/fmt",
 ]
 
 [workspace.package]

@@ -70,6 +70,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fmtdemo"
+version = "0.1.0"
+dependencies = [
+ "symbian-core",
+ "symbian-std",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
