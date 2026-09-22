@@ -1,5 +1,5 @@
 //! `fs::OpenOptions`: `std`'s builder over the three `RFile` opening calls.
-use symbian_core::fs::{File as SymFile, FileMode, Seek as SymSeek, with_session};
+use symbian_core::fs::{File as SymFile, FileMode, Opening, Seek as SymSeek};
 
 use super::File;
 use crate::io::{Error, ErrorKind, Result};
@@ -94,42 +94,27 @@ impl OpenOptions {
     /// Opens `path` with these options, as `std::fs::OpenOptions::open`.
     pub fn open(&self, path: &str) -> Result<File> {
         let mode = self.mode()?;
-        let inner = with_session(|fs| self.open_inner(fs, path, mode))?;
-        let file = File::of(inner);
+        let mut file = File::of(self.open_inner(path, mode)?);
         if self.append {
-            let mut file = file;
             file.seek_to_end()?;
-            return Ok(file);
         }
         Ok(file)
     }
 
-    /// Which of the three `RFile` calls this combination is, and the fix-ups the ones
-    /// Symbian does not have directly need.
-    fn open_inner(
-        &self,
-        fs: &mut symbian_core::FileServer,
-        path: &str,
-        mode: FileMode,
-    ) -> symbian_core::Result<SymFile> {
-        if self.create_new {
-            return SymFile::create_new(fs, path, mode);
-        }
-        if self.create && self.truncate {
-            return SymFile::replace(fs, path, mode);
-        }
-        if self.create {
-            // Symbian has no create-if-missing-keep-contents: `Open` says whether the
-            // file is there, and `Create` makes it when it is not.
-            return match SymFile::open(fs, path, mode) {
-                Err(e) if e.kind() == symbian_core::ErrorKind::NotFound => {
-                    SymFile::create_new(fs, path, mode)
-                }
-                other => other,
-            };
-        }
-        let mut file = SymFile::open(fs, path, mode)?;
-        if self.truncate {
+    /// Which of the `RFile` calls this combination is, and the fix-up the one Symbian
+    /// does not have directly needs.
+    fn open_inner(&self, path: &str, mode: FileMode) -> symbian_core::Result<SymFile> {
+        let how = if self.create_new {
+            Opening::New
+        } else if self.create && self.truncate {
+            Opening::Replace
+        } else if self.create {
+            Opening::OpenOrCreate
+        } else {
+            Opening::Existing
+        };
+        let mut file = SymFile::opened(path, how, mode)?;
+        if how == Opening::Existing && self.truncate {
             file.set_size(0)?;
             file.seek(SymSeek::Start(0))?;
         }

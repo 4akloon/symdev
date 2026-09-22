@@ -11,15 +11,13 @@
 //! Both report failure the same way: a `SymbianError` holding the exact `TInt`. Both
 //! take a `&str`, not a descriptor: an application using this SDK should not have to
 //! name a Symbian type to open a path.
-use symbian_sys::efsrv::{
-    KFILE_SERVER_DEFAULT_MESSAGE_SLOTS, RFs, RFs_Att, RFs_Connect, RFs_Delete, RFs_Entry,
-    RFs_MkDirAll, RFs_Rename,
-};
+use symbian_sys::efsrv::{KFILE_SERVER_DEFAULT_MESSAGE_SLOTS, RFs, RFs_Att, RFs_Connect};
 use symbian_sys::euser::{RHandleBase, RHandleBase_Close};
 use symbian_sys::shim::symrs_bafl_ensure_path_exists;
 
 use super::entry::Entry;
 use super::path_of;
+use super::request::Request;
 use crate::des::DesC16;
 use crate::error::{Result, check};
 
@@ -59,11 +57,9 @@ impl FileServer {
     ///
     /// **No shim.** The call cannot leave, so Rust makes it itself.
     pub fn make_dir_all(&mut self, path: &str) -> Result<()> {
-        let path = path_of(path)?;
-        // SAFETY: `this` in argument 0, the descriptor borrowed for the call and only
-        // read. Non-leaving, so no C++ exception can cross this frame.
-        let code = unsafe { RFs_MkDirAll(&mut self.fs, path.as_tdesc16()) };
-        check(code).map(|_| ())
+        // SAFETY: the session is `self`, borrowed mutably for the call; the request
+        // carries no pointer. Non-leaving, so no C++ exception can cross this frame.
+        unsafe { Request::MakeDirAll.on(&mut self.fs, path) }.map(|_| ())
     }
 
     /// Creates every missing directory of `path`, treating one that is already there as
@@ -86,11 +82,8 @@ impl FileServer {
     /// `KErrInUse` if it is open and `KErrAccessDenied` for a directory: the file
     /// server has no unlink-while-open.
     pub fn delete(&mut self, path: &str) -> Result<()> {
-        let path = path_of(path)?;
-        // SAFETY: `this` in argument 0, the descriptor borrowed for the call and only
-        // read. Non-leaving.
-        let code = unsafe { RFs_Delete(&mut self.fs, path.as_tdesc16()) };
-        check(code).map(|_| ())
+        // SAFETY: the session is `self`, borrowed mutably; the request carries no pointer.
+        unsafe { Request::Delete.on(&mut self.fs, path) }.map(|_| ())
     }
 
     /// Renames a file or directory (`RFs::Rename`).
@@ -98,12 +91,8 @@ impl FileServer {
     /// `KErrAlreadyExists` if `to` is taken — Symbian does not replace silently the way
     /// POSIX `rename` does.
     pub fn rename(&mut self, from: &str, to: &str) -> Result<()> {
-        let from = path_of(from)?;
-        let to = path_of(to)?;
-        // SAFETY: `this` in argument 0 and two descriptors borrowed for the call, both
-        // only read. Non-leaving.
-        let code = unsafe { RFs_Rename(&mut self.fs, from.as_tdesc16(), to.as_tdesc16()) };
-        check(code).map(|_| ())
+        // SAFETY: the session is `self`, borrowed mutably; `to` is a `&str`, not a pointer.
+        unsafe { Request::Rename(to).on(&mut self.fs, from) }.map(|_| ())
     }
 
     /// The `KEntryAtt*` bits of an existing entry (`RFs::Att`).
@@ -119,14 +108,13 @@ impl FileServer {
 
     /// Everything the file server knows about one entry (`RFs::Entry`).
     pub fn entry(&self, path: &str) -> Result<Entry> {
-        let path = path_of(path)?;
         let mut entry = Entry::new();
-        // SAFETY: a `const` member; the descriptor is borrowed and only read, and the
-        // `TEntry` is a real one, built by euser's own exported constructor in storage
-        // of the measured size and alignment and borrowed mutably for the call.
-        // Non-leaving.
-        let code = unsafe { RFs_Entry(&self.fs, path.as_tdesc16(), entry.as_tentry()) };
-        check(code)?;
+        // SAFETY: `RFs::Entry` is a `const` member, so the `*mut` is only ever read
+        // through; the `TEntry` is a real one, built by euser's own exported
+        // constructor in storage of the measured size and alignment, and borrowed
+        // mutably for the call. Non-leaving.
+        let fs = (&raw const self.fs).cast_mut();
+        unsafe { Request::Entry(entry.as_tentry()).on(fs, path) }?;
         Ok(entry)
     }
 }

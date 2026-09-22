@@ -40,15 +40,16 @@ use core::ptr;
 
 use symbian_sys::des::{KMASK_DES_LENGTH_16, TDesC16, TDesC16_Compare, TDesC16_Ptr};
 use symbian_sys::efsrv::{
-    CDir, CDir_At, CDir_Count, ESORT_NONE, KENTRY_ATT_DIR, KENTRY_ATT_MATCH_MASK,
-    KENTRY_ATT_VOLUME, RFs_GetDir, TENTRY_OFFSET_ATT, TENTRY_OFFSET_NAME, TENTRY_OFFSET_SIZE,
-    TEntry,
+    CDir, CDir_At, CDir_Count, KENTRY_ATT_DIR, KENTRY_ATT_VOLUME, TENTRY_OFFSET_ATT,
+    TENTRY_OFFSET_NAME, TENTRY_OFFSET_SIZE, TEntry,
 };
 use symbian_sys::shim::symrs_f32_dir_delete;
 
-use super::{FileServer, MAX_FILE_NAME, path_of};
+use super::MAX_FILE_NAME;
+use super::request::Request;
+use super::session::request;
 use crate::des::{Buf16, DesC16};
-use crate::error::{Result, check};
+use crate::error::Result;
 
 /// A directory's entries, read in one `RFs::GetDir` call and freed on drop.
 pub struct Dir {
@@ -57,34 +58,21 @@ pub struct Dir {
 }
 
 impl Dir {
-    /// Reads every entry of the directory `path` names.
+    /// Reads every entry of the directory `path` names, on the process's session.
     ///
     /// `f32file.h` says the path of a directory to search "should always end with a
     /// backslash character. When trailing backslash is not present then it is
     /// considered as file", so one is added when missing, followed by the `*` wildcard
     /// that matches every name. The attribute mask is `KEntryAttMatchMask`, which also
     /// matches directories, hidden and system entries — `KEntryAttNormal` would not.
-    pub fn read(fs: &mut FileServer, path: &str) -> Result<Self> {
-        let mut pattern = path_of(path)?;
-        if !path.ends_with('\\') {
-            pattern.push('\\')?;
-        }
-        pattern.push('*')?;
+    /// Both are [`Request::GetDir`]'s.
+    pub fn read(path: &str) -> Result<Self> {
         let mut dir: *mut CDir = ptr::null_mut();
-        // SAFETY: a non-leaving `const` member (efsrv traps its private `GetDirL`
-        // itself) taking `this` as argument 0, a descriptor it only reads, two
-        // scalars, and `&mut dir` as the `CDir*&` it writes the answer into. It uses
-        // the cleanup stack inside that trap, which is why every Rust entry point
-        // installs one (`symbian_sys::cleanup`, experiment 97).
-        check(unsafe {
-            RFs_GetDir(
-                fs.as_rfs(),
-                pattern.as_tdesc16(),
-                KENTRY_ATT_MATCH_MASK,
-                ESORT_NONE,
-                &mut dir,
-            )
-        })?;
+        // SAFETY: `&mut dir` is the `CDir*&` `RFs::GetDir` writes the answer into, live
+        // across the call. `GetDir` is non-leaving (efsrv traps its private `GetDirL`
+        // itself) and uses the cleanup stack inside that trap, which is why every Rust
+        // entry point installs one (`symbian_sys::cleanup`, experiment 97).
+        unsafe { request(path, Request::GetDir(&mut dir)) }?;
         // TODO: success with a null `CDir` (not observed). Refused rather than
         // treated as empty, because an empty directory is a `CDir` with no entries.
         if dir.is_null() {

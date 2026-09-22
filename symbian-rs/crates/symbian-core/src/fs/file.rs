@@ -5,12 +5,14 @@
 //! `RFile::Close` also commits what the file server still holds for this handle.
 use symbian_sys::efsrv::{
     EFILE_READ, EFILE_SHARE_ANY, EFILE_WRITE, ESEEK_CURRENT, ESEEK_END, ESEEK_START, RFile,
-    RFile_Close, RFile_Create, RFile_Flush, RFile_Open, RFile_Read, RFile_ReadAt, RFile_Replace,
-    RFile_Seek, RFile_SetSize, RFile_Size, RFile_Write,
+    RFile_Close, RFile_Flush, RFile_Open, RFile_Read, RFile_ReadAt, RFile_Seek, RFile_SetSize,
+    RFile_Size, RFile_Write,
 };
 
+use super::request::{Opening, Request};
 use super::server::FileServer;
-use super::{MAX_FILE_NAME, path_of};
+use super::session::request;
+use super::MAX_FILE_NAME;
 use crate::des::{Buf16, DesC16};
 use crate::des8::{DesC8, Ptr8, PtrC8};
 use crate::error::{Result, check};
@@ -81,53 +83,33 @@ impl File {
         }
     }
 
-    /// Opens an existing file (`RFile::Open`). `KErrNotFound` if it is not there.
-    pub fn open(fs: &mut FileServer, path: &str, mode: FileMode) -> Result<Self> {
-        Self::opened_by(fs, &path_of(path)?, mode, RFile_Open)
+    /// Opens `path` on the process's session with the `RFile` call `how` names:
+    /// `KErrNotFound` for [`Opening::Existing`] when the file is not there,
+    /// `KErrAlreadyExists` for [`Opening::New`] when it is. [`Opening::Replace`] needs
+    /// the directory to exist already.
+    pub fn opened(path: &str, how: Opening, mode: FileMode) -> Result<Self> {
+        let mut file = Self::closed();
+        // SAFETY: `file.file` is a closed `RFile` that lives across the call and is
+        // written only by it.
+        unsafe { request(path, Request::Open(&mut file.file, mode.bits(), how)) }?;
+        Ok(file)
     }
 
-    /// [`File::open`] for a path already in a descriptor, as a Symbian call handed it
-    /// back — `BaflUtils::NearestLanguageFile` rewrites a `TFileName` in place.
+    /// Opens a file whose path is already in a descriptor, as a Symbian call handed it
+    /// back — `BaflUtils::NearestLanguageFile` rewrites a `TFileName` in place
+    /// (`RFile::Open`).
     pub(crate) fn open_des(
         fs: &mut FileServer,
         path: &Buf16<MAX_FILE_NAME>,
         mode: FileMode,
     ) -> Result<Self> {
-        Self::opened_by(fs, path, mode, RFile_Open)
-    }
-
-    /// Creates a new file (`RFile::Create`). `KErrAlreadyExists` if one is already
-    /// there, which is what makes it the honest `create_new`.
-    pub fn create_new(fs: &mut FileServer, path: &str, mode: FileMode) -> Result<Self> {
-        Self::opened_by(fs, &path_of(path)?, mode, RFile_Create)
-    }
-
-    /// Creates the file, or truncates an existing one to zero (`RFile::Replace`). The
-    /// directory has to exist already.
-    pub fn replace(fs: &mut FileServer, path: &str, mode: FileMode) -> Result<Self> {
-        Self::opened_by(fs, &path_of(path)?, mode, RFile_Replace)
-    }
-
-    /// The three opening calls differ only in the symbol: same arguments, same result,
-    /// all three non-leaving.
-    fn opened_by(
-        fs: &mut FileServer,
-        path: &Buf16<MAX_FILE_NAME>,
-        mode: FileMode,
-        open: unsafe extern "C" fn(
-            *mut RFile,
-            *mut symbian_sys::efsrv::RFs,
-            *const symbian_sys::des::TDesC16,
-            u32,
-        ) -> i32,
-    ) -> Result<Self> {
         let mut file = Self::closed();
         // SAFETY: `this` in argument 0 per the observed member ABI, then the session
         // (borrowed mutably for the call, as `RFs&` is), the path descriptor (borrowed
-        // and only read) and the mode. All three calls are non-leaving and report every
-        // failure as the returned `TInt`; on failure the handle is left as it was, and
-        // `Drop` is safe on a zero handle either way.
-        let code = unsafe { open(&mut file.file, fs.as_rfs(), path.as_tdesc16(), mode.bits()) };
+        // and only read) and the mode. Non-leaving, every failure is the returned
+        // `TInt`, and `Drop` is safe on a handle that stayed zero.
+        let code =
+            unsafe { RFile_Open(&mut file.file, fs.as_rfs(), path.as_tdesc16(), mode.bits()) };
         check(code)?;
         Ok(file)
     }

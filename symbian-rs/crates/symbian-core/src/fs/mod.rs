@@ -33,14 +33,16 @@
 mod dir;
 mod entry;
 mod file;
+mod request;
 mod server;
 mod session;
 
 pub use dir::{Dir, DirEntry, Iter, Name};
 pub use entry::Entry;
 pub use file::{File, FileMode, Seek};
+pub use request::Opening;
 pub use server::FileServer;
-pub use session::with_session;
+pub use session::{ProcessSession, with_session};
 
 use crate::des::Buf16;
 use crate::error::Result;

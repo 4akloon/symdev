@@ -4,6 +4,10 @@ use symbian_sys::efsrv::{
     TEntryStorage,
 };
 
+use super::request::Request;
+use super::session::request;
+use crate::error::Result;
+
 /// One directory entry: the attribute bits and the size.
 ///
 /// The underlying `TEntry` also carries the modification time and the UID type. Neither
@@ -26,6 +30,16 @@ impl Entry {
         // `TBufC` inside the object — so nothing is allocated and nothing must be freed.
         unsafe { TEntry_ctor(storage.as_entry()) };
         Self { storage }
+    }
+
+    /// What the file server knows about the entry `path` names (`RFs::Entry`), asked on
+    /// the process's session.
+    pub fn of(path: &str) -> Result<Self> {
+        let mut entry = Self::new();
+        // SAFETY: the `TEntry` was built by its constructor just above and is borrowed
+        // mutably for the call, which fills it and keeps nothing.
+        unsafe { request(path, Request::Entry(entry.as_tentry())) }?;
+        Ok(entry)
     }
 
     /// The `TEntry&` `RFs::Entry` fills.

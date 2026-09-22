@@ -56,7 +56,7 @@ pub type ReadDir = symbian_core::fs::Dir;
 use alloc::string::String;
 use alloc::vec::Vec;
 use symbian_core::ErrorKind as SymKind;
-use symbian_core::fs::with_session;
+use symbian_core::fs::{Entry, ProcessSession};
 
 use crate::io::{Read, Result, Write};
 
@@ -72,18 +72,17 @@ pub fn create_dir_all(path: &str) -> Result<()> {
     if !with_separator.ends_with('\\') {
         with_separator.push('\\');
     }
-    with_session(|fs| match fs.make_dir_all(&with_separator) {
+    match ProcessSession::make_dir_all(&with_separator) {
         Err(e) if e.kind() == SymKind::AlreadyExists => Ok(()),
-        other => other,
-    })?;
-    Ok(())
+        other => Ok(other?),
+    }
 }
 
 /// Reads a directory, as `std::fs::read_dir` — in one `RFs::GetDir` call, with no
 /// allocation per entry. Iterate it by reference: `for entry in &fs::read_dir(path)?`.
 /// See [the module documentation](self) for why it differs from `std` there.
 pub fn read_dir(path: &str) -> Result<ReadDir> {
-    Ok(with_session(|fs| symbian_core::fs::Dir::read(fs, path))?)
+    Ok(ReadDir::read(path)?)
 }
 
 /// Removes a file, as `std::fs::remove_file` (`RFs::Delete`).
@@ -91,8 +90,7 @@ pub fn read_dir(path: &str) -> Result<ReadDir> {
 /// Symbian is stricter than POSIX: a file another handle still has open is
 /// `KErrInUse`, not a deferred unlink.
 pub fn remove_file(path: &str) -> Result<()> {
-    with_session(|fs| fs.delete(path))?;
-    Ok(())
+    Ok(ProcessSession::delete(path)?)
 }
 
 /// Renames a file or directory, as `std::fs::rename` (`RFs::Rename`).
@@ -100,14 +98,12 @@ pub fn remove_file(path: &str) -> Result<()> {
 /// Symbian is stricter than POSIX here too: if `to` already exists this is
 /// `KErrAlreadyExists`, where `std::fs::rename` replaces the destination silently.
 pub fn rename(from: &str, to: &str) -> Result<()> {
-    with_session(|fs| fs.rename(from, to))?;
-    Ok(())
+    Ok(ProcessSession::rename(from, to)?)
 }
 
 /// What the file server knows about one entry, as `std::fs::metadata` (`RFs::Entry`).
 pub fn metadata(path: &str) -> Result<Metadata> {
-    let entry = with_session(|fs| fs.entry(path))?;
-    Ok(Metadata::of_entry(&entry))
+    Ok(Metadata::of_entry(&Entry::of(path)?))
 }
 
 /// Reads a whole file, as `std::fs::read`.

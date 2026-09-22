@@ -13,13 +13,14 @@
 //! still alive would be the bug, not the leak.
 use core::cell::{Cell, UnsafeCell};
 
+use super::request::Request;
 use super::server::FileServer;
 use crate::error::Result;
 use crate::{ErrorKind, SymbianError};
 
 /// The process's session, plus the flag that keeps [`with_session`] from handing out
 /// two `&mut` to it.
-struct ProcessSession {
+struct Slot {
     slot: UnsafeCell<Option<FileServer>>,
     borrowed: Cell<bool>,
 }
@@ -33,9 +34,9 @@ struct ProcessSession {
 // follow-up) this cell has to become a per-thread session or take the `RFastLock` the
 // atomics shim already owns. Until then the `Cell` below is the whole of the
 // synchronisation, and it is enough for one thread.
-unsafe impl Sync for ProcessSession {}
+unsafe impl Sync for Slot {}
 
-static SESSION: ProcessSession = ProcessSession {
+static SESSION: Slot = Slot {
     slot: UnsafeCell::new(None),
     borrowed: Cell::new(false),
 };
@@ -67,4 +68,50 @@ fn borrowed<T>(f: impl FnOnce(&mut FileServer) -> Result<T>) -> Result<T> {
         none => none.insert(FileServer::connect()?),
     };
     f(session)
+}
+
+/// Makes `request` on the process's session, connecting it on first use: the one
+/// non-generic body every path call of the `std` layer goes through (experiment 105).
+///
+/// `KErrInUse` inside [`with_session`], as `with_session` itself is: the session is
+/// lent out there as `&mut`, and a second user would alias it.
+///
+/// # Safety
+///
+/// Every pointer `request` carries is live and valid for what its call writes, as
+/// [`Request::on`] requires.
+#[inline(never)]
+pub(crate) unsafe fn request(path: &str, request: Request<'_>) -> Result<i32> {
+    // SAFETY: `with_session` lends the session exclusively for the closure, so nothing
+    // else uses it during the call; the pointers are the caller's promise.
+    with_session(|fs| unsafe { request.on(fs.as_rfs(), path) })
+}
+
+/// The process's session, for the calls that need nothing from it but the path: an
+/// application's `fs::remove_file` should not have to name a session.
+///
+/// Each one is a [`Request`] made by [`request`], so the path is encoded and the session
+/// found in one body however many of them an image calls. `KErrInUse` inside
+/// [`with_session`].
+pub struct ProcessSession;
+
+impl ProcessSession {
+    /// Creates every missing directory of `path` (`RFs::MkDirAll`); the last component is
+    /// taken as a file name and is not created. An existing path is `KErrAlreadyExists`.
+    pub fn make_dir_all(path: &str) -> Result<()> {
+        // SAFETY: the request carries no pointer.
+        unsafe { request(path, Request::MakeDirAll) }.map(|_| ())
+    }
+
+    /// Removes one file (`RFs::Delete`): `KErrInUse` while it is open.
+    pub fn delete(path: &str) -> Result<()> {
+        // SAFETY: the request carries no pointer.
+        unsafe { request(path, Request::Delete) }.map(|_| ())
+    }
+
+    /// Renames a file or directory (`RFs::Rename`): `KErrAlreadyExists` if `to` is taken.
+    pub fn rename(from: &str, to: &str) -> Result<()> {
+        // SAFETY: the request carries a `&str`, not a pointer.
+        unsafe { request(from, Request::Rename(to)) }.map(|_| ())
+    }
 }

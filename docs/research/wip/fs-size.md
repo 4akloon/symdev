@@ -28,6 +28,13 @@ Keep experiment 98's `read_dir` borrowing from the `CDir`. Stay out of `symbian-
   every image; every report-writing example links it through `test_report::finish` ->
   `fs::write` -> `File::create`.
 
+- Candidate 1a (one `Request` enum, one `match` over every call in `Request::on`): files
+  9341 -> 8698 (-643), but every example that only writes a report grows +230..+350
+  (async +269, atomics +354, cleanup +154, locale +337, shim +315, ...): the `match`
+  links every arm (Rename, Entry, GetDir, Open...) into every image that makes any request.
+  Enum dispatch defeats dead-code elimination. -> dead end as a shape; the call must be
+  passed in (fn pointer / `dyn FnMut`), so only the calls an image uses are linked.
+
 ## Decisions
 
 ## Dead ends
