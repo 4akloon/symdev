@@ -4,6 +4,7 @@ resolver = "3"
 exclude = ["symbian-rs"]
 members = [
     "crates/symdev-core",
+    "crates/symdev-locale",
     "crates/symdev-manifest",
     "crates/symdev-uidcrc",
     "crates/symdev-makekeys",

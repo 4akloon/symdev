@@ -1,0 +1,12 @@
+[package]
+name = "symdev-locale"
+version.workspace = true
+edition.workspace = true
+
+# No dependencies, on purpose: `symbian-macros` reads locales files with this crate at
+# compile time, and a proc-macro crate that pulls a dependency tree into every
+# application's host build is the cost the runtime-menu slice removed.
+[dependencies]
+
+[dev-dependencies]
+tempfile = "3"

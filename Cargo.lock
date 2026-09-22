@@ -943,6 +943,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "symdev-locale"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
 name = "symdev-makekeys"
 version = "0.1.0"
 dependencies = [
