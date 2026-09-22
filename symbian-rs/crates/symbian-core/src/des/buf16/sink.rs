@@ -23,7 +23,12 @@ impl<const N: usize> Sink for Buf16<N> {
         self.push(c).map_err(|_| fmt::Error)
     }
 
-    fn put_int(&mut self, value: i64) -> fmt::Result {
+    fn put_u32(&mut self, magnitude: u32, negative: bool) -> fmt::Result {
+        let value = i64::from(magnitude);
+        self.put_i64(if negative { -value } else { value })
+    }
+
+    fn put_i64(&mut self, value: i64) -> fmt::Result {
         if self.append_num(value).is_ok() {
             return Ok(());
         }
@@ -35,7 +40,7 @@ impl<const N: usize> Sink for Buf16<N> {
         Err(fmt::Error)
     }
 
-    fn put_large(&mut self, value: u64) -> fmt::Result {
-        self.push_str(Decimal::of(value).as_str()).map_err(|_| fmt::Error)
+    fn put_u64(&mut self, value: u64) -> fmt::Result {
+        self.push_str(Decimal::of_u64(value).as_str()).map_err(|_| fmt::Error)
     }
 }

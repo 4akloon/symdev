@@ -44,30 +44,61 @@ impl<T: Arg + ?Sized> Arg for &mut T {
     }
 }
 
-macro_rules! fits_i64 {
+macro_rules! narrow {
     ($($t:ty)*) => {$(
         impl Arg for $t {
             fn put<S: Sink + ?Sized>(&self, sink: &mut S) -> fmt::Result {
-                sink.put_int(*self as i64)
+                sink.put_u32(self.unsigned_abs() as u32, *self < 0)
             }
         }
     )*};
 }
 
-fits_i64!(u8 u16 u32 i8 i16 i32 i64 isize);
+narrow!(i8 i16 i32);
 
-/// Up to `i64::MAX` a `u64` is an `i64`; above it, [`Sink::put_large`].
-macro_rules! up_to_u64 {
+macro_rules! narrow_unsigned {
     ($($t:ty)*) => {$(
         impl Arg for $t {
             fn put<S: Sink + ?Sized>(&self, sink: &mut S) -> fmt::Result {
-                match i64::try_from(*self) {
-                    Ok(value) => sink.put_int(value),
-                    Err(_) => sink.put_large(*self as u64),
+                sink.put_u32(u32::from(*self), false)
+            }
+        }
+    )*};
+}
+
+narrow_unsigned!(u8 u16 u32);
+
+/// A 64-bit value whose magnitude fits a `u32` still takes [`Sink::put_u32`]; on the
+/// phone `isize` and `usize` always do, so their wide branches are dead code there.
+macro_rules! wide_signed {
+    ($($t:ty)*) => {$(
+        impl Arg for $t {
+            fn put<S: Sink + ?Sized>(&self, sink: &mut S) -> fmt::Result {
+                match u32::try_from(self.unsigned_abs()) {
+                    Ok(magnitude) => sink.put_u32(magnitude, *self < 0),
+                    Err(_) => sink.put_i64(*self as i64),
                 }
             }
         }
     )*};
 }
 
-up_to_u64!(u64 usize);
+wide_signed!(i64 isize);
+
+macro_rules! wide_unsigned {
+    ($($t:ty)*) => {$(
+        impl Arg for $t {
+            fn put<S: Sink + ?Sized>(&self, sink: &mut S) -> fmt::Result {
+                if let Ok(small) = u32::try_from(*self) {
+                    return sink.put_u32(small, false);
+                }
+                match i64::try_from(*self) {
+                    Ok(value) => sink.put_i64(value),
+                    Err(_) => sink.put_u64(*self as u64),
+                }
+            }
+        }
+    )*};
+}
+
+wide_unsigned!(u64 usize);

@@ -114,7 +114,12 @@ impl symbian_fmt::Sink for HostBuf {
         self.push(c.encode_utf8(&mut [0; 4]))
     }
 
-    fn put_int(&mut self, value: i64) -> fmt::Result {
+    fn put_u32(&mut self, magnitude: u32, negative: bool) -> fmt::Result {
+        let value = i64::from(magnitude);
+        self.put_i64(if negative { -value } else { value })
+    }
+
+    fn put_i64(&mut self, value: i64) -> fmt::Result {
         self.native_numbers += 1;
         if self.push(&value.to_string()).is_ok() {
             return Ok(());
@@ -125,7 +130,7 @@ impl symbian_fmt::Sink for HostBuf {
         Err(fmt::Error)
     }
 
-    fn put_large(&mut self, value: u64) -> fmt::Result {
+    fn put_u64(&mut self, value: u64) -> fmt::Result {
         self.native_numbers += 1;
         self.push(&value.to_string())
     }
