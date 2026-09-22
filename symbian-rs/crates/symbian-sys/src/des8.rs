@@ -32,15 +32,6 @@ pub struct TDesC8 {
     _private: [u8; 0],
 }
 
-/// The opaque `HBufC8` (`e32des8.h` line 345): a heap descriptor whose header and bytes
-/// are one cell on the thread's heap. Only ever seen behind a pointer, as the result of
-/// an allocating export such as `RResourceFile::AllocReadL`; an `HBufC8` is a `TDesC8`,
-/// so the pointer is also a valid `const TDesC8*`.
-#[repr(C)]
-pub struct HBufC8 {
-    _private: [u8; 0],
-}
-
 /// The opaque `TDes8` a filling export takes by `&`; only ever seen behind a pointer.
 #[repr(C)]
 pub struct TDes8 {

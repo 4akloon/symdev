@@ -89,10 +89,21 @@ fn every_resource_reads_back_as_the_value_the_writer_was_given() {
     let (s, bytes) = strings(&pairs);
     let file = Bytes(bytes);
     let layout = StringsLayout::read(&file, file.0.len() as u32).unwrap();
-    assert_eq!(layout.count(), pairs.len() as u32 + 1, "the signature and every key");
+    // The signature and every key, and not one more.
+    let count = pairs.len() as u32 + 1;
+    let past = count as u16 + 1;
+    let none = Unreadable::NoResource {
+        resource: past,
+        count,
+    };
+    assert_eq!(layout.span(&file, past), Err(none));
     for (key, value) in &pairs {
         let index = s.locales.index(key).unwrap();
-        assert_eq!(read(&file, index).unwrap(), value.as_bytes(), "{key} at {index}");
+        assert_eq!(
+            read(&file, index).unwrap(),
+            value.as_bytes(),
+            "{key} at {index}"
+        );
     }
     let signature = read(&file, 1).unwrap();
     assert_eq!(signature.len(), 8, "LONG signature, SRLINK self");
@@ -137,7 +148,10 @@ fn a_packed_resource_is_refused() {
                RESOURCE S { t = \"a\"; }\nRESOURCE U { t = \"Hello world, hello\"; }\n";
     let bytes = compile_rss(rss);
     assert_eq!(bytes[19], 0b10, "resource 2 is packed");
-    assert_eq!(read(&Bytes(bytes), 1), Err(Unreadable::Packed { resource: 2 }));
+    assert_eq!(
+        read(&Bytes(bytes), 1),
+        Err(Unreadable::Packed { resource: 2 })
+    );
 }
 
 #[test]
@@ -147,15 +161,24 @@ fn an_index_outside_the_file_is_refused() {
     let n = bytes.len();
     let at = size as u16 + 10;
     bytes[n - 2..].copy_from_slice(&at.to_le_bytes());
-    let index = Unreadable::Index { at: u32::from(at), size };
+    let index = Unreadable::Index {
+        at: u32::from(at),
+        size,
+    };
     assert_eq!(read(&Bytes(bytes.clone()), 2), Err(index));
     // An odd tail, and an index that would overlap the header, are the same error.
     let odd = size as u16 - 3;
     bytes[n - 2..].copy_from_slice(&odd.to_le_bytes());
-    let index = Unreadable::Index { at: u32::from(odd), size };
+    let index = Unreadable::Index {
+        at: u32::from(odd),
+        size,
+    };
     assert_eq!(read(&Bytes(bytes.clone()), 2), Err(index));
     bytes[n - 2..].copy_from_slice(&2u16.to_le_bytes());
-    assert_eq!(read(&Bytes(bytes), 2), Err(Unreadable::Index { at: 2, size }));
+    assert_eq!(
+        read(&Bytes(bytes), 2),
+        Err(Unreadable::Index { at: 2, size })
+    );
 }
 
 #[test]
@@ -165,15 +188,24 @@ fn an_entry_that_runs_backwards_or_past_the_index_is_refused() {
     let (_, bytes) = strings(&[("a".into(), "bc".into()), ("d".into(), "e".into())]);
     let n = bytes.len();
     let index_at = usize::from(u16::from_le_bytes([bytes[n - 2], bytes[n - 1]]));
-    let entry = |i: usize| u16::from_le_bytes([bytes[index_at + 2 * i], bytes[index_at + 2 * i + 1]]);
+    let entry =
+        |i: usize| u16::from_le_bytes([bytes[index_at + 2 * i], bytes[index_at + 2 * i + 1]]);
     let (start, end) = (entry(1), entry(2));
     let mut backwards = bytes.clone();
     backwards[index_at + 2..index_at + 4].copy_from_slice(&(end + 1).to_le_bytes());
-    let found = Unreadable::Entry { resource: 2, start: u32::from(end) + 1, end: u32::from(end) };
+    let found = Unreadable::Entry {
+        resource: 2,
+        start: u32::from(end) + 1,
+        end: u32::from(end),
+    };
     assert_eq!(read(&Bytes(backwards), 2), Err(found));
     let mut past = bytes.clone();
     past[index_at + 4..index_at + 6].copy_from_slice(&(index_at as u16 + 1).to_le_bytes());
-    let found = Unreadable::Entry { resource: 2, start: u32::from(start), end: index_at as u32 + 1 };
+    let found = Unreadable::Entry {
+        resource: 2,
+        start: u32::from(start),
+        end: index_at as u32 + 1,
+    };
     assert_eq!(read(&Bytes(past), 2), Err(found));
 }
 

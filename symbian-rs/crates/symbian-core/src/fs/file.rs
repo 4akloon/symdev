@@ -5,13 +5,13 @@
 //! `RFile::Close` also commits what the file server still holds for this handle.
 use symbian_sys::efsrv::{
     EFILE_READ, EFILE_SHARE_ANY, EFILE_WRITE, ESEEK_CURRENT, ESEEK_END, ESEEK_START, RFile,
-    RFile_Close, RFile_Create, RFile_Flush, RFile_Open, RFile_Read, RFile_Replace, RFile_Seek,
-    RFile_SetSize, RFile_Size, RFile_Write,
+    RFile_Close, RFile_Create, RFile_Flush, RFile_Open, RFile_Read, RFile_ReadAt, RFile_Replace,
+    RFile_Seek, RFile_SetSize, RFile_Size, RFile_Write,
 };
 
-use super::path_of;
 use super::server::FileServer;
-use crate::des::DesC16;
+use super::{MAX_FILE_NAME, path_of};
+use crate::des::{Buf16, DesC16};
 use crate::des8::{DesC8, Ptr8, PtrC8};
 use crate::error::{Result, check};
 use crate::{ErrorKind, SymbianError};
@@ -83,26 +83,36 @@ impl File {
 
     /// Opens an existing file (`RFile::Open`). `KErrNotFound` if it is not there.
     pub fn open(fs: &mut FileServer, path: &str, mode: FileMode) -> Result<Self> {
+        Self::opened_by(fs, &path_of(path)?, mode, RFile_Open)
+    }
+
+    /// [`File::open`] for a path already in a descriptor, as a Symbian call handed it
+    /// back — `BaflUtils::NearestLanguageFile` rewrites a `TFileName` in place.
+    pub(crate) fn open_des(
+        fs: &mut FileServer,
+        path: &Buf16<MAX_FILE_NAME>,
+        mode: FileMode,
+    ) -> Result<Self> {
         Self::opened_by(fs, path, mode, RFile_Open)
     }
 
     /// Creates a new file (`RFile::Create`). `KErrAlreadyExists` if one is already
     /// there, which is what makes it the honest `create_new`.
     pub fn create_new(fs: &mut FileServer, path: &str, mode: FileMode) -> Result<Self> {
-        Self::opened_by(fs, path, mode, RFile_Create)
+        Self::opened_by(fs, &path_of(path)?, mode, RFile_Create)
     }
 
     /// Creates the file, or truncates an existing one to zero (`RFile::Replace`). The
     /// directory has to exist already.
     pub fn replace(fs: &mut FileServer, path: &str, mode: FileMode) -> Result<Self> {
-        Self::opened_by(fs, path, mode, RFile_Replace)
+        Self::opened_by(fs, &path_of(path)?, mode, RFile_Replace)
     }
 
     /// The three opening calls differ only in the symbol: same arguments, same result,
     /// all three non-leaving.
     fn opened_by(
         fs: &mut FileServer,
-        path: &str,
+        path: &Buf16<MAX_FILE_NAME>,
         mode: FileMode,
         open: unsafe extern "C" fn(
             *mut RFile,
@@ -111,7 +121,6 @@ impl File {
             u32,
         ) -> i32,
     ) -> Result<Self> {
-        let path = path_of(path)?;
         let mut file = Self::closed();
         // SAFETY: `this` in argument 0 per the observed member ABI, then the session
         // (borrowed mutably for the call, as `RFs&` is), the path descriptor (borrowed
@@ -135,6 +144,19 @@ impl File {
         // every byte the server writes is inside the slice, which stays borrowed
         // mutably for the call. Non-leaving.
         let code = unsafe { RFile_Read(&self.file, des.as_tdes8()) };
+        check(code)?;
+        Ok(des.len())
+    }
+
+    /// Reads from byte `at` into `buf`, without moving the current position, and returns
+    /// how many bytes arrived (`RFile::Read(TInt aPos, TDes8&)`). Fewer than asked for
+    /// means the file ended; that is not an error.
+    pub fn read_at(&self, at: u32, buf: &mut [u8]) -> Result<usize> {
+        let at = i32::try_from(at).map_err(|_| SymbianError::of(ErrorKind::TooBig))?;
+        let mut des = Ptr8::new(buf)?;
+        // SAFETY: as `read`, with the position as a scalar argument between `this` and
+        // the descriptor. Non-leaving.
+        let code = unsafe { RFile_ReadAt(&self.file, at, des.as_tdes8()) };
         check(code)?;
         Ok(des.len())
     }

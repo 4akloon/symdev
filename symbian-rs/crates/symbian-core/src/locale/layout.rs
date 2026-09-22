@@ -129,11 +129,6 @@ impl StringsLayout {
         Ok(())
     }
 
-    /// How many resources the file has.
-    pub fn count(&self) -> u32 {
-        self.count
-    }
-
     /// Where resource `resource` (1-based, as resource ids count) is: one read of its
     /// two index entries.
     pub fn span<R: ReadAt>(&self, file: &R, resource: u16) -> Result<Span, R::Error> {

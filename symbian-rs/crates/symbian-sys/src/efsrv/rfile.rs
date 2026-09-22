@@ -89,6 +89,12 @@ unsafe extern "C" {
     #[link_name = "_ZNK5RFile4ReadER5TDes8"]
     pub fn RFile_Read(this: *const RFile, des: *mut TDes8) -> i32;
 
+    /// `00000408 T _ZNK5RFile4ReadEiR5TDes8` — `RFile::Read(TInt aPos, TDes8& aDes)
+    /// const`: reads from byte `aPos` up to the descriptor's `iMaxLength` and sets its
+    /// length; a shorter result is end of file, as for `Read(TDes8&)`.
+    #[link_name = "_ZNK5RFile4ReadEiR5TDes8"]
+    pub fn RFile_ReadAt(this: *const RFile, pos: i32, des: *mut TDes8) -> i32;
+
     /// `00000180 T _ZN5RFile5WriteERK6TDesC8` — `RFile::Write(const TDesC8& aDes)`:
     /// writes the whole descriptor at the current position and advances it.
     #[link_name = "_ZN5RFile5WriteERK6TDesC8"]

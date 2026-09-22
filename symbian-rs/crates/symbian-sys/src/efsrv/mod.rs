@@ -24,8 +24,8 @@ pub use entry::{
 pub use rfile::{
     EFILE_READ, EFILE_SHARE_ANY, EFILE_SHARE_EXCLUSIVE, EFILE_SHARE_READERS_ONLY,
     EFILE_SHARE_READERS_OR_WRITERS, EFILE_WRITE, ESEEK_CURRENT, ESEEK_END, ESEEK_START, RFile,
-    RFile_Close, RFile_Create, RFile_Flush, RFile_Open, RFile_Read, RFile_Replace, RFile_Seek,
-    RFile_SetSize, RFile_Size, RFile_Write,
+    RFile_Close, RFile_Create, RFile_Flush, RFile_Open, RFile_Read, RFile_ReadAt, RFile_Replace,
+    RFile_Seek, RFile_SetSize, RFile_Size, RFile_Write,
 };
 pub use rfs::{
     KFILE_SERVER_DEFAULT_MESSAGE_SLOTS, RFs, RFs_Att, RFs_Connect, RFs_Delete, RFs_Entry,
