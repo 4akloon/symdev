@@ -19,7 +19,8 @@ pub struct RawRect {
     pub h: i32,
 }
 
-/// `TKeyEvent`, which `w32std.h` line 974 declares as exactly these four words.
+/// `TKeyEvent`, which `w32std.h` line 974 declares as exactly these four words; the
+/// shim passes the framework's own by pointer.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RawKeyEvent {

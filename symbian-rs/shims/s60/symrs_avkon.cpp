@@ -27,6 +27,9 @@
 
 const TUid KSymRsAppUid = { static_cast<TInt32>(SYMRS_UID3) };
 
+// The Rust side reads a TKeyEvent as four words (abi.rs `RawKeyEvent`).
+__ASSERT_COMPILE(sizeof(TKeyEvent) == 4 * sizeof(TInt));
+
 // --------------------------------------------------------------------------
 // The "down" functions: what Rust may ask of the framework.
 // --------------------------------------------------------------------------
@@ -167,14 +170,9 @@ public:
 	// CCoeAppUi; this is the framework's own entry and stays where CCoeControl puts it.
 	TKeyResponse OfferKeyEventL(const TKeyEvent& aKeyEvent, TEventCode aType)
 		{
-		SymRsKeyEvent event;
-		event.iCode = aKeyEvent.iCode;
-		event.iScanCode = aKeyEvent.iScanCode;
-		event.iModifiers = aKeyEvent.iModifiers;
-		event.iRepeats = aKeyEvent.iRepeats;
 		// No error channel on purpose (spec section 4.3): a key handler that fails has
 		// nowhere to report it, so the Rust side returns only consumed / not consumed.
-		const TInt consumed = symrs_app_offer_key(iApp, &event, static_cast<TInt>(aType));
+		const TInt consumed = symrs_app_offer_key(iApp, &aKeyEvent, static_cast<TInt>(aType));
 		return consumed ? EKeyWasConsumed : EKeyWasNotConsumed;
 		}
 private:

@@ -33,8 +33,7 @@
 
 extern "C" {
 
-// One-for-one with TRect (as four TInts, not two TPoints) and with TKeyEvent, which
-// w32std.h line 974 declares as exactly these four words.
+// One-for-one with TRect, as four TInts rather than two TPoints.
 typedef struct SymRsRect
 	{
 	TInt x;
@@ -43,13 +42,11 @@ typedef struct SymRsRect
 	TInt h;
 	} SymRsRect;
 
-typedef struct SymRsKeyEvent
-	{
-	TUint iCode;
-	TInt iScanCode;
-	TUint iModifiers;
-	TInt iRepeats;
-	} SymRsKeyEvent;
+// A key crosses as the framework's own TKeyEvent, by pointer: w32std.h line 974
+// declares it as exactly four words (iCode, iScanCode, iModifiers, iRepeats), which is
+// the layout crates/symbian-ui/src/abi.rs mirrors. Passing it through rather than
+// copying it into a struct of our own is experiment 104.
+struct TKeyEvent;
 
 // "Down": what Rust may ask of the framework, defined in symrs_avkon.cpp. `aGc` is the
 // CWindowGc the framework handed Draw and is valid only for that call; `aView` and
@@ -81,7 +78,7 @@ void* symrs_app_create(void);
 void symrs_app_destroy(void* aApp);
 TInt symrs_app_construct(void* aApp, void* aView, void* aAppUi);
 void symrs_app_draw(void* aApp, void* aGc, SymRsRect aArea);
-TInt symrs_app_offer_key(void* aApp, const SymRsKeyEvent* aEvent, TInt aType);
+TInt symrs_app_offer_key(void* aApp, const TKeyEvent* aEvent, TInt aType);
 TInt symrs_app_command(void* aApp, TInt aCommand);
 void symrs_app_size_changed(void* aApp, SymRsRect aArea);
 // DynInitMenuPaneL: the Options menu is about to be shown, so fill it. `aPane` is the

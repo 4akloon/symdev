@@ -124,8 +124,9 @@ pub unsafe fn offer_key<A: App>(app: *mut c_void, event: *const RawKeyEvent, kin
     if event.is_null() {
         return KeyResponse::NotConsumed as i32;
     }
-    // SAFETY: the shim fills a `SymRsKeyEvent` on its own stack from the `TKeyEvent`
-    // the framework gave it and passes it by reference for the duration of the call.
+    // SAFETY: the shim passes the `TKeyEvent&` the framework gave `OfferKeyEventL`,
+    // valid for the duration of the call; its layout is `RawKeyEvent`'s (w32std.h,
+    // and an `__ASSERT_COMPILE` on its size in the shim).
     let raw = unsafe { &*event };
     let Some(ui) = state.ui.as_ref() else {
         return KeyResponse::NotConsumed as i32;
