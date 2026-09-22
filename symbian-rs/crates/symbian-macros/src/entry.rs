@@ -10,11 +10,6 @@ pub const ATTRIBUTE: &str = "symbian_std::main";
 /// pulled; that flag is `RustBuild`'s, and this is the definition it looks for.
 pub const E32MAIN: &str = "_Z7E32Mainv";
 
-/// The one symbol `shims/s60/symrs_avkon.cpp` imports from the Rust side. The link line
-/// names it with `-u symrs_app_vtbl` so the Rust archive is searched for it before the
-/// shim archive, which is where the reference comes from, is reached.
-pub const VTBL: &str = "symrs_app_vtbl";
-
 /// The path the generated GUI entry names the UI crate by. It is reached through
 /// `symbian-std` so that an application depends on one crate, exactly as the console
 /// shape reaches `ExitCode` through `::symbian_std`.
@@ -30,7 +25,7 @@ pub enum Shape {
     /// a second `CActiveScheduler` would panic the thread. So this shape writes **no**
     /// `E32Main` at all: for a GUI application the C++ shim owns the entry point and
     /// hands the process to `EikStart::RunApplication`, and what Rust exports instead
-    /// is the one symbol that shim imports, `symrs_app_vtbl`.
+    /// are the `symrs_app_*` functions that shim imports.
     Gui,
 }
 
@@ -142,20 +137,12 @@ impl Entry {
             ),
             // No `E32Main`, and no active scheduler: the C++ shim owns both, and CONE
             // is already inside `CActiveScheduler::Start()` by the time any of this
-            // runs. What Rust exports is the one symbol the shim imports — the vtable
-            // of `extern "C"` thunks it forwards each Avkon virtual to.
-            //
-            // `create` is written here rather than taken from `App::new` so that the
-            // application's own `fn main` stays the place its object is built.
+            // runs. What Rust exports is the `symrs_app_*` functions the shim forwards
+            // each Avkon virtual to, which `symbian-ui`'s `__export_app!` writes next to
+            // their bodies; `create` calls `main` so that the application's own
+            // `fn main` stays the place its object is built.
             Shape::Gui => format!(
-                "#[unsafe(export_name = \"{VTBL}\")]\n\
-                 pub extern \"C\" fn __symbian_app_vtbl() -> *const {UI}::AppVtbl {{\n    \
-                 extern \"C\" fn create() -> *mut ::core::ffi::c_void {{\n        \
-                 {UI}::start::<{app}>({main}())\n    \
-                 }}\n    \
-                 static VTBL: {UI}::AppVtbl = {UI}::AppVtbl::of::<{app}>(create);\n    \
-                 &VTBL\n\
-                 }}\n",
+                "{UI}::__export_app!({app}, {main});\n",
                 app = self.app,
                 main = Self::NAME
             ),

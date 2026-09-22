@@ -32,8 +32,9 @@
 //! after the action has returned (`crate::vtbl`), which is also the one place it can
 //! be done without handing the action a way back in.
 use core::ffi::c_void;
+use core::marker::PhantomData;
 
-use crate::abi::Host;
+use crate::abi::symrs_menu_add;
 use crate::utf16::encode_cut;
 
 /// The greatest number of UTF-16 code units a menu label may carry.
@@ -79,8 +80,9 @@ pub struct Menu<'a, A> {
 
 #[derive(Clone, Copy)]
 enum Purpose<'a> {
-    /// Fill the pane the framework is about to put on the screen.
-    Fill(&'a Host, *mut c_void),
+    /// Fill the pane the framework is about to put on the screen, which is live for
+    /// the `'a` of the `menu` call.
+    Fill(*mut c_void, PhantomData<&'a mut c_void>),
     /// Find the action of the item at this position; touch nothing.
     Find(u16),
 }
@@ -89,10 +91,10 @@ impl<'a, A> Menu<'a, A> {
     /// # Safety
     ///
     /// `pane` is the `CEikMenuPane*` the shim passed to `menu`, valid for that call
-    /// only; `host` is the shim's `.rodata` table, already length-checked.
-    pub(crate) const unsafe fn fill(host: &'a Host, pane: *mut c_void) -> Self {
+    /// only.
+    pub(crate) const unsafe fn fill(pane: *mut c_void) -> Self {
         Self {
-            purpose: Purpose::Fill(host, pane),
+            purpose: Purpose::Fill(pane, PhantomData),
             next: 0,
             found: None,
             error: 0,
@@ -119,7 +121,7 @@ impl<'a, A> Menu<'a, A> {
             return;
         };
         match self.purpose {
-            Purpose::Fill(host, pane) => self.add(host, pane, label, FIRST + index as i32),
+            Purpose::Fill(pane, _) => self.add(pane, label, FIRST + index as i32),
             Purpose::Find(want) => {
                 if want == index {
                     self.found = Some(action);
@@ -140,8 +142,8 @@ impl<'a, A> Menu<'a, A> {
         if self.take_index().is_none() {
             return;
         }
-        if let Purpose::Fill(host, pane) = self.purpose {
-            self.add(host, pane, label, EXIT);
+        if let Purpose::Fill(pane, _) = self.purpose {
+            self.add(pane, label, EXIT);
         }
     }
 
@@ -155,15 +157,15 @@ impl<'a, A> Menu<'a, A> {
         Some(index)
     }
 
-    fn add(&mut self, host: &Host, pane: *mut c_void, label: &str, command: i32) {
+    fn add(&mut self, pane: *mut c_void, label: &str, command: i32) {
         let mut units = [0u16; MAX_LABEL];
         let len = encode_cut(label, &mut units);
-        // SAFETY: `menu_item` traps `AddMenuItemL` in the shim and returns its error,
+        // SAFETY: `symrs_menu_add` traps `AddMenuItemL` in the shim and returns its error,
         // so nothing leaves across this frame. `pane` is the pane the framework is
         // showing for this call, and `units` is a live stack array of `MAX_LABEL`
         // elements with `len <= MAX_LABEL`; the shim copies out of it and keeps
         // nothing.
-        let err = unsafe { (host.menu_item)(pane, units.as_ptr(), len as i32, command) };
+        let err = unsafe { symrs_menu_add(pane, units.as_ptr(), len as i32, command) };
         if self.error == 0 {
             self.error = err;
         }

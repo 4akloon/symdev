@@ -22,8 +22,9 @@ pub const MAX_ITEM_TEXT: usize = 128;
 ///
 /// It is a table of function pointers handed over at create time rather than a symbol
 /// the shim imports, which is why adding a list costs the link line nothing: the one
-/// call that runs from C++ into Rust needs no `-u` (experiment 86 needed one for
-/// `symrs_app_vtbl` and this deliberately avoids a second).
+/// call that runs from C++ into Rust needs no `-u`. It is not an exported symbol like
+/// `symrs_app_*` because the link keeps every exported function, and an application
+/// with no list would carry this one (+91 bytes on `ui`, experiment 104).
 #[repr(C)]
 pub(super) struct Callbacks {
     size: u32,

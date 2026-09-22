@@ -8,7 +8,7 @@ use crate::rust_sdk::RustSdk;
 
 /// The three things `[ui]` adds to the link line, and the one thing it must not move.
 #[test]
-fn a_gui_link_names_the_vtable_and_the_avkon_libraries() {
+fn a_gui_link_names_the_app_entry_and_the_avkon_libraries() {
     let (a, elf, map) = (
         Path::new("/p/build/cargo/arm-symbian-e32/release/libhello.a"),
         Path::new("/p/build/hello.elf"),
@@ -17,12 +17,15 @@ fn a_gui_link_names_the_vtable_and_the_avkon_libraries() {
     let console = rust().link_args(a, None, None, elf, map);
     let got = gui().link_args(a, None, None, elf, map);
 
-    // `-u symrs_app_vtbl`, because the reference to it runs from the shim archive
+    // `-u symrs_app_create`, because the references to it run from the shim archive
     // back into the Rust archive, which ld has already passed.
     let u = |args: &[String], sym: &str| args.windows(2).any(|w| w[0] == "-u" && w[1] == sym);
-    assert!(u(&got, crate::APP_VTBL), "{got:?}");
+    assert!(u(&got, crate::APP_CREATE), "{got:?}");
     assert!(u(&got, crate::E32MAIN), "{got:?}");
-    assert!(!u(&console, crate::APP_VTBL), "a console app has no vtable");
+    assert!(
+        !u(&console, crate::APP_CREATE),
+        "a console app has no symrs_app_*"
+    );
 
     for lib in RustSdk::UI_LIBRARIES {
         let flag = format!("-l:{lib}");

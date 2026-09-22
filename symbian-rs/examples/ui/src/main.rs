@@ -57,9 +57,9 @@ impl App for Bars {
 
     fn construct(&mut self, ui: &Ui) -> symbian_core::Result<()> {
         let mut report = Report::new("uidemo");
-        // Reaching this callback at all is four facts at once: the shim found
-        // `symrs_app_vtbl`, its size word was long enough, `create` returned an object
-        // and `BaseConstructL` did not leave.
+        // Reaching this callback at all is three facts at once: the shim linked
+        // against the application's `symrs_app_*`, `create` returned an object and
+        // `BaseConstructL` did not leave.
         report.check("the framework reached the Rust construct", true);
         // The ABI's order (avkon-rust-spec.md §3.3): the view exists and has been
         // sized before `construct`, so `size_changed` has already run.

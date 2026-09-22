@@ -1,12 +1,15 @@
 //! `Gc`: the drawing operations a `draw` may use, and nothing that can leave.
 //!
-//! Every call goes through one function pointer in the shim's host table, and every one
-//! of those is a pure virtual of `CGraphicsContext` that the SDK does not declare
+//! Every call is one `symrs_gc_*` function in the shim, and every one of those is a pure virtual of `CGraphicsContext` that the SDK does not declare
 //! leaving. That is what makes it safe for the framework to call `Draw` outside a trap
 //! harness (`avkon-rust-spec.md` §4.3): there is nothing here to trap.
 use core::ffi::c_void;
+use core::marker::PhantomData;
 
-use crate::abi::Host;
+use crate::abi::{
+    symrs_gc_clear, symrs_gc_draw_line, symrs_gc_draw_rect, symrs_gc_draw_text, symrs_gc_set_brush,
+    symrs_gc_set_pen,
+};
 use crate::geom::{Point, Rect, Rgb};
 use crate::utf16::encode_cut;
 
@@ -22,19 +25,24 @@ pub const MAX_TEXT: usize = 128;
 /// The lifetime is what keeps it that way: a `Gc` cannot be stored in the application
 /// struct, because the struct outlives the call.
 pub struct Gc<'a> {
-    host: &'a Host,
     gc: *mut c_void,
     /// The view's own area, so that [`Gc::clear`] can mean "all of it".
     area: Rect,
+    /// The `draw` call this context belongs to.
+    call: PhantomData<&'a mut c_void>,
 }
 
 impl<'a> Gc<'a> {
     /// # Safety
     ///
     /// `gc` is the `CWindowGc*` the shim passed to `draw` and is valid for the whole
-    /// call; `host` is the shim's `.rodata` table, already length-checked.
-    pub(crate) const unsafe fn new(host: &'a Host, gc: *mut c_void, area: Rect) -> Self {
-        Self { host, gc, area }
+    /// call.
+    pub(crate) const unsafe fn new(gc: *mut c_void, area: Rect) -> Self {
+        Self {
+            gc,
+            area,
+            call: PhantomData,
+        }
     }
 
     /// Fills the whole view with the brush colour, so set the brush first: what a
@@ -48,38 +56,38 @@ impl<'a> Gc<'a> {
     pub fn clear(&mut self) {
         // SAFETY: `clear` is a non-leaving pure virtual of `CGraphicsContext` reached
         // through the shim, and `self.gc` is live for this call by construction.
-        unsafe { (self.host.clear)(self.gc, self.area.raw()) }
+        unsafe { symrs_gc_clear(self.gc, self.area.raw()) }
     }
 
     /// `SetPenColor` — the colour of lines and of a rectangle's outline.
     pub fn set_pen(&mut self, colour: Rgb) {
         // SAFETY: as `clear`; `colour` crosses as a plain word.
-        unsafe { (self.host.set_pen)(self.gc, colour.bits()) }
+        unsafe { symrs_gc_set_pen(self.gc, colour.bits()) }
     }
 
     /// `SetBrushStyle(ESolidBrush)` + `SetBrushColor` — what fills a rectangle.
     pub fn set_brush(&mut self, colour: Rgb) {
         // SAFETY: as `clear`.
-        unsafe { (self.host.set_brush)(self.gc, colour.bits(), 1) }
+        unsafe { symrs_gc_set_brush(self.gc, colour.bits(), 1) }
     }
 
     /// `SetBrushStyle(ENullBrush)` — from here on a rectangle is an outline.
     pub fn clear_brush(&mut self) {
         // SAFETY: as `clear`.
-        unsafe { (self.host.set_brush)(self.gc, 0, 0) }
+        unsafe { symrs_gc_set_brush(self.gc, 0, 0) }
     }
 
     /// `DrawRect` — filled with the brush, outlined with the pen.
     pub fn rect(&mut self, rect: Rect) {
         // SAFETY: as `clear`; `RawRect` is four `TInt`s passed by value, the layout
         // `symrs_avkon.h` declares.
-        unsafe { (self.host.draw_rect)(self.gc, rect.raw()) }
+        unsafe { symrs_gc_draw_rect(self.gc, rect.raw()) }
     }
 
     /// `DrawLine`, in the pen colour.
     pub fn line(&mut self, from: Point, to: Point) {
         // SAFETY: as `clear`.
-        unsafe { (self.host.draw_line)(self.gc, from.x, from.y, to.x, to.y) }
+        unsafe { symrs_gc_draw_line(self.gc, from.x, from.y, to.x, to.y) }
     }
 
     /// `DrawText` in the title font, with `at` as the **left end of the baseline** —
@@ -97,6 +105,6 @@ impl<'a> Gc<'a> {
         // SAFETY: as `clear`. `units` is a live stack array of `MAX_TEXT` elements and
         // `len <= MAX_TEXT`; the shim wraps the pair in a `TPtrC16` and does not keep
         // it beyond the call.
-        unsafe { (self.host.draw_text)(self.gc, units.as_ptr(), len as i32, at.x, at.y) }
+        unsafe { symrs_gc_draw_text(self.gc, units.as_ptr(), len as i32, at.x, at.y) }
     }
 }

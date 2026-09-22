@@ -15,7 +15,7 @@ mod toolchain;
 mod ui_resources;
 
 pub use bld::ParseError;
-pub use driver::{APP_VTBL, E32MAIN, GcceBuild, RustBuild};
+pub use driver::{APP_CREATE, E32MAIN, GcceBuild, RustBuild};
 pub use driver::{CompileFlags, CompileIncludes, GcceCompat, Module, SourceLanguage};
 pub use exports::{DllExports, FrozenExports};
 pub use icons::{AppIcon, IconOutputs};

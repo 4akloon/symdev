@@ -4,9 +4,8 @@
 // This is a SECOND, smaller boundary beside symrs_avkon.h's, and it is shaped the other
 // way round on purpose.
 //
-//   * symrs_avkon.h is a table Rust exports and the shim calls, because the framework
-//     drives the application: the shim needs `symrs_app_vtbl` at link time and the link
-//     line names it with `-u`.
+//   * symrs_avkon.h is mostly functions Rust exports and the shim calls, because the
+//     framework drives the application: the link line names `symrs_app_create` with `-u`.
 //   * A list box is the other direction. Rust builds one when it wants one, so what
 //     crosses is a set of plain `extern "C"` functions the shim DEFINES and Rust calls,
 //     and they resolve on the first pass because the shim archive follows the Rust one.
@@ -14,8 +13,11 @@
 //     function POINTER Rust hands over at create time, in `SymRsListCallbacks`, so it
 //     costs the link line nothing at all (no second `-u`, experiment 86).
 //
-// The callback table carries the same `iSize` word symrs_avkon.h's two tables carry, and
-// `symrs_list_create` refuses a table shorter than this declaration.
+// The callback table carries an `iSize` word, and `symrs_list_create` refuses a table
+// shorter than this declaration. It stays a pointer, unlike symrs_avkon.h's functions:
+// an exported Rust function is kept by the link even in an application with no list
+// (experiment 104 measured +91 bytes on `ui`), and a pointer is only reached from
+// `List::new`.
 //
 // THE LEAVE RULE (avkon-rust-spec.md section 4.3), which is the same here as there:
 //

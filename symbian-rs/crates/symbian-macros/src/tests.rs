@@ -4,7 +4,7 @@
 //! are spaced the way a token stream prints (`Result < () >`, `#[doc = " …"]`) rather
 //! than the way a person writes them: that is exactly what the macro will see.
 
-use crate::entry::{E32MAIN, Entry, VTBL};
+use crate::entry::{E32MAIN, Entry};
 
 fn wrapper(arguments: &str, item: &str) -> String {
     match Entry::parse(arguments, item) {
@@ -120,21 +120,15 @@ fn an_unsafe_or_extern_main_is_refused() {
 }
 
 #[test]
-fn the_gui_shape_exports_the_vtable_and_no_e32main() {
+fn the_gui_shape_exports_the_app_functions_and_no_e32main() {
     let out = wrapper("gui", "fn main () -> Notes { Notes :: new () }");
-    assert!(out.contains(&format!("export_name = \"{VTBL}\"")), "{out}");
     assert!(
         !out.contains(E32MAIN),
         "a GUI application's E32Main belongs to the shim: {out}"
     );
-    assert!(
-        out.contains("::symbian_std::ui::start::<Notes>(main())"),
-        "{out}"
-    );
-    assert!(
-        out.contains("::symbian_std::ui::AppVtbl::of::<Notes>(create)"),
-        "{out}"
-    );
+    // One call: the eight `symrs_app_*` exports live next to their bodies in
+    // `symbian-ui`, and `create` is this `main`.
+    assert_eq!(out, "::symbian_std::ui::__export_app!(Notes, main);\n");
 }
 
 /// The application type is read out of the signature, whatever shape it has, so that
@@ -150,7 +144,10 @@ fn the_gui_shape_reads_the_application_type_from_the_return_type() {
         ),
     ] {
         let out = wrapper("gui", item);
-        assert!(out.contains(&format!("start::<{app}>")), "{item}: {out}");
+        assert!(
+            out.contains(&format!("__export_app!({app}, main)")),
+            "{item}: {out}"
+        );
     }
 }
 

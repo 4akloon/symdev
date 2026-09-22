@@ -3,7 +3,7 @@
 //! The Symbian application framework is four C++ classes with virtual methods, so the
 //! subclasses live in C++ — `symbian-rs/shims/s60/symrs_avkon.cpp`, compiled into the
 //! application by symdev when the manifest has a `[ui]` section — and every virtual is
-//! forwarded through one table of function pointers to this crate. What an application
+//! forwarded to one `symrs_app_*` function this crate has the application export. What an application
 //! writes is a struct and an [`App`] impl:
 //!
 //! ```ignore
@@ -94,6 +94,16 @@ extern crate alloc;
 
 pub mod note;
 
+#[doc(hidden)]
+pub mod __abi {
+    //! The two C structs of the boundary, for [`crate::__export_app`]'s expansion.
+    pub use crate::abi::{RawKeyEvent, RawRect};
+}
+#[doc(hidden)]
+pub mod __glue {
+    //! The generic bodies [`crate::__export_app`] exports.
+    pub use crate::vtbl::{command, construct, destroy, draw, menu, offer_key, size_changed};
+}
 mod abi;
 mod app;
 mod event;
@@ -106,7 +116,6 @@ mod ui;
 mod utf16;
 mod vtbl;
 
-pub use abi::AppVtbl;
 pub use app::App;
 pub use event::{EventCode, KeyEvent, KeyResponse, key, scan};
 pub use gc::{Gc, MAX_TEXT};

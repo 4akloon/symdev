@@ -22,6 +22,7 @@ symbian-core/src/des, symbian-macros/src/fast_write.
 
 
 ## Dead ends
+- List callback `SymRsListCallbacks` → exported `symrs_list_on_select`: ui-list −42 but **ui +91**, because the link keeps every global Rust symbol (exported `no_mangle` is a gc root in this link), so an app without a list carries it. Reverted; comment in `symrs_list.h`/`rows.rs` says why.
 
 ## Next step
 

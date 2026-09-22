@@ -5,7 +5,7 @@
 // input, runs its own loop and returns when the user confirms or cancels. So this file
 // forwards nothing and subclasses nothing -- it is shape A of avkon-rust-spec.md 3.1,
 // three ordinary `extern "C"` wrappers, and the Rust side in crates/symbian-ui/src/query.rs
-// declares them. Neither `SymRsHost` nor `SymRsAppVtbl` grows a field.
+// declares them. symrs_avkon.h does not grow a function.
 //
 // WHY EACH WRAPPER IS HERE, against the three rules of shims/common/symrs_shim.h:
 //

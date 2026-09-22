@@ -28,10 +28,10 @@
 const TUid KSymRsAppUid = { static_cast<TInt32>(SYMRS_UID3) };
 
 // --------------------------------------------------------------------------
-// The host table: what Rust may ask of the framework.
+// The "down" functions: what Rust may ask of the framework.
 // --------------------------------------------------------------------------
-// Not one of these can leave. `Clear`, `SetPenColor`, `SetBrushStyle`, `SetBrushColor`,
-// `DrawRect`, `DrawLine`, `UseFont`, `DrawText` and `DiscardFont` are pure virtuals of
+// Not one of these can leave, except symrs_menu_add, which traps. `Clear`,
+// `SetPenColor`, `SetBrushStyle`, `SetBrushColor`, `DrawRect`, `DrawLine`, `UseFont`, `DrawText` and `DiscardFont` are pure virtuals of
 // CGraphicsContext (gdi.h), none of them declared leaving; `DrawDeferred` and
 // `CAknAppUi::Exit` are non-leaving members. So there is no TRAP here and none is
 // needed -- which is what lets `draw` be reached from outside a trap harness at all.
@@ -59,29 +59,29 @@ static TRect Rect(SymRsRect aRect)
 // could not isolate -- while `Clear(aRect)` and `DrawRect(aRect)` over the same area
 // both cover it. Whatever narrows the no-argument form's clipping region, the rect
 // form is the one that means "my whole view".
-static void HostClear(void* aGc, SymRsRect aRect)
+void symrs_gc_clear(void* aGc, SymRsRect aRect)
 	{
 	Gc(aGc)->Clear(Rect(aRect));
 	}
 
-static void HostSetPen(void* aGc, TUint32 aRgb)
+void symrs_gc_set_pen(void* aGc, TUint32 aRgb)
 	{
 	Gc(aGc)->SetPenColor(Rgb(aRgb));
 	}
 
-static void HostSetBrush(void* aGc, TUint32 aRgb, TInt aSolid)
+void symrs_gc_set_brush(void* aGc, TUint32 aRgb, TInt aSolid)
 	{
 	Gc(aGc)->SetBrushStyle(aSolid ? CGraphicsContext::ESolidBrush
 		: CGraphicsContext::ENullBrush);
 	Gc(aGc)->SetBrushColor(Rgb(aRgb));
 	}
 
-static void HostDrawRect(void* aGc, SymRsRect aRect)
+void symrs_gc_draw_rect(void* aGc, SymRsRect aRect)
 	{
 	Gc(aGc)->DrawRect(Rect(aRect));
 	}
 
-static void HostDrawLine(void* aGc, TInt aX1, TInt aY1, TInt aX2, TInt aY2)
+void symrs_gc_draw_line(void* aGc, TInt aX1, TInt aY1, TInt aX2, TInt aY2)
 	{
 	Gc(aGc)->DrawLine(TPoint(aX1, aY1), TPoint(aX2, aY2));
 	}
@@ -89,7 +89,7 @@ static void HostDrawLine(void* aGc, TInt aX1, TInt aY1, TInt aX2, TInt aY2)
 // The shim owns the font, so UseFont/DiscardFont never reach Rust and a Rust `draw` can
 // never leave one in use. `aX, aY` is the left end of the baseline, which is what
 // CGraphicsContext::DrawText(const TDesC&, const TPoint&) takes.
-static void HostDrawText(void* aGc, const TUint16* aText, TInt aLength, TInt aX, TInt aY)
+void symrs_gc_draw_text(void* aGc, const TUint16* aText, TInt aLength, TInt aX, TInt aY)
 	{
 	CEikonEnv* env = CEikonEnv::Static();
 	if (!env || !aText || aLength <= 0)
@@ -103,17 +103,17 @@ static void HostDrawText(void* aGc, const TUint16* aText, TInt aLength, TInt aX,
 	Gc(aGc)->DiscardFont();
 	}
 
-static void HostRedraw(void* aView)
+void symrs_view_redraw(void* aView)
 	{
 	static_cast<CCoeControl*>(aView)->DrawDeferred();
 	}
 
-static void HostExit(void* aAppUi)
+void symrs_app_ui_exit(void* aAppUi)
 	{
 	static_cast<CAknAppUi*>(aAppUi)->Exit();
 	}
 
-// The one host entry that can fail. AddMenuItemL leaves on no memory, so it is
+// The one "down" function that can fail. AddMenuItemL leaves on no memory, so it is
 // trapped here and the code is returned: nothing throws while a Rust frame is on the
 // stack, and DynInitMenuPaneL raises it once that frame has gone.
 //
@@ -122,7 +122,7 @@ static void HostExit(void* aAppUi)
 // behaviour." A plain line is iCascadeId = 0 and iFlags = 0 -- the same defaults
 // eikon.rh gives `STRUCT MENU_ITEM` (`LLINK cascade=0; LONG flags=0;`) -- and an
 // empty iExtraText, which is where CEikMenuPane would otherwise show a hotkey name.
-static TInt HostMenuItem(void* aPane, const TUint16* aText, TInt aLength, TInt aCommand)
+TInt symrs_menu_add(void* aPane, const TUint16* aText, TInt aLength, TInt aCommand)
 	{
 	CEikMenuPane* pane = static_cast<CEikMenuPane*>(aPane);
 	if (!pane || !aText)
@@ -150,26 +150,6 @@ static TInt HostMenuItem(void* aPane, const TUint16* aText, TInt aLength, TInt a
 	return err;
 	}
 
-static const SymRsHost KSymRsHost =
-	{
-	sizeof(SymRsHost),
-	HostClear, HostSetPen, HostSetBrush, HostDrawRect, HostDrawLine, HostDrawText,
-	HostRedraw, HostExit, HostMenuItem
-	};
-
-// The Rust table, checked once. A table shorter than this shim expects is a Rust SDK
-// older than the shim, and the only honest answer is to stop where it can be read:
-// USER-style panic with the size we were handed as the reason.
-static const SymRsAppVtbl* Vtbl()
-	{
-	const SymRsAppVtbl* vtbl = symrs_app_vtbl();
-	if (!vtbl || vtbl->iSize < sizeof(SymRsAppVtbl))
-		{
-		User::Panic(_L("SYMRS-VTBL"), vtbl ? static_cast<TInt>(vtbl->iSize) : 0);
-		}
-	return vtbl;
-	}
-
 // --------------------------------------------------------------------------
 // CCoeControl: the view.
 // --------------------------------------------------------------------------
@@ -194,7 +174,7 @@ public:
 		event.iRepeats = aKeyEvent.iRepeats;
 		// No error channel on purpose (spec section 4.3): a key handler that fails has
 		// nowhere to report it, so the Rust side returns only consumed / not consumed.
-		const TInt consumed = Vtbl()->offer_key(iApp, &event, static_cast<TInt>(aType));
+		const TInt consumed = symrs_app_offer_key(iApp, &event, static_cast<TInt>(aType));
 		return consumed ? EKeyWasConsumed : EKeyWasNotConsumed;
 		}
 private:
@@ -206,12 +186,12 @@ private:
 	void Draw(const TRect& /*aRect*/) const
 		{
 		SymRsRect area = { 0, 0, Size().iWidth, Size().iHeight };
-		Vtbl()->draw(iApp, &const_cast<CShimView*>(this)->SystemGc(), area);
+		symrs_app_draw(iApp, &const_cast<CShimView*>(this)->SystemGc(), area);
 		}
 	void SizeChanged()
 		{
 		SymRsRect area = { 0, 0, Size().iWidth, Size().iHeight };
-		Vtbl()->size_changed(iApp, area);
+		symrs_app_size_changed(iApp, area);
 		}
 	TInt CountComponentControls() const { return 0; }
 	void* iApp; // borrowed; the app UI owns it and outlives this control
@@ -227,7 +207,7 @@ public:
 		{
 		BaseConstructL(EAknEnableSkin);
 		// Everything that can leave happens here, with no Rust frame on the stack.
-		iApp = Vtbl()->create();
+		iApp = symrs_app_create();
 		if (!iApp)
 			{
 			User::Leave(KErrNoMemory);
@@ -238,7 +218,7 @@ public:
 		AddToStackL(iView);
 		// The Rust frame runs with no harness open around it; its error becomes a leave
 		// only after it has returned, on a stack that is pure C++ again.
-		const TInt err = Vtbl()->construct(iApp, &KSymRsHost, iView, this);
+		const TInt err = symrs_app_construct(iApp, iView, this);
 		User::LeaveIfError(err);
 		}
 	~CShimAppUi()
@@ -250,7 +230,7 @@ public:
 			}
 		if (iApp)
 			{
-			Vtbl()->destroy(iApp);
+			symrs_app_destroy(iApp);
 			}
 		}
 private:
@@ -261,7 +241,7 @@ private:
 			Exit();
 			return;
 			}
-		const TInt err = Vtbl()->command(iApp, aCommand);
+		const TInt err = symrs_app_command(iApp, aCommand);
 		User::LeaveIfError(err);
 		}
 	// MEikMenuObserver, through CAknAppUi. The application's Options menu is not in
@@ -278,7 +258,7 @@ private:
 			}
 		// The Rust frame runs with no harness open around it; its error becomes a
 		// leave only after it has returned, on a stack that is pure C++ again.
-		const TInt err = Vtbl()->menu(iApp, aMenuPane);
+		const TInt err = symrs_app_menu(iApp, aMenuPane);
 		User::LeaveIfError(err);
 		}
 	CShimView* iView;

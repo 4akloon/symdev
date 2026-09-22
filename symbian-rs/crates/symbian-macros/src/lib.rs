@@ -72,8 +72,8 @@ use entry::Entry;
 /// ```
 ///
 /// The return type is the `impl symbian_std::ui::App` the framework will call, and the
-/// attribute writes the `symrs_app_vtbl` the shim imports, whose `create` is this
-/// `main`.
+/// attribute has `symbian-ui` export the `symrs_app_*` functions the shim imports, whose
+/// `symrs_app_create` calls this `main`.
 #[proc_macro_attribute]
 pub fn main(attribute: TokenStream, item: TokenStream) -> TokenStream {
     let generated = match Entry::parse(&attribute.to_string(), &item.to_string()) {

@@ -2,7 +2,7 @@
 //! program is and whether a GUI one links at all.
 use std::path::Path;
 
-use super::rust_build::APP_VTBL;
+use super::rust_build::APP_CREATE;
 use super::{E32MAIN, RustBuild, arg};
 use crate::rust_sdk::RustSdk;
 
@@ -35,7 +35,7 @@ impl RustBuild {
     /// the Rust archive. [`RustSdk::LIBRARIES`] adds the DSOs the SDK's own code imports.
     ///
     /// A GUI application changes two things and disturbs nothing else. It names
-    /// [`APP_VTBL`] with a `-u` as well, because the reference to it runs the other
+    /// [`APP_CREATE`] with a `-u` as well, because the references to it run the other
     /// way — from the shim archive back into the Rust one, which `ld` has already
     /// passed. And it puts [`RustSdk::UI_LIBRARIES`] on, through the recorded line's
     /// own `libraries` slot, so they sit after the runtime DSOs exactly where an
@@ -60,7 +60,7 @@ impl RustBuild {
             .position(|w| w[0] == "-u" && w[1] == "_E32Startup")
             .map_or(args.len(), |i| i + 2);
         if self.ui.is_some() {
-            args.insert(after, APP_VTBL.into());
+            args.insert(after, APP_CREATE.into());
             args.insert(after, "-u".into());
         }
         args.insert(after, E32MAIN.into());

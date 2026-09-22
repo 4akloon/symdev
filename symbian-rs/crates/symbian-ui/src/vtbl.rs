@@ -1,4 +1,10 @@
-//! The eight `extern "C"` thunks the shim calls, and the table that names them.
+//! The bodies of the eight `symrs_app_*` functions the shim calls, and the macro that
+//! exports them from the application crate.
+//!
+//! They are generic over the application type, and that costs nothing: an image holds
+//! exactly one `App`, so each body is instantiated once, and [`crate::__export_app`]
+//! gives each instance its C name with a one-line `extern "C"` wrapper that inlines
+//! away. The shim calls them directly — no table, no function pointer (experiment 104).
 //!
 //! This is the only module in the crate that dereferences what C++ hands it, and the
 //! only place an application's `&mut` is taken. The rules it keeps, in the terms of
@@ -15,7 +21,7 @@ use core::ffi::c_void;
 use alloc::boxed::Box;
 use symbian_core::ErrorKind;
 
-use crate::abi::{AppVtbl, Host, RawKeyEvent, RawRect};
+use crate::abi::{RawKeyEvent, RawRect};
 use crate::app::App;
 use crate::event::{KeyEvent, KeyResponse};
 use crate::gc::Gc;
@@ -30,9 +36,8 @@ struct State<A> {
     ui: Option<Ui>,
 }
 
-/// Hands the framework a freshly built application. This is what the `create` thunk
-/// `#[symbian_std::main(gui)]` writes calls with the value the application's `fn main`
-/// returned.
+/// Hands the framework a freshly built application. This is what `symrs_app_create`
+/// calls with the value the application's `fn main` returned.
 pub fn start<A: App>(app: A) -> *mut c_void {
     Box::into_raw(Box::new(State { app, ui: None })).cast()
 }
@@ -51,7 +56,12 @@ unsafe fn state<'a, A: App>(app: *mut c_void) -> Option<&'a mut State<A>> {
     Some(unsafe { &mut *app.cast::<State<A>>() })
 }
 
-extern "C" fn destroy<A: App>(app: *mut c_void) {
+/// # Safety
+///
+/// `app` came from [`start`] for this `A` and is alive, and every other pointer is
+/// what `symrs_avkon.h` documents for this call.
+#[doc(hidden)]
+pub unsafe fn destroy<A: App>(app: *mut c_void) {
     if app.is_null() {
         return;
     }
@@ -60,50 +70,53 @@ extern "C" fn destroy<A: App>(app: *mut c_void) {
     drop(unsafe { Box::from_raw(app.cast::<State<A>>()) });
 }
 
-extern "C" fn construct<A: App>(
-    app: *mut c_void,
-    host: *const Host,
-    view: *mut c_void,
-    app_ui: *mut c_void,
-) -> i32 {
+/// # Safety
+///
+/// `app` came from [`start`] for this `A` and is alive, and every other pointer is
+/// what `symrs_avkon.h` documents for this call.
+#[doc(hidden)]
+pub unsafe fn construct<A: App>(app: *mut c_void, view: *mut c_void, app_ui: *mut c_void) -> i32 {
     // SAFETY: the shim's `ConstructL` passes the pointer `create` returned.
     let Some(state) = (unsafe { state::<A>(app) }) else {
         return ErrorKind::Argument.code();
     };
-    // SAFETY: `host` is the shim's `.rodata` table; `checked` reads only its size word
-    // until that word says the rest is there. A table shorter than this crate's
-    // declaration is a shim older than the SDK, and `KErrNotSupported` is what the
-    // framework then reports — loudly, through `User::LeaveIfError`.
-    let Some(host) = (unsafe { Host::checked(host) }) else {
-        return ErrorKind::NotSupported.code();
-    };
     // SAFETY: `view` and `app_ui` are the `CShimView*` and `CShimAppUi*` that own this
     // object; both outlive it, because `destroy` runs from the app UI's destructor.
-    let ui = state.ui.insert(unsafe { Ui::new(host, view, app_ui) });
+    let ui = state.ui.insert(unsafe { Ui::new(view, app_ui) });
     match state.app.construct(ui) {
         Ok(()) => 0,
         Err(e) => e.code(),
     }
 }
 
-extern "C" fn draw<A: App>(app: *mut c_void, gc: *mut c_void, area: RawRect) {
+/// # Safety
+///
+/// `app` came from [`start`] for this `A` and is alive, and every other pointer is
+/// what `symrs_avkon.h` documents for this call.
+#[doc(hidden)]
+pub unsafe fn draw<A: App>(app: *mut c_void, gc: *mut c_void, area: RawRect) {
     // SAFETY: as `construct`.
     let Some(state) = (unsafe { state::<A>(app) }) else {
         return;
     };
     // `construct` always runs first (the shim's `ConstructL` is what creates the view
     // that can be asked to paint), so `ui` is set. Nothing to report if it is not.
-    let Some(ui) = state.ui.as_ref() else {
+    if state.ui.is_none() {
         return;
-    };
+    }
     // SAFETY: `gc` is the `CWindowGc&` the framework handed `Draw` and is valid for
     // exactly this call, which is the lifetime `Gc` carries.
     let area = Rect::from_raw(area);
-    let mut gc = unsafe { Gc::new(ui.host(), gc, area) };
+    let mut gc = unsafe { Gc::new(gc, area) };
     state.app.draw(&mut gc, area);
 }
 
-extern "C" fn offer_key<A: App>(app: *mut c_void, event: *const RawKeyEvent, kind: i32) -> i32 {
+/// # Safety
+///
+/// `app` came from [`start`] for this `A` and is alive, and every other pointer is
+/// what `symrs_avkon.h` documents for this call.
+#[doc(hidden)]
+pub unsafe fn offer_key<A: App>(app: *mut c_void, event: *const RawKeyEvent, kind: i32) -> i32 {
     // SAFETY: as `construct`.
     let Some(state) = (unsafe { state::<A>(app) }) else {
         return KeyResponse::NotConsumed as i32;
@@ -125,7 +138,12 @@ extern "C" fn offer_key<A: App>(app: *mut c_void, event: *const RawKeyEvent, kin
 /// The application declares it afresh each time, which is what `AddMenuItemL`'s own
 /// documentation calls adding an item "dynamically". A failure is returned, and the
 /// shim raises it once this frame has gone.
-extern "C" fn menu<A: App>(app: *mut c_void, pane: *mut c_void) -> i32 {
+/// # Safety
+///
+/// `app` came from [`start`] for this `A` and is alive, and every other pointer is
+/// what `symrs_avkon.h` documents for this call.
+#[doc(hidden)]
+pub unsafe fn menu<A: App>(app: *mut c_void, pane: *mut c_void) -> i32 {
     // SAFETY: as `construct`.
     let Some(state) = (unsafe { state::<A>(app) }) else {
         return ErrorKind::Argument.code();
@@ -133,12 +151,12 @@ extern "C" fn menu<A: App>(app: *mut c_void, pane: *mut c_void) -> i32 {
     if pane.is_null() {
         return ErrorKind::Argument.code();
     }
-    let Some(ui) = state.ui.as_ref() else {
+    if state.ui.is_none() {
         return 0;
-    };
+    }
     // SAFETY: `pane` is the `CEikMenuPane*` the framework handed `DynInitMenuPaneL`
     // and is valid for exactly this call, which is the lifetime `Menu` carries.
-    let mut items = unsafe { Menu::fill(ui.host(), pane) };
+    let mut items = unsafe { Menu::fill(pane) };
     state.app.menu(&mut items);
     items.error()
 }
@@ -155,7 +173,12 @@ extern "C" fn menu<A: App>(app: *mut c_void, pane: *mut c_void) -> i32 {
 /// application and nothing else, so it has no way to ask for one — and no way to
 /// re-enter the framework, which is what makes a nested callback impossible while
 /// that `&mut` is live.
-extern "C" fn command<A: App>(app: *mut c_void, command: i32) -> i32 {
+/// # Safety
+///
+/// `app` came from [`start`] for this `A` and is alive, and every other pointer is
+/// what `symrs_avkon.h` documents for this call.
+#[doc(hidden)]
+pub unsafe fn command<A: App>(app: *mut c_void, command: i32) -> i32 {
     // SAFETY: as `construct`.
     let Some(state) = (unsafe { state::<A>(app) }) else {
         return ErrorKind::Argument.code();
@@ -175,7 +198,12 @@ extern "C" fn command<A: App>(app: *mut c_void, command: i32) -> i32 {
     0
 }
 
-extern "C" fn size_changed<A: App>(app: *mut c_void, area: RawRect) {
+/// # Safety
+///
+/// `app` came from [`start`] for this `A` and is alive, and every other pointer is
+/// what `symrs_avkon.h` documents for this call.
+#[doc(hidden)]
+pub unsafe fn size_changed<A: App>(app: *mut c_void, area: RawRect) {
     // SAFETY: as `construct`.
     let Some(state) = (unsafe { state::<A>(app) }) else {
         return;
@@ -183,23 +211,55 @@ extern "C" fn size_changed<A: App>(app: *mut c_void, area: RawRect) {
     state.app.size_changed(Rect::from_raw(area));
 }
 
-impl AppVtbl {
-    /// The table for one application type, with the `create` the entry attribute wrote.
-    ///
-    /// `create` is a parameter rather than `A::new` so that an application's `fn main`
-    /// stays the place its object is built: the attribute writes a thunk that calls
-    /// `main()` and passes it here.
-    pub const fn of<A: App>(create: extern "C" fn() -> *mut c_void) -> Self {
-        Self {
-            size: size_of::<Self>() as u32,
-            create,
-            destroy: destroy::<A>,
-            construct: construct::<A>,
-            draw: draw::<A>,
-            offer_key: offer_key::<A>,
-            command: command::<A>,
-            size_changed: size_changed::<A>,
-            menu: menu::<A>,
-        }
-    }
+/// Exports the eight `symrs_app_*` functions `symbian-rs/shims/s60/symrs_avkon.h`
+/// declares, for the application type `$app` built by `$main`.
+///
+/// `#[symbian_std::main(gui)]` writes the one call; nothing else should. `create` is
+/// `$main` rather than `App::new` so that an application's `fn main` stays the place
+/// its object is built.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __export_app {
+    ($app:ty, $main:path) => {
+        const _: () = {
+            use ::core::ffi::c_void;
+            use $crate::__abi::{RawKeyEvent, RawRect};
+            use $crate::__glue as glue;
+
+            #[unsafe(export_name = "symrs_app_create")]
+            extern "C" fn create() -> *mut c_void {
+                $crate::start::<$app>($main())
+            }
+            // SAFETY (all seven): the shim passes the pointer `create` returned and the
+            // arguments `symrs_avkon.h` documents, which is each body's contract.
+            #[unsafe(export_name = "symrs_app_destroy")]
+            extern "C" fn destroy(app: *mut c_void) {
+                unsafe { glue::destroy::<$app>(app) }
+            }
+            #[unsafe(export_name = "symrs_app_construct")]
+            extern "C" fn construct(app: *mut c_void, view: *mut c_void, ui: *mut c_void) -> i32 {
+                unsafe { glue::construct::<$app>(app, view, ui) }
+            }
+            #[unsafe(export_name = "symrs_app_draw")]
+            extern "C" fn draw(app: *mut c_void, gc: *mut c_void, area: RawRect) {
+                unsafe { glue::draw::<$app>(app, gc, area) }
+            }
+            #[unsafe(export_name = "symrs_app_offer_key")]
+            extern "C" fn offer_key(app: *mut c_void, event: *const RawKeyEvent, kind: i32) -> i32 {
+                unsafe { glue::offer_key::<$app>(app, event, kind) }
+            }
+            #[unsafe(export_name = "symrs_app_command")]
+            extern "C" fn command(app: *mut c_void, command: i32) -> i32 {
+                unsafe { glue::command::<$app>(app, command) }
+            }
+            #[unsafe(export_name = "symrs_app_size_changed")]
+            extern "C" fn size_changed(app: *mut c_void, area: RawRect) {
+                unsafe { glue::size_changed::<$app>(app, area) }
+            }
+            #[unsafe(export_name = "symrs_app_menu")]
+            extern "C" fn menu(app: *mut c_void, pane: *mut c_void) -> i32 {
+                unsafe { glue::menu::<$app>(app, pane) }
+            }
+        };
+    };
 }

@@ -20,13 +20,14 @@ use crate::ui_resources::UiResources;
 /// defines it (experiment 65a).
 pub const E32MAIN: &str = "_Z7E32Mainv";
 
-/// The symbol the Avkon shim imports from the Rust side (`#[symbian_std::main(gui)]`
-/// exports it). It needs a `-u` of its own: the shim archive is searched *after* the
-/// Rust archive, because that is the direction the `symrs_*` references usually run,
-/// and `ld` does not go back. Naming the vtable here makes the Rust archive's member
-/// be pulled on the first pass, so the shim's reference to it is already defined by
-/// the time the shim archive is reached.
-pub const APP_VTBL: &str = "symrs_app_vtbl";
+/// The first of the `symrs_app_*` functions the Avkon shim imports from the Rust side
+/// (`#[symbian_std::main(gui)]` exports them). It needs a `-u` of its own: the shim
+/// archive is searched *after* the Rust archive, because that is the direction the
+/// `symrs_*` references usually run, and `ld` does not go back. Naming it here makes
+/// the Rust archive's member be pulled on the first pass — the application is one
+/// codegen unit, so that member defines all eight — and the shim's references are
+/// already defined by the time the shim archive is reached.
+pub const APP_CREATE: &str = "symrs_app_create";
 
 pub struct RustBuild {
     pub gcce: GcceBuild,
