@@ -13,7 +13,8 @@ use symbian_fmt::{Utf16Str, utf16};
 
 /// Every width of UTF-8 at both of its edges, the surrogate range's neighbours, and
 /// the last code point.
-const EDGES: &str = "\0\u{7f}\u{80}\u{7ff}\u{800}\u{d7ff}\u{e000}\u{fffd}\u{ffff}\u{10000}\u{1f600}\u{10ffff}";
+const EDGES: &str =
+    "\0\u{7f}\u{80}\u{7ff}\u{800}\u{d7ff}\u{e000}\u{fffd}\u{ffff}\u{10000}\u{1f600}\u{10ffff}";
 
 #[test]
 fn the_const_encoder_is_str_encode_utf16() {
@@ -21,7 +22,15 @@ fn the_const_encoder_is_str_encode_utf16() {
         .step_by(401)
         .filter_map(char::from_u32)
         .collect();
-    for s in ["", "a", "Hello from Rust SDK", "\u{e9}t\u{e9}", "\u{1f600}", EDGES, &owned] {
+    for s in [
+        "",
+        "a",
+        "Hello from Rust SDK",
+        "\u{e9}t\u{e9}",
+        "\u{1f600}",
+        EDGES,
+        &owned,
+    ] {
         let want: Vec<u16> = s.encode_utf16().collect();
         assert_eq!(utf16_len(s), want.len(), "{s:?}");
         let got = encode_utf16::<8192>(s);
@@ -52,7 +61,11 @@ fn utf16_takes_a_literal_a_const_and_a_concat_at_compile_time() {
     assert_eq!(MIXED.chars().count(), 6);
     assert_eq!(
         format!("[{GREETING}] [{MIXED:>9}] [{MIXED:?}]"),
-        format!("[{GREETING_STR}] [{:>9}] [{:?}]", MIXED.as_str(), MIXED.as_str())
+        format!(
+            "[{GREETING_STR}] [{:>9}] [{:?}]",
+            MIXED.as_str(),
+            MIXED.as_str()
+        )
     );
 }
 
@@ -63,14 +76,22 @@ fn a_utf16_str_argument_is_its_str_to_every_destination() {
         let core_result = core::write!(core, "<{}|{}>", GREETING_STR, MIXED.as_str());
         let mut fast = Rec::new(mode);
         let fast_result = symbian_fmt::write!(fast, "<{GREETING}|{}>", MIXED);
-        assert_eq!((fast.calls, fast_result), (core.calls, core_result), "{mode:?}");
+        assert_eq!(
+            (fast.calls, fast_result),
+            (core.calls, core_result),
+            "{mode:?}"
+        );
     }
     for cap in 0..32 {
         let mut core = HostBuf::new(cap);
         let core_result = core::write!(core, "<{}|{}>", GREETING_STR, MIXED.as_str());
         let mut fast = HostBuf::new(cap);
         let fast_result = symbian_fmt::write!(fast, "<{GREETING}|{}>", MIXED);
-        assert_eq!((&fast.units, fast_result), (&core.units, core_result), "{cap}");
+        assert_eq!(
+            (&fast.units, fast_result),
+            (&core.units, core_result),
+            "{cap}"
+        );
     }
     // A spec sends the invocation to `core::write!`, which pads the `str`.
     assert_eq!(same!("[{:>24}]", GREETING), format!("[{GREETING_STR:>24}]"));

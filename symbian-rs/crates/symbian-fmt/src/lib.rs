@@ -15,8 +15,11 @@
 //! plain `{}`, `{0}` or `{name}` (inline captures included). Each piece is then
 //! written by the most direct path its *types* allow ([`__private::Probe`]):
 //!
-//! - into a destination with a native append (`symbian_core::Buf16`): `push_str`, and
-//!   euser's `TDes16::AppendNum` for an integer, which is code in ROM;
+//! - into a destination with a native append (`symbian_core::Buf16`): the literal text
+//!   of the format string, and a [`Utf16Str`], as UTF-16 made at compile time and
+//!   copied by euser's `TDes16::Append` (experiment 106); any other string by
+//!   `push_str`, which transcodes it at run time; an integer by euser's
+//!   `TDes16::AppendNum`. All three are code in ROM but `push_str`;
 //! - into any other `fmt::Write` (`String`, a `Formatter`, a user's type): the same
 //!   `write_str`/`write_char` calls `core::fmt` would make, with the digits produced
 //!   here;

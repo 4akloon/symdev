@@ -191,7 +191,12 @@ fn the_expansion_calls_the_destination_once_and_probes_every_piece() {
         "{text}"
     );
     assert_eq!(text.matches("Probe::of").count(), 4, "{text}");
-    assert!(text.contains("Probe::of(&*__d, \"n=\")"), "{text}");
+    // Literal text is a `Utf16Str` constant, so a UTF-16 destination copies its units.
+    assert!(
+        text.contains("{ const __T: @krate::Utf16Str = @krate::utf16!(\"n=\"); match (&&&@krate::__private::Probe::of(&*__d, &__T))"),
+        "{text}"
+    );
+    assert_eq!(text.matches("@krate::utf16!").count(), 2, "{text}");
     assert!(
         text.ends_with("::core::result::Result::Ok(()) }) }"),
         "{text}"

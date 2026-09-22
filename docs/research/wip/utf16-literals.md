@@ -25,6 +25,8 @@ shims/s60, macros/entry.rs, std/src/fs, core/src/fs.
 
 - Identity: HostBuf now models Buf16 in UTF-16 units (cap in units, put_utf16 copies the macro's units, never the &str); all 16 existing fast_write tests pass on it; new crates/symdev-build/tests/fast_write_utf16.rs (5 tests) passes. Breaking the const encoder's low surrogate (0x3ff -> 0x1ff) fails all 5 new tests (the old 9 do not notice: no astral literal in them).
 
+- Gates clean: cargo test --workspace, clippy --all-targets (host), clippy --release --workspace (symbian-rs, only the pre-existing compiler_builtins profile warning). symbian-macros 26 tests pass (expansion test updated for the utf16! constant).
+
 ## Decisions
 
 - Design to try: `symbian_fmt::Utf16Str` = `&'static str` + its `&'static [u16]`, built only by `utf16!(expr)` (const items: `[u16; utf16_len(S)]` from a const fn), `Deref<Target = str>` and `Display` = str's, `Arg` -> new `Sink::put_utf16(text, units)` whose default is `put_str(text)` (so every non-Buf16 destination sees the same `write_str`), `Buf16` overrides with a room check + unit copy. The fast `write!` emits each literal piece as a `utf16!` const. `hello` changes one line: `const GREETING: Utf16Str = utf16!("…")`.
@@ -34,4 +36,4 @@ shims/s60, macros/entry.rs, std/src/fs, core/src/fs.
 
 ## Next step
 
-Measure baseline sizes of every example.
+Measure every example (final), run symdev test --emulator on every report writer, read hello's notifier line, weigh shim.

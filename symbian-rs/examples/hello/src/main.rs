@@ -1,8 +1,11 @@
 //! Hello (experiment 69): the note is built with `write!` into a stack descriptor and
 //! shown through a safe wrapper. `write!` is `symbian_std`'s (experiment 101): `core`'s
 //! syntax and output, with the string and the number appended directly, so this image
-//! links none of `core::fmt` — 1 245 bytes against 2 567 with `core::write!`. No `unsafe` block, no raw C function, no `_LIT` static —
-//! `examples/hello-raw` keeps the pre-`symbian-core` version for comparison.
+//! links none of `core::fmt`. The greeting is a `utf16!` constant and the format
+//! string's text is put into the image as UTF-16 by `write!` itself (experiment 106), so
+//! nothing is transcoded at run time either, as with C++'s `_LIT`: 971 bytes, against
+//! 1 245 with a `&str` greeting and 2 567 with `core::write!`. No `unsafe` block, no raw
+//! C function — `examples/hello-raw` keeps the pre-`symbian-core` version for comparison.
 //!
 //! The entry point is `#[symbian_std::main]` (experiment 81): an ordinary `fn main`
 //! returning a `Result`, with the `E32Main()` `eexe.lib` calls written by the

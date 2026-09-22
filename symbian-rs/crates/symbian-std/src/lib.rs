@@ -148,7 +148,23 @@ pub use symbian_macros::{main, strings};
 ///
 /// They are not in the [`prelude`]: a glob-imported `write` is ambiguous with
 /// `core`'s and would be a compile error (E0659).
-pub use symbian_fmt::{Utf16Str, utf16, write, writeln};
+pub use symbian_fmt::{write, writeln};
+
+/// Text known at compile time, put into the image as UTF-16 as well as UTF-8, as C++'s
+/// `_LIT` is (experiment 106). `write!` already does this for the literal text of its
+/// format string; `utf16!` does it for a constant a program interpolates, which the
+/// macro cannot see is constant:
+///
+/// ```ignore
+/// use symbian_std::{Utf16Str, utf16, write};
+///
+/// const GREETING: Utf16Str = utf16!("Hello from Rust SDK");
+/// write!(note, "{GREETING} ({} chars)", GREETING.len())?;
+/// ```
+///
+/// Into a `Buf16` the code units are copied by euser; into anything else the `&str`
+/// is written, exactly as before. A `Utf16Str` reads as its `str` (`Deref`, `Display`).
+pub use symbian_fmt::{Utf16Str, utf16};
 /// What a `fn main` may return, and the `TInt` it becomes. An application implements
 /// [`IntoExitCode`] for its own error type to return it from `main`; `()`, `i32`,
 /// `SymbianError`, `io::Error` and any `Result` of those are already covered.

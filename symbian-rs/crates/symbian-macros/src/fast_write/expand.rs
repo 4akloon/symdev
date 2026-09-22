@@ -11,7 +11,8 @@
 //! {
 //!     use $crate::__private::{Enter as _, SinkKind as _, WriteKind as _, SlowKind as _};
 //!     w.__symbian_fmt_enter((&n,), |__d, (__a0,)| {
-//!         <one write per piece>
+//!         { const __T: $crate::Utf16Str = $crate::utf16!("n="); <write &__T> }
+//!         { <write __a0> }
 //!         Ok(())
 //!     })
 //! }
@@ -21,6 +22,10 @@
 //! `core::write!`'s `w.write_fmt(…)`: the same auto-referencing, the same two-phase
 //! borrow (so `write!(s, "{}", s.len())` still compiles), and the arguments evaluated
 //! after it, each once, in `format_args!`'s order.
+//!
+//! Literal text is a `symbian_fmt::Utf16Str` constant,
+//! so a destination that holds UTF-16 copies units made at compile time; every other
+//! destination is given the `&str`, which is the `write_str` `core` makes.
 //!
 //! Each write asks a `Probe` of the destination's and the argument's types for its
 //! kind. Autoref specialisation picks the most specific kind that applies — a

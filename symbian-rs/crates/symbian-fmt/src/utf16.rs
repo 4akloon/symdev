@@ -127,7 +127,11 @@ pub const fn encode_utf16<const N: usize>(s: &str) -> [u16; N] {
 }
 
 const fn continuation(bytes: &[u8], at: usize) -> u32 {
-    if at < bytes.len() { bytes[at] as u32 } else { 0 }
+    if at < bytes.len() {
+        bytes[at] as u32
+    } else {
+        0
+    }
 }
 
 const fn put<const N: usize>(out: &mut [u16; N], at: usize, unit: u16) -> usize {
