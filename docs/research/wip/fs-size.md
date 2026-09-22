@@ -89,6 +89,13 @@ Keep experiment 98's `read_dir` borrowing from the `CDir`. Stay out of `symbian-
   (exe +54), every image with one opening site +64..+128 code. Reverted: the per-opening
   closure in an `#[inline]` `opened` stays.
 
+- `OpenOptions` as one `u8` bit word instead of six `bool`s (hand-written `Debug` printing
+  the same fields): measured with an uncommitted probe in `files` (an `OpenOptions` whose
+  flags are only known at run time, `append`/`truncate` chosen by `BYTES.len()`): E32 code
+  13 948 both ways (exe 8 495 / 8 492). LLVM already keeps the six bools in registers;
+  the word buys nothing. Dead end, reverted. The probe itself costs +456 B of code over
+  c6 for one builder open + write_all + remove_file + a report case.
+
 ## Decisions
 
 ## Dead ends
