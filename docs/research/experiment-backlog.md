@@ -2314,3 +2314,140 @@ was checked independently and is impossible: a glob-imported `write` macro is `E
 against the standard one, reproduced in a four-line crate. Emulator: `fmt` 14, `files`
 26, `locale` 7, `async` 15, `time` 29, `query` 4, `atomics` 23, `cleanup` 2, `tls` 45
 passed; `hello`'s note, from the emulator log: `Hello from Rust SDK (19 chars)`.
+
+## 102. The strings file read over `RFile`: a reader of exactly what our `rcomp` writes, and no `TRAP` (T5, Rust SDK)
+
+**Requires:** the toolchain, `SYMDEV_EKA2L1`; `language:` in `~/.local/share/EKA2L1/config.yml`
+switched between 1 and 2 (restored to 1 after; `log-filter` untouched).
+
+**Why.** Experiment 99 put the heap at parity with C++ and left the code 5.4 kB above it:
+`locale` 12 031 bytes against C++ 6 647, of which ~2.2 kB was the C++ exception runtime that
+`TRAP` pulls in around `RResourceFile::OpenL`/`ConfirmSignatureL`/`AllocReadL`. Its named next
+lever: `RFile` and `NearestLanguageFile` do not leave, and we write these files ourselves.
+
+**The layout, established from the writer** (`RscCompiled::rsc_bytes`,
+`crates/symdev-rcomp/src/rsc.rs`; the source `StringsResources::rss`,
+`crates/symdev-build/src/strings_resources.rs`; `rcomp-spec.md` §1.4, §3.1):
+
+| offset | bytes | what |
+|---|---|---|
+| 0 | 16 | UID1 `0x101f4a6b`, UID2, UID3, CRC (`UidCrc`) |
+| 16 | 1 | flags: `0x01` = `FLAG_UID3_FROM_NAME`, because the source has `NAME STRS` and no `UID3` |
+| 17 | 2 | largest resource, `u16` LE |
+| 19 | ⌈n/8⌉ | one bit per resource, set when it is stored packed |
+| … | | the resources back to back |
+| end − 2(n+1) | 2(n+1) | `u16` LE offsets: entry *k* starts resource *k*+1; entry *n* is the index's own offset |
+
+So the last two bytes locate the index and give *n*; resource 1 is the signature (`LONG 4`,
+`SRLINK self`, 8 bytes), resource 2 + *i* is key *i* as a `BUF8` of its UTF-8. `BUF8` is
+never compressed, and a resource is marked packed only when a compressible 16-bit text is
+left in it, so every packed bit must be clear. Anything else — another UID1, another flag,
+a packed bit, an index outside the file, an entry pair running backwards or past the index,
+a file ending early — is `Unreadable`, naming what was found. On the phone it is
+`KErrCorrupt`: the public `Result<Text>` carries a `TInt`, so the name survives only in the
+host tests.
+
+**`NearestLanguageFile` does not leave — followed in the ROM, not read off the name.** The
+emulator's `z:\sys\bin\bafl.dll` (RM-469) is a ROM image (0x78-byte header, Thumb code);
+`bafl.dso` puts `NearestLanguageFile(const RFs&, TFileName&)` at ordinal 276
+(`0x803fb20d`), which tail-calls the three-argument overload (453). Its transitive call
+closure — 34 local functions, with the two vtables every indirect call goes through
+(`0x80401ed0`, the finder; `0x80401e3c`, its `RDir` wrapper) resolved by hand — reaches only
+`TDes16`/`TPtrC16`/`TBufBase16` members, `TParsePtrC`, `TParseBase::NameAndExt`,
+`RFs::Entry`, `RDir::Open`/`Read`/`Close`, `TEntry`'s constructor, `User::Language`,
+`TLocale`'s constructor, `UserSvr::DllTls`, `HAL::Get`, `__aeabi_idivmod`, `__ARM_switch8`
+and `operator delete`. No `User::Leave*`, no `L` function. It can still panic `USER 11` on a
+`TFileName` near 256 characters, like any descriptor append; ours is short.
+
+**Mechanism.** `symbian-core/src/locale/`: `layout.rs` (`StringsLayout`, `Unreadable`,
+`ReadAt`, `core` only), `heap_bytes.rs` (`HeapBytes`: exact-size `User::Alloc` cell, no
+`HBufC8` header), `text.rs` (`Text` over it, UTF-8 checked once), `strings.rs` (`Str`, the
+process's open file). `fs::File` gained `read_at` (`RFile::Read(TInt, TDes8&)`,
+`_ZNK5RFile4ReadEiR5TDes8`, `f32file.h:1908`) and a crate-internal `open_des`; `symbian-sys`
+binds `BaflUtils::NearestLanguageFile` directly. `Str::at`, `Str::get() -> Result<Text>` and
+`Text: Deref<Target = str>` are unchanged.
+
+**Host tests** (`crates/symdev-build/tests/strings_layout.rs`, 9): `layout.rs` is included
+unchanged with `#[path]` and reads files compiled by the real preprocessor and `Rcomp`: 70
+keys (a nine-byte packed-bit map, read in three pieces), an empty value, Latin-1, Cyrillic,
+controls, quotes, bytes 0x80/0x9f/0xff, a 300-byte value, the signature, one key alone.
+The refusals use the writer's own output where it can produce them: a `UID3` statement
+gives flag byte 0 (`Flags { found: 0 }`), a `BUF` text gives a packed resource
+(`Packed { resource: 2 }`); the rest (UID1, index outside/odd/overlapping the header,
+entries backwards/past the index, too short, resource 0 and *n*+1) are byte edits.
+
+**What the open file holds — two designs measured, one kept.** `examples/locale` as it
+already measures (`User::AllocSize`, session open first), and 2 000 × `GREETING.get()` +
+drop timed with `NanoTicks` (1 ms in EKA2L1; a throwaway patch, not committed), two runs each:
+
+| design | open file, held | one string held | 2 000 gets, ticks |
+|---|---|---|---|
+| **C++** `RResourceFile` (exp. 99) | +4 cells / +208 B | +1 / +36 B | not measured |
+| old Rust: `RResourceFile` through the `TRAP` shim | +4 / +168 B | +1 / +36 B | 8, 9 |
+| A: `RFile` handle + two numbers, index entries read per `get` | **+0 / +0 B** | +1 / +36 B | 13, 13 |
+| **C (kept):** the index read once into one heap cell | **+1 / +36 B** | +1 / +36 B | **7, 8** (6, 7 as a first hack) |
+
+A costs nothing on the heap and makes every `get` two file-server reads instead of one —
+1.5× the old path. C holds 2(n+1) bytes of index, as C++'s `RResourceFile` does, a quarter
+of C++'s cells, and a `get` is one read: at least as fast as the old path. Kept C. The
+string cell is the bytes alone; it still counts +36 B, the same as the `HBufC8` did — heap
+granularity, not measured further. The dropped string gives its cell back and a second
+read leaves nothing behind (`8/400 -> 8/400`).
+
+**Code, `.exe` bytes, every non-`std` example, against this branch's base (main 5eb3beb):**
+
+| example | before | after | Δ |
+|---|---|---|---|
+| `locale` | 12 045 | **9 984** | **−2 061** (`.text` −2 904, `.rodata` −28) |
+| `files` | 11 102 | 11 081 | −21 (`.text` −24) |
+| `fmt` | 100 667 | 100 647 | −20 |
+| `ui-list` | 13 907 | 13 898 | −9 |
+| `atomics`, `cleanup`, `spawnee` | | | −4, −3, −3 |
+| `net`, `notes`, `query`, `tls` | | | +8, +15, +16, +18 |
+| `alloc`, `async`, `hello`, `hello-raw`, `panic`, `shim`, `time`, `ui` | | | 0 |
+
+The small moves outside `locale` are `File::opened_by` now taking the converted path from
+its callers (`files`, `spawnee`, `tls`: `.text` −24…−40) and `.text` ±4…12 in programs that
+open no file (`query` +12), the same drift as experiments 87/99.
+
+**The exception runtime is gone from a console program that reads strings.** `nm -S` on
+`localedemo.elf`, before → after: gone `__gxx_personality_v0` (1 764), `__gnu_unwind_execute`
+(1 056), `read_encoded_value_with_base` (368), `parse_lsda_header` (196), `next_unwind_byte`,
+`base_of_encoded_value`, `__gnu_unwind_frame`, every `_Unwind_*`, `typeinfo for
+XLeaveException`, `symrs_rsc_open` (180), `symrs_rsc_read` (114): 4 200 bytes of symbols.
+Added: the reader's own 752 (`HeapBytes::read` 220, the open closure 196,
+`check_unpacked` 180, `File::read_at` 156) plus `Str::get` +492 (now 1 804, with the open
+path, the layout check and the UTF-8 check inlined). No symbol matching
+`unwind|__cxa|__gxx|personality|lsda|XLeave` is left.
+
+**Against C++:** `locale` 9 984 against 6 647 — from 12 045 (exp. 99/100). Of the 3.3 kB
+left, 2 936 bytes are `core::fmt`, most of it the test harness's and the example's own
+`{}`/`{:?}` (experiment 101's table), and the reader is ~2.6 kB (`Str::get` and the four
+functions above). Heap: open file **+1 / +36 B against C++'s +4 / +208 B**, a string held
++1 / +36 B, equal.
+
+**Emulator** (`symdev test --emulator`, one `.sisx`): `language: 1` → "Hello from Rust" /
+"language" / "ok", `localedemo: 7 passed`; `language: 2` → "Bonjour depuis Rust" / "langue"
+/ "d'accord", 7 passed. **The French is read from `.r02`:** with `Bonjour` changed to
+`BONJOUR` in `build/localedemo_strings.r02` alone and the package rebuilt, `language: 2`
+printed "BONJOUR depuis Rust" and the greeting check failed, as it must; the file was then
+rebuilt. `language:` restored to 1.
+
+**Deleted:** `shims/common/symrs_rsc.cpp` and its two declarations in `symrs_shim.h` and
+`symbian-sys/src/shim.rs`; `symbian-sys`'s `RResourceFile`, `HBufC8` and `TDesC8_Ptr`,
+which nothing else used; `symbian-core`'s `MAX_INDEX` (a resource past the file's count is
+now the layout's refusal).
+
+**Verification.** `cargo test --workspace --offline` 478 passed; `cargo clippy --workspace
+--all-targets --offline` clean; in `symbian-rs/`, `cargo clippy --release --workspace` prints
+only the `compiler_builtins` profile-spec warning `main` prints too.
+
+**Not determined:** the C++ baseline's per-`get` ticks (it times only `User::Language`);
+why a 15-byte cell and an `HBufC8` of 15 bytes both count 36 B; whether a device's
+`bafl.dll` matches the emulator ROM's (the non-leaving claim is about RM-469's); a device at
+all. Measurement scripts and the ROM call-closure script are outside git
+(`~/.cache/rsc-reader-agent/`, session scratchpad).
+
+**Evidence.** `symbian-rs/crates/symbian-core/src/locale/{layout,heap_bytes,text,strings}.rs`,
+`symbian-rs/crates/symbian-sys/src/bafl.rs`, `crates/symdev-build/tests/strings_layout.rs`,
+`symbian-rs/examples/locale`.
