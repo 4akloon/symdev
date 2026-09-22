@@ -22,6 +22,7 @@ mod rust_build;
 mod rust_link;
 mod rust_shims;
 mod source;
+mod strings_build;
 mod tool;
 mod ui_build;
 

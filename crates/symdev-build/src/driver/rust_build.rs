@@ -210,6 +210,7 @@ impl BuildBackend for RustBuild {
             .run_elf2e32(&self.gcce.elf2e32_args(&self.name, &elf, &out), &cwd)?;
         let mut artifacts = vec![Artifact::exe(out)];
         artifacts.extend(self.build_ui(&build_dir)?);
+        artifacts.extend(self.build_strings(&project.root, &build_dir)?);
         Ok(artifacts)
     }
 }

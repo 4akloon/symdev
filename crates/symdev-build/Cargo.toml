@@ -13,6 +13,7 @@ symdev-mif = { path = "../symdev-mif" }
 symdev-rcomp = { path = "../symdev-rcomp" }
 symdev-elf2e32 = { path = "../symdev-elf2e32" }
 symdev-manifest = { path = "../symdev-manifest" }
+symdev-locale = { path = "../symdev-locale" }
 # Content hashing for the patched-std overlay (`StdSrc`): it checks that each file it
 # replaces is still the toolchain file it was derived from. Not a security use.
 sha1 = "0.10"

@@ -10,6 +10,7 @@ mod required_capability;
 mod resources;
 mod rust_sdk;
 mod std_src;
+mod strings_resources;
 mod toolchain;
 mod ui_resources;
 
@@ -23,5 +24,6 @@ pub use package::SisPackage;
 pub use resources::{AppTarget, BuildOutputs, GeneratedCaseFold, MmpPath, SdkIncludeCaseFold};
 pub use rust_sdk::RustSdk;
 pub use std_src::StdSrc;
+pub use strings_resources::StringsResources;
 pub use toolchain::{Epocroot, Toolchain};
 pub use ui_resources::UiResources;

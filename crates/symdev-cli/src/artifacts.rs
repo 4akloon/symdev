@@ -1,7 +1,7 @@
 //! What `symdev package` carries: the build's outputs plus the manifest's own entries.
 use std::path::Path;
 
-use symdev_build::{AppIcon, AppTarget, BuildOutputs, IconOutputs, UiResources};
+use symdev_build::{AppIcon, AppTarget, BuildOutputs, IconOutputs, StringsResources, UiResources};
 use symdev_core::{Artifact, Error, Project};
 
 /// The EXE, the resources the project's MMPs compile (`BuildOutputs`), the icon, the
@@ -43,6 +43,18 @@ pub(crate) fn package_artifacts(
                     .artifact(&build),
                 );
             }
+        }
+        // `locales/`, compiled by `RustBuild::build_strings` into one file per
+        // language. Named after the EXE, because that is how the run time finds them.
+        if let Some(locales) = symdev_locale::Locales::load(&cwd.join("locales"))
+            .map_err(|e| Error::Other(e.to_string()))?
+        {
+            let app = e32
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_string();
+            outputs.extend(StringsResources { app, locales }.artifacts(&cwd.join("build")));
         }
         outputs
     };

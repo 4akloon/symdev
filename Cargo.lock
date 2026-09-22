@@ -891,6 +891,7 @@ dependencies = [
  "sha1",
  "symdev-core",
  "symdev-elf2e32",
+ "symdev-locale",
  "symdev-makekeys",
  "symdev-manifest",
  "symdev-mbm",
@@ -913,6 +914,7 @@ dependencies = [
  "symdev-build",
  "symdev-core",
  "symdev-emulator",
+ "symdev-locale",
  "symdev-manifest",
  "tempfile",
 ]
