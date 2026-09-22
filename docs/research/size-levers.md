@@ -41,9 +41,9 @@ Kept: L1, L2, L4, L9. Cumulative `.exe` bytes (each column adds one lever to the
 Corpus total: **`.exe` -18 950 bytes, `.text` -23 100 bytes.** No example grows by more than
 the noise described above.
 
-**The largest remaining gap is `core::fmt` (L8).** In `hello` it is 1 330 of the 2 523 bytes
-that are left. Removing it needs a new formatting macro, which is a decision about the
-API. For that reason it is measured here but not applied.
+**The largest remaining gap was `core::fmt` (L8).** In `hello` it was 1 330 of the 2 523 bytes
+that were left. The macro it needed was decided and built in experiment 100: `hello` is now
+1 245 bytes with no `core::fmt` in it (see L8).
 
 ## Every lever
 
@@ -145,7 +145,25 @@ exit code, and the intended `User::Panic` with a category could not be reached. 
 is in `symbian-runtime`, which another agent owns, so the decision is recorded here and not
 made here.
 
-### L8 — `core::fmt` behind `write!` — **the biggest lever, measured, unapplied**
+### L8 — `core::fmt` behind `write!` — **applied in experiment 100 (`symbian_std::write!`)**
+
+*Achieved (experiment 100, `main` at aae58bb):* `symbian_std::{write, writeln}` — `write!`'s
+syntax, byte-identical output (tested call for call on the host and unit for unit on
+`Buf16` in the emulator), plain `{}` of strings and integers appended directly, anything
+else `core::write!`. `hello` **2 567 → 1 245** (C++ 802; the hand-written ceiling below was
+1 193) with **no `core::fmt` symbol left**. It is not in the prelude: a glob-imported
+`write` is E0659-ambiguous with `core`'s, so a program opts in with
+`use symbian_std::{write, writeln};`. It saves only where nothing else needs `core::fmt`:
+`alloc` −128, but `async` +548, `locale` +230, `query` +161, `time` +880, because the test
+harness (`check_detail(fmt::Arguments)`, `checked`'s `{e:?}`, the JSON writer's `{:08x}`)
+keeps `core::fmt` in every example that reports, and is **all** of it in eight of them.
+With a format-free harness the same four examples save 731 (`async`), 1 169 (`locale`)
+and 1 332 (`query`) bytes; `time` still formats `{:?}` itself. The harness change is
+proposed there with numbers, not applied. What is left of `hello`'s gap is
+`Buf16::push_str` (428, UTF-8 to UTF-16 at run time); compile-time UTF-16 literals are the
+next lever.
+
+*The measurement that motivated it (before experiment 100):*
 
 In `examples/hello` I replaced the single `write!` by the four calls a macro would generate
 (`push_str`, `push_str`, `append_num`, `push_str`) and changed nothing else:
@@ -165,7 +183,7 @@ the cost: `Buf16::append_num` already sends the digits to euser's `TDes16::Appen
 adds zero bytes. The cost is building the `Arguments`, the `Formatter` width and precision
 handling, and the `fmt::Write` shim that every piece of a `write!` goes through.
 
-*Why it is not applied:* using it means adding a public formatting macro, and that is a
+*Why it was not applied then:* using it means adding a public formatting macro, and that is a
 decision about developer experience. The shape that costs nothing is a proc macro with
 `write!`'s exact syntax. It would emit direct pushes for `{}` and `{name}` over `&str`,
 integers and `char`, and **fall back to `write!` for any piece it cannot handle natively**

@@ -2,9 +2,10 @@
 //! plain `{}` of a string or an integer directly instead of formatting it through
 //! `core::fmt` (experiment 100).
 //!
-//! An application gets them from `use symbian_std::prelude::*;`, which shadows the
-//! standard `write!`/`writeln!`; nothing else in the program changes. They exist for
-//! size: `core::fmt::write`, the `Formatter` and the integer `Display` are about
+//! An application imports them by name, `use symbian_std::{write, writeln};`, which
+//! shadows `core`'s; nothing else in the program changes. (Not through the prelude's
+//! glob: a glob-imported `write` is ambiguous with `core`'s, rustc E0659.) They exist
+//! for size: `core::fmt::write`, the `Formatter` and the integer `Display` are about
 //! 1.3 kB of every image that formats anything, and C++ pays nothing for the same
 //! work because `TDes::Format`/`AppendNum` are in ROM.
 //!

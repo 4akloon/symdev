@@ -2110,3 +2110,189 @@ variants were a scratch copy with one `MACRO` per run (`SYMDEV_PANIC_COST`,
 `SYMDEV_PANIC_NOW`, `SYMDEV_EXIT_WITH_CLEANUP`, `SYMDEV_EXIT_NO_CLEANUP`,
 `SYMDEV_LEAVE_NO_TRAP`, `SYMDEV_LEAVE_TRAPPED`). They were not committed, because the
 baseline project stays as it is.
+## 101. A `write!` that appends `{}` of strings and integers directly: `core::fmt` out of `hello` (T5, Rust SDK)
+
+**Requires:** the toolchain, `SYMDEV_EKA2L1`; for `net`, both peers in
+`examples/net/peer`.
+
+**Why.** `core::fmt` was the largest size gap against C++ that was left (size-levers L8):
+`hello` 2 567 bytes against C++ 802, with the ceiling of hand-written appends at 1 193.
+C++ formats through `TDes::Format`/`AppendNum`, which are in ROM. The user chose «Так, у
+prelude»: a macro with exactly `write!`'s syntax that turns plain `{}` of strings and
+integers into direct appends, falls back to `core::write!` for everything else, and is
+byte-identical to it.
+
+**Mechanism.**
+
+- `symbian_fmt::write!`/`writeln!` (new crate `symbian-rs/crates/symbian-fmt`, re-exported
+  as `symbian_std::{write, writeln}`) are `macro_rules!` wrappers. `macro_rules!` does the
+  expression splitting (`$dst:expr, $fmt:literal, $($arg:expr),*`), which a token scan
+  cannot do (`f::<A, B>(x)` has a top-level comma). Anything else — a `concat!` format,
+  or no format at all — goes to `::core::write!` unchanged. `symbian-macros`' new
+  `__write_pieces!` (still dependency-free, hand-parsed) takes the string apart when
+  every hole is `{}`, `{0}` or `{name}` (captures included). **Any** spec (`{:5}`, `{:x}`,
+  `{:?}`, `{:.2}`), or anything `format_args!` would reject (an unused argument, `{3}`
+  with two arguments, a duplicate name), sends the whole invocation to `core::write!`
+  with the caller's tokens, so behaviour and diagnostics are `core`'s own.
+- **Types are chosen by the type checker, by autoref specialisation.** A proc macro
+  cannot see types, so each piece is written as
+  `(&&&Probe::of(&*d, a)).__symbian_kind().put(d, a, |d, a| d.write_fmt(format_args!("{}", a)))`.
+  Method lookup tries `&&&Probe` (`SinkKind`: destination has a native `Sink`, argument
+  is on the list), then `&&Probe` (`WriteKind`: any `fmt::Write`), then `&Probe`
+  (`SlowKind`: always). The slow tag calls the closure the expansion wrote at the call
+  site, so a type not on the list — `bool`, floats, 128-bit integers, a user `Display` —
+  and an `io::Write` destination are `core::fmt` exactly, with whichever `Write` trait the
+  caller has in scope and its result type. Tried first in a scratch prototype: it
+  resolves as intended for `Buf16`-like, `String`, `Formatter`, generic `W: fmt::Write`
+  (takes the `fmt::Write` tier, still exact), user `Display` and `Vec<u8>` as
+  `io::Write`.
+- **The destination is evaluated once, by one method call**,
+  `(dst).__symbian_fmt_enter((&a0, &a1), |d, (a0, a1)| { … })`, so it is auto-referenced
+  and two-phase borrowed exactly as `write_fmt` is (`write!(s, "{}", s.len())` compiles).
+  Emitting `$dst` as a bare invisible group broke precedence — `write!(&mut h.line, …)`
+  became `&mut (h.line.method(…))`, E0716 — so it is parenthesised.
+- **The fast list:** `str`, `String`, `char`, `&T`/`&mut T` of those, integers up to 64
+  bits. Destinations: `Buf16` implements `symbian_fmt::Sink` (text by `push_str`,
+  numbers by euser's `TDes16::AppendNum`, in ROM); every other `fmt::Write` is driven
+  through the same `write_str`/`write_char` calls `core` makes, with digits from
+  `symbian_fmt`'s own `Decimal`.
+- **Integer text does not reintroduce what it removes.** For `Buf16` it is ROM code. For
+  a `String`, a value whose magnitude fits a `u32` (every integer up to 32 bits, and the
+  32-bit `usize`/`isize`) goes through one loop where `/ 10` is a multiply; only a 64-bit
+  value above that takes a 16-bit-limb division (never `__aeabi_uldivmod`). The widths
+  are separate `Sink` methods so a program without 64-bit numbers never links the wide
+  path. `Buf16::append_num`'s room check (`decimal_len`) divided a `u64` at run time; it
+  now counts by multiplying.
+
+**Byte identity, and how it is proved.**
+
+- What `core` does, read from this nightly's source: literal pieces are `write_str`;
+  `{}` of `str` is `pad` → `write_str`; `char` is `write_char`; an integer is
+  `write_char('-')` and then one `write_str` of the digits — so a destination with room
+  for the sign and not the digits keeps the `-`. rustc also **folds literal arguments into
+  the template** (probe, identical on stable 1.98.1 and nightly-2026-09-19): string
+  literals, raw ones too, and integer literals that fit their type (unsuffixed = `i32`;
+  `(5)` too); not `char`, `bool`, floats, `-1` or `256u8` under `allow`. The macro copies
+  that rule, or its `write_str` calls would differ.
+- **Host, call for call** (`crates/symdev-build/tests/fast_write*.rs`, in the host gate):
+  every case runs through `core::write!` and the fast `write!` into a recording
+  `fmt::Write` under 56 failure modes (never, failing from the n-th call, and
+  all-or-nothing capacities 0–47) and into a `Buf16`-like native `Sink` of every capacity
+  0–47; the recorded calls and the results must be equal. Cases: literal-only, `{{`/`}}`,
+  escapes and raw strings, `{0}`/`{1}`, named, captures, `&str`, `String`, `char` (1–4
+  bytes), every integer width at `MIN`/`MAX`/0/1 and across the `u32` boundary, `u128`,
+  `{:5}`, `{:<5}`, `{:05}`, `{:x}`, `{:#x}`, `{:X}`, `{:.2}`, `{:?}`, `{:>1$}`, `{:.*}`,
+  user `Display`, nested `format_args!`, folded and unfolded literals, trailing commas,
+  empty strings, `writeln!` with and without arguments; plus a `Formatter` destination
+  inside a `Display`, a generic `W`, `dyn fmt::Write`, an `io::Write` that fails after n
+  bytes, evaluation once and in order, and a field/`&mut`/reborrow as destination.
+  16 tests, pass. `symbian-macros` has 6 more unit tests of the parser and the plan.
+- **On the emulator, the `Buf16` path** (`examples/fmt`, new, UID3 `0xe00006a2`): 12
+  groups of invocations through both macros into `Buf16<N>` for N = 0…24 and 64, units
+  and `fmt::Result` compared — **14 passed**. The test can fail: dropping the lone-`-` rule
+  from `Buf16`'s `put_i64` gave 5 failures (e.g. "negative numbers cut after the sign: 6
+  mismatches").
+
+**A glob-imported prelude cannot shadow `write!` — the user's option does not compile.**
+With `pub use symbian_fmt::write` in `symbian_std::prelude`, `hello` fails with E0659
+"`write` is ambiguous … conflict between a name from a glob import and an outer scope
+during import or macro resolution" (nightly-2026-09-19; the same on stable 1.98.1 in a
+scratch crate, where an explicit `use dep::prelude::write` and `#[macro_use] extern crate
+dep` both work). Worse, every existing program that globs the prelude and calls `write!`
+would stop compiling. So the macros are **not** in the prelude; they are
+`symbian_std::{write, writeln}`, and a program opts in with one line,
+`use symbian_std::{write, writeln};`. That is a deviation from the decision and is the
+user's to confirm.
+
+**Resources — every example, `.exe` bytes against `main` at aae58bb** (the six examples
+that call `write!` gained the one `use` line; nothing else in them changed):
+
+| example | main | fast | Δ |
+|---|---|---|---|
+| `hello` | 2 567 | **1 245** | −1 322 (−51 %) |
+| `alloc` | 3 876 | 3 748 | −128 |
+| `async` | 20 423 | 20 971 | +548 |
+| `locale` | 12 031 | 12 261 | +230 |
+| `query` | 19 374 | 19 535 | +161 |
+| `time` | 13 525 | 14 405 | +880 |
+| `shim` | 4 520 | 4 517 | −3 (`decimal_len`) |
+| `atomics`, `cleanup`, `files`, `hello-raw`, `net`, `notes`, `spawnee`, `tls`, `ui`, `ui-list` | | | 0 |
+| `fmt` (new, test only: 26 monomorphised capacities) | — | 100 580 | |
+
+**`hello` against C++: 1 245 against 802**, from 2 567 (the hand-written ceiling was
+1 193). `nm` finds **no `core::fmt` symbol left** — not `core::fmt::write`, not the
+`Formatter`, not `panic_fmt`; `E32Main` is three `push_str` calls and one `AppendNum` with
+its room check folded to a constant. What is left of the gap is `Buf16::push_str` (428,
+UTF-8 to UTF-16 at run time, where C++'s `_LIT` is UTF-16 at compile time) and the fixed
+entry code. Emitting literal pieces as compile-time UTF-16 is the next lever.
+
+**Where the fast path costs.** It removes `core::fmt` only from a program that has no
+other use for it. `async`, `locale`, `query` and `time` keep `core::fmt` for the test
+harness (below) and for their own `{:?}`, so for them the fast pieces are extra code: one
+call of about 24 bytes per piece instead of one `Arguments` per invocation, plus the digit
+routines (`put_u32` 188 + 88 per `String` destination type; the 64-bit path, 312 + 164,
+in `time`). The first cut was worse (+273…+1 035) — `core::str::from_utf8` (572 B) in the
+digit buffer, the limb division used for every width, and `String::push_str` inlined per
+piece — all three fixed above.
+
+**The harness's share.** `Report::check_detail` takes `fmt::Arguments`, `Report::checked`
+writes `{e:?}`, and the JSON writer uses `{:08x}`. Rebuilding every example with those
+three made format-free (a measurement variant, not a proposal to drop the detail):
+
+| example | main | main, fmt-free harness | fast, fmt-free harness | `core::fmt` bytes on main, of it harness |
+|---|---|---|---|---|
+| `async` | 20 423 | 16 039 | **15 308** | 5 844, 3 844 |
+| `atomics` | 10 710 | 7 401 | 7 401 | 2 908, all |
+| `cleanup` | 5 767 | 3 832 | 3 832 | 2 480, all |
+| `files` | 11 091 | 7 611 | 7 611 | 2 908, all |
+| `locale` | 12 031 | 9 977 | **8 808** | 2 936, 792 |
+| `net` | 12 423 | 9 244 | 9 248 | 2 908, all |
+| `notes` | 14 649 | 11 735 | 11 735 | 3 652, all |
+| `query` | 19 374 | 13 715 | **12 383** | 4 748, 2 328 |
+| `time` | 13 525 | 10 379 | 11 127 | 4 840, 1 032 |
+| `tls` | 15 098 | 9 872 | 9 874 | 3 664, all |
+| `ui` / `ui-list` | 12 950 / 13 869 | 11 121 / 11 919 | same | 2 484, all |
+
+(`core::fmt` bytes = every symbol whose mangled name contains `core::fmt`, including the
+`Display`/`Debug` impls.) Eight examples use `core::fmt` **only** for the harness; with a
+format-free harness `async`, `locale` and `query` also drop to zero and the fast macro
+turns into a saving (−731, −1 169, −1 332 against the same harness on `main`). Split on
+the fast branch: the JSON writer alone is −200…−650, `check_detail` up to −6 835
+(`query`), `checked`'s `{e:?}` −2 600…−3 300 for the rest. **Proposal, not applied** (it
+changes the harness API): a `check_detail` that takes the fast `write!`'s arguments (a
+macro or a closure over `&mut String`), a `checked` that records an error's code and
+name instead of its `Debug`, and a JSON writer over `push_str`. A shipped application
+carries none of the harness.
+
+**Performance** (`examples/fmt`, 100 000 × `"i={} neg={} s={}"`, EKA2L1 `NanoTicks` of
+1 ms, four runs): into a `Buf16`, `core` 65/113/73/74, fast 55/75/60/59; into a `String`,
+`core` 39/46/45/47, fast 35/42/40/40 — the fast path takes 15–34 % fewer ticks into a
+`Buf16` and 9–15 % fewer into a `String`. Emulator ticks, not the phone's.
+
+**DX.** The developer writes `write!` as always, plus the one `use`. Checked against
+`core::write!` in a scratch crate: a bad format string, too few arguments, an unused
+argument and an unknown trait (`{:q}`) give rustc's **own** error at the user's string
+(they go to `core::write!`); an unknown capture gives E0425, but spanning the whole string
+literal rather than the name; a missing `Display` gives E0277 **at the argument** (the
+slow closure's parameter carries the argument's span); a missing `fmt::Write` import
+gives E0599 with rustc's "import `std::fmt::Write`" hint, worded as "no method named
+`write_fmt`" instead of "cannot write into"; a destination that is not writable reads
+"the method `write_fmt` exists … but its trait bounds were not satisfied". **Differs from
+`std`:** rustc's `named_arguments_used_positionally` and clippy's format lints
+(`write_literal`, `useless_borrows_in_formatting`) do not fire through the fast macro.
+Not tested, by construction a compile error rather than a different output: a
+destination whose `write_fmt` is inherent and returns something other than a `Result`,
+and one that implements both `fmt::Write` and `io::Write` with `io::Write` in scope. An
+unsuffixed `usize` literal above `u32::MAX` is folded by rustc on a 64-bit host and not
+by the macro (a compile error on the phone).
+
+**Verification.** Host: `cargo test --workspace` (with the 16 new tests) and `cargo
+clippy --workspace --all-targets` clean; `symbian-rs`: `cargo clippy --release
+--workspace` clean, `cargo test -p symbian-macros` 26 passed. Emulator, after rebasing on
+aae58bb: `net` 22 (both peers up), `async` 15, `atomics` 23, `files` 26, `locale` 7,
+`notes` 3, `query` 4, `time` 29, `tls` 45, `cleanup` 2, `ui-list` 6, `fmt` 14 passed; `shim`
+writes no result file, by design. `ui` by hand: F1, Down, Return → **`bars=2 keys=0
+cmd=1`**. `hello`'s notifier line reads "Hello from Rust SDK (19 chars)"; `alloc`'s two
+lines are identical to `main`'s ("heap 0,1,4,9,16,", "alloc sum=85344 cap=64 a8=0 a32=0
+byte=a5 heap=16"). The measurement notes that `locale`, `time` and `async` write through
+the fast `writeln!` read as before. Not run on an E52.
