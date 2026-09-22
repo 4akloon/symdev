@@ -38,7 +38,7 @@ impl RustBuild {
     /// the compile line rather than written into a source, because the manifest
     /// already holds it and two copies drift apart.
     /// **Not a reproduction.** Every other flag on this line is the SDK's own, recorded
-    /// from the real tools; these two are symdev's choice for symdev's own C++, and the
+    /// from the real tools; these three are symdev's choice for symdev's own C++, and the
     /// rule against inventing argv does not reach them — nothing in the SDK compiles
     /// `symbian-rs/shims/**`. Without them a whole shim source becomes one `.text`, so
     /// `--gc-sections` — already on the Rust link line — can only keep or drop it
@@ -46,7 +46,15 @@ impl RustBuild {
     /// including ones with no menu, because `CShimAppUi::DynInitMenuPaneL` shares an
     /// object with the entry path. One section per function and per datum is what lets
     /// the collector work at the granularity the archive already implies.
-    pub const SHIM_SECTIONS: [&'static str; 2] = ["-ffunction-sections", "-fdata-sections"];
+    ///
+    /// `-fno-rtti` drops the `typeinfo` of the shim's own classes (`CShimAppUi`,
+    /// `CShimView`, `CSymRsList`, …), which nothing reads: the shim never
+    /// `dynamic_cast`s or `typeid`s, and a `TRAP` catches `XLeaveException`, whose
+    /// `typeinfo` the compiler still emits for the `catch`. Experiment 104 measured
+    /// `ui` −165, `ui-list` −248, `notes` −177, `query` −175 bytes, and the four GUI
+    /// examples still pass on the emulator.
+    pub const SHIM_OPTIONS: [&'static str; 3] =
+        ["-ffunction-sections", "-fdata-sections", "-fno-rtti"];
 
     pub fn shim_compile_args(
         &self,
@@ -63,7 +71,7 @@ impl RustBuild {
                 Some(_) => vec![format!("SYMRS_UID3=0x{:08x}", self.gcce.uid3)],
                 None => Vec::new(),
             },
-            option: Self::SHIM_SECTIONS.iter().map(|o| (*o).into()).collect(),
+            option: Self::SHIM_OPTIONS.iter().map(|o| (*o).into()).collect(),
         };
         let dir = match source.parent() {
             Some(dir) => dir.to_path_buf(),

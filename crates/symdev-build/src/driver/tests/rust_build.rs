@@ -268,7 +268,7 @@ fn the_sdk_owns_the_shim_sources_and_compiles_them_with_the_cpp_argv() {
         )
         .unwrap();
     let at = want.iter().position(|a| a == "-mapcs").unwrap() + 1;
-    want.splice(at..at, s(&RustBuild::SHIM_SECTIONS));
+    want.splice(at..at, s(&RustBuild::SHIM_OPTIONS));
     assert_eq!(got, want);
     assert!(got.contains(&"-include".to_string()));
     assert!(got.iter().any(|x| x.ends_with("gcce/gcce.h")));
