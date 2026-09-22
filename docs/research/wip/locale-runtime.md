@@ -19,6 +19,27 @@ string +1/+36 B, all returned on free).
   (trivial, non-virtual class), so freeing its cell with `User::Free` is what remains, and the
   emulator's cell count/bytes returning to baseline is the check.
 
+- Emulator (scratch `strdemo`, uid 0xe00006b3, hand-written .rss compiled with our rcomp,
+  installed at `E:\resource\apps\strdemo_strings.rsc`): index 2 `Hello, strings`, index 3
+  `Привіт é ok` (18 UTF-8 bytes) intact, index 4 `third`; index 9 → KErrNotFound (-1) from
+  AllocReadL, index 1 refused KErrArgument; `strdemo: 7 passed`.
+- Heap (User::AllocSize, session already connected): before 4/176; first get, string held
+  9/380 (+5/+204); string dropped 8/344 → open file = +4 cells/+168 B (C++ +4/+208);
+  string held +1/+36 B (C++ +1/+36, 14 chars either way; ours 14 B UTF-8 vs C++ 28 B
+  UTF-16 — same cell size); drop −1/−36; repeated get/drop and error paths return to 8/344.
+- With `strdemo_strings.r01` ("Hello, English") also installed, index 2 read `Hello, English`:
+  NearestLanguageFile picks the language variant.
+- Size (minimal program = examples/hello + one `Str::at(2).get()`): hello 2 567 B exe; hello +
+  first TRAP (`leave_if_error`) 5 087 B — +2 520 B is libsupc++/libgcc's unwinder and
+  `__gxx_personality_v0` (~3.4 KB text), paid once by any program with a shim TRAP; reader on
+  top of that 6 556 B = +1 469 B exe (+2 340 B text, +40 B bss). Without a prior TRAP the
+  reader costs +3 989 B. `_LIT16` path pieces instead of `push_str` saved 232 B text.
+- Gates: root `cargo test --workspace` and clippy clean; symbian-rs clippy (all-targets, release)
+  clean. `cargo test --workspace` inside `symbian-rs/` fails before this change too (no `test`
+  crate for `arm-symbian-e32`), so it is not a gate that can pass there.
+- `examples/hello` is byte-identical with and without the new shim (only the E32 header's CRC
+  and time differ): gc-sections drops `symrs_rsc.o` from a program that reads no strings.
+
 ## Decisions
 
 - Shim: `symrs_rsc.cpp` holds both wrappers (no program uses one without the other); it also
@@ -30,4 +51,4 @@ string +1/+36 B, all returned on free).
 
 ## Next step
 
-`symbian-core/src/locale/strings.rs`: Str, Text, the static open file.
+Gates (test, clippy, clippy --release), drop scratch examples from members, fold note.

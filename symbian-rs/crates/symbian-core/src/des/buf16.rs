@@ -129,7 +129,7 @@ impl<const N: usize> fmt::Write for Buf16<N> {
 /// failed call has written nothing.
 impl<const N: usize> Buf16<N> {
     /// The `TDes16&` a modifying member function is called on.
-    fn as_tdes16(&mut self) -> *mut TDes16 {
+    pub(crate) fn as_tdes16(&mut self) -> *mut TDes16 {
         (self as *mut Self).cast()
     }
 

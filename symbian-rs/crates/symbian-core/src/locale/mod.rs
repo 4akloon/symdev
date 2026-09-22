@@ -15,6 +15,9 @@
 //! - [`Language`] — one `TLanguage` value, and [`Language::current`], which asks
 //!   `User::Language()` once and caches it.
 //! - [`lang`] — every `TLanguage` the SDK names, under the word a developer writes.
+//! - [`Str`] and [`Text`] — the per-language resource-file model that replaces the
+//!   in-image table: one compiled `<app>_strings.rNN` per language, the nearest one
+//!   opened once, each string read on demand into one heap cell (see `strings.rs`).
 //!
 //! # The fallback chain
 //!
@@ -39,7 +42,9 @@
 //! reader, but `e32const.h` declares no relation between them and `ELangEnglish`, so
 //! an application that wants them lists them itself.
 mod language;
+mod strings;
 
 pub mod lang;
 
 pub use language::Language;
+pub use strings::{Str, Text};
