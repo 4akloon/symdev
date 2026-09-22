@@ -7,6 +7,7 @@ use core::hint::black_box;
 
 use symbian_core::{Buf16, DesC16};
 use symbian_std::test_report::{Report, detail};
+use symbian_std::{Utf16Str, utf16};
 
 /// A type with its own `Display`, which the fast path must leave to `core::fmt`.
 struct Custom(i32);
@@ -19,7 +20,7 @@ impl fmt::Display for Custom {
     }
 }
 
-const NAMES: [&str; 12] = [
+const NAMES: [&str; 13] = [
     "text and escapes",
     "str, String and char",
     "i8, i16 and i32 at their edges",
@@ -32,7 +33,12 @@ const NAMES: [&str; 12] = [
     "writeln! with and without arguments",
     "literal arguments folded as rustc folds them",
     "negative numbers cut after the sign",
+    "text known at compile time, appended as UTF-16",
 ];
+
+/// A `utf16!` constant: its code units are made at compile time and appended by euser's
+/// `TDes16::Append(const TUint16*, TInt)`, as the format string's own text is.
+const MIXED: Utf16Str = utf16!("caf\u{e9} \u{1f600}");
 
 /// Compares one invocation through both macros into two fresh `Buf16<N>`s.
 macro_rules! compare {
@@ -61,7 +67,7 @@ macro_rules! compare_ln {
 
 /// Every case at capacity `N`; `diff[i]` counts the invocations of case `i` that
 /// came out differently.
-fn at<const N: usize>(diff: &mut [u32; 12]) {
+fn at<const N: usize>(diff: &mut [u32; 13]) {
     let s = black_box("slice");
     let owned = String::from(black_box("owned"));
     let (c, e, smile) = black_box(('c', '\u{e9}', '\u{1f600}'));
@@ -89,10 +95,12 @@ fn at<const N: usize>(diff: &mut [u32; 12]) {
     compare!(diff[10]; "a{}b{}c", "s", 42);
     compare!(diff[10]; "a{}b", 'c');
     compare!(diff[11]; "ab{}", black_box(-123_456));
+    compare!(diff[12]; "\u{1f600}\u{e9}{}\u{1f600}\u{10ffff}!", x);
+    compare!(diff[12]; "<{MIXED}|{}>", MIXED);
 }
 
 pub fn run(report: &mut Report) {
-    let mut diff = [0u32; 12];
+    let mut diff = [0u32; 13];
     macro_rules! every {
         ($($n:literal)*) => {$( at::<$n>(&mut diff); )*};
     }

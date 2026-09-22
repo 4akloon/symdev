@@ -29,6 +29,10 @@ shims/s60, macros/entry.rs, std/src/fs, core/src/fs.
 
 - Final sizes (res-final.txt): hello 1245 -> 971, fmt 100031 -> 97666, every other example the same size; atomics, time, query, alloc .exe differ from main's only at offsets 20-23 and 36-39 (E32 header CRC and build time), so their code is byte-identical.
 
+- Emulator, `symdev test --emulator` (run-final): net 22, async 15, atomics 23, cleanup 2, files 26, fmt 14, locale 7, notes 3, query 4, time 29, tls 45, ui 3, ui-list 6 passed — the counts of exp 103; shim writes no report (its note: "shim70 mkdirall=0 trapped=-12 bad=0 ensured=0 sign=-42 alive"). hello's note from build/eka2l1.log: "Trying to display: Hello from Rust SDK (19 chars)".
+- examples/fmt gained case 13 "text known at compile time, appended as UTF-16" (astral literal pieces straddling every capacity, a utf16! constant as `{MIXED}` and `{}`): 15 passed. Deliberate break (append_units passes len-1 to euser): 12 failed, 3 passed (every group with literal text, incl. the new one with 48 mismatches). Reverted.
+- C++ hello rebuilt from docs/research/cpp-parity/hello: 802 (E32Main 52 + KFormat 32 + KGreeting 44). Rust hello 971: E32Main 260 (CTrapCleanup pair of #[main], memclr4 of Buf16::new's [0; 64], a room check per piece), put_utf16<64> 48, rodata 56 (the UTF-16 text).
+
 ## Decisions
 
 - Design to try: `symbian_fmt::Utf16Str` = `&'static str` + its `&'static [u16]`, built only by `utf16!(expr)` (const items: `[u16; utf16_len(S)]` from a const fn), `Deref<Target = str>` and `Display` = str's, `Arg` -> new `Sink::put_utf16(text, units)` whose default is `put_str(text)` (so every non-Buf16 destination sees the same `write_str`), `Buf16` overrides with a room check + unit copy. The fast `write!` emits each literal piece as a `utf16!` const. `hello` changes one line: `const GREETING: Utf16Str = utf16!("…")`.
