@@ -2296,3 +2296,9 @@ cmd=1`**. `hello`'s notifier line reads "Hello from Rust SDK (19 chars)"; `alloc
 lines are identical to `main`'s ("heap 0,1,4,9,16,", "alloc sum=85344 cap=64 a8=0 a32=0
 byte=a5 heap=16"). The measurement notes that `locale`, `time` and `async` write through
 the fast `writeln!` read as before. Not run on an E52.
+
+**Evidence.** `symbian-rs/crates/symbian-fmt`, `symbian-rs/crates/symbian-macros/src/fast_write/`,
+`symbian-rs/crates/symbian-core/src/des/buf16/sink.rs`, `crates/symdev-build/tests/fast_write*.rs`,
+`symbian-rs/examples/fmt`. The measurement scripts (build every example, `size -A`, the
+sum of `core::fmt` symbols, the format-free harness patch) are outside git, in
+`~/.cache/fast-write-agent/`.
