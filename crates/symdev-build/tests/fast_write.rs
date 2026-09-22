@@ -1,4 +1,4 @@
-//! The fast `write!` against `core::write!`, call for call (experiment 99).
+//! The fast `write!` against `core::write!`, call for call (experiment 100).
 //!
 //! Every case runs through both macros into a recording destination under every
 //! failure mode ([`fast_write_support::modes`]) and into a `Buf16`-like destination

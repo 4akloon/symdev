@@ -2,7 +2,7 @@
 //!
 //! Two jobs: the format string itself (a `"…"` or `r#"…"#`), and the literal
 //! *arguments* rustc folds into the template at compile time — a string literal, or an
-//! integer literal whose value fits its type (experiment 99). A fast `write!` has to
+//! integer literal whose value fits its type (experiment 100). A fast `write!` has to
 //! fold exactly the same ones, or its `write_str` calls would differ from `write!`'s.
 //! Anything this module does not recognise is `None`, and the caller falls back to
 //! `core::write!` rather than guessing.

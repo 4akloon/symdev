@@ -24,7 +24,8 @@ Task: a `write!`-compatible macro in `symbian_std::prelude` that turns plain `{}
 - DX: clippy's format lints (write_literal, useless_borrows_in_formatting) and rustc's named_arguments_used_positionally fire on core::write! but not on the fast macro.
 - Gates green: host test+clippy, SDK clippy --release, symbian-macros 23 unit tests.
 - Emulator (pre-rebase, 7231c84 base): async 15, atomics 23, files 26, locale 8, notes 3, query 4, time 29, tls 45, cleanup 2, fmt 14, net 22 (peers up), ui-list 6 passed; shim writes no result by design. Notes files written through the fast writeln! read correctly (locale/time/async). fmt ticks run 2: Buf16 core 113 / fast 75, String 46 / 42.
-- Coordinator: main moved to aae58bb (symbian-macros gains `strings` + deps, locale rewritten, experiment 99 taken). Rebase, use next free experiment number, re-measure against new main.
+- Coordinator: main moved to aae58bb (symbian-macros gains `strings` + deps, locale rewritten, experiment 100 taken). Rebase, use next free experiment number, re-measure against new main.
+- Rebased onto aae58bb (13 commits; Cargo.lock conflicts regenerated with `cargo metadata`, lib.rs keeps `{main, strings}` + fast write export, locale keeps main's imports + `use symbian_std::writeln`). This slice is experiment 100.
 
 ## Decisions
 

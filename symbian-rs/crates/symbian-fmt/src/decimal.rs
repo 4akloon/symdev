@@ -9,7 +9,7 @@
 //! below `10 << 16`, a `u32`, by 10.
 //!
 //! The first version ended in `core::str::from_utf8`, whose validator was 572 bytes
-//! of an image for text that is ASCII digits by construction (experiment 99).
+//! of an image for text that is ASCII digits by construction (experiment 100).
 
 /// A number's decimal digits: up to 20, `u64::MAX`'s count.
 pub struct Decimal {

@@ -1,4 +1,4 @@
-//! `Buf16` as the fast `write!`'s native destination (experiment 99): text through
+//! `Buf16` as the fast `write!`'s native destination (experiment 100): text through
 //! [`Buf16::push_str`], numbers through euser's `TDes16::AppendNum`, which is code in
 //! ROM, so an image that formats only strings and integers into a `Buf16` links none
 //! of `core::fmt`.

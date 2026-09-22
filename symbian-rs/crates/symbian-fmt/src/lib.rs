@@ -1,6 +1,6 @@
 //! `write!` and `writeln!` with `core`'s syntax and `core`'s output, which append a
 //! plain `{}` of a string or an integer directly instead of formatting it through
-//! `core::fmt` (experiment 99).
+//! `core::fmt` (experiment 100).
 //!
 //! An application gets them from `use symbian_std::prelude::*;`, which shadows the
 //! standard `write!`/`writeln!`; nothing else in the program changes. They exist for
