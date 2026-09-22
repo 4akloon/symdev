@@ -43,7 +43,8 @@ the noise described above.
 
 **The largest remaining gap was `core::fmt` (L8).** In `hello` it was 1 330 of the 2 523 bytes
 that were left. The macro it needed was decided and built in experiment 101: `hello` is now
-1 245 bytes with no `core::fmt` in it (see L8).
+1 245 bytes with no `core::fmt` in it (see L8). Experiment 102 took it out of the test harness, and with it out of
+every example that reports (see L8).
 
 ## Every lever
 
