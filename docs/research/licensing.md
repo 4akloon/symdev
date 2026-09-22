@@ -4,7 +4,8 @@ Bootstrap note for M0. Promoted from spec §19. No `LICENSE` file in this cycle.
 
 ## Repo license
 
-Repo license: **undecided**. Do not add `LICENSE` in this cycle.
+Repo license: **MIT** (`LICENSE`), chosen by the repository owner on 2026-09-22 when the
+repository was prepared for publication. Every crate declares `license.workspace = true`.
 
 ## Never bundle
 

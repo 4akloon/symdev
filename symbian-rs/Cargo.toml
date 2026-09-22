@@ -44,6 +44,8 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+repository = "https://github.com/4akloon/symdev"
 
 # rustc never links (design spec §3): every leaf crate is a `staticlib` that symdev's
 # recorded `ld` line consumes. Size over speed, one object per archive, no unwinder.

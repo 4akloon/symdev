@@ -2,6 +2,8 @@
 name = "symbian-libcalls"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "The compiler runtime routines Symbian OS 9.3 on ARMv5TE does not provide: the __atomic_* family over an RFastLock, and memcmp/bcmp"
 
 [lib]

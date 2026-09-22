@@ -5,6 +5,8 @@
 name = "stdhello"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+repository = "https://github.com/4akloon/symdev"
 # `src/main.rs` is a library: rustc never links, symdev does (design spec §3).
 autobins = false
 

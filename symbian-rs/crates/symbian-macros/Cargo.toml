@@ -2,6 +2,8 @@
 name = "symbian-macros"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "The #[main] attribute behind symbian_std::main: the E32Main wrapper a Symbian application needs"
 
 [lib]

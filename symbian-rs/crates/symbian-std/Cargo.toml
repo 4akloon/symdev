@@ -2,6 +2,8 @@
 name = "symbian-std"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "std's module tree over Symbian OS 9.3: io, fs and a prelude, so porting a program is changing its use lines"
 
 [lib]

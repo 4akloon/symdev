@@ -2,6 +2,8 @@
 name = "symbian-sys"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Raw declarations of Symbian OS 9.3 user-side exports, one module per DLL, mangled names taken from `nm -D` on the SDK's .dso files"
 
 [lib]
