@@ -84,6 +84,11 @@ Keep experiment 98's `read_dir` borrowing from the `CDir`. Stay out of `symbian-
   deleted (no caller left). shim E32 code 6676 -> 6572 (-104; base 6636), exe 4491 ->
   4468 (base 4517); every other example 0.
 
+- Candidate 7 dead end: one non-inline `File::opened_by(path, OpenCall fn pointer, mode)`
+  shared by every opening, the `RFile` call chosen by an inlined `opened`: files code -112
+  (exe +54), every image with one opening site +64..+128 code. Reverted: the per-opening
+  closure in an `#[inline]` `opened` stays.
+
 ## Decisions
 
 ## Dead ends
