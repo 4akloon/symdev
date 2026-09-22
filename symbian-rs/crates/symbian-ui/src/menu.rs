@@ -34,6 +34,7 @@
 use core::ffi::c_void;
 
 use crate::abi::Host;
+use crate::utf16::encode_cut;
 
 /// The greatest number of UTF-16 code units a menu label may carry.
 ///
@@ -156,7 +157,7 @@ impl<'a, A> Menu<'a, A> {
 
     fn add(&mut self, host: &Host, pane: *mut c_void, label: &str, command: i32) {
         let mut units = [0u16; MAX_LABEL];
-        let len = encode(label, &mut units);
+        let len = encode_cut(label, &mut units);
         // SAFETY: `menu_item` traps `AddMenuItemL` in the shim and returns its error,
         // so nothing leaves across this frame. `pane` is the pane the framework is
         // showing for this call, and `units` is a live stack array of `MAX_LABEL`
@@ -190,22 +191,6 @@ pub(crate) const fn index_of(raw: i32) -> Option<u16> {
     } else {
         None
     }
-}
-
-/// As many whole characters of `label` as fit, in UTF-16.
-///
-/// Whole characters: a cut between the halves of a surrogate pair would put a lone
-/// surrogate in the descriptor. Nothing can overflow `out`, because a character is
-/// only written once its width is known to fit.
-fn encode(label: &str, out: &mut [u16; MAX_LABEL]) -> usize {
-    let mut n = 0;
-    for c in label.chars() {
-        if n + c.len_utf16() > MAX_LABEL {
-            break;
-        }
-        n += c.encode_utf16(&mut out[n..]).len();
-    }
-    n
 }
 
 /// The numbering, asserted where it is written. These are `const` assertions rather

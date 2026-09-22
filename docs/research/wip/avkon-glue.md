@@ -18,8 +18,8 @@ symbian-core/src/des, symbian-macros/src/fast_write.
 - **One `App` type per image**, so monomorphisation duplicates nothing: a type-erased body would be the same bytes plus a dyn vtable. The per-type framing of the audit is not the mechanism; inlining is (`Bars::construct`+`Report::finish` into `construct<Bars>`, `Bars::draw`+`Gc::text` into `draw<Bars>`).
 - ui buckets (nm sizes, 16 050 total): vtbl thunks incl. inlined app 4 360, EH runtime 3 776, **C++ shim 3 083**, test_report 1 200, alloc 956, symbian_ui other 752, symbian_core 616, core 488. C++ `cppui` whole app classes 2 795 (+ report 1 616), total 8 628. The shim alone is larger than the whole C++ app.
 - Shim fat: `~CShimAppUi` three copies 152+152+160 (C++: 88×2), `ConstructL` 244 (C++ 46), `Draw` 120, `SizeChanged` 108, `HandleCommandL` 104 — every call site inlines `Vtbl()` (null + size check + `User::Panic(_L(...))`).
+- Step 1, `utf16::encode_cut` (menu's cutting encoder, generalised to `&mut [u16]`, `#[inline(never)]`) now also behind `Gc::text`, replacing `encode_utf16_into` + the `char_indices().nth(64)` fallback: ui 11 645 → 11 298 (−347; `encode_utf16_into` 240 and `slice_error_fail_rt` 428 gone from ui, `draw<Bars>` 1 396 → 1 172), notes −164, query −202, ui-list ±0, probe −45. Behaviour: an overlong text now keeps as many whole chars as fit in 128 units (was: the first 64 chars), which is what the doc of `MAX_TEXT` already said.
 
-## Decisions
 
 ## Dead ends
 

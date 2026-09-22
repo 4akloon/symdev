@@ -6,10 +6,9 @@
 //! harness (`avkon-rust-spec.md` §4.3): there is nothing here to trap.
 use core::ffi::c_void;
 
-use symbian_core::des::encode_utf16_into;
-
 use crate::abi::Host;
 use crate::geom::{Point, Rect, Rgb};
+use crate::utf16::encode_cut;
 
 /// The greatest number of UTF-16 code units one [`Gc::text`] call draws.
 ///
@@ -91,19 +90,7 @@ impl<'a> Gc<'a> {
     /// can never leave one in use. Text beyond [`MAX_TEXT`] code units is truncated.
     pub fn text(&mut self, text: &str, at: Point) {
         let mut units = [0u16; MAX_TEXT];
-        let len = match encode_utf16_into(text, &mut units) {
-            Ok(len) => len,
-            // Longer than the buffer: draw what fits rather than nothing. `char_indices`
-            // keeps the cut on a character boundary, and a code unit is at most one
-            // `char`, so `MAX_TEXT` characters can never encode short.
-            Err(_) => {
-                let cut = text
-                    .char_indices()
-                    .nth(MAX_TEXT / 2)
-                    .map_or(text.len(), |(i, _)| i);
-                encode_utf16_into(&text[..cut], &mut units).unwrap_or(0)
-            }
-        };
+        let len = encode_cut(text, &mut units);
         if len == 0 {
             return;
         }

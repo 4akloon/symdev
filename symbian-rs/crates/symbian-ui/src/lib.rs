@@ -103,6 +103,7 @@ mod list;
 mod menu;
 pub mod query;
 mod ui;
+mod utf16;
 mod vtbl;
 
 pub use abi::AppVtbl;
