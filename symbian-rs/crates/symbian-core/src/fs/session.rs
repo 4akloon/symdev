@@ -3,10 +3,12 @@
 //!
 //! Symbian's own convention is one `RFs` per thread, connected once and kept for the
 //! life of the program: a session is an IPC connection to a server, not a cheap value.
-//! [`with_session`] connects on first use and hands the session to a closure; every
-//! call that needs `RFs` — opening a file, deleting one, asking for an entry — does its
-//! work inside that closure, and an `RFile` needs no session afterwards because it
-//! carries its own sub-session handle.
+//! The session is connected on first use. The calls this crate makes on it — opening a
+//! file, deleting one, asking for an entry — go through [`request`], one non-generic
+//! body that finds the session and encodes the path (experiment 105), and
+//! [`ProcessSession`] names the ones that need nothing but a path. [`with_session`]
+//! lends the session itself to a caller's closure. An `RFile` needs no session
+//! afterwards: it carries its own sub-session handle.
 //!
 //! The session is deliberately never closed: it lives until the process ends, and the
 //! kernel closes every handle then. Dropping it while an `RFile` opened from it is
