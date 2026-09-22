@@ -22,4 +22,4 @@ backlog (next free number on main: 99). Branch `named-panic`, base main 7231c84.
 
 ## Next step
 
-Measure V2 (reason = Location::line()), then immediate-abort symbol diff for levers.
+Immediate-abort symbol diff (where the 2.4 KB is) and levers that keep the category.
