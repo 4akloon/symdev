@@ -47,6 +47,7 @@ that were left. The macro it needed was decided and built in experiment 101: `he
 every example that reports (see L8). Experiment 106 put text known at compile time into the
 image as UTF-16, as C++'s `_LIT` does: `hello` is **971** (C++ 802), with no run-time UTF-16
 encoder left.
+Experiment 105 took the file layer's per-call overhead out (see L10).
 
 ## Every lever
 
@@ -214,6 +215,21 @@ root in a `-shared` link. The flag is applied on the libcalls cargo line only
 (`--config build.rustflags=["-Zdefault-visibility=hidden"]`), and re-measuring gives the same
 -72. The `no_mangle` entry points stay `GLOBAL DEFAULT`, as experiment 80 found. *C++:* no
 counterpart (`RUNTIME_SYMBOL_VISIBILITY_OPTION=` is empty in `gcce.mk`).
+
+### L10 — the `std`-shaped file layer — **applied in experiment 105**
+
+`symbian-std`'s `fs` over `symbian-core`'s paid for the session and the path once per call
+site: a generic `with_session` inlined everywhere, a 516-byte path buffer returned by value
+(a `memcpy` per call), a 552-byte `TEntry` moved the same way, a heap `String` in
+`create_dir_all`, and `File::open`/`create` deciding through the `OpenOptions` builder at
+run time. Now every path call goes through one non-generic body (`fs::session::request`)
+with the efsrv call passed in as a one-method trait object, so only the calls an image
+makes are linked. `files` **9 341 → 8 297** (C++ 6 058: 1.54× → 1.37×), `spawnee` −470,
+`cleanup` −206, every example that reports −61…−226; no example's code grows (`panic`'s
+`.exe` +7 with its code −36). Rejected shapes, each measured: an enum `match` in the
+shared body (links every call everywhere), `dyn FnMut` (its `call_once` shim copies
+every closure), a shared opening body (worse for one opening), a bit-word `OpenOptions`
+(identical code). Details and every number in experiment 105.
 
 ### Not a lever: the `KErr*` name table
 
