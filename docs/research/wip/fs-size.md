@@ -11,6 +11,23 @@ Keep experiment 98's `read_dir` borrowing from the `CDir`. Stay out of `symbian-
 
 ## Findings
 
+- Baseline (main de45e20, `.exe` bytes): alloc 3767, async 18603, atomics 8903, cleanup 4472,
+  files 9341, fmt 100031, hello-raw 808, hello 1245, locale 8202, net 10640, notes 12805,
+  panic 2010, query 14031, shim 4517, spawnee 3076, time 10256, tls 14114, ui-list 12624,
+  ui 11645. Script: `~/.cache/fs-size-agent/measure.sh` (res-base.txt).
+- filesdemo.elf fs symbols (nm -S): OpenOptions::open 984, read_dir 420, create_dir_all 392,
+  metadata 388, core File::open 228, File::create_new 228, File::read 136, fs::write 152,
+  write_all<File> 168, FileServer::connect 84, Name::eq 116, Buf16::push_str 448 (des),
+  ErrorKind::of 48. rename + remove_file are inlined into E32Main (2 more with_session copies).
+- Mechanism 1: `with_session<T>` is generic and inlined in every caller: flag check/set,
+  slot check, connect call, the `Option::insert` drop of the old slot (an RHandleBase::Close),
+  flag clear — ~100 B per copy, 6 copies in files.
+- Mechanism 2: `path_of` returns `Buf16<256>` by value: memclr 512 + push_str + memcpy 516 at
+  every call site (6 sites); the Buf16 is moved once more.
+- Mechanism 3: `OpenOptions::open` takes `&self`, so all 5 opening strategies are linked in
+  every image; every report-writing example links it through `test_report::finish` ->
+  `fs::write` -> `File::create`.
+
 ## Decisions
 
 ## Dead ends
