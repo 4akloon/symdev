@@ -2302,3 +2302,15 @@ the fast `writeln!` read as before. Not run on an E52.
 `symbian-rs/examples/fmt`. The measurement scripts (build every example, `size -A`, the
 sum of `core::fmt` symbols, the format-free harness patch) are outside git, in
 `~/.cache/fast-write-agent/`.
+
+**At merge (coordinator).** Rebased onto the named-panic `main` and re-measured: `hello`
+2 584 → **1 245** (C++ 802), `alloc` 3 896 → 3 773, `shim` −3. In `async`, `locale`,
+`query` and `time` the opt-in *grew* the image (+526, +242, +165, +862): they keep
+`core::fmt` through the test harness and their own `{:?}`, so the fast pieces were code
+on top of it. The fast `write!` is opt-in by one `use` line, so those four were left on
+`core`'s macro and are byte-identical to `main`; they switch when the harness stops
+formatting through `core::fmt` (its proposal is above). The prelude form the user chose
+was checked independently and is impossible: a glob-imported `write` macro is `E0659`
+against the standard one, reproduced in a four-line crate. Emulator: `fmt` 14, `files`
+26, `locale` 7, `async` 15, `time` 29, `query` 4, `atomics` 23, `cleanup` 2, `tls` 45
+passed; `hello`'s note, from the emulator log: `Hello from Rust SDK (19 chars)`.
