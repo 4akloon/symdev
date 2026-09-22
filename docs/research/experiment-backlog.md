@@ -2041,7 +2041,7 @@ top-level `TRAPD` and a return, which an abort that never unwinds cannot reprodu
 | `notes` | 14 649 | 14 670 | +21 |
 | `query` | 19 374 | 19 392 | +18 |
 | `shim` | 4 520 | 4 520 | 0 |
-| `spawnee` | 3 261 | 3 274 | +13 |
+| `spawnee` | 3 261 | 3 274 | +13 (3 079 with the change below) |
 | `time` | 13 525 | 13 561 | +36 |
 | `tls` | 15 095 | 15 096 | +1 |
 | `ui` | 12 950 | 12 975 | +25 |
@@ -2081,17 +2081,32 @@ function a leaf, while a `bl` needs `push {fp, lr}` under `frame-pointer = alway
 the trap to a function, which is the patched-core row, recovers only 776 of the 2 768.
 The rest is the price of having a handler at all.
 
+**`spawnee` was the same bug, and `std-hello` was failing on `main`.** `std-hello` wrote no
+report after 180 s, both on this branch and on untouched `main` aae58bb. The log shows
+`Trying to summon: spawnee.exe` and then `Access violation reading address 0x8000A4`.
+`spawnee` called `User::Exit` inside `main` with the cleanup stack installed. It broke when
+experiment 97 made the runtime install one. Now `spawnee` returns the number from `main`
+(`io::Result<i32>`), so `start` frees the cleanup stack and `eexe` exits with the number.
+`std-hello` passes 50 tests, and `spawnee` is 195 bytes smaller. The module comment's
+explanation for `std` children ("an image with a writable data section", the same address)
+was not re-examined.
+
 **Checked:** `symdev test --emulator` passes on the rebased branch: async 15, atomics 23,
 cleanup 2, files 26, locale 7, notes 3, query 4, time 29, tls 45, ui 3, ui-list 6, net 22
-(peers on 18974/18975).
+(peers on 18974/18975), std-hello 50 (after `spawnee` is installed), std-net 31 (peers on
+18984/18985). Host gates: `cargo test --workspace --offline` passes 453 tests, and both
+clippy runs are clean. `cargo clippy --release --workspace` in `symbian-rs/` prints only
+the `compiler_builtins` profile-spec warning from cargo, which `main` prints as well.
 
 **Not determined:** whether a device also turns `User::Exit` under an installed
 `CTrapCleanup` into `KERN-EXEC 3`, and what a device shows for `RUST -2`. No GUI
-application's panic was observed; only console panics were. `spawnee`'s documentation blames
-"an image with a writable data section" for a `KERN-EXEC 3` reading the heap base + `0xA4`,
-but `spawnee` calls `User::Exit` inside `main` with the cleanup stack installed, which is the
-signature above. The same may explain the `KERN-EXEC 3` after the C++ locale baseline's
-report in experiment 99. Neither was checked.
+application's panic was observed; only console panics were. The same `User::Exit` behaviour
+may explain the `KERN-EXEC 3` after the C++ locale baseline's report in experiment 99. That
+was not checked.
 
 **Evidence.** `symbian-rs/crates/symbian-runtime/src/panic.rs`, `symbian-rs/examples/panic`,
-`docs/research/avkon-rust-spec.md` §4.4.
+`symbian-rs/examples/spawnee/src/main.rs`, `docs/research/avkon-rust-spec.md` §4.4. The C++
+variants were a scratch copy with one `MACRO` per run (`SYMDEV_PANIC_COST`,
+`SYMDEV_PANIC_NOW`, `SYMDEV_EXIT_WITH_CLEANUP`, `SYMDEV_EXIT_NO_CLEANUP`,
+`SYMDEV_LEAVE_NO_TRAP`, `SYMDEV_LEAVE_TRAPPED`). They were not committed, because the
+baseline project stays as it is.
