@@ -24,6 +24,8 @@ symbian-core/src/des, symbian-macros/src/fast_write.
 ## Dead ends
 - List callback `SymRsListCallbacks` → exported `symrs_list_on_select`: ui-list −42 but **ui +91**, because the link keeps every global Rust symbol (exported `no_mangle` is a gc root in this link), so an app without a list carries it. Reverted; comment in `symrs_list.h`/`rows.rs` says why.
 - Type-erased trampolines, measured on top of step 3 (non-generic `#[no_mangle]` bodies over `Box<dyn Erased>`, blanket `impl<A: App> Erased for A`, macro exports only `create`; needs `A: 'static`): ui 10 670 → 10 980 (+310), ui-list +383, notes +341, query +355, probe 6 138 → 6 448 (+310 incl. layout). One `App` per image, so erasure duplicates nothing it could share and adds a dyn vtable, a second box, and stops the app's methods inlining into the thunks; +1 indirect call per event. Reverted.
+- One encoder for cutting and erroring callers (`encode_prefix` → `encode_cut`/`encode_all`, note/list/query off `encode_utf16_into`): ui −2, notes +2, query −23, **ui-list +172**. `encode_utf16_into` is also what the harness's `Buf16::push_str` calls, so it stays in every image with a report, and taking its other callers away only made LLVM inline it into `push_str` (280 → 448). Reverted.
+- A unit-based `encode_cut` (`encode_utf16()` + drop a trailing high surrogate): 264 B vs 256, ui +4, notes −37, query −44, probe +21 — noise either way. Reverted. The real sharing needs `symbian_core::des::encode_utf16_into` to report how much it wrote on overflow (then `Gc::text`/`Menu` could call it): ~250 B per image that also has a report — `des/**` is another agent's, so not done here.
 
 ## Next step
 
