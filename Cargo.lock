@@ -893,6 +893,9 @@ dependencies = [
 [[package]]
 name = "symbian-macros"
 version = "0.1.0"
+dependencies = [
+ "symdev-locale",
+]
 
 [[package]]
 name = "symdev-build"
