@@ -1,5 +1,5 @@
 //! `fs::File`: `std`'s shape over `RFile`.
-use symbian_core::fs::{File as SymFile, Seek as SymSeek};
+use symbian_core::fs::{File as SymFile, FileMode, Opening, Seek as SymSeek};
 
 use super::{Metadata, OpenOptions};
 use crate::io::{Error, ErrorKind, Read, Result, Seek, SeekFrom, Write};
@@ -22,23 +22,26 @@ impl File {
         Self { inner }
     }
 
-    /// Opens an existing file for reading (`RFile::Open`).
+    /// Opens an existing file for reading (`RFile::Open`), as
+    /// `OpenOptions::new().read(true).open(path)` does.
+    ///
+    /// The three constructors name their `RFile` call and mode directly rather than
+    /// going through [`OpenOptions`]: the builder decides at run time, so every image
+    /// that opened a file linked all of its strategies (experiment 105).
     pub fn open(path: &str) -> Result<Self> {
-        OpenOptions::new().read(true).open(path)
+        Ok(Self::of(SymFile::opened(path, Opening::Existing, FileMode::Read)?))
     }
 
-    /// Creates a file, truncating it if it is already there (`RFile::Replace`).
+    /// Creates a file, truncating it if it is already there (`RFile::Replace`), as
+    /// `OpenOptions::new().write(true).create(true).truncate(true).open(path)` does.
     pub fn create(path: &str) -> Result<Self> {
-        OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path)
+        Ok(Self::of(SymFile::opened(path, Opening::Replace, FileMode::Write)?))
     }
 
-    /// Creates a file and fails if it already exists (`RFile::Create`).
+    /// Creates a file and fails if it already exists (`RFile::Create`), as
+    /// `OpenOptions::new().write(true).create_new(true).open(path)` does.
     pub fn create_new(path: &str) -> Result<Self> {
-        OpenOptions::new().write(true).create_new(true).open(path)
+        Ok(Self::of(SymFile::opened(path, Opening::New, FileMode::Write)?))
     }
 
     /// A builder, as `std::fs::File::options`.

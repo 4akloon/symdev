@@ -60,6 +60,12 @@ Keep experiment 98's `read_dir` borrowing from the `CDir`. Stay out of `symbian-
   query -68, spawnee -478 (the String was its only heap use: RawVec growth left the image),
   time -59, tls -17, ui-list -84, ui -69; panic/shim/alloc/hello 0.
 
+- Candidate 2 (commit): `File::open/create/create_new` name their `Opening` and `FileMode`
+  directly instead of building an `OpenOptions` and deciding at run time. files 8807 ->
+  8357 (-450; `OpenOptions::open` no longer linked). Every other example 0: with one
+  opening call site LLVM had already constant-folded the builder. Behaviour: same RFile
+  call, same mode bits, no append/truncate fix-up in any of the three (as before).
+
 ## Decisions
 
 ## Dead ends
