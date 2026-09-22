@@ -19,9 +19,18 @@
 //!
 //! A deliberately failing case must come out as a failure, and that is the property the
 //! harness is verified against — a harness that cannot fail is not a harness.
+//!
+//! None of it formats through `core::fmt` (experiment 102): a detail is written by the
+//! fast [`crate::write!`] through [`detail!`], an error by its [`Evidence`], and the
+//! file by [`json`]'s own appends. An example that formats nothing else therefore
+//! carries no `core::fmt` at all, which is what lets its size be compared with C++.
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::fmt::Write as _;
+
+mod evidence;
+mod json;
+
+pub use evidence::{Evidence, Hex};
 /// How many cells this thread's heap holds (`User::CountAllocCells`). Counting either
 /// side of a code path turns "allocates nothing" into a measured case, and it is the
 /// same count a C++ test would take, so the two can be compared.
@@ -35,6 +44,27 @@ use crate::io::Result;
 use std::fs;
 #[cfg(feature = "std")]
 use std::io::Result;
+
+/// A case's detail, written with `write!`'s arguments: `detail!("{got} of {want}")`
+/// is what [`Report::check_detail`] takes where it used to take `format_args!`.
+///
+/// It expands to a closure that runs the fast [`crate::write!`] into the detail text,
+/// so a plain `{}` of a string or an integer costs no `core::fmt`; anything else — a
+/// spec such as `{:x}`, a user's `Display` — is `core::write!` exactly, and links it.
+/// For an error or a `Result`, write its [`Evidence`]: `detail!("{}", outcome.shown())`.
+#[macro_export]
+macro_rules! detail {
+    ($($format:tt)+) => {
+        |out: &mut _| {
+            // What the fast macro's fallback calls, for a piece that is not on its list.
+            use ::core::fmt::Write as _;
+            // A `String` has room for anything, so there is no error to report.
+            let _ = $crate::write!(out, $($format)+);
+        }
+    };
+}
+
+pub use crate::detail;
 
 /// The version of the shape above, so a later change is visible to an older reader.
 pub const SCHEMA: u32 = 1;
@@ -54,6 +84,8 @@ struct Case {
 /// ```ignore
 /// let mut report = Report::new("files");
 /// report.check("write", written == BYTES.len());
+/// report.check_detail("read", got == 4000, detail!("{got} of 4000"));
+/// report.checked("rename", fs::rename(FROM, TO));
 /// report.finish()?;
 /// ```
 pub struct Report {
@@ -86,15 +118,17 @@ impl Report {
         self.record(name, ok, "");
     }
 
-    /// Records a case with a formatted detail, whether it passed or failed.
+    /// Records a case with a detail, whether it passed or failed.
     ///
     /// The detail is kept for a passing case too, because a count is worth reading
     /// when it is right as well as when it is wrong: `4000 of 4000` in the report is
     /// what says the run actually did the work.
-    pub fn check_detail(&mut self, name: &str, ok: bool, detail: core::fmt::Arguments<'_>) {
+    ///
+    /// `detail` writes the text; [`detail!`] makes one from `write!`'s arguments, so
+    /// the call reads `report.check_detail("read", ok, detail!("{got} of {want}"))`.
+    pub fn check_detail(&mut self, name: &str, ok: bool, detail: impl FnOnce(&mut String)) {
         let mut text = String::new();
-        // A formatter that runs out of room is nothing to abort a test run over.
-        let _ = text.write_fmt(detail);
+        detail(&mut text);
         self.record(name, ok, &text);
     }
 
@@ -106,9 +140,9 @@ impl Report {
     /// Records a case from a `Result`, and hands the value back so the example can go
     /// on using it.
     ///
-    /// A failure is recorded with the error's `Debug` text, which for
-    /// [`crate::io::Error`] is the `std` kind and the `e32err.h` name and code.
-    pub fn checked<T, E: core::fmt::Debug>(
+    /// A failure is recorded with the error's [`Evidence`]: for a Symbian error, the
+    /// `e32err.h` name and the `TInt`, as `KErrNotFound (-1)`.
+    pub fn checked<T, E: Evidence>(
         &mut self,
         name: &str,
         outcome: core::result::Result<T, E>,
@@ -119,11 +153,7 @@ impl Report {
                 Some(value)
             }
             Err(e) => {
-                let mut detail = String::new();
-                // A formatter that runs out of room is nothing to abort a test run
-                // over: the case is already recorded as a failure either way.
-                let _ = write!(detail, "{e:?}");
-                self.record(name, false, &detail);
+                self.record(name, false, &e.shown());
                 None
             }
         }
@@ -155,40 +185,15 @@ impl Report {
     /// `E:\symdev\results\<uid3>.json`.
     pub fn path(&self) -> String {
         let mut path = String::from(RESULTS_DIR);
-        // `write!` to a `String` cannot fail; the result is discarded rather than
-        // unwrapped, which this SDK does not allow outside tests.
-        let _ = write!(path, "\\{:08x}.json", self.uid3);
+        path.push('\\');
+        json::push_hex(&mut path, self.uid3, 8);
+        path.push_str(".json");
         path
     }
 
     /// The JSON document, exactly as it goes into the file.
     pub fn to_json(&self) -> String {
-        let mut out = String::new();
-        let _ = write!(out, "{{\"schema\":{SCHEMA},\"app\":\"");
-        escape_into(&mut out, &self.app);
-        let _ = write!(
-            out,
-            "\",\"uid3\":\"0x{:08x}\",\"passed\":{},\"failed\":{},\"cases\":[",
-            self.uid3,
-            self.passed(),
-            self.failed()
-        );
-        for (i, case) in self.cases.iter().enumerate() {
-            if i > 0 {
-                out.push(',');
-            }
-            out.push_str("{\"name\":\"");
-            escape_into(&mut out, &case.name);
-            let _ = write!(out, "\",\"ok\":{}", case.ok);
-            if !case.detail.is_empty() {
-                out.push_str(",\"detail\":\"");
-                escape_into(&mut out, &case.detail);
-                out.push('"');
-            }
-            out.push('}');
-        }
-        out.push_str("]}");
-        out
+        json::document(self)
     }
 
     /// Creates `E:\symdev\results` if it is not there and writes the report into it.
@@ -199,27 +204,6 @@ impl Report {
         fs::create_dir_all(RESULTS_DIR)?;
         fs::write(&self.path(), self.to_json().as_bytes())?;
         Ok(self.is_pass())
-    }
-}
-
-/// Appends `text` to `out` as the body of a JSON string.
-///
-/// Escapes what RFC 8259 requires — the quote, the backslash and everything below
-/// `0x20` — and passes the rest through, since the file is UTF-8 and so is a Rust
-/// `str`.
-fn escape_into(out: &mut String, text: &str) {
-    for c in text.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", c as u32);
-            }
-            c => out.push(c),
-        }
     }
 }
 

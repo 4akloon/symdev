@@ -26,7 +26,7 @@ use core::sync::atomic::{AtomicU32, Ordering};
 
 use symbian_std::io::ErrorKind;
 use symbian_std::sync::{self, Arc, Mutex, Once};
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 use symbian_std::thread;
 
 /// Increments per thread. Every one is a kernel `Wait`/`Signal` pair on this CPU, so
@@ -176,31 +176,31 @@ fn check_two_threads(report: &mut Report) {
     report.check_detail(
         "fetch_add from two threads loses nothing",
         atomic == expected,
-        format_args!("{atomic} of {expected}"),
+        detail!("{atomic} of {expected}"),
     );
     report.check_detail(
         "a load-then-store beside it does lose updates",
         racy < expected,
-        format_args!("{racy} of {expected}; exact here would mean the threads never raced"),
+        detail!("{racy} of {expected}; exact here would mean the threads never raced"),
     );
 
     let through_static = SHARED.lock().map(|v| *v).unwrap_or(0);
     report.check_detail(
         "a static Mutex counts every increment",
         through_static == expected,
-        format_args!("{through_static} of {expected}"),
+        detail!("{through_static} of {expected}"),
     );
     let through_arc = shared.lock().map(|v| *v).unwrap_or(0);
     report.check_detail(
         "an Arc<Mutex<_>> counts every increment",
         through_arc == expected,
-        format_args!("{through_arc} of {expected}"),
+        detail!("{through_arc} of {expected}"),
     );
     let runs = ONCE_RUNS.load(Ordering::SeqCst);
     report.check_detail(
         "Once ran exactly once for both threads",
         runs == 1,
-        format_args!("{runs} runs"),
+        detail!("{runs} runs"),
     );
     report.check(
         "the Arc is back to one reference",

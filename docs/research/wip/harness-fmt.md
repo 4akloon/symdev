@@ -19,8 +19,12 @@ in the backlog, update size-levers.md.
 - Error types given to `checked` in examples: io::Error, SymbianError, SystemTimeError, `()`.
   Today's Debug: io::Error "NotFound (KErrNotFound (-1))", SymbianError "KErrNotFound (-1)".
 - Host JSON reader: crates/symdev-emulator/src/results.rs (+ results/tests.rs, json/tests.rs).
+- Step 1 (new harness API, every `format_args!` → `detail!`, no other example change):
+  core::fmt gone from atomics, cleanup, files, net, ui, ui-list (−1 217…−1 725 each);
+  still in async/notes/query/tls (their Debug details), time/locale (own write!), alloc, fmt.
+  async +1 097, notes +196, query +330, tls +606 (Debug still linked + new code).
+  In atomics `json::escape_into` is 680 B and `push_hex` 232 B — String::push per char.
 
-## Decisions
 - `check_detail(name, ok, detail: impl FnOnce(&mut String))`; call sites write `detail!(...)`
   where they wrote `format_args!(...)` — `symbian_std::detail!` expands to a closure that
   runs the fast `write!` (with `core::fmt::Write` imported inside, which the fast

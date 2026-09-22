@@ -24,7 +24,7 @@
 
 extern crate alloc;
 
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 use symbian_std::ui::prelude::*;
 
 /// How many bars the chart may show. Six is what fits the E52's client area at the
@@ -66,7 +66,7 @@ impl App for Bars {
         report.check_detail(
             "the view was sized before construct",
             self.area.width > 0 && self.area.height > 0,
-            format_args!("{}x{}", self.area.width, self.area.height),
+            detail!("{}x{}", self.area.width, self.area.height),
         );
         // A redraw may be asked for from anywhere but `draw`; this is the first one.
         ui.redraw();

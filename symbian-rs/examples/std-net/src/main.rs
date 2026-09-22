@@ -25,7 +25,7 @@ use std::io::{Read, Write};
 use std::net::ToSocketAddrs;
 use std::net::{Ipv4Addr, Shutdown, SocketAddr, SocketAddrV4, TcpListener, TcpStream, UdpSocket};
 
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 
 mod cases;
 
@@ -73,9 +73,9 @@ fn run(report: &mut Report) {
         Ok(answer) => report.check_detail(
             "round trip by address",
             answer == EXPECTED,
-            format_args!("{}", String::from_utf8_lossy(&answer)),
+            detail!("{}", String::from_utf8_lossy(&answer)),
         ),
-        Err(e) => report.check_detail("round trip by address", false, format_args!("{e}")),
+        Err(e) => report.check_detail("round trip by address", false, detail!("{e}")),
     }
     match round_trip(("localhost", PORT)) {
         Ok(answer) => report.check(
@@ -85,7 +85,7 @@ fn run(report: &mut Report) {
         Err(e) => report.check_detail(
             "round trip by name, through RHostResolver",
             false,
-            format_args!("{e}"),
+            detail!("{e}"),
         ),
     }
 
@@ -106,7 +106,7 @@ fn run(report: &mut Report) {
         Err(e) => report.check_detail(
             "peer_addr is where we connected",
             false,
-            format_args!("{e}"),
+            detail!("{e}"),
         ),
     }
 
@@ -130,16 +130,16 @@ fn run(report: &mut Report) {
                 Ok(got) => report.check_detail(
                     "accept one connection and read the poke",
                     got == b"poke\n",
-                    format_args!("{}", String::from_utf8_lossy(&got)),
+                    detail!("{}", String::from_utf8_lossy(&got)),
                 ),
                 Err(e) => report.check_detail(
                     "accept one connection and read the poke",
                     false,
-                    format_args!("{e}"),
+                    detail!("{e}"),
                 ),
             }
         }
-        Err(e) => report.check_detail("bind a listener", false, format_args!("{e}")),
+        Err(e) => report.check_detail("bind a listener", false, detail!("{e}")),
     }
 
     // UDP: bind to an ephemeral port and read back which one the stack chose.
@@ -151,7 +151,7 @@ fn run(report: &mut Report) {
             );
             cases::udp_unsupported(report, &socket);
         }
-        Err(e) => report.check_detail("bind a UDP socket", false, format_args!("{e}")),
+        Err(e) => report.check_detail("bind a UDP socket", false, detail!("{e}")),
     }
 }
 

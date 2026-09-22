@@ -26,7 +26,7 @@ use core::fmt::Write as _;
 use symbian_std::fs;
 use symbian_std::io::Result;
 use symbian_std::locale::Language;
-use symbian_std::test_report::{Report, alloc_size};
+use symbian_std::test_report::{Report, alloc_size, detail};
 
 symbian_std::strings!();
 
@@ -64,20 +64,23 @@ fn heap(report: &mut Report, notes: &mut String) {
     report.check_detail(
         "dropping the string gives its cell back",
         held.0 == open.0 + 1,
-        format_args!("{} -> {}", held.0, open.0),
+        detail!("{} -> {}", held.0, open.0),
     );
     report.check_detail(
         "a read leaves nothing behind once the file is open",
         after_again == open,
-        format_args!(
+        detail!(
             "{}/{} -> {}/{}",
-            open.0, open.1, after_again.0, after_again.1
+            open.0,
+            open.1,
+            after_again.0,
+            after_again.1
         ),
     );
     report.check_detail(
         "the open file holds no more than C++'s 4 cells",
         open.0.saturating_sub(before.0) <= 4,
-        format_args!("+{} cells, +{} bytes", open.0 - before.0, open.1 - before.1),
+        detail!("+{} cells, +{} bytes", open.0 - before.0, open.1 - before.1),
     );
 }
 
@@ -101,7 +104,7 @@ fn table(report: &mut Report, notes: &mut String) {
         Ok(text) => report.check_detail(
             "the greeting is the device language's",
             &*text == expected(language),
-            format_args!("language {}", language.code()),
+            detail!("language {}", language.code()),
         ),
         Err(_) => report.fail("the greeting is the device language's", "not read"),
     }

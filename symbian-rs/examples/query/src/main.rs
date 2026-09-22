@@ -25,7 +25,7 @@ use alloc::string::String;
 use core::fmt::Write as _;
 
 use symbian_core::ErrorKind;
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 use symbian_std::ui::prelude::*;
 use symbian_std::ui::query;
 
@@ -147,7 +147,7 @@ impl Form {
         report.check_detail(
             "the framework reached the Rust construct",
             self.area.width > 0 && self.area.height > 0,
-            format_args!("{}x{}", self.area.width, self.area.height),
+            detail!("{}x{}", self.area.width, self.area.height),
         );
         // A maximum of zero would be a descriptor nothing can be typed into, and one
         // above the surface's own bound would be an allocation nobody asked for. Both
@@ -155,7 +155,7 @@ impl Form {
         report.check_detail(
             "a query with no room for an answer is refused",
             matches!(query::text("", 0), Err(e) if e.kind() == ErrorKind::Argument),
-            format_args!("{:?}", query::text("", 0)),
+            detail!("{:?}", query::text("", 0)),
         );
         report.check_detail(
             "a query wanting more than the surface allows is refused",
@@ -163,22 +163,22 @@ impl Form {
                 query::text("", query::MAX_TEXT_LEN + 1),
                 Err(e) if e.kind() == ErrorKind::Argument
             ),
-            format_args!("{:?}", query::text("", query::MAX_TEXT_LEN + 1)),
+            detail!("{:?}", query::text("", query::MAX_TEXT_LEN + 1)),
         );
         let long: String = core::iter::repeat_n('x', query::MAX_TEXT_LEN + 1).collect();
         report.check_detail(
             "a prompt longer than the surface allows is refused",
             matches!(query::text(&long, 8), Err(e) if e.kind() == ErrorKind::Overflow),
-            format_args!("{:?}", query::text(&long, 8)),
+            detail!("{:?}", query::text(&long, 8)),
         );
         if let Some(name) = &self.name {
-            report.check_detail("a text query came back", true, format_args!("{name:?}"));
+            report.check_detail("a text query came back", true, detail!("{name:?}"));
         }
         if let Some(age) = self.age {
-            report.check_detail("a number query came back", true, format_args!("{age}"));
+            report.check_detail("a number query came back", true, detail!("{age}"));
         }
         if let Some(code) = self.failed {
-            report.check_detail("a query returned an error", false, format_args!("{code}"));
+            report.check_detail("a query returned an error", false, detail!("{code}"));
         }
         // Writing it is the whole point; there is nowhere to report a failure to write
         // a report to, so the error is dropped deliberately rather than by omission.

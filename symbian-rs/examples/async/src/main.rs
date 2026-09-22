@@ -21,7 +21,7 @@ use core::time::Duration;
 
 use symbian_std::fs;
 use symbian_std::io::Result;
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 use symbian_std::time::Instant;
 
 mod checks;
@@ -47,7 +47,7 @@ pub(crate) fn start_of(report: &mut Report, case: &str) -> Option<Instant> {
     match Instant::now() {
         Ok(instant) => Some(instant),
         Err(error) => {
-            report.check_detail(case, false, format_args!("Instant::now: {error:?}"));
+            report.check_detail(case, false, detail!("Instant::now: {error:?}"));
             None
         }
     }

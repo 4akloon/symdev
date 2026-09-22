@@ -28,7 +28,7 @@ use std::fs::{self, File};
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 
 mod platform;
 mod spawn;
@@ -83,14 +83,14 @@ fn main() -> std::io::Result<()> {
     report.check_detail(
         "fs::read gives back what was written",
         read_back == BYTES,
-        format_args!("{} bytes", read_back.len()),
+        detail!("{} bytes", read_back.len()),
     );
 
     let metadata = fs::metadata(PATH)?;
     report.check_detail(
         "metadata().len()",
         metadata.len() == BYTES.len() as u64,
-        format_args!("{}", metadata.len()),
+        detail!("{}", metadata.len()),
     );
     report.check("metadata().is_file()", metadata.is_file());
 
@@ -102,7 +102,7 @@ fn main() -> std::io::Result<()> {
     report.check_detail(
         "seek then read_exact",
         &seven == b"step 7",
-        format_args!("{}", String::from_utf8_lossy(&seven)),
+        detail!("{}", String::from_utf8_lossy(&seven)),
     );
     drop(file);
 
@@ -111,12 +111,12 @@ fn main() -> std::io::Result<()> {
     report.check_detail(
         "a missing file is NotFound",
         missing.kind() == ErrorKind::NotFound,
-        format_args!("{missing}"),
+        detail!("{missing}"),
     );
     report.check_detail(
         "the TInt survives in raw_os_error",
         missing.raw_os_error() == Some(-1),
-        format_args!("{:?}", missing.raw_os_error()),
+        detail!("{:?}", missing.raw_os_error()),
     );
 
     // `println!` goes to `E:\symdev\stdout.txt`, not nowhere.
@@ -130,7 +130,7 @@ fn main() -> std::io::Result<()> {
     report.check_detail(
         "Instant measures a sleep",
         elapsed >= std::time::Duration::from_millis(80),
-        format_args!("{} ms", elapsed.as_millis()),
+        detail!("{} ms", elapsed.as_millis()),
     );
     let wall = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -138,7 +138,7 @@ fn main() -> std::io::Result<()> {
     report.check_detail(
         "SystemTime is after 2010",
         wall.as_secs() > 1_262_304_000,
-        format_args!("{} s since the epoch", wall.as_secs()),
+        detail!("{} s since the epoch", wall.as_secs()),
     );
 
     // A `thread_local!`, whose destructor `std::os::symbian::start` has to run because
@@ -158,7 +158,7 @@ fn main() -> std::io::Result<()> {
     report.check_detail(
         "thread::spawn + join",
         from_worker == "5050",
-        format_args!("{from_worker}"),
+        detail!("{from_worker}"),
     );
 
     // A `Mutex` and an `Arc`, which is what `sys::sync` is for.
@@ -181,7 +181,7 @@ fn main() -> std::io::Result<()> {
     report.check_detail(
         "two threads through a Mutex",
         total == 2000,
-        format_args!("{total}"),
+        detail!("{total}"),
     );
 
     // Two crates from crates.io, compiled unchanged for this target.
@@ -190,14 +190,14 @@ fn main() -> std::io::Result<()> {
     report.check_detail(
         "itoa from crates.io",
         itoa_text == "-4242",
-        format_args!("{itoa_text}"),
+        detail!("{itoa_text}"),
     );
     let mut ryu_buf = ryu::Buffer::new();
     let ryu_text = ryu_buf.format(1.5f64).to_owned();
     report.check_detail(
         "ryu from crates.io",
         ryu_text == "1.5",
-        format_args!("{ryu_text}"),
+        detail!("{ryu_text}"),
     );
 
     // A `BTreeMap` and a `HashMap`, the second of which needs `sys::random`.

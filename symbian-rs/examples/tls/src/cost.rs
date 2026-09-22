@@ -12,7 +12,7 @@
 use core::cell::Cell;
 use core::sync::atomic::{AtomicU32, Ordering};
 
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 use symbian_std::thread_local;
 use symbian_std::time::SystemTime;
 use symbian_sys::tls::{SYMBIAN_STD_TLS_HANDLE, UserSvr_DllTls};
@@ -77,16 +77,16 @@ pub fn measure(report: &mut Report) {
     report.check_detail(
         "one thread_local access costs about one kernel call",
         access > 0 && kernel > 0,
-        format_args!("{access} ns/access, of which UserSvr::DllTls is {kernel} ns"),
+        detail!("{access} ns/access, of which UserSvr::DllTls is {kernel} ns"),
     );
     report.check_detail(
         "and less than one atomic operation",
         access < atomic,
-        format_args!("{access} ns against {atomic} ns for AtomicU32::fetch_add"),
+        detail!("{access} ns against {atomic} ns for AtomicU32::fetch_add"),
     );
     report.check_detail(
         "the counter really was incremented every time",
         MEASURED.with(Cell::get) == ROUNDS,
-        format_args!("{} of {ROUNDS}", MEASURED.with(Cell::get)),
+        detail!("{} of {ROUNDS}", MEASURED.with(Cell::get)),
     );
 }

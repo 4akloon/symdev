@@ -16,7 +16,7 @@
 
 extern crate alloc;
 
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 use symbian_std::time::Instant;
 use symbian_std::ui::note;
 use symbian_std::ui::prelude::*;
@@ -77,7 +77,7 @@ impl App for Notes {
         report.check_detail(
             "an information note can be shown from construct",
             shown.is_ok(),
-            format_args!("{:?}", shown.as_ref().err().map(|e| e.code())),
+            detail!("{:?}", shown.as_ref().err().map(|e| e.code())),
         );
         // The modality answer, measured rather than assumed. `R_AKN_INFORMATION_NOTE`
         // carries no `EEikDialogFlagWait`, so `ExecuteLD` should return while the note
@@ -85,12 +85,12 @@ impl App for Notes {
         report.check_detail(
             "ExecuteLD returned without waiting for the note to close",
             micros < 500_000,
-            format_args!("{micros} us"),
+            detail!("{micros} us"),
         );
         report.check_detail(
             "the view was sized before construct",
             self.area.width > 0 && self.area.height > 0,
-            format_args!("{}x{}", self.area.width, self.area.height),
+            detail!("{}x{}", self.area.width, self.area.height),
         );
         self.last = "info";
         self.micros = micros;

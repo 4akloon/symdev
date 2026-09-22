@@ -8,7 +8,7 @@ use core::hint::black_box;
 
 use symbian_core::Buf16;
 use symbian_core::time::NanoTicks;
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 
 const ROUNDS: u32 = 100_000;
 /// A `const`, not a literal: rustc would fold a literal into the format string.
@@ -44,11 +44,11 @@ pub fn run(report: &mut Report) {
     report.check_detail(
         "ticks for 100000 writes into a Buf16",
         true,
-        format_args!("core {core_buf}, fast {fast_buf}"),
+        detail!("core {core_buf}, fast {fast_buf}"),
     );
     report.check_detail(
         "ticks for 100000 writes into a String",
         true,
-        format_args!("core {core_string}, fast {fast_string}"),
+        detail!("core {core_string}, fast {fast_string}"),
     );
 }

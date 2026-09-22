@@ -10,7 +10,7 @@ use std::io::ErrorKind;
 use std::net::{Ipv4Addr, SocketAddr, TcpStream, ToSocketAddrs, UdpSocket};
 use std::time::Duration;
 
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 
 /// `ToSocketAddrs`, three ways in: a literal, a name through `RHostResolver::GetByName`
 /// and the `"host:port"` spelling.
@@ -22,13 +22,13 @@ pub fn resolution(report: &mut Report, numeric: SocketAddr, port: u16) {
             .ok()
             .and_then(|mut a| a.next())
             == Some(numeric),
-        format_args!("{numeric}"),
+        detail!("{numeric}"),
     );
     let named = ("localhost", port).to_socket_addrs().map(|mut a| a.next());
     report.check_detail(
         "RHostResolver::GetByName resolves a name",
         named.as_ref().ok().and_then(|a| *a) == Some(numeric),
-        format_args!("{named:?}"),
+        detail!("{named:?}"),
     );
     report.check(
         "\"host:port\" parses and keeps the port",
@@ -45,7 +45,7 @@ pub fn resolution(report: &mut Report, numeric: SocketAddr, port: u16) {
     report.check_detail(
         "a name that resolves to nothing is an error",
         ("no-such-host.invalid", port).to_socket_addrs().is_err(),
-        format_args!(
+        detail!(
             "{:?}",
             ("no-such-host.invalid", port).to_socket_addrs().err()
         ),
@@ -55,7 +55,7 @@ pub fn resolution(report: &mut Report, numeric: SocketAddr, port: u16) {
     report.check_detail(
         "an IPv6 peer is Unsupported, not a wrong answer",
         TcpStream::connect("[::1]:80").is_err(),
-        format_args!(
+        detail!(
             "{:?}",
             TcpStream::connect("[::1]:80").err().map(|e| e.kind())
         ),
@@ -90,12 +90,12 @@ pub fn stream_unsupported(report: &mut Report, stream: &TcpStream) {
     report.check_detail(
         "peek is Unsupported: KSockReadPeek has not been observed",
         stream.peek(&mut [0u8; 4]).is_err(),
-        format_args!("{:?}", stream.peek(&mut [0u8; 4]).err()),
+        detail!("{:?}", stream.peek(&mut [0u8; 4]).err()),
     );
     report.check_detail(
         "try_clone is Unsupported: a sub-session cannot be duplicated in a thread",
         stream.try_clone().is_err(),
-        format_args!("{:?}", stream.try_clone().err()),
+        detail!("{:?}", stream.try_clone().err()),
     );
     report.check(
         "set_nodelay is Unsupported",
@@ -129,7 +129,7 @@ pub fn scheduler_refusal(report: &mut Report, addr: SocketAddr) {
         report.check_detail(
             "install a CActiveScheduler for the refusal case",
             false,
-            format_args!("KErr {installed}"),
+            detail!("KErr {installed}"),
         );
         return;
     }
@@ -140,7 +140,7 @@ pub fn scheduler_refusal(report: &mut Report, addr: SocketAddr) {
     report.check_detail(
         "a blocking connect under a CActiveScheduler is refused, not hung",
         kind == Some(ErrorKind::ResourceBusy),
-        format_args!("{kind:?}"),
+        detail!("{kind:?}"),
     );
     report.check("and the socket is not returned", refused.is_err());
 }

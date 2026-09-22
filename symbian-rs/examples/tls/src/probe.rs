@@ -7,7 +7,7 @@
 
 use core::ffi::c_void;
 
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 use symbian_std::thread;
 use symbian_sys::tls::{
     UserSvr_DllFreeTls, UserSvr_DllSetTls, UserSvr_DllSetTlsWithUid, UserSvr_DllTls,
@@ -46,22 +46,22 @@ pub fn one_thread(report: &mut Report) {
     report.check_detail(
         "nothing is stored under an untouched handle",
         get(H3).is_null(),
-        format_args!("{:#x}", get(H3) as usize),
+        detail!("{:#x}", get(H3) as usize),
     );
 
     let rc = set(H1, marker(1));
-    report.check_detail("UserSvr::DllSetTls succeeds", rc == 0, format_args!("{rc}"));
+    report.check_detail("UserSvr::DllSetTls succeeds", rc == 0, detail!("{rc}"));
     report.check_detail(
         "and DllTls reads the same pointer back",
         get(H1) == marker(1),
-        format_args!("{:#x} wanted {:#x}", get(H1) as usize, marker(1) as usize),
+        detail!("{:#x} wanted {:#x}", get(H1) as usize, marker(1) as usize),
     );
 
     set(H2, marker(2));
     report.check_detail(
         "a second handle does not overwrite the first",
         get(H1) == marker(1) && get(H2) == marker(2),
-        format_args!("h1={:#x} h2={:#x}", get(H1) as usize, get(H2) as usize),
+        detail!("h1={:#x} h2={:#x}", get(H1) as usize, get(H2) as usize),
     );
 
     set(H1, marker(3));
@@ -73,7 +73,7 @@ pub fn one_thread(report: &mut Report) {
     report.check_detail(
         "DllFreeTls empties that handle and leaves the other",
         get(H1).is_null() && get(H2) == marker(2),
-        format_args!("h1={:#x} h2={:#x}", get(H1) as usize, get(H2) as usize),
+        detail!("h1={:#x} h2={:#x}", get(H1) as usize, get(H2) as usize),
     );
     // SAFETY: as above.
     unsafe { UserSvr_DllFreeTls(H2) };
@@ -97,7 +97,7 @@ pub fn how_many_slots(report: &mut Report) {
     report.check_detail(
         "one thread holds many slots at once",
         set_failed_at < 0 && readable == MANY,
-        format_args!("{readable} of {MANY} readable, first set failure at {set_failed_at}"),
+        detail!("{readable} of {MANY} readable, first set failure at {set_failed_at}"),
     );
     for n in 0..MANY {
         // SAFETY: a euser static taking one scalar.
@@ -115,12 +115,12 @@ pub fn the_uid_overloads(report: &mut Report) {
     report.check_detail(
         "the uid overloads round-trip",
         rc == 0 && with_uid == marker(7),
-        format_args!("rc={rc} value={:#x}", with_uid as usize),
+        detail!("rc={rc} value={:#x}", with_uid as usize),
     );
     report.check_detail(
         "and the one-argument read of the same handle",
         true,
-        format_args!(
+        detail!(
             "{:#x} (marker is {:#x}; equal means the uid is ignored on read)",
             get(H1) as usize,
             marker(7) as usize
@@ -133,7 +133,7 @@ pub fn the_uid_overloads(report: &mut Report) {
     report.check_detail(
         "a one-argument set read with uid = handle",
         true,
-        format_args!(
+        detail!(
             "{:#x} (marker is {:#x})",
             cross as usize,
             marker(8) as usize
@@ -166,17 +166,17 @@ pub fn per_thread(report: &mut Report) {
     report.check_detail(
         "a new thread does not inherit the creator's slot",
         before == 0,
-        format_args!("the worker read {before:#x} before storing anything"),
+        detail!("the worker read {before:#x} before storing anything"),
     );
     report.check_detail(
         "the worker's own store is visible to itself",
         after == marker(12) as usize,
-        format_args!("{after:#x}"),
+        detail!("{after:#x}"),
     );
     report.check_detail(
         "and it did not overwrite the creator's slot",
         get(H1) == marker(11),
-        format_args!("{:#x} wanted {:#x}", get(H1) as usize, marker(11) as usize),
+        detail!("{:#x} wanted {:#x}", get(H1) as usize, marker(11) as usize),
     );
     // SAFETY: a euser static taking one scalar.
     unsafe { UserSvr_DllFreeTls(H1) };

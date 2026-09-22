@@ -1,7 +1,7 @@
 //! The `std::process` cases: what `RProcess` can carry into a child and what it
 //! cannot.
 
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 
 /// The exit code the child is asked for, which is also the argument it is given — so
 /// one number proves the command line went out and the exit code came back.
@@ -32,7 +32,7 @@ pub fn process_cases(report: &mut Report) {
     report.check_detail(
         "process::id is this process's own",
         std::process::id() != 0,
-        format_args!("{}", std::process::id()),
+        detail!("{}", std::process::id()),
     );
 
     // The child is a separate image given one argument, which is also the exit code
@@ -47,31 +47,31 @@ pub fn process_cases(report: &mut Report) {
             report.check_detail(
                 "RProcess::Create + Resume spawn examples/spawnee",
                 true,
-                format_args!("pid {}", child.id()),
+                detail!("pid {}", child.id()),
             );
             match child.wait() {
                 Ok(status) => report.check_detail(
                     "RProcess::Logon gives the child's exit code back",
                     status.code() == Some(CHILD_CODE),
-                    format_args!("{status}"),
+                    detail!("{status}"),
                 ),
                 Err(e) => report.check_detail(
                     "RProcess::Logon gives the child's exit code back",
                     false,
-                    format_args!("{e}"),
+                    detail!("{e}"),
                 ),
             }
             let mark = std::fs::read_to_string(CHILD_MARK).unwrap_or_default();
             report.check_detail(
                 "the command line reached the child verbatim",
                 mark.trim() == CHILD_CODE.to_string(),
-                format_args!("{mark}"),
+                detail!("{mark}"),
             );
         }
         Err(e) => report.check_detail(
             "RProcess::Create + Resume spawn examples/spawnee",
             false,
-            format_args!("{e} — is examples/spawnee installed?"),
+            detail!("{e} — is examples/spawnee installed?"),
         ),
     }
 
@@ -80,7 +80,7 @@ pub fn process_cases(report: &mut Report) {
         Command::new("E:\\sys\\bin\\no-such-program.exe")
             .spawn()
             .is_err(),
-        format_args!(
+        detail!(
             "{:?}",
             Command::new("E:\\sys\\bin\\no-such-program.exe")
                 .spawn()

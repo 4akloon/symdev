@@ -7,7 +7,7 @@
 use std::io::Write as _;
 use std::path::{Component, Path, Prefix};
 
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 
 /// `std::path` over a Symbian path: the drive letter is a `Prefix::Disk` now, so every
 /// question `Path` answers about it is the right one.
@@ -30,7 +30,7 @@ pub fn path_cases(report: &mut Report) {
             file.components().next(),
             Some(Component::Prefix(p)) if p.kind() == Prefix::Disk(b'E')
         ),
-        format_args!("{:?}", file.components().next()),
+        detail!("{:?}", file.components().next()),
     );
     report.check(
         "a lower-case drive is the same drive",
@@ -58,7 +58,7 @@ pub fn path_cases(report: &mut Report) {
     report.check_detail(
         "path::absolute is Unsupported and says so",
         std::path::absolute("E:x").is_err(),
-        format_args!("{:?}", std::path::absolute("E:x").err()),
+        detail!("{:?}", std::path::absolute("E:x").err()),
     );
 }
 
@@ -83,7 +83,7 @@ pub fn read_dir_cases(report: &mut Report, parent: &str, already_there: &str) {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(e) => {
-            report.check_detail("read_dir opens the directory", false, format_args!("{e}"));
+            report.check_detail("read_dir opens the directory", false, detail!("{e}"));
             return;
         }
     };
@@ -106,7 +106,7 @@ pub fn read_dir_cases(report: &mut Report, parent: &str, already_there: &str) {
                 }
             }
             Err(e) => {
-                report.check_detail("every entry reads back", false, format_args!("{e}"));
+                report.check_detail("every entry reads back", false, detail!("{e}"));
                 return;
             }
         }
@@ -115,17 +115,17 @@ pub fn read_dir_cases(report: &mut Report, parent: &str, already_there: &str) {
     report.check_detail(
         "read_dir lists the files and the subdirectory",
         names == ["one.txt", already_there, "sub", "two.bin"],
-        format_args!("{names:?}"),
+        detail!("{names:?}"),
     );
     report.check_detail(
         "file_type tells the subdirectory from the files",
         dirs == 1,
-        format_args!("{dirs} directories"),
+        detail!("{dirs} directories"),
     );
     report.check_detail(
         "metadata().len() comes out of the same listing",
         sizes == 58,
-        format_args!("{sizes} bytes of files, {detail}"),
+        detail!("{sizes} bytes of files, {detail}"),
     );
     report.check(
         "the listing yields neither . nor ..",
@@ -136,13 +136,13 @@ pub fn read_dir_cases(report: &mut Report, parent: &str, already_there: &str) {
         std::fs::read_dir(dir)
             .map(|mut e| e.any(|e| e.map(|e| e.path() == one).unwrap_or(false)))
             .unwrap_or(false),
-        format_args!("{}", one.display()),
+        detail!("{}", one.display()),
     );
     let missing = std::fs::read_dir("E:\\symdev\\no-such-directory").err();
     report.check_detail(
         "read_dir on a missing directory is an error, not an empty listing",
         matches!(&missing, Some(e) if e.kind() == std::io::ErrorKind::NotFound),
-        format_args!("{missing:?}"),
+        detail!("{missing:?}"),
     );
 
     let _ = std::fs::remove_file(&one);
@@ -168,7 +168,7 @@ pub fn args_and_env_cases(report: &mut Report) {
     report.check_detail(
         "args() always has a first element",
         !argv.is_empty(),
-        format_args!("{argv:?}"),
+        detail!("{argv:?}"),
     );
     // Element 0 is `RProcess().FileName()` — Symbian's command line does not carry the
     // program name, so the shim reads the running image's own path instead.
@@ -177,7 +177,7 @@ pub fn args_and_env_cases(report: &mut Report) {
         argv.first()
             .map(|a| a.to_ascii_lowercase().ends_with("stdhello.exe"))
             .unwrap_or(false),
-        format_args!("{:?}", argv.first()),
+        detail!("{:?}", argv.first()),
     );
     report.check(
         "args()[0] names a drive, so it is an absolute Symbian path",
@@ -191,11 +191,11 @@ pub fn args_and_env_cases(report: &mut Report) {
     report.check_detail(
         "env::vars() is empty and does not panic",
         std::env::vars().count() == 0,
-        format_args!("{} variables", std::env::vars().count()),
+        detail!("{} variables", std::env::vars().count()),
     );
     report.check_detail(
         "env::var is NotPresent, because Symbian has no environment",
         std::env::var("PATH") == Err(std::env::VarError::NotPresent),
-        format_args!("{:?}", std::env::var("PATH")),
+        detail!("{:?}", std::env::var("PATH")),
     );
 }

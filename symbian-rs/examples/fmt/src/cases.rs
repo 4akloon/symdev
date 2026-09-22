@@ -6,7 +6,7 @@ use core::fmt::{self, Write as _};
 use core::hint::black_box;
 
 use symbian_core::{Buf16, DesC16};
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 
 /// A type with its own `Display`, which the fast path must leave to `core::fmt`.
 struct Custom(i32);
@@ -101,7 +101,7 @@ pub fn run(report: &mut Report) {
         report.check_detail(
             name,
             differ == 0,
-            format_args!("{differ} mismatches over 26 capacities"),
+            detail!("{differ} mismatches over 26 capacities"),
         );
     }
 }

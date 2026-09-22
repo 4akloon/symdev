@@ -15,7 +15,7 @@ extern crate alloc;
 use symbian_std::fs::{self, File};
 use symbian_std::io::{self, ErrorKind, SeekFrom};
 use symbian_std::prelude::*;
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 
 /// Symbian paths: a drive letter and backslashes, which is why the literals are
 /// escaped. There is no POSIX root above `E:`.
@@ -79,7 +79,7 @@ fn heap_cost_of_reading(report: &mut Report) {
     report.check_detail(
         "a second read_dir leaves no cell behind",
         after_second == after_first,
-        format_args!(
+        detail!(
             "first: {before_first} -> held {held_first} -> {after_first}; \
              second: held {held_second} -> {after_second}"
         ),
@@ -119,15 +119,11 @@ fn list_the_directory(report: &mut Report) {
     report.check("the written file is listed, as a file of its size", file);
     report.check("the kept file is listed", kept);
     report.check("the subdirectory is listed as a directory", sub);
-    report.check_detail(
-        "and nothing else",
-        count == 3,
-        format_args!("{count} entries"),
-    );
+    report.check_detail("and nothing else", count == 3, detail!("{count} entries"));
     report.check_detail(
         "listing allocates no heap cell",
         after == before,
-        format_args!("cells {before} -> {after}"),
+        detail!("cells {before} -> {after}"),
     );
 
     // `KErrPathNotFound` (-12) underneath, `NotFound` on top — the same pair `File::open`

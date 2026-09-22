@@ -23,7 +23,7 @@ extern crate alloc;
 
 use symbian_std::fs;
 use symbian_std::io::Result;
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 
 #[symbian_std::main]
 fn main() -> Result<i32> {
@@ -34,12 +34,12 @@ fn main() -> Result<i32> {
     match fs::read_dir("E:\\symdev") {
         Ok(dir) => {
             let count = dir.iter().count();
-            report.check_detail("GetDir returned", true, format_args!("{count} entries"));
+            report.check_detail("GetDir returned", true, detail!("{count} entries"));
         }
         Err(e) => report.check_detail(
             "GetDir returned",
             false,
-            format_args!("error {}", e.raw_os_error().unwrap_or(0)),
+            detail!("error {}", e.raw_os_error().unwrap_or(0)),
         ),
     }
     Ok(if report.finish()? { 0 } else { 1 })

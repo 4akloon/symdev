@@ -9,7 +9,7 @@ use alloc::string::String;
 use core::cell::{Cell, RefCell};
 use core::sync::atomic::{AtomicU32, Ordering};
 
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 use symbian_std::thread;
 use symbian_std::thread_local;
 
@@ -61,7 +61,7 @@ pub fn one_thread(report: &mut Report) {
     report.check_detail(
         "an untouched thread holds no thread-local",
         thread::live_thread_locals() == 0,
-        format_args!("{} live", thread::live_thread_locals()),
+        detail!("{} live", thread::live_thread_locals()),
     );
 
     report.check(
@@ -74,11 +74,11 @@ pub fn one_thread(report: &mut Report) {
     report.check_detail(
         "a lazy initialiser runs on first use",
         NAME_INITS.load(Ordering::SeqCst) == 0,
-        format_args!("{} before the first use", NAME_INITS.load(Ordering::SeqCst)),
+        detail!("{} before the first use", NAME_INITS.load(Ordering::SeqCst)),
     );
     NAME.with(|name| name.borrow_mut().push_str("-main"));
     let runs = NAME_INITS.load(Ordering::SeqCst);
-    report.check_detail("and exactly once", runs == 1, format_args!("{runs} runs"));
+    report.check_detail("and exactly once", runs == 1, detail!("{runs} runs"));
     NAME.with(|name| {
         let _ = name.borrow_mut();
     });
@@ -86,7 +86,7 @@ pub fn one_thread(report: &mut Report) {
     report.check_detail(
         "however often it is read",
         runs == 1,
-        format_args!("{runs} runs"),
+        detail!("{runs} runs"),
     );
     report.check(
         "the lazy value is what the initialiser built",
@@ -100,7 +100,7 @@ pub fn one_thread(report: &mut Report) {
     report.check_detail(
         "and the three keys are three values",
         thread::live_thread_locals() == 3,
-        format_args!("{} live", thread::live_thread_locals()),
+        detail!("{} live", thread::live_thread_locals()),
     );
     report.check(
         "none of them disturbed the others",
@@ -114,7 +114,7 @@ pub fn reentrancy(report: &mut Report) {
     report.check_detail(
         "an initialiser that asks for its own key is refused, not looped",
         value == 0,
-        format_args!("the initialiser saw try_with succeed: {}", value == 1),
+        detail!("the initialiser saw try_with succeed: {}", value == 1),
     );
     report.check(
         "and the key works normally afterwards",
@@ -152,22 +152,22 @@ pub fn two_threads(report: &mut Report) {
     report.check_detail(
         "a worker starts from the initialiser, not from the creator's value",
         first_seen == 0,
-        format_args!("it saw {first_seen}, the creator had 42"),
+        detail!("it saw {first_seen}, the creator had 42"),
     );
     report.check_detail(
         "a worker's own value is its own",
         worker_counter == 7,
-        format_args!("{worker_counter}"),
+        detail!("{worker_counter}"),
     );
     report.check_detail(
         "and the creator's is untouched by it",
         COUNTER.with(Cell::get) == 42,
-        format_args!("{}", COUNTER.with(Cell::get)),
+        detail!("{}", COUNTER.with(Cell::get)),
     );
     report.check_detail(
         "the lazy initialiser ran again for the worker",
         NAME_INITS.load(Ordering::SeqCst) == 2,
-        format_args!(
+        detail!(
             "{} runs across both threads",
             NAME_INITS.load(Ordering::SeqCst)
         ),
@@ -175,7 +175,7 @@ pub fn two_threads(report: &mut Report) {
     report.check_detail(
         "the worker's heap value is its own too",
         worker_name_len == 14 && NAME.with(|n| n.borrow().len()) == 12,
-        format_args!(
+        detail!(
             "worker {worker_name_len}, main {}",
             NAME.with(|n| n.borrow().len())
         ),
@@ -183,19 +183,19 @@ pub fn two_threads(report: &mut Report) {
     report.check_detail(
         "and it held its own three keys",
         live == 3 && witness == 1,
-        format_args!("{live} live on the worker, witness {witness}"),
+        detail!("{live} live on the worker, witness {witness}"),
     );
 
     let dropped = DROPS.load(Ordering::SeqCst) - before_drops;
     report.check_detail(
         "the worker's thread-locals were dropped when it ended",
         dropped == 1,
-        format_args!("{dropped} dropped"),
+        detail!("{dropped} dropped"),
     );
     report.check_detail(
         "and the creator's survived the sweep",
         thread::live_thread_locals() == 3 && WITNESS.with(|w| w.0) == 1,
-        format_args!("{} live", thread::live_thread_locals()),
+        detail!("{} live", thread::live_thread_locals()),
     );
 }
 
@@ -206,12 +206,12 @@ pub fn main_thread_teardown(report: &mut Report) {
     report.check_detail(
         "drop_thread_locals drops this thread's values too",
         DROPS.load(Ordering::SeqCst) - before == 1,
-        format_args!("{} dropped", DROPS.load(Ordering::SeqCst) - before),
+        detail!("{} dropped", DROPS.load(Ordering::SeqCst) - before),
     );
     report.check_detail(
         "and the thread holds nothing afterwards",
         thread::live_thread_locals() == 0,
-        format_args!("{} live", thread::live_thread_locals()),
+        detail!("{} live", thread::live_thread_locals()),
     );
     report.check(
         "an access after the sweep is an error, not a new value",
@@ -220,7 +220,7 @@ pub fn main_thread_teardown(report: &mut Report) {
     report.check_detail(
         "and it says which error",
         COUNTER.try_with(Cell::get).err().map(|e| e.reason()) == Some(-13),
-        format_args!("{:?}", COUNTER.try_with(Cell::get).err()),
+        detail!("{:?}", COUNTER.try_with(Cell::get).err()),
     );
     thread::drop_thread_locals();
     report.check(

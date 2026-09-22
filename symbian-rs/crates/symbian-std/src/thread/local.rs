@@ -136,6 +136,15 @@ impl AccessError {
     pub fn reason(self) -> i32 {
         self.reason
     }
+
+    /// Which of the three failures this was, in words: its `Display`.
+    pub fn message(self) -> &'static str {
+        match self.reason {
+            NO_SLOT => "the kernel refused a thread-local slot for this thread",
+            REENTRANT => "a thread-local's own initialiser asked for that thread-local",
+            _ => "this thread's thread-locals have already been dropped",
+        }
+    }
 }
 
 /// `KErrNoMemory`: the kernel could not grow this thread's slot table.
@@ -158,11 +167,7 @@ fn access(cause: Cause) -> AccessError {
 
 impl fmt::Display for AccessError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self.reason {
-            NO_SLOT => "the kernel refused a thread-local slot for this thread",
-            REENTRANT => "a thread-local's own initialiser asked for that thread-local",
-            _ => "this thread's thread-locals have already been dropped",
-        })
+        f.write_str(self.message())
     }
 }
 

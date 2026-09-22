@@ -30,7 +30,7 @@
 
 extern crate alloc;
 
-use symbian_std::test_report::Report;
+use symbian_std::test_report::{Report, detail};
 use symbian_std::ui::prelude::*;
 
 /// The rows below the status row. Twelve of them, so that the list overflows the E52's
@@ -86,17 +86,17 @@ impl App for ListDemo {
         report.check_detail(
             "the view was sized before construct",
             self.area.width > 0 && self.area.height > 0,
-            format_args!("{}x{}", self.area.width, self.area.height),
+            detail!("{}x{}", self.area.width, self.area.height),
         );
         report.check_detail(
             "the list holds every row it was given",
             list.len() == ITEMS.len() + 1,
-            format_args!("{} rows", list.len()),
+            detail!("{} rows", list.len()),
         );
         report.check_detail(
             "the first row is selected to begin with",
             list.selected() == 0,
-            format_args!("index {}", list.selected()),
+            detail!("index {}", list.selected()),
         );
         // Moving the highlight from Rust works, and moving it back leaves the list
         // where the screenshot expects it.
@@ -106,7 +106,7 @@ impl App for ListDemo {
         report.check_detail(
             "the highlight can be moved from Rust",
             moved && list.selected() == 0,
-            format_args!("index {}", list.selected()),
+            detail!("index {}", list.selected()),
         );
         report.check(
             "an index past the end is refused",
