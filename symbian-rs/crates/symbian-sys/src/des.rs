@@ -25,6 +25,8 @@ pub struct TDesC16 {
 /// its length in code units, and the top nibble is the type.
 pub const KMASK_DES_LENGTH_16: u32 = 0x0fff_ffff;
 
+use crate::des8::TDesC8;
+
 unsafe extern "C" {
     /// `00001c38 T _ZNK7TDesC163PtrEv` — `TDesC16::Ptr() const`: where the code units
     /// are.
@@ -36,6 +38,14 @@ unsafe extern "C" {
     /// is.
     #[link_name = "_ZNK7TDesC163PtrEv"]
     pub fn TDesC16_Ptr(this: *const TDesC16) -> *const u16;
+
+    /// `00001ad8 T _ZNK6TDesC83PtrEv` — `TDesC8::Ptr() const`: where the bytes are.
+    ///
+    /// The 8-bit twin of [`TDesC16_Ptr`], for the same reason: the answer depends on
+    /// the type nibble, and the 8-bit nibbles were never observed (`des8` module
+    /// documentation), so a heap descriptor's bytes are found by asking euser.
+    #[link_name = "_ZNK6TDesC83PtrEv"]
+    pub fn TDesC8_Ptr(this: *const TDesC8) -> *const u8;
 
     /// `00001c74 T _ZNK7TDesC167CompareERKS_` — `TInt TDesC16::Compare(const TDesC16&)
     /// const`: 0 when the two hold the same code units. Non-leaving. It is how C++

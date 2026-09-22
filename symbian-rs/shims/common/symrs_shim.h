@@ -62,8 +62,8 @@
 // crates/symbian-libcalls/src/cstring.rs. Neither can leave: RFastLock::CreateLocal,
 // Wait and Signal are non-leaving euser members, and the member ABI is ordinary AAPCS
 // with `this` as argument 0 (observed, experiment 78), so Rust calls them directly.
-// What remains in this directory is the two TRAPs, in symrs_leave.cpp and symrs_f32.cpp,
-// and the one C++ subclass, in symrs_active.cpp -- which is rule 3 and carries the third
+// What remains in this directory is the TRAPs, in symrs_leave.cpp, symrs_f32.cpp and
+// symrs_rsc.cpp, and the one C++ subclass, in symrs_active.cpp -- which is rule 3 and carries the third
 // TRAP, around CActiveScheduler::Start().
 //
 // ONE WRAPPER PER TRANSLATION UNIT, when the wrapper is not for everybody. The recorded
@@ -84,8 +84,10 @@
 
 class CDir;
 class CTrapCleanup;
+class HBufC8;
 class RFs;
 class RProcess;
+class RResourceFile;
 class TDes16;
 class TDesC16;
 class TRequestStatus;
@@ -118,6 +120,14 @@ SYMRS_EXPORT TInt symrs_process_file_name(TDes16* aOut);
 // rule 2: TProcessId is an 8-byte TObjectId and the EABI returns a composite larger
 // than 4 bytes indirectly.
 SYMRS_EXPORT TUint symrs_process_id(const RProcess* aProcess);
+
+// The localised-strings file (symrs_rsc.cpp). symrs_rsc_open constructs an RResourceFile
+// in aFile's 24 bytes, opens the nearest language variant of aPath
+// (BaflUtils::NearestLanguageFile) and confirms its signature, closing it again on
+// failure. symrs_rsc_read is AllocReadL(Offset() + aIndex); the caller frees *aOut with
+// User::Free. Both return KErrNone, the leave code, or KErrArgument for a null argument.
+SYMRS_EXPORT TInt symrs_rsc_open(RFs* aFs, const TDesC16* aPath, RResourceFile* aFile);
+SYMRS_EXPORT TInt symrs_rsc_read(const RResourceFile* aFile, TInt aIndex, HBufC8** aOut);
 
 // User::LeaveIfError(TInt) from euser.dso, TRAPped: the shim's own self-check.
 // Returns aReason for a negative aReason, KErrNone otherwise.
