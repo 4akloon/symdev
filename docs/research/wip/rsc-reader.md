@@ -43,6 +43,13 @@ Record an experiment in the backlog.
   repackaged: lang 2 printed "BONJOUR depuis Rust" (test failed as it must) -> French is read from .r02.
   config restored to language: 1.
 
+- Sizes after (A: handle only): locale 12 045 -> 9 921; others -24..+18 (files -21, tls +18: .text of
+  the File::opened_by refactor / drift). res-after.txt.
+- Tick cost, 2000 x GREETING.get() + drop, EKA2L1 NanoTicks (1 ms): old RResourceFile 8, 9;
+  A (handle only, 2 reads per get) 13, 13; C (index copied to one heap cell at open, 1 read per get,
+  throwaway hack) 7, 6. Heap at open: old +4/+168, A +0/+0, C +1/+36. Old tree = worktree
+  ~/worktrees/symdev/rsc-readeO at eb39761 with its own CLI (new CLI lacks symrs_rsc.cpp).
+
 ## Decisions
 - Hold only RFile handle + {index_at, count} (no heap); per get: 2 positional reads. (Pending
   measurement of the index-in-heap alternative + tick cost.)
