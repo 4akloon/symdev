@@ -26,11 +26,19 @@ pub fn build_project(m: Manifest) -> Result<ExitCode, Error> {
     // which names it after the application rather than after an MMP target there is
     // none of; `GcceBuild` must not also try, or `AppIcon::of` fails looking for one.
     let icon = m.symbian.icon.clone();
-    let ui = m.ui.map(|ui| UiResources {
-        app: m.package.name.clone(),
-        uid3,
-        ui,
-        icon: icon.as_ref().map(|i| project.root.join(i)),
+    // `locales/` may translate the caption; the launcher reads each translation from
+    // its own `<app>.r<code>`, so the resource stage needs to know them.
+    let locales = symdev_locale::Locales::load(&project.root.join("locales"))
+        .map_err(|e| Error::Other(e.to_string()))?;
+    let ui = m.ui.map(|ui| {
+        UiResources {
+            app: m.package.name.clone(),
+            uid3,
+            ui,
+            icon: icon.as_ref().map(|i| project.root.join(i)),
+            captions: Vec::new(),
+        }
+        .with_locales(locales.as_ref())
     });
     let gcce = GcceBuild {
         env: LocalEnv,

@@ -88,8 +88,18 @@ impl StringsResources {
             .chain(self.locales.variants.iter().map(|(l, t)| (Some(*l), t)))
     }
 
-    /// The compiled files, as installed artifacts.
+    /// Whether there is any string to compile. A `locales/` that only translates the
+    /// caption has none, and gets no strings file: an empty one would be installed and
+    /// opened for nothing.
+    pub fn has_strings(&self) -> bool {
+        !self.locales.keys().is_empty()
+    }
+
+    /// The compiled files, as installed artifacts — none when there are no strings.
     pub fn artifacts(&self, build_dir: &Path) -> Vec<Artifact> {
+        if !self.has_strings() {
+            return Vec::new();
+        }
         self.languages()
             .map(|(language, _)| {
                 Artifact::installed(self.rsc_path(build_dir, language), self.dest(language))

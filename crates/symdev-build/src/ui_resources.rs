@@ -13,7 +13,10 @@
 use std::path::{Path, PathBuf};
 
 use symdev_core::Artifact;
+use symdev_locale::{Language, Locales};
 use symdev_manifest::{Softkeys, UiApp};
+
+pub use caption::Caption;
 
 /// The resource set of one GUI application.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,6 +27,9 @@ pub struct UiResources {
     pub ui: UiApp,
     /// `[symbian] icon`, already joined to the project root, when there is one.
     pub icon: Option<PathBuf>,
+    /// The languages `locales/` translates the caption into; each becomes its own
+    /// `<app>.r<code>` beside the default `<app>.rsc`.
+    pub captions: Vec<Caption>,
 }
 
 impl UiResources {
@@ -203,12 +209,51 @@ impl UiResources {
         )
     }
 
-    /// The two compiled resources, as installed files.
+    /// The compiled resources, as installed files: the application resource, one per
+    /// translated caption, and the registration.
     pub fn artifacts(&self, build_dir: &Path) -> Vec<Artifact> {
-        vec![
-            Artifact::installed(self.app_rsc_path(build_dir), self.app_rsc_dest()),
-            Artifact::installed(self.reg_rsc_path(build_dir), self.reg_rsc_dest()),
-        ]
+        let mut out = vec![Artifact::installed(
+            self.app_rsc_path(build_dir),
+            self.app_rsc_dest(),
+        )];
+        for c in &self.captions {
+            out.push(Artifact::installed(
+                self.app_rsc_variant_path(build_dir, c.language),
+                self.app_rsc_variant_dest(c.language),
+            ));
+        }
+        out.push(Artifact::installed(
+            self.reg_rsc_path(build_dir),
+            self.reg_rsc_dest(),
+        ));
+        out
+    }
+
+    /// Takes the caption translations from `locales/`, when the project has one.
+    pub fn with_locales(mut self, locales: Option<&Locales>) -> Self {
+        self.captions = Caption::of(&self.ui, locales);
+        self
+    }
+
+    /// The same application with `caption`'s pair in place of the manifest's: the
+    /// source of `<app>.r<code>`, which differs from `<app>.rsc` in nothing else.
+    pub fn variant(&self, caption: &Caption) -> UiResources {
+        let mut v = self.clone();
+        v.ui.caption = caption.caption.clone();
+        v.ui.short_caption = caption.short_caption.clone();
+        v
+    }
+
+    /// `build/<app>.r<code>`.
+    pub fn app_rsc_variant_path(&self, build_dir: &Path, language: Language) -> PathBuf {
+        build_dir.join(format!("{}.{}", self.app, language.suffix()))
+    }
+
+    /// `!:\resource\apps\<app>.r<code>`, beside the `.rsc` whose name
+    /// `localisable_resource_file` gives without an extension — the launcher adds the
+    /// nearest one for the device's language.
+    pub fn app_rsc_variant_dest(&self, language: Language) -> String {
+        format!("!:\\resource\\apps\\{}.{}", self.app, language.suffix())
     }
 }
 
@@ -219,5 +264,6 @@ fn rss_string(text: &str) -> String {
     text.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+mod caption;
 #[cfg(test)]
 mod tests;

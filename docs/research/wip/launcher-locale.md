@@ -41,3 +41,9 @@ Design: build side (locale files -> `.rNN` via our rcomp, installed), runtime si
   it needed the strings files named there too — without that the SIS would have shipped
   without them. Verified inside the `.sisx`: the three destinations and the UTF-8 of
   "Bonjour", "Привіт", "гаразд", "d'accord".
+- Task 6 done: a `locales/<language>.toml` with `caption`/`short_caption` gives
+  `<app>.r<code>`, the application resource with only the caption pair changed; the
+  registration's `localisable_resource_file` names the file without an extension, so the
+  launcher picks it. **Verified in EKA2L1**, the same `.sisx`: `language: 1` → title
+  "Bars" (`uidemo.rsc`), `language: 2` → "Barres" (`uidemo.r02`). A `locales/` that only
+  translates the caption compiles no strings file.

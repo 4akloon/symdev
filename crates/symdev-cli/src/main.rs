@@ -167,11 +167,18 @@ fn package_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
         )));
     }
     let icon = m.symbian.icon.clone();
-    let ui = m.ui.clone().map(|ui| UiResources {
-        app: app.name().to_string(),
-        uid3,
-        ui,
-        icon: icon.as_ref().map(|i| cwd.join(i)),
+    // The same caption translations the build compiled, so the package installs them.
+    let locales = symdev_locale::Locales::load(&cwd.join("locales"))
+        .map_err(|e| Error::Other(e.to_string()))?;
+    let ui = m.ui.clone().map(|ui| {
+        UiResources {
+            app: app.name().to_string(),
+            uid3,
+            ui,
+            icon: icon.as_ref().map(|i| cwd.join(i)),
+            captions: Vec::new(),
+        }
+        .with_locales(locales.as_ref())
     });
     let password = std::env::var("SYMDEV_SIGN_PASSWORD").unwrap_or_default();
     let package = SisPackage {

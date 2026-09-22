@@ -24,6 +24,9 @@ impl RustBuild {
             app: self.name.clone(),
             locales,
         };
+        if !strings.has_strings() {
+            return Ok(Vec::new());
+        }
         for (language, table) in strings.languages() {
             let rss = strings.rss_path(build_dir, language);
             std::fs::write(&rss, strings.rss(table))

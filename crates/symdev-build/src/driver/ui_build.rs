@@ -2,7 +2,7 @@
 //!
 //! Three files, none of which a console Rust project gets today: the localisable
 //! application resource (the caption and the icon), the registration resource that
-//! points at it, and the icon itself. The `.rss` text comes from [`UiResources`]; the
+//! points at it, and the icon itself. The `.rss` text comes from [`crate::UiResources`]; the
 //! compiling is the *existing* native `cpp` + `rcomp` pair, byte-verified on 143 SDK
 //! resources (experiment 56), and the *existing* native SVG→MIF encoder. Nothing here
 //! writes a binary resource by hand.
@@ -12,7 +12,6 @@ use symdev_core::{Artifact, Error, Result};
 
 use super::RustBuild;
 use crate::icons::AppIcon;
-use crate::ui_resources::UiResources;
 
 impl RustBuild {
     /// Compiles `[ui]`'s two resources and the icon into `build/`, and returns them as
@@ -34,19 +33,33 @@ impl RustBuild {
         }
         // The application resource first: it is compiled with `HEADER`, and the `.rsg`
         // it writes is what the registration resource includes.
+        let rsg = ui.rsg_path(build_dir);
         self.compile_ui_rss(
-            ui,
             build_dir,
             &ui.app_rss_path(build_dir),
             ui.app_rss(),
-            true,
+            &ui.app_rsc_path(build_dir),
+            Some(&rsg),
         )?;
+        // One more application resource per translated caption, differing from the
+        // default in the caption pair alone — so no `.rsg` of its own: the ids are the
+        // default's.
+        for caption in &ui.captions {
+            let suffix = caption.language.suffix();
+            self.compile_ui_rss(
+                build_dir,
+                &build_dir.join(format!("{}_{suffix}.rss", ui.app)),
+                ui.variant(caption).app_rss(),
+                &ui.app_rsc_variant_path(build_dir, caption.language),
+                None,
+            )?;
+        }
         self.compile_ui_rss(
-            ui,
             build_dir,
             &ui.reg_rss_path(build_dir),
             ui.reg_rss(),
-            false,
+            &ui.reg_rsc_path(build_dir),
+            None,
         )?;
         artifacts.extend(ui.artifacts(build_dir));
         Ok(artifacts)
@@ -60,11 +73,11 @@ impl RustBuild {
     /// either the SDK's or symdev's own.
     fn compile_ui_rss(
         &self,
-        ui: &UiResources,
         build_dir: &Path,
         rss: &Path,
         text: String,
-        header: bool,
+        rsc: &Path,
+        rsg: Option<&Path>,
     ) -> Result<()> {
         std::fs::write(rss, &text)
             .map_err(|e| Error::Other(format!("write {}: {e}", rss.display())))?;
@@ -79,16 +92,10 @@ impl RustBuild {
         let defines = ["LANGUAGE_SC".to_string()];
         let rpp = symdev_rcomp::CPreprocessor::for_rss(&includes, &defines).run(rss)?;
         let compiled = symdev_rcomp::Rcomp::compile(&rpp, &rss.display().to_string())?;
-        let rsc = if header {
-            ui.app_rsc_path(build_dir)
-        } else {
-            ui.reg_rsc_path(build_dir)
-        };
-        std::fs::write(&rsc, compiled.rsc_bytes()?)
+        std::fs::write(rsc, compiled.rsc_bytes()?)
             .map_err(|e| Error::Other(format!("write {}: {e}", rsc.display())))?;
-        if header {
-            let rsg = ui.rsg_path(build_dir);
-            std::fs::write(&rsg, compiled.rsg_text())
+        if let Some(rsg) = rsg {
+            std::fs::write(rsg, compiled.rsg_text())
                 .map_err(|e| Error::Other(format!("write {}: {e}", rsg.display())))?;
         }
         Ok(())

@@ -19,6 +19,7 @@ fn gui(icon: bool) -> UiResources {
             right_softkey: "Exit".into(),
         },
         icon: icon.then(|| PathBuf::from("/p/gfx/gui.svg")),
+        captions: Vec::new(),
     }
 }
 
@@ -179,4 +180,71 @@ fn a_softkey_label_is_escaped_in_the_button_and_in_the_menu_title() {
     r.ui.left_softkey = "say \"hi\"\\".into();
     let rss = r.app_rss();
     assert_eq!(rss.matches("\"say \\\"hi\\\"\\\\\"").count(), 2, "{rss}");
+}
+
+/// A locales file that translates the caption gives the application one more compiled
+/// resource, `<app>.r<code>`, identical to the default but for the caption pair — the
+/// file the launcher reads through `NearestLanguageFile`. A variant that translates only
+/// one of the pair keeps the manifest's other one.
+#[test]
+fn a_translated_caption_is_its_own_language_variant_of_the_application_resource() {
+    let locales = symdev_locale::Locales {
+        default: symdev_locale::Table::default(),
+        variants: vec![
+            (
+                symdev_locale::Language::named("french").unwrap(),
+                table(&[("caption", "Barres Rust"), ("short_caption", "Barres")]),
+            ),
+            (
+                symdev_locale::Language::named("german").unwrap(),
+                table(&[("short_caption", "Balken")]),
+            ),
+            (
+                symdev_locale::Language::named("italian").unwrap(),
+                table(&[]),
+            ),
+        ],
+    };
+    let ui = gui(false).with_locales(Some(&locales));
+    assert_eq!(
+        ui.captions.len(),
+        2,
+        "italian translates nothing and gets no file"
+    );
+
+    let french = ui.variant(&ui.captions[0]);
+    let rss = french.app_rss();
+    assert!(rss.contains("short_caption = \"Barres\";"), "{rss}");
+    assert!(rss.contains("caption = \"Barres Rust\";"), "{rss}");
+    let german = ui.variant(&ui.captions[1]).app_rss();
+    assert!(german.contains("short_caption = \"Balken\";"));
+    assert!(
+        german.contains("caption = \"gui\";"),
+        "the manifest's caption stays"
+    );
+
+    let build = Path::new("/p/build");
+    let installed: Vec<_> = ui
+        .artifacts(build)
+        .into_iter()
+        .map(|a| (a.path, a.dest.unwrap()))
+        .collect();
+    assert!(installed.contains(&(
+        build.join("gui.r02"),
+        "!:\\resource\\apps\\gui.r02".to_string()
+    )));
+    assert!(installed.contains(&(
+        build.join("gui.r03"),
+        "!:\\resource\\apps\\gui.r03".to_string()
+    )));
+    assert!(installed.iter().any(|(p, _)| p == &build.join("gui.rsc")));
+}
+
+fn table(pairs: &[(&str, &str)]) -> symdev_locale::Table {
+    symdev_locale::Table {
+        entries: pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+    }
 }

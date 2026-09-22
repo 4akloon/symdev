@@ -36,6 +36,7 @@ pub(super) fn gui() -> RustBuild {
                 right_softkey: "Exit".into(),
             },
             icon: None,
+            captions: Vec::new(),
         }),
         ..rust()
     }

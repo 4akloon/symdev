@@ -97,3 +97,10 @@ fn files_are_named_after_the_app_and_the_language() {
     assert_eq!(s.dest(None), "!:\\resource\\apps\\demo_strings.rsc");
     assert_eq!(s.dest(Some(french)), "!:\\resource\\apps\\demo_strings.r02");
 }
+
+#[test]
+fn a_locales_directory_with_no_strings_compiles_and_installs_nothing() {
+    let s = strings(Table::default());
+    assert!(!s.has_strings());
+    assert!(s.artifacts(std::path::Path::new("/p/build")).is_empty());
+}
