@@ -10,7 +10,7 @@
 //! tokens it was given, so that invocation is `write!` in every respect, rustc's
 //! diagnostics included.
 
-use proc_macro::{Delimiter, Group, Ident, Punct, Spacing, TokenStream, TokenTree};
+use proc_macro::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream, TokenTree};
 
 mod expand;
 mod literal;
@@ -71,8 +71,9 @@ impl Invocation {
         })
     }
 
-    /// The plan and, per slot, the tokens of its value; `None` for `core::write!`.
-    fn plan(&self) -> Option<(Plan, Vec<TokenStream>)> {
+    /// The plan and, per slot, the tokens of its value and the span diagnostics about
+    /// it should point at; `None` for `core::write!`.
+    fn plan(&self) -> Option<(Plan, Vec<(TokenStream, Span)>)> {
         let TokenTree::Literal(format) = &self.format else {
             return None;
         };
@@ -85,25 +86,39 @@ impl Invocation {
             .slots
             .iter()
             .map(|slot| match slot {
-                Source::Explicit(index) => borrow(explicit[*index].1.clone()),
+                Source::Explicit(index) => {
+                    let value = explicit[*index].1.clone();
+                    // The first token's span: joining spans is not stable yet.
+                    let span = value
+                        .clone()
+                        .into_iter()
+                        .next()
+                        .map_or(format.span(), |t| t.span());
+                    (borrow(value), span)
+                }
                 // A capture is an identifier with the format string's span, which is
                 // what makes it resolve in the caller's scope — as `format_args!` does.
-                Source::Capture(name) => {
-                    borrow(TokenTree::Ident(Ident::new(name, format.span())).into())
-                }
+                Source::Capture(name) => (
+                    borrow(TokenTree::Ident(Ident::new(name, format.span())).into()),
+                    format.span(),
+                ),
             })
             .collect();
         Some((plan, values))
     }
 
-    fn fast(&self, plan: &Plan, values: Vec<TokenStream>) -> TokenStream {
+    fn fast(&self, plan: &Plan, values: Vec<(TokenStream, Span)>) -> TokenStream {
         let text = expand::expansion(plan);
         fill(crate::tokens(&text), &|hole: &str| match hole {
             "krate" => Some(self.krate.clone()),
             "dst" => Some(self.dst.clone()),
-            _ => values
-                .get(hole.strip_prefix("slot")?.parse::<usize>().ok()?)
-                .cloned(),
+            _ => {
+                if let Some(slot) = hole.strip_prefix("slot") {
+                    return values.get(slot.parse::<usize>().ok()?).map(|v| v.0.clone());
+                }
+                let (_, span) = values.get(hole.strip_prefix("view")?.parse::<usize>().ok()?)?;
+                Some(TokenTree::Ident(Ident::new("__symbian_view", *span)).into())
+            }
         })
     }
 

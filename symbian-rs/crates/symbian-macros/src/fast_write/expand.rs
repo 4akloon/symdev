@@ -31,7 +31,10 @@
 
 use super::plan::{Piece, Plan};
 
-/// The expansion of `plan`. Holes: `@krate`, `@dst`, and `@slot0`… for the values.
+/// The expansion of `plan`. Holes: `@krate`, `@dst`, `@slot0`… for the values, and
+/// `@view0`… for the name the slow closure gives each value — an identifier carrying
+/// the argument's own span, so that "`T` doesn't implement `Display`" points at the
+/// argument, as it does for `core::write!`, and not at the whole invocation.
 pub fn expansion(plan: &Plan) -> String {
     let slots: String = (0..plan.slots.len())
         .map(|i| format!("@slot{i}, "))
@@ -42,13 +45,13 @@ pub fn expansion(plan: &Plan) -> String {
          (@dst).__symbian_fmt_enter(({slots}), |__d, ({names})| {{ "
     );
     for piece in &plan.pieces {
-        let value = match piece {
-            Piece::Text(text) => format!("{text:?}"),
-            Piece::Arg(slot) => format!("__a{slot}"),
+        let (value, view) = match piece {
+            Piece::Text(text) => (format!("{text:?}"), String::from("a")),
+            Piece::Arg(slot) => (format!("__a{slot}"), format!("@view{slot}")),
         };
         out.push_str(&format!(
             "match (&&&@krate::__private::Probe::of(&*__d, {value})).__symbian_kind()\
-             .put(&mut *__d, {value}, |d, a| d.write_fmt(::core::format_args!(\"{{}}\", a))) {{ \
+             .put(&mut *__d, {value}, |d, {view}| d.write_fmt(::core::format_args!(\"{{}}\", {view}))) {{ \
              ::core::result::Result::Ok(()) => {{}} \
              ::core::result::Result::Err(e) => return ::core::result::Result::Err(e), }} "
         ));
