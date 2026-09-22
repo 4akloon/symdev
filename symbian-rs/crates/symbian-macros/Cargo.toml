@@ -6,3 +6,11 @@ description = "The #[main] attribute behind symbian_std::main: the E32Main wrapp
 
 [lib]
 proc-macro = true
+
+[dependencies]
+# The one reader of locales files, shared with `symdev build`. Dependency-free, so this
+# crate still pulls nothing into an application's host build.
+symdev-locale = { path = "../../../crates/symdev-locale" }
+
+[dev-dependencies]
+tempfile = "3"

@@ -190,9 +190,11 @@ fn open_file() -> Result<*const RResourceFile> {
     }
     STRINGS.state.set(State::Opening);
     let opened = open_into(STRINGS.file.get());
-    STRINGS
-        .state
-        .set(if opened.is_ok() { State::Open } else { State::Closed });
+    STRINGS.state.set(if opened.is_ok() {
+        State::Open
+    } else {
+        State::Closed
+    });
     opened.map(|()| STRINGS.file.get().cast_const())
 }
 

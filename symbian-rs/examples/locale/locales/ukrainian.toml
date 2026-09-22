@@ -1,0 +1,5 @@
+# This ROM cannot be switched to Ukrainian (experiment 96): the file is compiled and
+# installed, and a device set to ELangUkrainian (93) would get it.
+greeting = "Привіт з Rust"
+language_is = "мова"
+ok = "гаразд"

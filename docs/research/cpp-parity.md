@@ -308,3 +308,12 @@ SYMDEV_CPP_PARITY_CLEANUP` in its `.mmp` is **833** against 802 — **+31**, one
 (`_ZN12CTrapCleanup3NewEv`), no import for the `delete` because `~CTrapCleanup` is reached
 through the vtable. Rust pays +44, so **13 bytes more**, which is the hop into the
 16-byte `symrs_cleanup_destroy` shim that the virtual destructor forces.
+
+## Locale, after native localisation (experiment 99)
+
+The C++ locale baseline's resource read was wrong (`TBUF` read as length-prefixed) and
+is fixed; it now reads its strings. The Rust side moved from strings compiled into the
+image to the C++ model. Heap is at parity (open file +4 cells, Rust 168 B against C++'s
+208 B; a held string +1 cell / +36 B on both); the image is `locale` **12 031** against
+C++'s 6 647, the difference being the `TRAP` exception runtime (~2.2 kB, which C++ pays
+too) and the reader (~2.1 kB).

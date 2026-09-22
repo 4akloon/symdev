@@ -12,16 +12,19 @@
 //! workspace is compiled for `arm-symbian-e32` with `-Zbuild-std`; cargo does that on
 //! its own, with no change to the target JSON or the build flags (experiment 81).
 //!
-//! It reads no file. It once read `symdev.toml` to write a `menu` module of command
-//! constants; the menu is declared in Rust now (`symbian_ui::App::menu`), so there is
-//! no number for two sides to agree on and no dependency on symdev's manifest reader
-//! (experiment 95).
+//! It reads one directory: `locales/`, for [`macro@strings`], through `symdev-locale` —
+//! the same dependency-free reader `symdev build` compiles the per-language resource
+//! files with, so the constants and the compiled files cannot disagree. It once read
+//! `symdev.toml` to write a `menu` module of command constants; the menu is declared in
+//! Rust now (`symbian_ui::App::menu`) and nothing here reads the manifest (experiment
+//! 95).
 
 use proc_macro::TokenStream;
 
 mod cursor;
 mod entry;
 mod signature;
+mod strings;
 
 #[cfg(test)]
 mod tests;
@@ -99,4 +102,33 @@ fn compile_error(message: &str) -> String {
 
 fn escape(message: &str) -> String {
     message.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// `symbian_std::strings!();` — a `strings` module with one [`Str`] constant per key of
+/// `locales/default.toml`, read on demand from the resource file for the device's
+/// language:
+///
+/// ```ignore
+/// symbian_std::strings!();
+///
+/// let greeting = strings::GREETING.get()?;   // one heap cell while it is held
+/// ```
+///
+/// [`Str`]: https://docs.rs/symbian-std/latest/symbian_std/locale/struct.Str.html
+#[proc_macro]
+pub fn strings(input: TokenStream) -> TokenStream {
+    if !input.is_empty() {
+        return tokens(&compile_error(
+            "`symbian_std::strings!()` takes no arguments: it reads the project's locales/",
+        ));
+    }
+    let Some(dir) = std::env::var_os("CARGO_MANIFEST_DIR") else {
+        return tokens(&compile_error(
+            "`symbian_std::strings!()` needs CARGO_MANIFEST_DIR, which cargo sets",
+        ));
+    };
+    match strings::expand(std::path::Path::new(&dir)) {
+        Ok(source) => tokens(&source),
+        Err(message) => tokens(&compile_error(&message)),
+    }
 }

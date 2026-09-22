@@ -1,0 +1,5 @@
+# The fallback: what a device gets when no other file here matches its language.
+# English, because this device's ROM defaults to it.
+greeting = "Hello from Rust"
+language_is = "language"
+ok = "ok"

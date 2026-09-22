@@ -20,6 +20,7 @@ pub mod des8;
 pub mod efsrv;
 pub mod esock;
 pub mod euser;
+pub mod heap;
 pub mod libcalls;
 pub mod process;
 pub mod shim;

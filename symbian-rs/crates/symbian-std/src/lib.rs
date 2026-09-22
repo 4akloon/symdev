@@ -132,7 +132,7 @@ pub use symbian_async as task;
 #[cfg(not(feature = "std"))]
 pub use symbian_ui as ui;
 
-pub use symbian_macros::main;
+pub use symbian_macros::{main, strings};
 /// What a `fn main` may return, and the `TInt` it becomes. An application implements
 /// [`IntoExitCode`] for its own error type to return it from `main`; `()`, `i32`,
 /// `SymbianError`, `io::Error` and any `Result` of those are already covered.

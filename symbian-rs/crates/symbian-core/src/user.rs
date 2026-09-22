@@ -44,3 +44,16 @@ pub fn alloc_cells() -> usize {
     let cells = unsafe { User_CountAllocCells() };
     usize::try_from(cells).unwrap_or(0)
 }
+
+/// The cells allocated on this thread's heap and their total size in bytes
+/// (`User::AllocSize`) — the two numbers the C++ parity baseline records.
+pub fn alloc_size() -> (usize, usize) {
+    let mut bytes = 0i32;
+    // SAFETY: a euser static that reads the current thread's heap, writes one `TInt`
+    // through the pointer it is given — a live local here — and cannot leave.
+    let cells = unsafe { symbian_sys::heap::User_AllocSize(&mut bytes) };
+    (
+        usize::try_from(cells).unwrap_or(0),
+        usize::try_from(bytes).unwrap_or(0),
+    )
+}

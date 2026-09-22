@@ -1,19 +1,21 @@
-//! Localisation of the strings the application itself shows (the Rust half).
+//! Localised strings the way a C++ application has them: one compiled resource file per
+//! language, the nearest one opened once, each string read when asked for.
 //!
-//! Two things are measured here and nothing is assumed:
+//! The translations are `locales/*.toml` beside `Cargo.toml`; `symdev build` compiles
+//! each into `localedemo_strings.rsc` / `.r02` / `.r93` and installs them all, and
+//! `symbian_std::strings!()` below turns `default.toml`'s keys into constants.
 //!
-//! 1. **What `User::Language()` actually returns** on this machine. The raw
-//!    `TLanguage` integer goes into `E:\symdev\locale\measured.txt` next to the name
-//!    this SDK gives it, so the host can read it back without a screenshot.
-//! 2. **That the chain picks what it says it picks.** Every case runs through
-//!    [`Text::get_in`], which takes a language instead of asking for one, so the
-//!    fallback rule is exercised for languages this device is not set to and could
-//!    not be set to — a dialect (`ELangEnglish_Apac`), a language the table has
-//!    (`ELangUkrainian`), and one it does not (`ELangGerman`).
+//! What is measured, against the C++ baseline (`docs/research/cpp-parity/locale`,
+//! `User::AllocSize` either side of the same steps — the file session is already open
+//! on both sides before the first count):
 //!
-//! The strings themselves are in [`strings`], and the point of the whole design is in
-//! that file: one row per key, one column per language, and rustc refusing a row that
-//! is missing a column.
+//! | step | C++ |
+//! |---|---|
+//! | open the nearest file, held | +4 cells, +208 bytes |
+//! | one 14-character string, held | +1 cell, +36 bytes |
+//! | string freed | back to the open file |
+//!
+//! and that the strings are the ones for the language the device reports.
 #![no_std]
 
 extern crate alloc;
@@ -21,130 +23,101 @@ extern crate alloc;
 use alloc::string::String;
 use core::fmt::Write as _;
 
-use symbian_core::locale::{Language, lang};
-use symbian_core::time::NanoTicks;
 use symbian_std::fs;
 use symbian_std::io::Result;
-use symbian_std::test_report::Report;
+use symbian_std::locale::Language;
+use symbian_std::test_report::{Report, alloc_size};
 
-mod strings;
+symbian_std::strings!();
 
 const DIR: &str = "E:\\symdev\\locale";
 const NOTES: &str = "E:\\symdev\\locale\\measured.txt";
 
-/// What the device is set to, as the device answers it — the one number on this
-/// branch that no header could have told us.
-fn measure(report: &mut Report, notes: &mut String) {
-    let current = Language::current();
-    let _ = writeln!(notes, "user_language_raw={}", current.code());
+/// The greeting a device set to `language` must get from these files, by the rule
+/// `NearestLanguageFile` applies to them: its own file if there is one, else the
+/// default. (The dialect and downgrade steps are the platform's and are not exercised:
+/// this ROM offers none of them.)
+fn expected(language: Language) -> &'static str {
+    match language.code() {
+        2 => "Bonjour depuis Rust",
+        93 => "Привіт з Rust",
+        _ => "Hello from Rust",
+    }
+}
+
+/// The heap either side of the first read, of holding a string and of dropping it — no
+/// report call in between, because recording a case allocates.
+fn heap(report: &mut Report, notes: &mut String) {
+    let before = alloc_size();
+    let first = strings::GREETING.get();
+    let held = alloc_size();
+    drop(first);
+    let open = alloc_size();
+    let again = strings::GREETING.get().map(|t| t.len());
+    let after_again = alloc_size();
     let _ = writeln!(
         notes,
-        "user_language_name={}",
-        name_of(current).unwrap_or("<not named by this SDK>")
+        "heap_before={}/{}\nheap_open_and_held={}/{}\nheap_open={}/{}\nheap_after_second={}/{}",
+        before.0, before.1, held.0, held.1, open.0, open.1, after_again.0, after_again.1
     );
-    let _ = writeln!(
-        notes,
-        "user_language_base={}",
-        match current.base() {
-            Some(base) => base.code(),
-            None => 0xFFFF,
+    report.check("the second read works", again.is_ok());
+    report.check_detail(
+        "dropping the string gives its cell back",
+        held.0 == open.0 + 1,
+        format_args!("{} -> {}", held.0, open.0),
+    );
+    report.check_detail(
+        "a read leaves nothing behind once the file is open",
+        after_again == open,
+        format_args!(
+            "{}/{} -> {}/{}",
+            open.0, open.1, after_again.0, after_again.1
+        ),
+    );
+    report.check_detail(
+        "the open file holds no more than C++'s 4 cells",
+        open.0.saturating_sub(before.0) <= 4,
+        format_args!("+{} cells, +{} bytes", open.0 - before.0, open.1 - before.1),
+    );
+}
+
+/// Every string, in the language the device reports.
+fn table(report: &mut Report, notes: &mut String) {
+    let language = Language::current();
+    let _ = writeln!(notes, "user_language={}", language.code());
+    for (name, key) in [
+        ("GREETING", strings::GREETING),
+        ("LANGUAGE_IS", strings::LANGUAGE_IS),
+        ("OK", strings::OK),
+    ] {
+        match key.get() {
+            Ok(text) => {
+                let _ = writeln!(notes, "{name}={}", &*text);
+            }
+            Err(_) => report.fail(name, "could not be read"),
         }
-    );
-    // Read twice: the second call must come out of the cache, not off euser, and the
-    // only thing an application can check from inside is that it is the same answer.
-    report.check(
-        "the language reads the same twice",
-        Language::current() == current,
-    );
-    let _ = writeln!(notes, "greeting_here={}", strings::GREETING.get());
-}
-
-/// What one `User::Language()` actually costs, because the answer decides whether the
-/// value is worth caching at all. `NanoTicks` is the finest counter this SDK exposes
-/// (1 000 µs inside EKA2L1), so the loop has to be long enough to move it.
-fn cost(notes: &mut String) {
-    const CALLS: u32 = 100_000;
-    let start = NanoTicks::now().raw();
-    let mut sum: u32 = 0;
-    for _ in 0..CALLS {
-        sum = sum.wrapping_add(u32::from(Language::current().code()));
     }
-    let asked = NanoTicks::now().raw().wrapping_sub(start);
-    // The same loop over a value already in a register, as the floor to compare with.
-    let held = Language::current();
-    let start = NanoTicks::now().raw();
-    let mut sum2: u32 = 0;
-    for _ in 0..CALLS {
-        sum2 = sum2.wrapping_add(u32::from(core::hint::black_box(held).code()));
+    match strings::GREETING.get() {
+        Ok(text) => report.check_detail(
+            "the greeting is the device language's",
+            &*text == expected(language),
+            format_args!("language {}", language.code()),
+        ),
+        Err(_) => report.fail("the greeting is the device language's", "not read"),
     }
-    let local = NanoTicks::now().raw().wrapping_sub(start);
-    let _ = writeln!(
-        notes,
-        "calls={CALLS} ticks_asking_euser={asked} ticks_local={local}"
-    );
-    let _ = writeln!(notes, "checksum={sum} checksum_local={sum2}");
-}
-
-/// The fallback chain, one case per rule, run without touching the device's setting.
-fn chain(report: &mut Report, notes: &mut String) {
-    let cases: [(&str, Language, &str); 6] = [
-        // 1. The language itself, when the table has it.
-        ("ukrainian", lang::ukrainian, "Привіт з Rust"),
-        ("french", lang::french, "Bonjour depuis Rust"),
-        ("english", lang::english, "Hello from Rust"),
-        // 2. A dialect falls back to the language it is a dialect of.
-        ("english_apac", lang::english_apac, "Hello from Rust"),
-        // 3. Anything else falls back to the declared default, which is english.
-        ("german", lang::german, "Hello from Rust"),
-        ("none", lang::none, "Hello from Rust"),
-    ];
-    for (name, language, expected) in cases {
-        let got = strings::GREETING.get_in(language);
-        let _ = writeln!(notes, "chain[{name}]={got}");
-        report.check(name, got == expected);
-    }
-}
-
-/// Every key, in the language the device reports, so a human looking at the file can
-/// see the table came through and not just the one string the checks use.
-fn table(notes: &mut String) {
-    let _ = writeln!(notes, "GREETING={}", strings::GREETING.get());
-    let _ = writeln!(notes, "LANGUAGE_IS={}", strings::LANGUAGE_IS.get());
-    let _ = writeln!(notes, "OK={}", strings::OK.get());
-}
-
-/// The handful of `TLanguage` names this example bothers to print. A full table would
-/// be 108 lines of no interest: what matters is that the raw number is written out.
-fn name_of(language: Language) -> Option<&'static str> {
-    let named: [(Language, &str); 8] = [
-        (lang::test, "ELangTest"),
-        (lang::english, "ELangEnglish"),
-        (lang::french, "ELangFrench"),
-        (lang::german, "ELangGerman"),
-        (lang::ukrainian, "ELangUkrainian"),
-        (lang::english_apac, "ELangEnglish_Apac"),
-        (lang::other, "ELangOther"),
-        (lang::none, "ELangNone"),
-    ];
-    named
-        .iter()
-        .find(|(candidate, _)| *candidate == language)
-        .map(|(_, name)| *name)
 }
 
 #[symbian_std::main]
 fn main() -> Result<i32> {
     let mut report = Report::new("locale");
     let mut notes = String::new();
-    measure(&mut report, &mut notes);
-    cost(&mut notes);
-    chain(&mut report, &mut notes);
-    table(&mut notes);
-    report.checked("the measurements are written out", write_notes(&notes));
+    // The file session first, as the C++ side has its `RFs` connected before it counts.
+    report.checked("the notes directory", fs::create_dir_all(DIR));
+    heap(&mut report, &mut notes);
+    table(&mut report, &mut notes);
+    report.checked(
+        "the measurements are written out",
+        fs::write(NOTES, notes.as_bytes()),
+    );
     Ok(if report.finish()? { 0 } else { 1 })
-}
-
-fn write_notes(notes: &str) -> Result<()> {
-    fs::create_dir_all(DIR)?;
-    fs::write(NOTES, notes.as_bytes())
 }

@@ -1884,3 +1884,79 @@ against the raw-FFI version `examples/cleanup` had.
 
 **Evidence.** `symbian-rs/crates/symbian-core/src/fs/dir.rs`, `examples/files` (26 cases),
 `examples/cleanup` (2).
+
+## 99. Native localisation: one resource file per language, read on demand, and the launcher caption (T5, Rust SDK)
+
+**Requires:** the toolchain, `SYMDEV_EKA2L1`; `language:` in
+`~/.local/share/EKA2L1/config.yml` switched between 1 and 2 (restored after).
+
+**Why.** Experiment 96 put every language of every string into the executable. The user
+ruled that out — «тримання всіх локалей в оперативці це погано, треба оптимізувати до
+рівня рішення нативки». This replaces it with the C++ model and localises the launcher
+caption through the same files. Plan: `docs/superpowers/plans/2026-09-22-native-localisation.md`.
+
+**The model.** `locales/default.toml` (fallback) and `locales/<language>.toml` beside
+`Cargo.toml`, one `key = "text"` per line (a strict TOML subset read by the new
+dependency-free `crates/symdev-locale`, the one reader both sides use). `symdev build`
+compiles each into `<app>_strings.rsc` / `.r<code>` with our `rcomp` — every string a
+`BUF8` holding UTF-8, non-ASCII bytes as `<0xNN>` — and installs them all.
+`symbian_std::strings!()` emits one `Str` constant per key at the index the build
+compiled it at. At run time `Str::get()` opens the file `BaflUtils::NearestLanguageFile`
+picks, once, through `shims/common/symrs_rsc.cpp`, and reads with
+`RResourceFile::AllocReadL`: a `Text` that derefs to `&str` and frees its cell on drop.
+A translated `caption`/`short_caption` becomes `<app>.r<code>`, the application resource
+with only the caption pair changed.
+
+**Outcome.**
+
+- **BAFL 4 in the C++ baseline was the probe's bug, not rcomp's.** `TBUF` strings were
+  read with `TResourceReader::ReadHBufCL`, which expects a length byte and runs off the
+  buffer. Fixed in `docs/research/cpp-parity/locale`; `ConfirmSignatureL(0)` and
+  `AllocReadL` work on our rcomp's `.rNN`. (The baseline also hardcodes its UID3 in the
+  source; changing it in the `.mmp` alone moves the report file, which cost two false
+  failures.)
+  The C++ baseline's thread also ends `KERN-EXEC 3` "terminated peacefully" **after**
+  writing its report — not investigated, not on this path.
+- **`<0xNN>` in `BUF8` round-trips every byte** — 0x80, 0x9f, 0xff, Cyrillic, quotes,
+  backslash, newline, tab — in the compiler's model and in the written `.rsc`.
+- **`symdev package` recomputes its own file list** (`crates/symdev-cli/src/artifacts.rs`),
+  so the strings files had to be named there too; checked inside the `.sisx`.
+- **Heap, `User::AllocSize`, the session already open on both sides:**
+
+  | step | Rust | C++ (`docs/research/cpp-parity/locale`) |
+  |---|---|---|
+  | nearest file open, held | **+4 cells / +168 B** | +4 / +208 B |
+  | one 14-character string held | **+1 / +36 B** | +1 / +36 B |
+  | string dropped / second read | back to the open file, nothing left | back |
+
+  Only one language is ever in memory. (Why the open is 40 B smaller was not isolated:
+  the two files differ — `BUF8` against `TBUF`, `.rsc` against `.r01`.)
+- **Strings follow the device**, same `.sisx`: `language: 1` → "Hello from Rust" /
+  "language" / "ok"; `language: 2` → "Bonjour depuis Rust" / "langue" / "d'accord";
+  `localedemo: 7 passed` both times. Ukrainian is compiled and installed but this ROM
+  cannot be set to it (experiment 96).
+- **The caption follows the device**, same `.sisx` of `examples/ui`: `language: 1` → title
+  "Bars" (`uidemo.rsc`), `language: 2` → "Barres" (`uidemo.r02`). A `locales/` that only
+  translates the caption compiles no strings file.
+- **The compiler refuses:** `strings::OKK` → `E0425` with "a constant with a similar name
+  exists"; a key deleted from `french.toml` alone → `french.toml has no `ok`` at
+  `cargo build` — the data file is rebuild-tracked through `include_str!`.
+- **The price is code, and it is named.** `locale` 8 486 → **12 031** bytes (C++ 6 647).
+  By symbol, ~2.2 kB is the C++ exception runtime `TRAP` pulls (`OpenL`,
+  `ConfirmSignatureL`, `AllocReadL` all leave) and ~2.1 kB the reader. C++ pays for
+  `TRAP` too (3 648 B in the baseline), and every GUI application already carries it
+  through the Avkon shim, so a GUI program pays only the reader. A console program pays
+  both. **Next lever:** `RFile` and `NearestLanguageFile` do not leave, and we generate
+  these files ourselves with a byte-verified `rcomp` — a reader over `RFile` needs no
+  `TRAP`, no shim and no unwinder.
+- **Deleted:** the in-image `locale!` table, `symbian_core::locale::lang` (110
+  constants), `Language::base` and the Rust-side dialect chain — `NearestLanguageFile`
+  now applies the platform's own rules, including `TLocale::LanguageDowngrade`, which
+  the Rust chain never implemented. `Language::current()` stays.
+- Every other example changed by at most ±8 bytes (crate-disambiguator drift, as in
+  experiment 87); `hello`, `hello-raw`, `alloc`, `shim` byte-identical.
+
+**Evidence.** `crates/symdev-locale`, `crates/symdev-build/src/strings_resources.rs`,
+`symbian-rs/shims/common/symrs_rsc.cpp`, `symbian-rs/crates/symbian-core/src/locale/strings.rs`,
+`symbian-rs/crates/symbian-macros/src/strings.rs`, `symbian-rs/examples/locale/locales/`,
+`symbian-rs/examples/ui/locales/french.toml`.
