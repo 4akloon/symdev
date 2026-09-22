@@ -32,3 +32,12 @@ the native solution.
 
 Design: build side (locale files -> `.rNN` via our rcomp, installed), runtime side
 (open once through a shim, read on demand), and the caption.
+- Task 1 done (`c7fd7ee`): `crates/symdev-locale` — 108 languages (ELangTest/None left
+  out), strict TOML-subset parser, completeness check, index = 2 + byte-sorted position.
+- Task 2 done: `<0xNN>` in `BUF8` round-trips every byte through our rcomp (0x80, 0x9f,
+  0xff, Cyrillic, quotes, backslash, newline, tab), both in the compiler's model and in
+  the `.rsc` bytes. `symdev build` writes `<app>_strings.rsc/.r02/.r93`; **`symdev
+  package` recomputes its own artifact list** (`crates/symdev-cli/src/artifacts.rs`), so
+  it needed the strings files named there too — without that the SIS would have shipped
+  without them. Verified inside the `.sisx`: the three destinations and the UTF-8 of
+  "Bonjour", "Привіт", "гаразд", "d'accord".
