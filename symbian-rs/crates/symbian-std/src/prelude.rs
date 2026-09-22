@@ -8,7 +8,7 @@
 //!
 //! It does **not** bring the fast [`crate::write!`] and [`crate::writeln!`], although
 //! that was the plan: a macro named `write` that arrives through a glob import is
-//! ambiguous with `core`'s (rustc E0659, experiment 100), so every program that globbed
+//! ambiguous with `core`'s (rustc E0659, experiment 101), so every program that globbed
 //! this prelude and called `write!` would stop compiling. They are imported by name:
 //! `use symbian_std::{write, writeln};`.
 //!

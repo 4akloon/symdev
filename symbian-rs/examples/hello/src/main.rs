@@ -1,5 +1,5 @@
 //! Hello (experiment 69): the note is built with `write!` into a stack descriptor and
-//! shown through a safe wrapper. `write!` is `symbian_std`'s (experiment 100): `core`'s
+//! shown through a safe wrapper. `write!` is `symbian_std`'s (experiment 101): `core`'s
 //! syntax and output, with the string and the number appended directly, so this image
 //! links none of `core::fmt` — 1 245 bytes against 2 567 with `core::write!`. No `unsafe` block, no raw C function, no `_LIT` static —
 //! `examples/hello-raw` keeps the pre-`symbian-core` version for comparison.

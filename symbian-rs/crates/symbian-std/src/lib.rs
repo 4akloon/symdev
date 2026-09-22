@@ -136,7 +136,7 @@ pub use symbian_macros::{main, strings};
 
 /// `write!` and `writeln!` with `core`'s syntax and byte-for-byte `core`'s output,
 /// which append a plain `{}` of a string or an integer directly instead of going
-/// through `core::fmt` (experiment 100). A program opts in with one line, and nothing
+/// through `core::fmt` (experiment 101). A program opts in with one line, and nothing
 /// else in it changes:
 ///
 /// ```ignore

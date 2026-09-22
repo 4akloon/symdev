@@ -197,7 +197,7 @@ impl<const N: usize> Buf16<N> {
 /// `i64::MIN.unsigned_abs()` is why the magnitude is taken as a `u64`. It counts by
 /// multiplying, not dividing: a 64-bit division here is `compiler_builtins`'
 /// `__aeabi_uldivmod`, 636 bytes, in every image that appends a number that is not a
-/// constant (experiment 100).
+/// constant (experiment 101).
 const fn decimal_len(value: i64) -> usize {
     let magnitude = value.unsigned_abs();
     let mut digits = 1;
