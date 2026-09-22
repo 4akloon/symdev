@@ -42,12 +42,23 @@ dependencies = [
 name = "symbian-core"
 version = "0.1.0"
 dependencies = [
+ "symbian-fmt",
  "symbian-sys",
+]
+
+[[package]]
+name = "symbian-fmt"
+version = "0.1.0"
+dependencies = [
+ "symbian-macros",
 ]
 
 [[package]]
 name = "symbian-macros"
 version = "0.1.0"
+dependencies = [
+ "symdev-locale",
+]
 
 [[package]]
 name = "symbian-std"
@@ -56,6 +67,7 @@ dependencies = [
  "symbian-alloc",
  "symbian-async",
  "symbian-core",
+ "symbian-fmt",
  "symbian-macros",
  "symbian-sys",
  "symbian-ui",
@@ -71,3 +83,7 @@ version = "0.1.0"
 dependencies = [
  "symbian-core",
 ]
+
+[[package]]
+name = "symdev-locale"
+version = "0.1.0"

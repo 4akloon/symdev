@@ -35,8 +35,17 @@ in the backlog, update size-levers.md.
   All four then link no core::fmt.
 - alloc keeps core::fmt (2020 B): its own `{:x}` (LowerHex) into a Buf16 — not the harness
   (alloc writes no report).
+- Final sizes = step 3 + opt-in (res-final.txt); alloc −6 without touching it (no report).
+- Emulator, `symdev test --emulator`, all pass: async 15, atomics 23, cleanup 2, files 26,
+  fmt 14, locale 7, net 22 (peers 18974/18975), notes 3, query 4, time 29, tls 45, ui 3,
+  ui-list 6, std-hello 50, std-net 31 (peers 18984/18985). Details read as Debug did:
+  "Ok(Ok(()))", "Err(KErrNotReady (-18))", "Ok(Left(Ok(())))", "[100, 400], …", tls "0x10000004".
+- Deliberate failure (cleanup, not committed): `checked` of fs::metadata on a missing path +
+  `check_detail(false, detail!("{} of {} \"quoted\"\t", 1, 2))` → "2 failed, 2 passed",
+  exit 1, detail "KErrNotFound (-1)", JSON escaped `\"` and `\t` correctly.
+- std-hello/std-net Cargo.lock were stale since experiment 101 (no symbian-fmt); the build
+  refreshed them.
 
-## Decisions
 - `check_detail(name, ok, detail: impl FnOnce(&mut String))`; call sites write `detail!(...)`
   where they wrote `format_args!(...)` — `symbian_std::detail!` expands to a closure that
   runs the fast `write!` (with `core::fmt::Write` imported inside, which the fast
