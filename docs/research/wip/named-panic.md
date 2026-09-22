@@ -6,7 +6,7 @@ on diagnosability). Bind `User::Panic` in symbian-sys, choose category (<= KMaxE
 and reason, decide OOM (exit vs panic), measure cost per no_std example vs main, find reclaimable
 levers, observe the panic in the EKA2L1 log (Kernel:trace, restore log-filter), compare with a
 C++ `User::Panic` in a scratch copy of docs/research/cpp-parity/hello. Experiment entry in the
-backlog (next free number on main: 99). Branch `named-panic`, base main 7231c84. Do not merge.
+backlog (99 was taken on main; this is 100). Branch `named-panic`, base main 7231c84. Do not merge.
 
 ## Findings
 - Binding already exists: symbian-sys/src/euser.rs:26-28 `User_Panic(*const TDesC16, i32) -> !`; `nm -D euser.dso`: `00000a24 T _ZN4User5PanicERK7TDesC16i@@euser{000a0000}[100039e5].dll`. e32std.h:4457 `IMPORT_C static void Panic(const TDesC& aCategory,TInt aReason);`.
@@ -38,6 +38,10 @@ backlog (next free number on main: 99). Branch `named-panic`, base main 7231c84.
 
 - OBSERVED final code: examples/panic default -> `Thread Main panicked with category: RUST and exit code: -2`; with E:\\symdev\\panic\\oom -> `Thread Main panicked with category: RUST and exit code: -4`. Old handler (User::Exit(-1)) on the same example -> access violation 0x8000A4 + `terminated peacefully with category: KERN-EXEC and exit code: 3`: under #[symbian_std::main] the old panic path never showed -1 in the emulator.
 
+- Rebased onto main aae58bb (coordinator: experiment 99 taken -> this is 100; locale now 12 031). Final vs aae58bb, .exe: alloc 3876->3896 async 20423->20451 atomics 10720->10723 cleanup 5767->5783 files 11091->11102 hello 2567->2584 hello-raw 808 = locale 12031->12045 net 12423->12434 notes 14649->14670 query 19374->19392 shim 4520 = spawnee 3261->3274 time 13525->13561 tls 15095->15096 ui 12950->12975 ui-list 13869->13907; corpus +272; .text +16 (+8 handler, +8 alloc_error 24 B replacing oom 16 B; hello +8, no OOM path), .rodata +12..16 (CATEGORY). panic example 2 010.
+- symdev test --emulator after rebase: async 15, atomics 23, cleanup 2, files 26, locale 7, notes 3, query 4, time 29, tls 45, ui 3, ui-list 6, net 22 passed (peers 18974/18975).
+- Backlog 99's note "C++ baseline's thread also ends KERN-EXEC 3 terminated peacefully after writing its report" is plausibly the same User::Exit-under-CTrapCleanup behaviour; not checked.
+
 ## Decisions
 - Category `RUST` (same as std PAL abort_internal, 4 of 16 units). Reason KErrGeneral (-2), same as std. Line-number reason rejected: +1.5..3.9 KB corpus for a line without a file.
 - Handler + alloc handler moved to symbian-runtime/src/panic.rs.
@@ -50,4 +54,4 @@ backlog (next free number on main: 99). Branch `named-panic`, base main 7231c84.
 
 ## Next step
 
-Final measurement vs base, run all report examples with symdev test --emulator, gates, backlog entry 99.
+std-hello/std-net tests running; then gates, report examples with symdev test --emulator, gates, backlog entry 99.

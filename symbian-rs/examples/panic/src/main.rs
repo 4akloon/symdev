@@ -1,4 +1,4 @@
-//! How a `no_std` program dies (experiment 99): run it and read the emulator's log.
+//! How a `no_std` program dies (experiment 100): run it and read the emulator's log.
 //!
 //! It fails on purpose, in one of two ways, so both ends of `symbian-runtime`'s
 //! `panic.rs` can be seen from outside the process:

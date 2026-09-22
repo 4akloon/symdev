@@ -379,9 +379,10 @@ forgets its `TRAP` is exactly the `rawprobe` case, and `rawprobe` disappears sil
 ### 4.4 Panics the other way
 
 `panic = "abort"`. A Rust panic in a callback must not return into C++ with the framework's
-invariants half-broken. `symbian-runtime`'s panic handler calls `User::Exit(-1)` today; for
-a GUI app it should call `User::Panic(_L("SYMRS"), reason)` so the emulator and the phone
-both report a category. Either way the process ends inside the panic handler and no C++
+invariants half-broken. `symbian-runtime`'s panic handler calls `User::Panic(_L("RUST"), KErrGeneral)` since
+experiment 100 (it was `User::Exit(-1)`), the category `std` already used, so the emulator
+reports a category for a console and a GUI program alike; only the console case has been
+observed. Either way the process ends inside the panic handler and no C++
 frame is unwound.
 
 ---

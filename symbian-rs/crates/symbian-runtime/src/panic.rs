@@ -19,12 +19,12 @@ static CATEGORY: Lit16<4> = Lit16::ascii(b"RUST");
 /// `KErrGeneral` (`e32err.h`): the panic reason, the same one `std` uses. The panic's
 /// message and location are not carried: building either costs `core::fmt` or the
 /// `Location` statics of every panic site, which is the cost this path exists to avoid
-/// (experiment 99 measures both).
+/// (experiment 100 measures both).
 const KERR_GENERAL: i32 = -2;
 
 /// A Rust panic ends the process with `User::Panic("RUST", KErrGeneral)`, the way a C++
 /// program on this platform dies on purpose (observed: `Thread Main panicked with
-/// category: RUST and exit code: -2`, experiment 99).
+/// category: RUST and exit code: -2`, experiment 100).
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
     // SAFETY: `User::Panic` is a euser static member function (plain EABI, no `this`)
@@ -39,9 +39,9 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 /// apart. Code that wants to survive a failed allocation uses the fallible `alloc` APIs
 /// (`try_reserve`, `Vec::try_*`), which still see the null `User::Alloc` returned.
 ///
-/// Why a panic and not `User::Exit(KErrNoMemory)`, which is what this was (experiment 99):
-/// the failure happens deep inside `main`, with the thread's `CTrapCleanup` installed, and
-/// `User::Exit` in that state was observed to die `KERN-EXEC 3` in the emulator — a C++
+/// Why a panic and not `User::Exit(KErrNoMemory)`, which is what this was before
+/// experiment 100: the failure happens deep inside `main`, with the thread's
+/// `CTrapCleanup` installed, and `User::Exit` in that state was observed to die `KERN-EXEC 3` in the emulator — a C++
 /// `E32Main` calling `User::Exit` after `CTrapCleanup::New()` dies the same way — so the
 /// `-4` never reached the log. A C++ program reports `-4` as an exit only when a top-level
 /// `TRAPD` catches the leave and `E32Main` returns after deleting its cleanup stack, which
