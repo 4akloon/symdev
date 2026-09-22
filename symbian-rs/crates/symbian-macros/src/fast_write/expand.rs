@@ -33,7 +33,9 @@ use super::plan::{Piece, Plan};
 
 /// The expansion of `plan`. Holes: `@krate`, `@dst`, and `@slot0`… for the values.
 pub fn expansion(plan: &Plan) -> String {
-    let slots: String = (0..plan.slots.len()).map(|i| format!("@slot{i}, ")).collect();
+    let slots: String = (0..plan.slots.len())
+        .map(|i| format!("@slot{i}, "))
+        .collect();
     let names: String = (0..plan.slots.len()).map(|i| format!("__a{i}, ")).collect();
     let mut out = format!(
         "{{ use @krate::__private::{{Enter as _, SinkKind as _, WriteKind as _, SlowKind as _}}; \

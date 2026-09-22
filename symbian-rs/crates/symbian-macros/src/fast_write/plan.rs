@@ -53,7 +53,10 @@ impl Plan {
             return None;
         }
         for (i, arg) in explicit.iter().enumerate() {
-            if explicit[..i].iter().any(|earlier| earlier.name.is_some() && earlier.name == arg.name) {
+            if explicit[..i]
+                .iter()
+                .any(|earlier| earlier.name.is_some() && earlier.name == arg.name)
+            {
                 return None;
             }
         }
@@ -75,7 +78,10 @@ impl Plan {
                     Source::Explicit(next - 1)
                 }
                 Hole::Index(index) => Source::Explicit(*index),
-                Hole::Name(name) => match explicit.iter().position(|arg| arg.name.as_ref() == Some(name)) {
+                Hole::Name(name) => match explicit
+                    .iter()
+                    .position(|arg| arg.name.as_ref() == Some(name))
+                {
                     Some(index) => Source::Explicit(index),
                     None => {
                         if !captures.contains(name) {

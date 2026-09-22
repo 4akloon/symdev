@@ -20,6 +20,9 @@ Task: a `write!`-compatible macro in `symbian_std::prelude` that turns plain `{}
 - First cut grew every harness example (core::fmt stays because of Report::check_detail(format_args!) and {e:?}): alloc +273, async +733, locale +606, query +226, time +1035. Causes found by nm diff: core::str::from_utf8 572 B in Decimal::as_str (fixed with from_utf8_unchecked), 64-bit limb division 320 B used for every width (split Sink into put_u32/put_i64/put_u64), String::push_str inlined per piece (Generic methods #[inline(never)]).
 - After fixes (res-fast3): alloc 3876->3748, async 20422->20971, locale 8486->8670, query 19372->19532, time 13523->14406, hello 1245; others unchanged. Remaining growth = per-piece call (~24 B each vs one Arguments build) + put_u32 188 + prepend_u32 88 + 64-bit path (of_u64 312, put_i64 164) when core::fmt is linked anyway.
 - examples/fmt (uid 0xe00006a2) on the emulator: all 12 identity cases pass at 26 Buf16 capacities (0..=24, 64); the test can fail: dropping the lone '-' rule in Buf16's put_i64 gave 5 FAILs (e.g. 'negative numbers cut after the sign: 6 mismatches'). Ticks for 100 000 writes of "i={} neg={} s={}" (EKA2L1 1 ms NanoTicks): Buf16 core 65 / fast 55, String core 39 / fast 35.
+- Harness share (res-fast3-{A,B,noh}, cf-*.txt in ~/.cache/fast-write-agent): with a formatting-free Report (JSON writer + check_detail + checked all without core::fmt) async/locale/query go to 0 bytes of core::fmt and atomics/cleanup/files/net/notes/tls/ui/ui-list were ALL harness even on main. Exe: net 12419->9240, tls 15098->9874, query 19532->12384. Decomposition on fast: JSON writer alone -200..-650; + check_detail(Arguments) up to -6835 (query); + checked's {e:?} -2600..-3300 for the rest.
+- DX: clippy's format lints (write_literal, useless_borrows_in_formatting) and rustc's named_arguments_used_positionally fire on core::write! but not on the fast macro.
+- Gates green: host test+clippy, SDK clippy --release, symbian-macros 23 unit tests.
 
 ## Decisions
 
@@ -32,4 +35,4 @@ Task: a `write!`-compatible macro in `symbian_std::prelude` that turns plain `{}
 
 ## Next step
 
-- examples/fmt (uid 0xe00006a2): device identity of the Buf16 path vs core::write! + tick perf; harness share measurement; gates; emulator runs; docs.
+- Emulator: every report example + net peers + ui by hand; final measure (with fmt example); DX diagnostics check; docs (backlog 99, size-levers L8); delete wip.

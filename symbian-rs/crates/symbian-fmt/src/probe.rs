@@ -26,7 +26,7 @@ use crate::arg::Arg;
 use crate::sink::{Generic, Sink};
 
 /// The types of one piece: the destination `D` and the argument `A`.
-pub struct Probe<D: ?Sized, A: ?Sized>(PhantomData<(fn(&D), fn(&A))>);
+pub struct Probe<D: ?Sized, A: ?Sized>(PhantomData<fn(&D, &A)>);
 
 impl<D: ?Sized, A: ?Sized> Probe<D, A> {
     pub fn of(_: &D, _: &A) -> Self {

@@ -20,14 +20,20 @@ pub struct Decimal {
 impl Decimal {
     /// The digits of a `u32`.
     pub fn of_u32(value: u32) -> Self {
-        let mut out = Self { digits: [b'0'; 20], start: 20 };
+        let mut out = Self {
+            digits: [b'0'; 20],
+            start: 20,
+        };
         out.prepend_u32(value);
         out
     }
 
     /// The digits of any `u64`.
     pub fn of_u64(mut value: u64) -> Self {
-        let mut out = Self { digits: [b'0'; 20], start: 20 };
+        let mut out = Self {
+            digits: [b'0'; 20],
+            start: 20,
+        };
         while value > u64::from(u32::MAX) {
             let mut quotient = 0u64;
             let mut rest = 0u32;

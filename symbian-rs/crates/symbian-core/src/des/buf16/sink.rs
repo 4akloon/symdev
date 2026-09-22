@@ -9,8 +9,8 @@
 
 use core::fmt;
 
-use symbian_fmt::Sink;
 use symbian_fmt::__private::Decimal;
+use symbian_fmt::Sink;
 
 use super::Buf16;
 
@@ -41,6 +41,7 @@ impl<const N: usize> Sink for Buf16<N> {
     }
 
     fn put_u64(&mut self, value: u64) -> fmt::Result {
-        self.push_str(Decimal::of_u64(value).as_str()).map_err(|_| fmt::Error)
+        self.push_str(Decimal::of_u64(value).as_str())
+            .map_err(|_| fmt::Error)
     }
 }

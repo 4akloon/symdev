@@ -44,7 +44,12 @@ pub struct Rec {
 
 impl Rec {
     pub fn new(mode: Mode) -> Self {
-        Self { calls: Vec::new(), text: String::new(), mode, count: 0 }
+        Self {
+            calls: Vec::new(),
+            text: String::new(),
+            mode,
+            count: 0,
+        }
     }
 
     fn accept(&mut self, call: Call, s: &str) -> fmt::Result {
@@ -87,7 +92,11 @@ pub struct HostBuf {
 
 impl HostBuf {
     pub fn new(cap: usize) -> Self {
-        Self { text: String::new(), cap, native_numbers: 0 }
+        Self {
+            text: String::new(),
+            cap,
+            native_numbers: 0,
+        }
     }
 
     fn push(&mut self, s: &str) -> fmt::Result {

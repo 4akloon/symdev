@@ -33,7 +33,9 @@ struct Invocation {
 
 pub fn write_pieces(input: TokenStream) -> TokenStream {
     let Some(call) = Invocation::split(input) else {
-        return crate::tokens("::core::compile_error!(\"symbian_fmt::write_pieces! is called by write! only\");");
+        return crate::tokens(
+            "::core::compile_error!(\"symbian_fmt::write_pieces! is called by write! only\");",
+        );
     };
     match call.plan() {
         Some((plan, values)) => call.fast(&plan, values),
@@ -71,7 +73,9 @@ impl Invocation {
 
     /// The plan and, per slot, the tokens of its value; `None` for `core::write!`.
     fn plan(&self) -> Option<(Plan, Vec<TokenStream>)> {
-        let TokenTree::Literal(format) = &self.format else { return None };
+        let TokenTree::Literal(format) = &self.format else {
+            return None;
+        };
         let value = literal::string_value(&format.to_string())?;
         let segments = template::segments(&value)?;
         let explicit: Vec<(Explicit, TokenStream)> = self.args.iter().map(explicit).collect();
@@ -84,7 +88,9 @@ impl Invocation {
                 Source::Explicit(index) => borrow(explicit[*index].1.clone()),
                 // A capture is an identifier with the format string's span, which is
                 // what makes it resolve in the caller's scope — as `format_args!` does.
-                Source::Capture(name) => borrow(TokenTree::Ident(Ident::new(name, format.span())).into()),
+                Source::Capture(name) => {
+                    borrow(TokenTree::Ident(Ident::new(name, format.span())).into())
+                }
             })
             .collect();
         Some((plan, values))
@@ -95,7 +101,9 @@ impl Invocation {
         fill(crate::tokens(&text), &|hole: &str| match hole {
             "krate" => Some(self.krate.clone()),
             "dst" => Some(self.dst.clone()),
-            _ => values.get(hole.strip_prefix("slot")?.parse::<usize>().ok()?).cloned(),
+            _ => values
+                .get(hole.strip_prefix("slot")?.parse::<usize>().ok()?)
+                .cloned(),
         })
     }
 
@@ -124,7 +132,10 @@ fn explicit(arg: &TokenStream) -> (Explicit, TokenStream) {
                 && !rest.is_empty()
                 && !matches!(rest.first(), Some(TokenTree::Punct(p)) if p.as_char() == '=') =>
         {
-            Some((name.to_string(), rest.iter().cloned().collect::<TokenStream>()))
+            Some((
+                name.to_string(),
+                rest.iter().cloned().collect::<TokenStream>(),
+            ))
         }
         _ => None,
     };
@@ -139,7 +150,9 @@ fn explicit(arg: &TokenStream) -> (Explicit, TokenStream) {
 /// What rustc folds into the template for this argument, if it is a literal it folds.
 fn folded(value: &TokenStream) -> Option<String> {
     let mut trees = value.clone().into_iter();
-    let (only, None) = (trees.next()?, trees.next()) else { return None };
+    let (only, None) = (trees.next()?, trees.next()) else {
+        return None;
+    };
     match only {
         TokenTree::Group(group)
             if matches!(group.delimiter(), Delimiter::Parenthesis | Delimiter::None) =>

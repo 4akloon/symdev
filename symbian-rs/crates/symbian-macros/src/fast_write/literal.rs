@@ -63,7 +63,10 @@ fn unescape(body: &str) -> Option<String> {
             }
             // A line continuation: the newline and the whitespace after it vanish.
             '\n' | '\r' => {
-                while chars.next_if(|c| matches!(c, ' ' | '\t' | '\n' | '\r')).is_some() {}
+                while chars
+                    .next_if(|c| matches!(c, ' ' | '\t' | '\n' | '\r'))
+                    .is_some()
+                {}
             }
             _ => return None,
         }

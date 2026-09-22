@@ -62,7 +62,8 @@ impl<W: fmt::Write + ?Sized> Sink for Generic<'_, W> {
         if value < 0 {
             self.0.write_char('-')?;
         }
-        self.0.write_str(Decimal::of_u64(value.unsigned_abs()).as_str())
+        self.0
+            .write_str(Decimal::of_u64(value.unsigned_abs()).as_str())
     }
 
     #[inline(never)]

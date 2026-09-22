@@ -1,6 +1,9 @@
 //! The fast `write!` over every kind of destination, and the ways it must evaluate
 //! like `core::write!`: the destination once, the arguments once each, in order.
 
+// A literal argument is a case of its own: rustc folds it into the template.
+#![allow(clippy::write_literal)]
+
 #[macro_use]
 mod fast_write_support;
 
@@ -43,8 +46,10 @@ impl<const FAST: bool> fmt::Display for Nested<FAST> {
 fn a_formatter_is_a_destination_like_any_other() {
     for v in [0, -7, i32::MIN] {
         let (fast, core) = (Nested::<true>(v, "x"), Nested::<false>(v, "x"));
-        assert_eq!(format!("{fast}|{fast:>20}|{fast:?}", fast = fast.to_string()),
-                   format!("{core}|{core:>20}|{core:?}", core = core.to_string()));
+        assert_eq!(
+            format!("{fast}|{fast:>20}|{fast:?}", fast = fast.to_string()),
+            format!("{core}|{core:>20}|{core:?}", core = core.to_string())
+        );
         assert_eq!(format!("[{fast:>20}]"), format!("[{core:>20}]"));
     }
 }
@@ -100,12 +105,21 @@ impl std::io::Write for Io {
 fn an_io_write_destination_formats_through_its_own_write_fmt() {
     use std::io::Write as _;
     for limit in 0..24 {
-        let mut fast = Io { bytes: Vec::new(), limit };
+        let mut fast = Io {
+            bytes: Vec::new(),
+            limit,
+        };
         let fast_result = symbian_fmt::write!(fast, "id={} name={} {}", 42, "abc", Custom(-1));
-        let mut core = Io { bytes: Vec::new(), limit };
+        let mut core = Io {
+            bytes: Vec::new(),
+            limit,
+        };
         let core_result = core::write!(core, "id={} name={} {}", 42, "abc", Custom(-1));
         assert_eq!(fast.bytes, core.bytes, "limit {limit}");
-        assert_eq!(fast_result.map_err(|e| e.to_string()), core_result.map_err(|e| e.to_string()));
+        assert_eq!(
+            fast_result.map_err(|e| e.to_string()),
+            core_result.map_err(|e| e.to_string())
+        );
     }
     let mut v: Vec<u8> = Vec::new();
     symbian_fmt::writeln!(v, "{}-{}", 1, 'z').unwrap();
@@ -132,10 +146,16 @@ fn destination_and_arguments_are_evaluated_once_in_order() {
         log.borrow_mut().push_str(tag);
         value
     };
-    let mut fast = Targets { text: String::new(), picks: 0 };
+    let mut fast = Targets {
+        text: String::new(),
+        picks: 0,
+    };
     symbian_fmt::write!(fast.pick(&log), "{1}{0}{1}", step("a", 1), step("b", 2)).unwrap();
     let fast_log = log.replace(String::new());
-    let mut core = Targets { text: String::new(), picks: 0 };
+    let mut core = Targets {
+        text: String::new(),
+        picks: 0,
+    };
     core::write!(core.pick(&log), "{1}{0}{1}", step("a", 1), step("b", 2)).unwrap();
     let core_log = log.replace(String::new());
     assert_eq!((fast.picks, fast_log.as_str()), (1, "dab"));
@@ -156,7 +176,9 @@ fn a_field_a_reference_and_a_reborrowed_formatter_are_destinations() {
     struct Holder {
         line: String,
     }
-    let mut h = Holder { line: String::new() };
+    let mut h = Holder {
+        line: String::new(),
+    };
     symbian_fmt::write!(h.line, "{}", 1).unwrap();
     symbian_fmt::write!(&mut h.line, "{}", 2).unwrap();
     let r = &mut h.line;

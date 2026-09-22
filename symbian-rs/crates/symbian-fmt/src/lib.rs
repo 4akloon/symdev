@@ -70,10 +70,10 @@ macro_rules! writeln {
 /// What the expansion names. Not an API.
 #[doc(hidden)]
 pub mod __private {
+    pub use crate::decimal::Decimal;
     pub use crate::probe::{
         Enter, Probe, SinkKind, SinkTag, SlowKind, SlowTag, WriteKind, WriteTag,
     };
-    pub use crate::decimal::Decimal;
     pub use crate::sink::Sink;
     pub use symbian_macros::__write_pieces as write_pieces;
 }

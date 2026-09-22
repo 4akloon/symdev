@@ -6,6 +6,8 @@
 
 // `format!("{}", n = x)` is legal and warned about; the case is here on purpose.
 #![allow(named_arguments_used_positionally)]
+// Borrowed arguments are cases of their own (`Display for &T`).
+#![allow(clippy::useless_borrows_in_formatting)]
 
 #[macro_use]
 mod fast_write_support;
@@ -16,11 +18,16 @@ use fast_write_support::Custom;
 fn literal_text_and_brace_escapes() {
     assert_eq!(same!("plain"), "plain");
     assert_eq!(same!("{{}} and {{{{"), "{} and {{");
-    assert_eq!(same!("tab\tquote\"back\\slash\u{e9}\x41"), "tab\tquote\"back\\slash\u{e9}A");
+    assert_eq!(
+        same!("tab\tquote\"back\\slash\u{e9}\x41"),
+        "tab\tquote\"back\\slash\u{e9}A"
+    );
     assert_eq!(same!(r#"raw "{{}}" \n"#), "raw \"{}\" \\n");
     same!("a {{{}}} b", 5);
-    same!("line one\
-           continued");
+    same!(
+        "line one\
+           continued"
+    );
 }
 
 #[test]
@@ -44,9 +51,15 @@ fn strings_and_chars() {
     let s: &str = "slice";
     let owned = String::from("owned");
     let empty = "";
-    assert_eq!(same!("[{}] [{}] [{}]", s, owned, empty), "[slice] [owned] []");
+    assert_eq!(
+        same!("[{}] [{}] [{}]", s, owned, empty),
+        "[slice] [owned] []"
+    );
     assert_eq!(same!("{}{}", &owned, &&s), "ownedslice");
-    assert_eq!(same!("{}{}{}", 'c', '\u{e9}', '\u{1f600}'), "c\u{e9}\u{1f600}");
+    assert_eq!(
+        same!("{}{}{}", 'c', '\u{e9}', '\u{1f600}'),
+        "c\u{e9}\u{1f600}"
+    );
     let mut m = String::from("mut");
     let r = &mut m;
     assert_eq!(same!("{}", r), "mut");
@@ -63,7 +76,15 @@ fn every_integer_width_at_its_edges() {
         )*};
     }
     edges!(u8 u16 u32 u64 usize i8 i16 i32 i64 isize u128 i128);
-    for v in [9u64, 10, 99, 100, 4_294_967_295, 4_294_967_296, 10_000_000_000_000_000_000] {
+    for v in [
+        9u64,
+        10,
+        99,
+        100,
+        4_294_967_295,
+        4_294_967_296,
+        10_000_000_000_000_000_000,
+    ] {
         same!("{}", v);
     }
     for v in [-1i64, -9, -10, -4_294_967_296, i64::MIN + 1] {
