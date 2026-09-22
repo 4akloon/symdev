@@ -36,10 +36,19 @@ Record an experiment in the backlog.
   (UID3 statement -> flags 0; a BUF text -> packed bit). 9 tests pass.
 - Baseline sizes (this worktree at eb39761): ~/.cache/rsc-reader-agent/res-base.txt.
 
+- Reader wired (commit after eb39761+2): locale exe 12 045 -> 9 921 B; nm shows no __gxx_personality_v0,
+  _Unwind_*, typeinfo XLeaveException, symrs_rsc_* (base had them, 3 736 B by those symbols).
+- Emulator lang 1: 7 passed, English; lang 2: 7 passed, French. Heap: open file +0 cells/+0 B
+  (7/364 -> 7/364), held greeting +1/+36 B, freed back. Patched build .r02 "Bonjour"->"BONJOUR",
+  repackaged: lang 2 printed "BONJOUR depuis Rust" (test failed as it must) -> French is read from .r02.
+  config restored to language: 1.
+
 ## Decisions
+- Hold only RFile handle + {index_at, count} (no heap); per get: 2 positional reads. (Pending
+  measurement of the index-in-heap alternative + tick cost.)
 
 ## Dead ends
 
 ## Next step
 
-- Wire layout.rs into strings.rs over fs::File (positional RFile::Read), NearestLanguageFile binding, delete symrs_rsc.cpp.
+- Measure all examples; tick cost of get (old vs new, and index-in-heap variant); host gates; backlog entry.
