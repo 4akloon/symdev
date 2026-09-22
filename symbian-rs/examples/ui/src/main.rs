@@ -27,14 +27,6 @@ extern crate alloc;
 use symbian_std::test_report::Report;
 use symbian_std::ui::prelude::*;
 
-/// The heap/startup probe of `docs/research/cpp-parity.md`, pulled in from one shared
-/// file so the four examples and their C++ counterparts measure the same two things
-/// in the same order. TEMPORARY: this commit exists to take the parity numbers and is
-/// reverted immediately after.
-#[path = "../../../../docs/research/cpp-parity/probe.rs"]
-mod probe;
-
-
 /// How many bars the chart may show. Six is what fits the E52's client area at the
 /// width below without the last one leaving the screen.
 const MAX_BARS: u8 = 6;
@@ -64,7 +56,6 @@ impl App for Bars {
     }
 
     fn construct(&mut self, ui: &Ui) -> symbian_core::Result<()> {
-        let entry = probe::Probe::now();
         let mut report = Report::new("uidemo");
         // Reaching this callback at all is four facts at once: the shim found
         // `symrs_app_vtbl`, its size word was long enough, `create` returned an object
@@ -80,27 +71,6 @@ impl App for Bars {
         // A redraw may be asked for from anywhere but `draw`; this is the first one.
         ui.redraw();
         report.check("a redraw can be asked for from construct", true);
-        let end = probe::Probe::now();
-        report.check_detail(
-            "probe:heap at entry",
-            true,
-            format_args!("cells {} bytes {}", entry.cells, entry.bytes),
-        );
-        report.check_detail(
-            "probe:heap at end",
-            true,
-            format_args!("cells {} bytes {}", end.cells, end.bytes),
-        );
-        report.check_detail(
-            "probe:nanoticks entry to end",
-            true,
-            format_args!("{}", end.ticks_since(entry)),
-        );
-        report.check_detail(
-            "probe:UserHal::TickPeriod",
-            true,
-            format_args!("{:?} us", symbian_core::time::SystemTicks::period_micros()),
-        );
         report.finish()?;
         Ok(())
     }

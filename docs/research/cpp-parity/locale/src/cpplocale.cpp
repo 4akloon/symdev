@@ -163,14 +163,6 @@ static void RunL(CSymdevReport& aReport, RFs& aFs, TDes8& aNotes)
     aReport.Checked(_L8("the resource file opens"), err);
     if (err == KErrNone)
         {
-        // Diagnostics for the KErrNotFound below: what RResourceFile believes about
-        // the file symdev's rcomp wrote. None of these can panic.
-        aNotes.AppendFormat(_L8("rsc_offset=0x%x owns_greeting=%d uid3=0x%x\n"),
-                            file.Offset(), file.OwnsResourceId(R_GREETING),
-                            file.UidType()[2].iUid);
-        TBuf8<64> raw;
-        TRAPD(readErr, file.ReadL(raw, R_GREETING));
-        aNotes.AppendFormat(_L8("readl_greeting_err=%d len=%d\n"), readErr, raw.Length());
         TRAP(err, ReadTableL(file, aNotes));
         aReport.Checked(_L8("the table came through"), err);
         }

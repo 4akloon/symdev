@@ -13,7 +13,7 @@ SOURCE            symdevreport.cpp
 USERINCLUDE       ..\..\common
 // Uncomment for the heap/startup probe run (docs/research/cpp-parity.md).
 // Off by default so the size numbers are of the program, not of the probe.
-MACRO         SYMDEV_CPP_PARITY_PROBE
+// MACRO         SYMDEV_CPP_PARITY_PROBE
 
 SYSTEMINCLUDE     \epoc32\include
 

@@ -29,14 +29,6 @@ use symbian_std::test_report::Report;
 
 mod strings;
 
-/// The heap/startup probe of `docs/research/cpp-parity.md`, pulled in from one shared
-/// file so the four examples and their C++ counterparts measure the same two things
-/// in the same order. TEMPORARY: this commit exists to take the parity numbers and is
-/// reverted immediately after.
-#[path = "../../../../docs/research/cpp-parity/probe.rs"]
-mod probe;
-
-
 const DIR: &str = "E:\\symdev\\locale";
 const NOTES: &str = "E:\\symdev\\locale\\measured.txt";
 
@@ -142,7 +134,6 @@ fn name_of(language: Language) -> Option<&'static str> {
 
 #[symbian_std::main]
 fn main() -> Result<i32> {
-    let entry = probe::Probe::now();
     let mut report = Report::new("locale");
     let mut notes = String::new();
     measure(&mut report, &mut notes);
@@ -150,27 +141,6 @@ fn main() -> Result<i32> {
     chain(&mut report, &mut notes);
     table(&mut notes);
     report.checked("the measurements are written out", write_notes(&notes));
-    let end = probe::Probe::now();
-    report.check_detail(
-        "probe:heap at entry",
-        true,
-        format_args!("cells {} bytes {}", entry.cells, entry.bytes),
-    );
-    report.check_detail(
-        "probe:heap at end",
-        true,
-        format_args!("cells {} bytes {}", end.cells, end.bytes),
-    );
-    report.check_detail(
-        "probe:nanoticks entry to end",
-        true,
-        format_args!("{}", end.ticks_since(entry)),
-    );
-    report.check_detail(
-        "probe:UserHal::TickPeriod",
-        true,
-        format_args!("{:?} us", symbian_core::time::SystemTicks::period_micros()),
-    );
     Ok(if report.finish()? { 0 } else { 1 })
 }
 
