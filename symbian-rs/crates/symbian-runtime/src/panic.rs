@@ -1,12 +1,13 @@
-//! How a `no_std` program ends when it cannot go on: a Rust panic becomes a Symbian
-//! panic with a named category, and an allocation that cannot be satisfied becomes an
-//! exit with `KErrNoMemory`. Nothing unwinds on either path (`panic = "abort"`, design
-//! spec §3): no Rust frame may ever be left for a C++ exception to cross.
+//! How a `no_std` program ends when it cannot go on: a Rust panic and an allocation that
+//! cannot be satisfied both become a Symbian panic with the category `RUST`, told apart
+//! by the reason (`KErrGeneral` and `KErrNoMemory`). Nothing unwinds on either path
+//! (`panic = "abort"`, design spec §3): no Rust frame may ever be left for a C++
+//! exception to cross.
 
 use symbian_sys::des::Lit16;
 
-/// The panic category, `RUST`: what the emulator log and a device's crash report name
-/// as the *reason kind* of the process's death.
+/// The panic category, `RUST`: the name the emulator log gives the death
+/// (`panicked with category: RUST`), where a C++ program's own panics show theirs.
 ///
 /// It is the category the `std` platform layer's `abort_internal` already raises
 /// (`rust-src/overlay/library/std/src/sys/pal/symbian/mod.rs`), so a Rust panic reads
@@ -22,7 +23,8 @@ static CATEGORY: Lit16<4> = Lit16::ascii(b"RUST");
 const KERR_GENERAL: i32 = -2;
 
 /// A Rust panic ends the process with `User::Panic("RUST", KErrGeneral)`, the way a C++
-/// program on this platform dies on purpose.
+/// program on this platform dies on purpose (observed: `Thread Main panicked with
+/// category: RUST and exit code: -2`, experiment 99).
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
     // SAFETY: `User::Panic` is a euser static member function (plain EABI, no `this`)
@@ -31,13 +33,22 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
     unsafe { symbian_sys::euser::User_Panic(CATEGORY.as_desc(), KERR_GENERAL) }
 }
 
-/// An infallible allocation that failed ends the process with `User::Exit(KErrNoMemory)`
-/// rather than a panic: `-4` is what a Symbian program reports for out of memory, and
-/// what a conventional C++ `E32Main` returns when its top-level `TRAPD` catches the
-/// `KErrNoMemory` leave of a failed `new (ELeave)` (experiment 99). Code that wants to
-/// survive a failed allocation uses the fallible `alloc` APIs (`try_reserve`,
-/// `Vec::try_*`), which still see the null `User::Alloc` returned.
+/// An infallible allocation that failed ends the process with
+/// `User::Panic("RUST", KErrNoMemory)`: the same category as a Rust panic, and `-4`, the
+/// code a Symbian program reports for out of memory, as the reason that tells the two
+/// apart. Code that wants to survive a failed allocation uses the fallible `alloc` APIs
+/// (`try_reserve`, `Vec::try_*`), which still see the null `User::Alloc` returned.
+///
+/// Why a panic and not `User::Exit(KErrNoMemory)`, which is what this was (experiment 99):
+/// the failure happens deep inside `main`, with the thread's `CTrapCleanup` installed, and
+/// `User::Exit` in that state was observed to die `KERN-EXEC 3` in the emulator — a C++
+/// `E32Main` calling `User::Exit` after `CTrapCleanup::New()` dies the same way — so the
+/// `-4` never reached the log. A C++ program reports `-4` as an exit only when a top-level
+/// `TRAPD` catches the leave and `E32Main` returns after deleting its cleanup stack, which
+/// an abort that never unwinds cannot do; the same leave without a `TRAP` is itself a
+/// panic (`E32USER-CBase 65`).
 #[alloc_error_handler]
 fn alloc_error(_: core::alloc::Layout) -> ! {
-    symbian_alloc::oom()
+    // SAFETY: as in `panic` above.
+    unsafe { symbian_sys::euser::User_Panic(CATEGORY.as_desc(), symbian_alloc::KERR_NO_MEMORY) }
 }

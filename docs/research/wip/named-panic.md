@@ -36,6 +36,8 @@ backlog (next free number on main: 99). Branch `named-panic`, base main 7231c84.
 - C++ size: baseline 802 B .exe (.text 232 .rodata 76); + one `if (note.Length() > 60) User::Panic(_LIT "CPP", 42)`: 831 B (+29), .text +24, .rodata +12 (the _LIT), imports unchanged (eexe already imports User::Panic).
 - spawnee's doc blames "EKA2L1 cannot spawn an image with a writable data section" for a KERN-EXEC 3 "reading its own heap base + 0xA4"; spawnee calls User_Exit inside main with the cleanup installed — same signature as above. Hypothesis only, not checked.
 
+- OBSERVED final code: examples/panic default -> `Thread Main panicked with category: RUST and exit code: -2`; with E:\\symdev\\panic\\oom -> `Thread Main panicked with category: RUST and exit code: -4`. Old handler (User::Exit(-1)) on the same example -> access violation 0x8000A4 + `terminated peacefully with category: KERN-EXEC and exit code: 3`: under #[symbian_std::main] the old panic path never showed -1 in the emulator.
+
 ## Decisions
 - Category `RUST` (same as std PAL abort_internal, 4 of 16 units). Reason KErrGeneral (-2), same as std. Line-number reason rejected: +1.5..3.9 KB corpus for a line without a file.
 - Handler + alloc handler moved to symbian-runtime/src/panic.rs.
@@ -48,4 +50,4 @@ backlog (next free number on main: 99). Branch `named-panic`, base main 7231c84.
 
 ## Next step
 
-Implement OOM panic, observe it, restore examples/panic (TOO_MUCH 64 MiB, no probes, drop symbian-sys dep), run all report examples with symdev test --emulator, gates, backlog entry 99.
+Final measurement vs base, run all report examples with symdev test --emulator, gates, backlog entry 99.

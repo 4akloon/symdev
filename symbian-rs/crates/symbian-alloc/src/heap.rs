@@ -2,7 +2,7 @@
 use core::alloc::{GlobalAlloc, Layout};
 use core::ptr;
 
-use symbian_sys::euser::{User_Alloc, User_AllocZ, User_Exit, User_Free, User_ReAlloc};
+use symbian_sys::euser::{User_Alloc, User_AllocZ, User_Free, User_ReAlloc};
 
 use crate::serialise::HeapGuard;
 
@@ -17,17 +17,6 @@ pub const KERR_NO_MEMORY: i32 = -4;
 /// ABI guarantee; a request for more than this is padded by hand below rather than
 /// trusted, and a request for this or less is passed straight through.
 pub const MAX_TRUSTED_ALIGN: usize = 8;
-
-/// Ends the process the Symbian way when an infallible allocation fails.
-///
-/// Rust's out-of-memory path must not unwind (`panic = "abort"`, design spec §3) and must
-/// not become a Rust panic, whose exit code says nothing: `User::Exit(KErrNoMemory)` is
-/// what a Symbian program does, and the loader reports `-4`.
-pub fn oom() -> ! {
-    // SAFETY: `User::Exit` is a static member function of euser (plain EABI, no `this`),
-    // takes ownership of nothing, never returns and is callable from any thread.
-    unsafe { User_Exit(KERR_NO_MEMORY) }
-}
 
 /// The global heap of the *current thread*.
 ///
