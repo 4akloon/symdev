@@ -11,6 +11,14 @@ symbian-core/src/des, symbian-macros/src/fast_write.
 
 ## Findings
 
+- Baseline (main de45e20, release symdev, `.exe` bytes): alloc 3767, async 18603, atomics 8903, cleanup 4472, files 9341, fmt 100031, hello-raw 808, hello 1245, locale 8202, net 10643, notes 12805, panic 2010, query 14031, shim 4517, spawnee 3076, time 10256, tls 14099, ui-list 12624, ui 11645. Scripts and nm dumps: `~/.cache/avkon-glue-agent/` (`measure.sh`, `res-base.txt`, `nm-base/`).
+- ui symbols now: `construct<Bars>` 2468, `draw<Bars>` 1396, `offer_key<Bars>` 184, `command<Bars>` 140, `menu<Bars>` 92, `Menu<Bars>::item` 160, `menu::encode` 252, `encode_utf16_into` 240, `slice_error_fail_rt` 428.
+- `draw<Bars>` is mostly NOT glue: `Bars::draw` is inlined into it, and so is `Gc::text` (UTF-8 decode + UTF-16 encode + the truncation fallback, ~830 B from 0x8264 to 0x85a0). Likewise `construct<Bars>` holds the inlined `Bars::construct` (the report). The audit's 2 212 / 1 360 are app code + inlined non-generic helpers, not generic glue per se.
+- Probe (throwaway `examples/glueprobe`, empty App: `draw` = one `clear`, one menu item): the pure generic Rust glue is small — thunks size_changed 12, destroy 48, offer_key 48, construct 60, draw 64, create 64, menu 92, command 140, VTBL 36 = 564 B, plus `menu::encode` 252. Probe `.exe` 6 998.
+- **One `App` type per image**, so monomorphisation duplicates nothing: a type-erased body would be the same bytes plus a dyn vtable. The per-type framing of the audit is not the mechanism; inlining is (`Bars::construct`+`Report::finish` into `construct<Bars>`, `Bars::draw`+`Gc::text` into `draw<Bars>`).
+- ui buckets (nm sizes, 16 050 total): vtbl thunks incl. inlined app 4 360, EH runtime 3 776, **C++ shim 3 083**, test_report 1 200, alloc 956, symbian_ui other 752, symbian_core 616, core 488. C++ `cppui` whole app classes 2 795 (+ report 1 616), total 8 628. The shim alone is larger than the whole C++ app.
+- Shim fat: `~CShimAppUi` three copies 152+152+160 (C++: 88×2), `ConstructL` 244 (C++ 46), `Draw` 120, `SizeChanged` 108, `HandleCommandL` 104 — every call site inlines `Vtbl()` (null + size check + `User::Panic(_L(...))`).
+
 ## Decisions
 
 ## Dead ends
