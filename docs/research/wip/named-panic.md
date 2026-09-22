@@ -22,4 +22,4 @@ backlog (next free number on main: 99). Branch `named-panic`, base main 7231c84.
 
 ## Next step
 
-Immediate-abort symbol diff (where the 2.4 KB is) and levers that keep the category.
+Emulator observation: new examples/panic (index panic; OOM when E:\\symdev\\panic\\oom exists), Kernel:trace, restore log-filter.
