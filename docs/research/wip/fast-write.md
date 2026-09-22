@@ -11,6 +11,7 @@ Task: a `write!`-compatible macro in `symbian_std::prelude` that turns plain `{}
 - Autoref specialisation prototype (scratchpad/proto/p.rs) resolves as needed: concrete Buf-like sink -> Sink tier, String/Formatter/generic W: fmt::Write -> fmt::Write tier, custom Display and io::Write (Vec<u8>) -> slow closure; two-phase borrow ok for write!(b, "{}", b.len()); in a generic fn only the bound's tier is seen (correct, never wrong).
 - rustc (1.98.1 and nightly-2026-09-19 identical) inlines literal args of a plain `{}` into the template: string literals (raw too), integer literals that fit their type (unsuffixed = i32; `256u8` under allow is not inlined), parenthesised `(5)` too; NOT char, bool, float, `-1`. Everything static -> one write_str even when empty. A macro that wants identical write_str call sequences must copy that rule (probe: scratchpad/proto/inl.rs).
 - core writes: literal pieces via write_str; `{}` str -> write_str (pad fast path); char -> write_char; ints -> write_char('-') then write_str(digits). So identity is testable as identical *call sequences* on a recording fmt::Write, which implies identical bytes under any failing sink.
+- symbian-rs cannot run host integration tests (build-std forced by config; `--target host --config unstable.build-std=[]` still duplicates core). Host tests live in the host workspace: `crates/symdev-build/tests/fast_write*.rs` with a path dev-dependency on `symbian-rs/crates/symbian-fmt`; it builds on stable 1.98.1 and the smoke test passes.
 
 ## Decisions
 
@@ -20,4 +21,4 @@ Task: a `write!`-compatible macro in `symbian_std::prelude` that turns plain `{}
 
 ## Next step
 
-- Read size-levers.md, symbian-macros, prelude; design mechanism.
+- Identity tests (recording sink, call sequences), then Buf16 Sink impl in symbian-core, prelude export, measure.

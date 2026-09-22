@@ -884,11 +884,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
+name = "symbian-fmt"
+version = "0.1.0"
+dependencies = [
+ "symbian-macros",
+]
+
+[[package]]
+name = "symbian-macros"
+version = "0.1.0"
+
+[[package]]
 name = "symdev-build"
 version = "0.1.0"
 dependencies = [
  "der",
  "sha1",
+ "symbian-fmt",
  "symdev-core",
  "symdev-elf2e32",
  "symdev-locale",

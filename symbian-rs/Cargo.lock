@@ -220,6 +220,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "symbian-fmt"
+version = "0.1.0"
+dependencies = [
+ "symbian-macros",
+]
+
+[[package]]
 name = "symbian-libcalls"
 version = "0.1.0"
 dependencies = [

@@ -23,6 +23,7 @@ use proc_macro::TokenStream;
 
 mod cursor;
 mod entry;
+mod fast_write;
 mod signature;
 mod strings;
 
@@ -86,6 +87,14 @@ pub fn main(attribute: TokenStream, item: TokenStream) -> TokenStream {
     let mut out = tokens(&generated);
     out.extend(item);
     out
+}
+
+/// The expansion behind `symbian_fmt::write!` and `writeln!`; see [`fast_write`]. It
+/// is called by those two `macro_rules!` wrappers and is not an API of its own.
+#[doc(hidden)]
+#[proc_macro]
+pub fn __write_pieces(input: TokenStream) -> TokenStream {
+    fast_write::write_pieces(input)
 }
 
 /// Rust source this crate wrote itself, back as tokens. The input is generated here

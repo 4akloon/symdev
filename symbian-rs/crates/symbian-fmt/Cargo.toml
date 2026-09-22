@@ -1,0 +1,11 @@
+[package]
+name = "symbian-fmt"
+version.workspace = true
+edition.workspace = true
+description = "write! and writeln! with core's syntax and output, that append plain {} of strings and integers directly instead of going through core::fmt"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+symbian-macros = { path = "../symbian-macros" }

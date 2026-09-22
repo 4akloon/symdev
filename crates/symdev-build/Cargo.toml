@@ -23,3 +23,7 @@ thiserror = "2"
 tempfile = "3"
 der = { version = "0.7", features = ["alloc", "pem"] }
 x509-cert = "0.2"
+# The SDK's fast `write!` (experiment 99) is phone code, but its expansion is plain
+# Rust: the host tests in `tests/fast_write*.rs` run it against `core::write!` call for
+# call. The SDK workspace cannot run them itself — it builds for the phone.
+symbian-fmt = { path = "../../symbian-rs/crates/symbian-fmt" }
