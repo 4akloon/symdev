@@ -1,0 +1,17 @@
+[package]
+name = "panicdemo"
+version = "0.1.0"
+
+[target]
+device = "nokia-e52"
+
+[language]
+name = "rust"
+
+[symbian]
+uid3 = "0xe00006a8"
+capabilities = []
+vendor = "symdev"
+
+[signing]
+mode = "self-signed"

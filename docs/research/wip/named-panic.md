@@ -22,4 +22,4 @@ backlog (next free number on main: 99). Branch `named-panic`, base main 7231c84.
 
 ## Next step
 
-Emulator observation: new examples/panic (index panic; OOM when E:\\symdev\\panic\\oom exists), Kernel:trace, restore log-filter.
+OOM run of examples/panic (create ~/.local/share/EKA2L1/data/drives/e/symdev/panic/oom), then C++ scratch (User::Panic cost + LeaveNoMemory without TRAP).

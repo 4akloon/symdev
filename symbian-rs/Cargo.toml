@@ -36,6 +36,7 @@ members = [
     "examples/ui-list",
     "examples/notes",
     "examples/query",
+    "examples/panic",
 ]
 
 [workspace.package]
