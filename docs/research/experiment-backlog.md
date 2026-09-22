@@ -2451,3 +2451,131 @@ all. Measurement scripts and the ROM call-closure script are outside git
 **Evidence.** `symbian-rs/crates/symbian-core/src/locale/{layout,heap_bytes,text,strings}.rs`,
 `symbian-rs/crates/symbian-sys/src/bafl.rs`, `crates/symdev-build/tests/strings_layout.rs`,
 `symbian-rs/examples/locale`.
+## 103. The test harness without `core::fmt`: `detail!`, `Evidence`, and a JSON writer of appends (T5, Rust SDK)
+
+**Requires:** the toolchain, `SYMDEV_EKA2L1`; for `net`, both peers in
+`examples/net/peer` (18974, 18975); for `std-net`, the same peers on 18984, 18985.
+
+**Why.** Experiment 101 measured that `symbian_std::test_report::Report` was the whole of
+`core::fmt` in eight examples and most of it in four more: `check_detail` took
+`fmt::Arguments`, `checked` wrote `{e:?}`, and the JSON writer used `{:08x}`. Resource
+parity with C++ is measured on those examples, so the harness was hiding the result it
+was there to report. It is our own test tool and its only users are the examples, so
+its API could change, on two conditions: a call stays one line and reads as well as
+before, and the JSON `symdev test --emulator` reads stays the same.
+
+**The API.**
+
+| before | after |
+|---|---|
+| `report.check_detail(name, ok, format_args!("{got} of {want}"))` | `report.check_detail(name, ok, detail!("{got} of {want}"))` |
+| `format_args!("{outcome:?}")` | `detail!("{}", outcome.shown())` |
+| `format_args!("{:#x}", p as usize)` | `detail!("{}", Hex(p as u32).shown())` |
+| `checked<T, E: Debug>` | `checked<T, E: Evidence>` (the call is unchanged) |
+
+- `check_detail(&mut self, name: &str, ok: bool, detail: impl FnOnce(&mut String))`.
+  `symbian_std::detail!` (also `symbian_std::test_report::detail`) takes `write!`'s
+  arguments and expands to a closure that runs the fast `write!` of experiment 101 into
+  the detail. It imports `core::fmt::Write` inside the closure, because the fast
+  macro's fallback closure must type-check even when it is never called; nothing is
+  linked by it. A spec (`{:x}`, `{:?}`) or a type not on the fast list still works, and
+  is `core::write!` exactly, and links `core::fmt` — the caller's choice, visible at the
+  call site.
+- `test_report::Evidence` — `show(&self, &mut String)` and `shown() -> String` — is what
+  a case shows of a value: `Debug`'s text, written by appends. Implemented for
+  `SymbianError`, `io::Error`, `SystemTimeError`, `thread::AccessError`, `()`, `bool`,
+  the integers, `str`/`String` (quoted, not escaped: the JSON escapes it), `&T`,
+  `Option`, `Result`, `Either`, slices, `Vec`, pairs, and `Hex(u32)` (`{:#x}`). Under
+  the `std` feature `std::io::Error` gets its `Debug` unchanged (`std` links `core::fmt`
+  anyway). The `Ok(`…`)` / `Some(`…`)` wrapping is one function over `&dyn Evidence`,
+  not a copy per nested type.
+- The JSON and the file name are plain appends, with a private `push_hex` for the UID3
+  (`{:08x}`) and `\u00XX`. The escape appends the runs between escapes whole, byte by
+  byte (an escaped byte is ASCII, so every cut is a character boundary, and `str::get`
+  is used rather than slicing so no panic path is linked): decoding and re-encoding
+  every character was 680 bytes of `examples/atomics`, this is 632.
+- `test_report.rs` became `test_report/{mod,json,evidence}.rs`; `AccessError` gained
+  `message()`, which its `Display` now uses too.
+
+**What `checked` records.** Before, `{e:?}`: for `SymbianError` `KErrNotFound (-1)`, for
+`io::Error` `NotFound (KErrNotFound (-1))` (the `std` kind, then the `SymbianError`).
+Now, for both, `KErrNotFound (-1)`: the `e32err.h` name and the `TInt`, which is what
+identifies the error. The `std` kind in front is dropped — it follows from the code, and
+writing it would need a table of `io::ErrorKind` names in every image. The other types
+record what their `Debug` did, except `SystemTimeError`, which was
+`SystemTimeError(1.5s)` and is `SystemTimeError(1500000 us)`.
+
+**The examples.** Every `format_args!` became `detail!` (mechanical). Where a detail used
+`{:?}` or `{:#x}` it now uses `.shown()` / `Hex`: `async` (its outcomes), `notes`, `query`,
+`tls`; the text is the same as before (`Ok(Ok(()))`, `Err(KErrNotReady (-18))`,
+`Ok(Left(Ok(())))`, `[100, 400]`, `0x10000004`, `Some(this thread's thread-locals have
+already been dropped)`). A `bool` is not on the fast list, so `tls` writes
+`(value == 1).shown()` and `async` `done.get().shown()`. `time`'s own three `{:?}` of a
+`Result<_, i32>` in its notes file became `.shown()` (same text; nothing parses it).
+
+**The fast `write!` in the four examples left on `core`'s at experiment 101's merge**,
+measured with the new harness, `core::write!` against `use symbian_std::{write, writeln}`:
+
+| example | `core::write!` | fast | Δ | `core::fmt` left |
+|---|---|---|---|---|
+| `async` | 19 719 | 18 603 | −1 116 | 0 |
+| `locale` | 11 584 | 10 233 | −1 351 | 0 |
+| `query` | 15 522 | 14 028 | −1 494 | 0 |
+| `time` | 11 591 | 10 256 | −1 335 | 0 (after its notes' `{:?}` went) |
+
+All four shrink, so all four have the one `use` line (`time` in both of its files).
+
+**Resources — every example, `.exe` bytes, `main` at 5eb3beb against this branch**
+(`core::fmt` = the sum of `nm -S` sizes of symbols whose mangled name contains
+`core::fmt`):
+
+| example | main | harness-fmt | Δ | `core::fmt` main → now |
+|---|---|---|---|---|
+| `alloc` | 3 773 | 3 767 | −6 | 2 020 → 2 020 |
+| `async` | 20 451 | **18 603** | −1 848 | 5 844 → 0 |
+| `atomics` | 10 723 | **8 929** | −1 794 | 2 908 → 0 |
+| `cleanup` | 5 783 | **4 465** | −1 318 | 2 480 → 0 |
+| `files` | 11 102 | **9 376** | −1 726 | 2 908 → 0 |
+| `fmt` | 100 667 | 100 020 | −647 | 10 700 → 10 604 |
+| `hello` | 1 245 | 1 245 | 0 | 0 |
+| `hello-raw` | 808 | 808 | 0 | 0 |
+| `locale` | 12 045 | **10 233** | −1 812 | 2 936 → 0 |
+| `net` | 12 434 | **10 647** | −1 787 | 2 908 → 0 |
+| `notes` | 14 670 | **12 804** | −1 866 | 3 652 → 0 |
+| `panic` | 2 010 | 2 010 | 0 | 0 |
+| `query` | 19 392 | **14 028** | −5 364 | 4 748 → 0 |
+| `shim` | 4 517 | 4 517 | 0 | 0 |
+| `spawnee` | 3 079 | 3 079 | 0 | 0 |
+| `time` | 13 561 | **10 256** | −3 305 | 4 840 → 0 |
+| `tls` | 15 098 | **14 106** | −992 | 3 664 → 0 |
+| `ui` | 12 975 | **11 653** | −1 322 | 2 484 → 0 |
+| `ui-list` | 13 907 | **12 624** | −1 283 | 2 484 → 0 |
+
+No example grows. Against C++ (`cpp-parity.md`): `files` 9 376 vs 6 058, `locale`
+10 233 vs 6 647, `ui` 11 653 vs 7 317. **Two examples still link `core::fmt`, neither
+through the harness:** `alloc` formats `{over_byte:x}` itself (and writes no report —
+its −6 is layout), and `fmt` exists to compare `core::write!` with the fast one, so it
+calls `core::write!` on purpose. What the harness itself now costs in `atomics`:
+`escape_into` 632, the `String` digit routine `put_u32` 240 (experiment 101's),
+`push_hex` 136, `io::Error`'s `Evidence` 136, `record` 116. The `KErr*` name table stays
+(size-levers "Not a lever") — it is how `checked` names the error.
+
+**Verification.** Emulator, `symdev test --emulator`, every example that writes a
+report: `async` 15, `atomics` 23, `cleanup` 2, `files` 26, `fmt` 14, `locale` 7, `net`
+22, `notes` 3, `query` 4, `time` 29, `tls` 45, `ui` 3, `ui-list` 6, `std-hello` 50,
+`std-net` 31 — all passed, the same counts as experiment 101. `shim` writes no report by
+design. **A failure is still a failure:** `cleanup` with two added cases (not committed),
+`report.checked("a deliberate failure", fs::metadata("E:\\no\\such\\dir\\file"))` and
+`report.check_detail("a deliberate false case", false, detail!("{} of {} \"quoted\"\t", 1, 2))`,
+came out `cleanupdemo: 2 failed, 2 passed`, exit 1, with `"detail":"KErrNotFound (-1)"`
+and `"detail":"1 of 2 \"quoted\"\t"` in the file — escaped as before. Host: `cargo test
+--workspace` (469 passed, the reader in `crates/symdev-emulator/src/results.rs`
+unchanged) and `cargo clippy --workspace --all-targets` clean; `symbian-rs`: `cargo
+clippy --release --workspace` clean. `std-hello` and `std-net` build against the
+`std` half (their stale `Cargo.lock`s, which predated `symbian-fmt`, were refreshed).
+Not run on an E52.
+
+**Evidence.** `symbian-rs/crates/symbian-std/src/test_report/`, the examples' diffs.
+Measurement scripts outside git, in `~/.cache/harness-fmt-agent/` (`measure.sh`,
+`cmp.sh`, `runall.sh`, `res-*.txt`, the result JSON of every run in `run-final/` and the
+failing one in `run-fail/`).

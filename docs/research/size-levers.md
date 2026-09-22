@@ -157,9 +157,15 @@ else `core::write!`. `hello` **2 567 → 1 245** (C++ 802; the hand-written ceil
 `alloc` −128, but `async` +548, `locale` +230, `query` +161, `time` +880, because the test
 harness (`check_detail(fmt::Arguments)`, `checked`'s `{e:?}`, the JSON writer's `{:08x}`)
 keeps `core::fmt` in every example that reports, and is **all** of it in eight of them.
-With a format-free harness the same four examples save 731 (`async`), 1 169 (`locale`)
-and 1 332 (`query`) bytes; `time` still formats `{:?}` itself. The harness change is
-proposed there with numbers, not applied. What is left of `hello`'s gap is
+*Harness (experiment 102):* `check_detail` now takes `detail!(…)` (the fast `write!` in a
+closure), `checked` records an error through `test_report::Evidence` (`KErrNotFound (-1)`),
+and the JSON is plain appends. `core::fmt` is gone from every example that reports;
+`async` −1 848, `atomics` −1 794, `cleanup` −1 318, `files` −1 726, `locale` −1 812, `net`
+−1 787, `notes` −1 866, `query` −5 364, `time` −3 305, `tls` −992, `ui` −1 322, `ui-list`
+−1 283, none grows. With it the fast `write!` shrinks the four it had grown (`async`
+−1 116, `locale` −1 351, `query` −1 494, `time` −1 335 against `core::write!` over the same
+harness), and all four use it. Only `alloc` (its own `{:x}`) and `fmt` (a comparison with
+`core::write!`, on purpose) still link `core::fmt`. What is left of `hello`'s gap is
 `Buf16::push_str` (428, UTF-8 to UTF-16 at run time); compile-time UTF-16 literals are the
 next lever.
 
@@ -208,7 +214,9 @@ counterpart (`RUNTIME_SYMBOL_VISIBILITY_OPTION=` is empty in `gcce.mk`).
 ### Not a lever: the `KErr*` name table
 
 About 1.2 kB of `.rodata` (`KErrNotSupported…`) sits in every example that calls
-`Report::checked`, which reaches it through `SymbianError: Debug` → `ErrorKind::name()`. That
+`Report::checked`, which reaches it through `ErrorKind::name()` (since experiment 102 from
+`SymbianError`'s `Evidence`, before that from its `Debug`): the name is how a failed case
+identifies the error. That
 is the **test harness**. `hello` does not use `Report` and carries none of it, so a shipped
 application does not pay for it.
 
@@ -277,7 +285,9 @@ In those images `{:?}` is a separate cost from `Display`, and a larger one.
 any `debug_tuple`/`debug_struct`/`Option` shape, because it implements the `{:#?}`
 indentation. A plain integer `{}` added nothing, because `Report` already linked it. So
 L6's -19 427 is mostly this, plus the `KErr*` table. The cheap habit that follows: SDK
-examples and docs should write an error as `{}` of its code or name, not as `{:?}`.
+examples and docs should write an error as `{}` of its code or name, not as `{:?}`. Since experiment 102 the
+examples show errors and outcomes through `test_report::Evidence` (`.shown()`), which
+writes `Debug`'s text without `core::fmt`.
 
 ## Harness
 
