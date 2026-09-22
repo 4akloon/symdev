@@ -8,6 +8,9 @@ Task: a `write!`-compatible macro in `symbian_std::prelude` that turns plain `{}
 - Most examples reach core::fmt through `format_args!` into `Report::check_detail`, not `write!`. Direct `write!` users: hello (Buf16), alloc, locale/async/time (String `notes`), query (String), test_report itself (String).
 - core's integer Display writes the sign with write_char then digits with write_str, so on an overflowing sink `-` can land alone: a fast path must reproduce that partial write.
 - Buf16::append_num's `decimal_len` divides u64 by 10 at run time -> possible `__aeabi_uldivmod`; check.
+- Autoref specialisation prototype (scratchpad/proto/p.rs) resolves as needed: concrete Buf-like sink -> Sink tier, String/Formatter/generic W: fmt::Write -> fmt::Write tier, custom Display and io::Write (Vec<u8>) -> slow closure; two-phase borrow ok for write!(b, "{}", b.len()); in a generic fn only the bound's tier is seen (correct, never wrong).
+- rustc (1.98.1 and nightly-2026-09-19 identical) inlines literal args of a plain `{}` into the template: string literals (raw too), integer literals that fit their type (unsuffixed = i32; `256u8` under allow is not inlined), parenthesised `(5)` too; NOT char, bool, float, `-1`. Everything static -> one write_str even when empty. A macro that wants identical write_str call sequences must copy that rule (probe: scratchpad/proto/inl.rs).
+- core writes: literal pieces via write_str; `{}` str -> write_str (pad fast path); char -> write_char; ints -> write_char('-') then write_str(digits). So identity is testable as identical *call sequences* on a recording fmt::Write, which implies identical bytes under any failing sink.
 
 ## Decisions
 
