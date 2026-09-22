@@ -12,7 +12,7 @@
 //! `match` would link every file-server call into every image that makes any of them
 //! (measured, experiment 105), where a passed-in call links only the ones an image uses.
 use symbian_sys::des::TDesC16;
-use symbian_sys::efsrv::RFs;
+use symbian_sys::efsrv::{RFs, RFs_Rename};
 
 use super::MAX_FILE_NAME;
 use crate::des::{Buf16, DesC16};
@@ -56,7 +56,10 @@ pub(crate) struct Request<'a> {
 
 impl<'a> Request<'a> {
     /// `call` on the path as it is given.
-    pub(crate) fn new(call: &'a mut impl Call) -> Self {
+    ///
+    /// The bound is `FnMut` rather than [`Call`] so that a closure written at the call
+    /// gets its parameter types from here.
+    pub(crate) fn new(call: &'a mut impl FnMut(*mut RFs, *const TDesC16) -> i32) -> Self {
         Self { tail: "", call }
     }
 
@@ -90,5 +93,23 @@ impl<'a> Request<'a> {
         name.push_str(path)?;
         name.push_str(self.tail)?;
         check(self.call.call(fs, name.as_tdesc16()))
+    }
+}
+
+/// `RFs::Rename` of the path in `from` to `to`, encoded here in the frame that uses it,
+/// as [`Request::on`] encodes the first path: a `TFileName` returned by value is a
+/// 516-byte copy. The `TInt` of the call, or `KErrOverflow` for a `to` that does not fit.
+///
+/// # Safety
+///
+/// `fs` is a connected session nothing else uses for the call; `from` a live
+/// descriptor.
+pub(crate) unsafe fn rename(fs: *mut RFs, from: *const TDesC16, to: &str) -> i32 {
+    let mut to_name: Buf16<MAX_FILE_NAME> = Buf16::new();
+    match to_name.push_str(to) {
+        // SAFETY: `this` first per the observed member ABI, both descriptors only
+        // read. Non-leaving; every failure is the returned `TInt`.
+        Ok(()) => unsafe { RFs_Rename(fs, from, to_name.as_tdesc16()) },
+        Err(e) => e.code(),
     }
 }

@@ -13,12 +13,10 @@
 //! still alive would be the bug, not the leak.
 use core::cell::{Cell, UnsafeCell};
 
-use symbian_sys::efsrv::{RFs_Delete, RFs_MkDirAll, RFs_Rename};
+use symbian_sys::efsrv::{RFs_Delete, RFs_MkDirAll};
 
-use super::path_of;
-use super::request::Request;
+use super::request::{Request, rename};
 use super::server::FileServer;
-use crate::des::DesC16;
 use crate::error::Result;
 use crate::{ErrorKind, SymbianError};
 
@@ -132,10 +130,7 @@ impl ProcessSession {
 
     /// Renames a file or directory (`RFs::Rename`): `KErrAlreadyExists` if `to` is taken.
     pub fn rename(from: &str, to: &str) -> Result<()> {
-        let call = &mut |fs, from| match path_of(to) {
-            Ok(to) => unsafe { RFs_Rename(fs, from, to.as_tdesc16()) },
-            Err(e) => e.code(),
-        };
+        let call = &mut |fs, from| unsafe { rename(fs, from, to) };
         request(from, Request::new(call)).map(|_| ())
     }
 }

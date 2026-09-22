@@ -66,6 +66,18 @@ Keep experiment 98's `read_dir` borrowing from the `CDir`. Stay out of `symbian-
   opening call site LLVM had already constant-folded the builder. Behaviour: same RFile
   call, same mode bits, no append/truncate fix-up in any of the three (as before).
 
+- Candidate 4 (commit): no 552/516-byte moves. `Entry::of` constructs its `TEntry` in its
+  own frame (via `Entry::new` it was built in a temporary and `memcpy`'d, 552 B, before
+  the request); `rename`'s second path is encoded in the frame that uses it
+  (`request::rename`, shared by `ProcessSession::rename` and `FileServer::rename`).
+  files 8357 -> 8297 (-60), panic 2049 -> 2017 (-32); others 0. `Request::new` bound is
+  `FnMut(*mut RFs, *const TDesC16)` so closures written in the argument need no types
+  (a `let` closure with untyped params ICEd clippy: "upvar_tys called before capture
+  types are inferred", nightly-2026-09-19).
+- panic is +7 vs base (2017 vs 2010): two calls (metadata, read_dir) where the base inlined
+  both into E32Main; code symbols are -32 vs base, the exe difference is the two `Call`
+  vtables in .rodata and their relocations.
+
 ## Decisions
 
 ## Dead ends

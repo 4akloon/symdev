@@ -1,8 +1,7 @@
 //! `Entry`: what `RFs::Entry` knows about one file or directory (`TEntry`).
-use symbian_sys::des::TDesC16;
 use symbian_sys::efsrv::{
-    KENTRY_ATT_DIR, KENTRY_ATT_VOLUME, RFs, RFs_Entry, TENTRY_OFFSET_ATT, TENTRY_OFFSET_SIZE,
-    TEntry, TEntry_ctor, TEntryStorage,
+    KENTRY_ATT_DIR, KENTRY_ATT_VOLUME, RFs_Entry, TENTRY_OFFSET_ATT, TENTRY_OFFSET_SIZE, TEntry,
+    TEntry_ctor, TEntryStorage,
 };
 
 use super::request::Request;
@@ -22,27 +21,44 @@ pub struct Entry {
 impl Entry {
     /// A `TEntry` built by euser's own default constructor, ready to be filled.
     pub(crate) fn new() -> Self {
-        let mut storage = TEntryStorage::zeroed();
+        let mut entry = Self::zeroed();
+        entry.construct();
+        entry
+    }
+
+    /// Zeroed storage, not yet a `TEntry`.
+    const fn zeroed() -> Self {
+        Self {
+            storage: TEntryStorage::zeroed(),
+        }
+    }
+
+    /// Runs the `TEntry` constructor in place.
+    fn construct(&mut self) {
         // SAFETY: `storage` is zeroed storage of the measured `sizeof(TEntry) == 552`
         // with the measured alignment of 8, so it is a valid object for the exported
         // default constructor to build into, with `this` as argument 0 under the
         // observed member ABI. `TEntry()` is declared `IMPORT_C TEntry();` in
         // `f32file.h` with no leave, and the class holds no heap cell — `iName` is a
         // `TBufC` inside the object — so nothing is allocated and nothing must be freed.
-        unsafe { TEntry_ctor(storage.as_entry()) };
-        Self { storage }
+        unsafe { TEntry_ctor(self.storage.as_entry()) };
     }
 
     /// What the file server knows about the entry `path` names (`RFs::Entry`), asked on
     /// the process's session.
     pub fn of(path: &str) -> Result<Self> {
-        let mut entry = Self::new();
+        // Constructed here rather than by `new`: a `TEntry` returned from `new` was
+        // moved into this frame with a 552-byte `memcpy` (experiment 105).
+        let mut entry = Self::zeroed();
+        entry.construct();
         let tentry = entry.as_tentry();
         // SAFETY: a `const` member, `this` first; the path is only read, and the
         // `TEntry` was built by its constructor just above and is live across the call,
         // which fills it and keeps nothing. Non-leaving.
-        let mut call = |fs: *mut RFs, path: *const TDesC16| unsafe { RFs_Entry(fs, path, tentry) };
-        request(path, Request::new(&mut call))?;
+        request(
+            path,
+            Request::new(&mut |fs, path| unsafe { RFs_Entry(fs, path, tentry) }),
+        )?;
         Ok(entry)
     }
 

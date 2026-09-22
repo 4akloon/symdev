@@ -14,14 +14,14 @@
 use symbian_sys::des::TDesC16;
 use symbian_sys::efsrv::{
     KFILE_SERVER_DEFAULT_MESSAGE_SLOTS, RFs, RFs_Att, RFs_Connect, RFs_Delete, RFs_Entry,
-    RFs_MkDirAll, RFs_Rename,
+    RFs_MkDirAll,
 };
 use symbian_sys::euser::{RHandleBase, RHandleBase_Close};
 use symbian_sys::shim::symrs_bafl_ensure_path_exists;
 
 use super::entry::Entry;
 use super::path_of;
-use super::request::Request;
+use super::request::{Request, rename};
 use crate::des::DesC16;
 use crate::error::{Result, check};
 
@@ -97,11 +97,7 @@ impl FileServer {
     /// `KErrAlreadyExists` if `to` is taken — Symbian does not replace silently the way
     /// POSIX `rename` does.
     pub fn rename(&mut self, from: &str, to: &str) -> Result<()> {
-        let mut call = |fs: *mut RFs, from: *const TDesC16| match path_of(to) {
-            // SAFETY: as `make_dir_all`, with a second descriptor, also only read.
-            Ok(to) => unsafe { RFs_Rename(fs, from, to.as_tdesc16()) },
-            Err(e) => e.code(),
-        };
+        let mut call = |fs, from| unsafe { rename(fs, from, to) };
         // SAFETY: the session is `self`, borrowed mutably for the call.
         unsafe { Request::new(&mut call).on(&mut self.fs, from) }.map(|_| ())
     }
