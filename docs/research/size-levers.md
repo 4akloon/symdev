@@ -42,7 +42,7 @@ Corpus total: **`.exe` -18 950 bytes, `.text` -23 100 bytes.** No example grows 
 the noise described above.
 
 **The largest remaining gap was `core::fmt` (L8).** In `hello` it was 1 330 of the 2 523 bytes
-that were left. The macro it needed was decided and built in experiment 100: `hello` is now
+that were left. The macro it needed was decided and built in experiment 101: `hello` is now
 1 245 bytes with no `core::fmt` in it (see L8).
 
 ## Every lever
@@ -145,9 +145,9 @@ exit code, and the intended `User::Panic` with a category could not be reached. 
 is in `symbian-runtime`, which another agent owns, so the decision is recorded here and not
 made here.
 
-### L8 — `core::fmt` behind `write!` — **applied in experiment 100 (`symbian_std::write!`)**
+### L8 — `core::fmt` behind `write!` — **applied in experiment 101 (`symbian_std::write!`)**
 
-*Achieved (experiment 100, `main` at aae58bb):* `symbian_std::{write, writeln}` — `write!`'s
+*Achieved (experiment 101, `main` at aae58bb):* `symbian_std::{write, writeln}` — `write!`'s
 syntax, byte-identical output (tested call for call on the host and unit for unit on
 `Buf16` in the emulator), plain `{}` of strings and integers appended directly, anything
 else `core::write!`. `hello` **2 567 → 1 245** (C++ 802; the hand-written ceiling below was
@@ -163,7 +163,7 @@ proposed there with numbers, not applied. What is left of `hello`'s gap is
 `Buf16::push_str` (428, UTF-8 to UTF-16 at run time); compile-time UTF-16 literals are the
 next lever.
 
-*The measurement that motivated it (before experiment 100):*
+*The measurement that motivated it (before experiment 101):*
 
 In `examples/hello` I replaced the single `write!` by the four calls a macro would generate
 (`push_str`, `push_str`, `append_num`, `push_str`) and changed nothing else:

@@ -1,4 +1,4 @@
-//! The fast `write!` on the phone (experiment 100): the same invocations through
+//! The fast `write!` on the phone (experiment 101): the same invocations through
 //! `core::write!` and `symbian_std::write!` into a `Buf16` of every small capacity,
 //! compared unit for unit together with the `fmt::Result`, and what each costs in
 //! ticks over 100 000 rounds.
