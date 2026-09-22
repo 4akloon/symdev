@@ -79,32 +79,46 @@ impl fmt::Write for Rec {
     }
 }
 
-/// A destination with a native [`symbian_fmt::Sink`], modelled on `Buf16`: a fixed
-/// capacity, `write_str` all-or-nothing, and numbers appended whole by a routine of
-/// its own (standing in for euser's `AppendNum`). It exists to prove that the `Sink`
-/// path is taken and that its contract — the lone `-` included — is what `core` does.
+/// A destination with a native [`symbian_fmt::Sink`], modelled on `Buf16`: UTF-16 code
+/// units with a capacity counted in units, `write_str` all-or-nothing (measured, then
+/// encoded), numbers appended whole by a routine of its own (standing in for euser's
+/// `AppendNum`), and text known at compile time appended from the UTF-16 the macro put
+/// into the image (standing in for euser's `Append(const TUint16*, TInt)`), never from
+/// the `&str`. It exists to prove that the `Sink` paths are taken and that their
+/// contract — the lone `-`, and units that are exactly the text's — is what `core` does.
 #[derive(Debug)]
 pub struct HostBuf {
-    pub text: String,
+    pub units: Vec<u16>,
     cap: usize,
     pub native_numbers: usize,
+    pub native_literals: usize,
 }
 
 impl HostBuf {
     pub fn new(cap: usize) -> Self {
         Self {
-            text: String::new(),
+            units: Vec::new(),
             cap,
             native_numbers: 0,
+            native_literals: 0,
         }
     }
 
-    fn push(&mut self, s: &str) -> fmt::Result {
-        if self.text.len() + s.len() > self.cap {
+    /// The units as text; they are always whole characters here.
+    pub fn text(&self) -> String {
+        String::from_utf16(&self.units).expect("the units a HostBuf holds are valid UTF-16")
+    }
+
+    fn push_units(&mut self, units: &[u16]) -> fmt::Result {
+        if self.units.len() + units.len() > self.cap {
             return Err(fmt::Error);
         }
-        self.text.push_str(s);
+        self.units.extend_from_slice(units);
         Ok(())
+    }
+
+    fn push(&mut self, s: &str) -> fmt::Result {
+        self.push_units(&s.encode_utf16().collect::<Vec<_>>())
     }
 }
 
@@ -117,6 +131,11 @@ impl fmt::Write for HostBuf {
 impl symbian_fmt::Sink for HostBuf {
     fn put_str(&mut self, s: &str) -> fmt::Result {
         self.push(s)
+    }
+
+    fn put_utf16(&mut self, _text: &str, units: &[u16]) -> fmt::Result {
+        self.native_literals += 1;
+        self.push_units(units)
     }
 
     fn put_char(&mut self, c: char) -> fmt::Result {
@@ -182,8 +201,8 @@ macro_rules! same {
             let mut fast_buf = $crate::fast_write_support::HostBuf::new(cap);
             let fast_result = ::symbian_fmt::write!(fast_buf, $($t)*);
             assert_eq!(
-                (&fast_buf.text, fast_result),
-                (&core_buf.text, core_result),
+                (&fast_buf.units, fast_result),
+                (&core_buf.units, core_result),
                 "write!({}) into a HostBuf of {cap}", stringify!($($t)*)
             );
         }

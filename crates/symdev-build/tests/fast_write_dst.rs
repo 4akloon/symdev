@@ -17,14 +17,14 @@ fn a_native_sink_appends_numbers_itself() {
     let seven = 7u64;
     let mut fast = HostBuf::new(64);
     symbian_fmt::write!(fast, "{} and {}", -5, seven).unwrap();
-    assert_eq!((fast.text.as_str(), fast.native_numbers), ("-5 and 7", 2));
+    assert_eq!((fast.text().as_str(), fast.native_numbers), ("-5 and 7", 2));
     let mut core = HostBuf::new(64);
     core::write!(core, "{} and {}", -5, seven).unwrap();
-    assert_eq!((core.text.as_str(), core.native_numbers), ("-5 and 7", 0));
+    assert_eq!((core.text().as_str(), core.native_numbers), ("-5 and 7", 0));
     // Not on the list: through `core::fmt`, so not through `put_int`.
     let mut slow = HostBuf::new(64);
     symbian_fmt::write!(slow, "{}", Custom(4)).unwrap();
-    assert_eq!((slow.text.as_str(), slow.native_numbers), ("<4>", 0));
+    assert_eq!((slow.text().as_str(), slow.native_numbers), ("<4>", 0));
 }
 
 /// A `Display` that uses the fast `write!` on its `Formatter`, against the same with
@@ -76,7 +76,7 @@ fn a_generic_destination_takes_the_fmt_write_path() {
     // A native sink seen only through its `fmt::Write` bound is still exact.
     let mut buf = HostBuf::new(64);
     generic_fast(&mut buf, 5).unwrap();
-    assert_eq!((buf.text.as_str(), buf.native_numbers), ("n=5;<5>\n", 0));
+    assert_eq!((buf.text().as_str(), buf.native_numbers), ("n=5;<5>\n", 0));
 }
 
 /// An `io::Write` that takes `limit` bytes and then fails, to compare errors too.
@@ -167,8 +167,8 @@ fn an_argument_may_read_the_destination_it_is_written_into() {
     let mut s = String::from("abc");
     symbian_fmt::write!(s, " len={}", s.len()).unwrap();
     let mut buf = HostBuf::new(32);
-    symbian_fmt::write!(buf, "{}", buf.text.len()).unwrap();
-    assert_eq!((s.as_str(), buf.text.as_str()), ("abc len=3", "0"));
+    symbian_fmt::write!(buf, "{}", buf.units.len()).unwrap();
+    assert_eq!((s.as_str(), buf.text().as_str()), ("abc len=3", "0"));
 }
 
 #[test]

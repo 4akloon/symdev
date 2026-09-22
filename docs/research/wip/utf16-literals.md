@@ -23,6 +23,8 @@ shims/s60, macros/entry.rs, std/src/fs, core/src/fs.
 
 - Where the unit copy lives (hello / fmt exe bytes; fmt has 703 literal pieces into 25 Buf16<N>): V0 inlined room check + euser `Append(ptr,len)` at each site 939 / 105905; V1 `#[inline(never)]` `Sink::put_utf16` per N 971 / 97666; V2 one non-generic helper per image 972 / 100454; earlier inlined Rust copy loop (memcpy) 956 / 103311; base push_str 1245 / 100031. Inlining costs ~12 B per literal piece; V1 costs one ~48 B function per capacity (break-even ~4 pieces per N).
 
+- Identity: HostBuf now models Buf16 in UTF-16 units (cap in units, put_utf16 copies the macro's units, never the &str); all 16 existing fast_write tests pass on it; new crates/symdev-build/tests/fast_write_utf16.rs (5 tests) passes. Breaking the const encoder's low surrogate (0x3ff -> 0x1ff) fails all 5 new tests (the old 9 do not notice: no astral literal in them).
+
 ## Decisions
 
 - Design to try: `symbian_fmt::Utf16Str` = `&'static str` + its `&'static [u16]`, built only by `utf16!(expr)` (const items: `[u16; utf16_len(S)]` from a const fn), `Deref<Target = str>` and `Display` = str's, `Arg` -> new `Sink::put_utf16(text, units)` whose default is `put_str(text)` (so every non-Buf16 destination sees the same `write_str`), `Buf16` overrides with a room check + unit copy. The fast `write!` emits each literal piece as a `utf16!` const. `hello` changes one line: `const GREETING: Utf16Str = utf16!("…")`.
