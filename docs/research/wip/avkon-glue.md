@@ -30,4 +30,4 @@ symbian-core/src/des, symbian-macros/src/fast_write.
 
 ## Next step
 
-Drive ui by hand (F1, Down Return → bars=2 keys=0 cmd=1) and ui-list (Down×3 Return → picked: 3); then write experiment 104.
+Write experiment 104 in the backlog, point cpp-parity/spec at it, delete this file.
