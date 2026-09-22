@@ -21,6 +21,16 @@ in the backlog, update size-levers.md.
 - Host JSON reader: crates/symdev-emulator/src/results.rs (+ results/tests.rs, json/tests.rs).
 
 ## Decisions
+- `check_detail(name, ok, detail: impl FnOnce(&mut String))`; call sites write `detail!(...)`
+  where they wrote `format_args!(...)` — `symbian_std::detail!` expands to a closure that
+  runs the fast `write!` (with `core::fmt::Write` imported inside, which the fast
+  macro's never-called slow closure needs to type-check).
+- `checked<T, E: Evidence>`: trait `test_report::Evidence` (`show(&self, &mut String)`,
+  `shown() -> String`) writes Debug's text without core::fmt for SymbianError, io::Error,
+  SystemTimeError, AccessError, (), ints, bool, str/String, Option, Result, slices, Either,
+  and `Hex(usize)` (= `{:#x}`). io::Error records "KErrNotFound (-1)" — name and TInt;
+  the std-kind prefix of its Debug ("NotFound (...)") is dropped (would need a name table).
+- JSON/path hex via a private `push_hex`; test_report.rs split into test_report/{mod,json,evidence}.rs.
 
 ## Dead ends
 
