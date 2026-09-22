@@ -12,8 +12,10 @@
 //! diagnostic at all (experiment 76). The rule for what needs a wrapper is in
 //! `shims/common/symrs_shim.h`; read it before adding one.
 
+use crate::bafl::RResourceFile;
 use crate::cleanup::CTrapCleanup;
 use crate::des::TDesC16;
+use crate::des8::HBufC8;
 use crate::des16::TDes16;
 use crate::efsrv::{CDir, RFs};
 use crate::process::RProcess;
@@ -26,6 +28,24 @@ unsafe extern "C" {
     /// file server's own error — a drive that is not there, a read-only path — and the
     /// wrapper hands that code back instead of letting the exception fly.
     pub fn symrs_bafl_ensure_path_exists(fs: *mut RFs, path: *const TDesC16) -> i32;
+}
+
+unsafe extern "C" {
+    /// Constructs an `RResourceFile` in `file`, opens the nearest language variant of
+    /// `path` (`BaflUtils::NearestLanguageFile`, bafl.dso) and confirms its signature
+    /// (`RResourceFile::OpenL` then `ConfirmSignatureL(0)`), TRAPped.
+    ///
+    /// Rule 1: both calls leave. On failure the file is closed again. `KErrNone`, the
+    /// leave code (`KErrNotFound` when no variant exists), or `KErrArgument` for a null
+    /// pointer or a path longer than a `TFileName`.
+    pub fn symrs_rsc_open(fs: *mut RFs, path: *const TDesC16, file: *mut RResourceFile) -> i32;
+
+    /// `RResourceFile::AllocReadL(Offset() + index)` (`_ZNK13RResourceFile10AllocReadLEi`,
+    /// bafl.dso), TRAPped.
+    ///
+    /// Rule 1: it leaves. On `KErrNone` `*out` is one heap cell holding the whole
+    /// resource, which the caller frees with `User::Free`; on failure `*out` is null.
+    pub fn symrs_rsc_read(file: *const RResourceFile, index: i32, out: *mut *mut HBufC8) -> i32;
 }
 
 unsafe extern "C" {
