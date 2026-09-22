@@ -210,6 +210,61 @@ application does not pay for it.
 
 ## Behaviour
 
-`cargo test --workspace --offline` and `cargo clippy --workspace --all-targets --offline` are
-clean. `symdev test --emulator` was run on every `no_std` example that writes a report. The
-results are recorded in the section below.
+Host gates: `cargo test --workspace --offline` (with `SYMDEV_SIGN_PASSWORD` unset) and
+`cargo clippy --workspace --all-targets --offline` both pass with no warnings. The two argv
+tests now pin the new lines: `-Zbuild-std-features=optimize_for_size` in the cargo
+invocation, and the two section flags after `-mapcs` on the shim compile.
+
+`symdev test --emulator` with every kept lever applied:
+
+| example | result |
+|---|---|
+| `async` | 15 passed |
+| `atomics` | 23 passed |
+| `files` | 16 passed |
+| `locale` | 8 passed |
+| `notes` | 3 passed |
+| `query` | 4 passed |
+| `time` | 29 passed |
+| `tls` | 45 passed |
+| `ui` | 3 passed |
+| `ui-list` | 6 passed |
+| `net`, `shim` | **no result file after 180 s — the same on the untouched baseline** |
+
+`net` and `shim` fail identically when built from `main` at 4c5fc5e in a separate worktree,
+with byte-identical baseline images (13 379 and 4 474). The failure predates this work, and
+this audit did not diagnose it. `shim`'s image is not changed by any kept lever, and `net`'s
+changes only through L4.
+
+Driven by hand (`emukey.py`, 900×600, N00):
+
+- `ui`: F1 opens Options with Avkon's "Show open apps." above More bars / Fewer bars / Reset /
+  Exit. Down and Return on "Fewer bars" show **`bars=2 keys=0 cmd=1`**, which is experiment 95's
+  result, rendered by the smaller `Display` from L4.
+- `ui-list`: Down ×3 and Return on "Charlie" rewrite the first row to **`picked: 3`**. The shim
+  methods that L1 lets the linker drop are really unused.
+
+Not run: `hello`, `hello-raw`, `alloc`, `spawnee`. They write no report and were not driven.
+`hello-raw` and `spawnee` are byte-identical to the baseline. `hello` and `alloc` change only
+through L4, the same `core` code that `ui`, `locale`, `time` and the others run above.
+
+## Note on `Debug` (data point from `nostd-readdir`, another agent's branch)
+
+In those images `{:?}` is a separate cost from `Display`, and a larger one.
+`format_args!("{e:?}")` on a `symbian_std::io::Error` cost `examples/cleanup` **1 547** bytes
+(8 015 → 6 468 when replaced by an `{}` of the raw code). Removing a
+`{:?} {:?}` of `e.kind()` and `e.raw_os_error()` took `examples/files` from 12 986 to 12 069
+(-917). The added symbols are `PadAdapter::write_str` +596, `<Option<i32> as Debug>::fmt`
++348, `<i32 as Debug>::fmt` +160 and `PadAdapter::write_char` +104. `PadAdapter` comes with
+any `debug_tuple`/`debug_struct`/`Option` shape, because it implements the `{:#?}`
+indentation. A plain integer `{}` added nothing, because `Report` already linked it. So
+L6's -19 427 is mostly this, plus the `KErr*` table. The cheap habit that follows: SDK
+examples and docs should write an error as `{}` of its code or name, not as `{:?}`.
+
+## Harness
+
+The measurement scripts are kept outside the repo (`~/.cache/size-levers-agent/measure.sh`
+and `diff.sh`). For each example they run `symdev build`, record `stat -c%s build/*.exe` and
+the `size -A` rows `.text`, `.rodata`, `.ARM.exidx`, `.ARM.extab`, `.constdata`, `.data` and
+`.bss`, and then diff two runs line by line. After the build cache is warm, a full
+sixteen-example run takes about 15 s. A cold run takes about 4 minutes.
