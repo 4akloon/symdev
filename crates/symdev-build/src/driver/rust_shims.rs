@@ -38,7 +38,7 @@ impl RustBuild {
     /// the compile line rather than written into a source, because the manifest
     /// already holds it and two copies drift apart.
     /// **Not a reproduction.** Every other flag on this line is the SDK's own, recorded
-    /// from the real tools; these three are symdev's choice for symdev's own C++, and the
+    /// from the real tools; these four are symdev's choice for symdev's own C++, and the
     /// rule against inventing argv does not reach them — nothing in the SDK compiles
     /// `symbian-rs/shims/**`. Without them a whole shim source becomes one `.text`, so
     /// `--gc-sections` — already on the Rust link line — can only keep or drop it
@@ -53,8 +53,13 @@ impl RustBuild {
     /// `typeinfo` the compiler still emits for the `catch`. Experiment 104 measured
     /// `ui` −165, `ui-list` −248, `notes` −177, `query` −175 bytes, and the four GUI
     /// examples still pass on the emulator.
-    pub const SHIM_OPTIONS: [&'static str; 3] =
-        ["-ffunction-sections", "-fdata-sections", "-fno-rtti"];
+    ///
+    /// `-Os`, after the recorded line's `-O2` so that it wins: the shim is thin
+    /// forwarding code that runs once per event, and size is the only thing to buy.
+    /// Experiment 104: `ui` −73, `ui-list` −58, `notes` −52, `query` −62 bytes, the
+    /// console examples within deflate noise.
+    pub const SHIM_OPTIONS: [&'static str; 4] =
+        ["-ffunction-sections", "-fdata-sections", "-fno-rtti", "-Os"];
 
     pub fn shim_compile_args(
         &self,
