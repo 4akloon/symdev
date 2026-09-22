@@ -21,9 +21,11 @@
 //!
 //! `symdev build` compiles each file into `<app>_strings.rsc` / `.r<code>` and installs
 //! them all. At run time the program opens the one `BaflUtils::NearestLanguageFile`
-//! picks for the device, once, and reads a string with `RResourceFile::AllocReadL` when
-//! asked — the C++ model, measured against it in EKA2L1: the open file holds 4 heap
-//! cells, a string held is 1 more, and dropping it gives that back. No other language
+//! picks for the device, once, and reads a string with one `RFile::Read` when asked — the
+//! C++ model, measured against it in EKA2L1: the open file holds 1 heap cell (its index;
+//! C++'s `RResourceFile` holds 4), a string held is 1 more, and dropping it gives that
+//! back. No C++ and no `TRAP` is involved: symdev writes these files, and the reader
+//! understands exactly what it writes (experiment 102). No other language
 //! is ever in memory. A table compiled into the executable holds every language for the
 //! life of the process, which is what the user ruled out
 //! (`docs/research/experiment-backlog.md`, the native localisation entry).
