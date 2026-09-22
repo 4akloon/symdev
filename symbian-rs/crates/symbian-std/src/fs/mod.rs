@@ -53,7 +53,6 @@ pub use symbian_core::fs::{DirEntry, Name};
 /// A directory's entries, as [`read_dir`] returns them.
 pub type ReadDir = symbian_core::fs::Dir;
 
-use alloc::string::String;
 use alloc::vec::Vec;
 use symbian_core::ErrorKind as SymKind;
 use symbian_core::fs::{Entry, ProcessSession};
@@ -68,11 +67,7 @@ use crate::io::{Read, Result, Write};
 /// `RFs::MkDirAll` treats the last component of its argument as a file name and does
 /// not create it, so a trailing backslash is added when the caller left it out.
 pub fn create_dir_all(path: &str) -> Result<()> {
-    let mut with_separator = String::from(path);
-    if !with_separator.ends_with('\\') {
-        with_separator.push('\\');
-    }
-    match ProcessSession::make_dir_all(&with_separator) {
+    match ProcessSession::make_dirs(path) {
         Err(e) if e.kind() == SymKind::AlreadyExists => Ok(()),
         other => Ok(other?),
     }

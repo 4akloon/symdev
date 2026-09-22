@@ -13,8 +13,7 @@
 //! still alive would be the bug, not the leak.
 use core::cell::{Cell, UnsafeCell};
 
-use symbian_sys::des::TDesC16;
-use symbian_sys::efsrv::{RFs, RFs_Delete, RFs_MkDirAll, RFs_Rename};
+use symbian_sys::efsrv::{RFs_Delete, RFs_MkDirAll, RFs_Rename};
 
 use super::path_of;
 use super::request::Request;
@@ -112,37 +111,31 @@ pub(crate) fn request(path: &str, request: Request<'_>) -> Result<i32> {
 pub struct ProcessSession;
 
 impl ProcessSession {
-    /// Creates every missing directory of `path` (`RFs::MkDirAll`); the last component is
-    /// taken as a file name and is not created. An existing path is `KErrAlreadyExists`.
-    pub fn make_dir_all(path: &str) -> Result<()> {
-        // SAFETY: `this` first per the observed member ABI, the path borrowed and only
-        // read. Non-leaving, every failure is the returned `TInt`; likewise below.
-        let mut call = |fs: *mut RFs, path: *const TDesC16| unsafe { RFs_MkDirAll(fs, path) };
-        request(path, Request::new(&mut call)).map(|_| ())
-    }
-
-    /// [`ProcessSession::make_dir_all`] of the directory `path` names, the last
-    /// component included: a backslash is added when `path` does not end with one.
-    pub fn make_dir(path: &str) -> Result<()> {
-        // SAFETY: as `make_dir_all`.
-        let mut call = |fs: *mut RFs, path: *const TDesC16| unsafe { RFs_MkDirAll(fs, path) };
-        request(path, Request::new(&mut call).of_directory(path)).map(|_| ())
+    /// Creates the directory `path` names and every missing parent (`RFs::MkDirAll`,
+    /// with the trailing backslash it needs to create the last component too, added
+    /// when `path` has none). An existing directory is `KErrAlreadyExists`.
+    pub fn make_dirs(path: &str) -> Result<()> {
+        // SAFETY, every call here: `this` first per the observed member ABI, the paths
+        // borrowed and only read. Non-leaving, every failure is the returned `TInt`.
+        let call = &mut |fs, path| unsafe { RFs_MkDirAll(fs, path) };
+        request(path, Request::new(call).of_directory(path)).map(|_| ())
     }
 
     /// Removes one file (`RFs::Delete`): `KErrInUse` while it is open.
     pub fn delete(path: &str) -> Result<()> {
-        // SAFETY: as `make_dir_all`.
-        let mut call = |fs: *mut RFs, path: *const TDesC16| unsafe { RFs_Delete(fs, path) };
-        request(path, Request::new(&mut call)).map(|_| ())
+        request(
+            path,
+            Request::new(&mut |fs, path| unsafe { RFs_Delete(fs, path) }),
+        )
+        .map(|_| ())
     }
 
     /// Renames a file or directory (`RFs::Rename`): `KErrAlreadyExists` if `to` is taken.
     pub fn rename(from: &str, to: &str) -> Result<()> {
-        let mut call = |fs: *mut RFs, from: *const TDesC16| match path_of(to) {
-            // SAFETY: as `make_dir_all`, with a second descriptor, also only read.
+        let call = &mut |fs, from| match path_of(to) {
             Ok(to) => unsafe { RFs_Rename(fs, from, to.as_tdesc16()) },
             Err(e) => e.code(),
         };
-        request(from, Request::new(&mut call)).map(|_| ())
+        request(from, Request::new(call)).map(|_| ())
     }
 }

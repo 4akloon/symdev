@@ -52,6 +52,14 @@ Keep experiment 98's `read_dir` borrowing from the `CDir`. Stay out of `symbian-
   net -118, notes -54, panic +39, query +7, shim -26, spawnee +8, time -49, tls -118,
   ui-list -73, ui -12.
 
+- Candidate 3 (commit): `create_dir_all` without the `String` it built to add the trailing
+  backslash — `ProcessSession::make_dirs` adds it in the request's stack `TFileName`
+  (`Request::of_directory`). Same `KErrOverflow` for a 256-unit path without a separator
+  (the push fails instead of the longer string). One heap alloc+free fewer per call. vs c1e:
+  async -66, atomics -68, cleanup -80, files -50, fmt -135, locale -42, net -15, notes -67,
+  query -68, spawnee -478 (the String was its only heap use: RawVec growth left the image),
+  time -59, tls -17, ui-list -84, ui -69; panic/shim/alloc/hello 0.
+
 ## Decisions
 
 ## Dead ends
