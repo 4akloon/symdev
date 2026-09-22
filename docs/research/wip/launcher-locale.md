@@ -32,3 +32,44 @@ the native solution.
 
 Design: build side (locale files -> `.rNN` via our rcomp, installed), runtime side
 (open once through a shim, read on demand), and the caption.
+
+## Task 3: the run-time reader (branch `locale-runtime`)
+
+Built: `symbian-rs/shims/common/symrs_rsc.cpp` (`symrs_rsc_open`: construct in place,
+`NearestLanguageFile`, `OpenL` + `ConfirmSignatureL(0)` under one TRAP, `Close` on failure;
+`symrs_rsc_read`: `AllocReadL(Offset() + index)`), `symbian-sys` bindings (`bafl.rs` with the
+24-byte 4-aligned `RResourceFile`, opaque `HBufC8`, `TDesC8_Ptr` = `_ZNK6TDesC83PtrEv` at
+0x1ad8), and `symbian_core::locale::{Str, Text}` in `locale/strings.rs`: the file is a static
+opened lazily on the first `get` and never closed (single-thread claim as `fs/session.rs`,
+an `Opening` state as the reentrance flag), path `<exe drive>:\resource\apps\<stem>_strings.rsc`
+from `symrs_process_file_name`, UTF-8 checked once (`KErrCorrupt` otherwise), `Drop` =
+`User::Free`. Index 0, 1 or > 4095 is `KErrArgument`.
+
+- **Heap against C++**, scratch console probe (not committed), `User::AllocSize`, file-server
+  session connected before the first reading, as C++ had its `RFs`:
+  | step | Rust | C++ |
+  |---|---|---|
+  | open file (`NearestLanguageFile`+`OpenL`+`ConfirmSignatureL`), held | +4 cells / +168 B | +4 / +208 |
+  | one 14-character string held | +1 / +36 B | +1 / +36 |
+  | string dropped | −1 / −36 B | −1 / −36 |
+  Repeated get/drop and the error paths return to the same count. The open is 40 B *below*
+  C++; the cause is not isolated (the files differ: C++'s is `TBUF` UTF-16 with rcomp's
+  Unicode-compression header flags, ours `BUF8`, and C++ opened `.r01`, the probe `.rsc`).
+  The string cell is the same 36 B although ours is 14 bytes of UTF-8 and C++'s 28 of UTF-16.
+- **Emulator evidence:** index 2 `Hello, strings`, index 3 `Привіт é ok` (18 UTF-8 bytes,
+  written as `<0xNN>` in the `.rss`) intact, index 4 `third`, index 9 `KErrNotFound` from
+  `AllocReadL`; `strdemo: 7 passed`. With a `…_strings.r01` also installed, index 2 came from
+  it: `NearestLanguageFile` picks the variant.
+- **`delete` vs `User::Free`:** C++'s `delete` on an `HBufC8` is `_ZdlPv` from `scppnwdl.dso`,
+  not euser, and the ROM's `scppnwdl.dll` in EKA2L1's dump is truncated (296 B; `_ZdlPv` is a
+  Thumb thunk to an import not in the file), so "delete == User::Free" is not statically
+  verified. `e32des8.h` says an HBufC8 is "hosted by a heap cell" and the class has no
+  destructor; the cell count and bytes returning to baseline after `User::Free` is the check.
+- **Size**, minimal program (`examples/hello` + one `Str::at(2).get()`): hello 2 567 B; + a
+  first shim TRAP 5 087 B (+2 520 B: libsupc++/libgcc's unwinder and `__gxx_personality_v0`,
+  paid once by any program with a TRAP); + the reader 6 556 B (+1 469 B, +2 340 B text, +40 B
+  bss). Without a prior TRAP the reader costs +3 989 B. `examples/hello` stays byte-identical
+  (only the E32 header CRC and time differ): gc-sections drops `symrs_rsc.o` when unused.
+- `cargo test --workspace` inside `symbian-rs/` fails on `launcher-locale` before this change
+  too (no `test` crate for `arm-symbian-e32`); the root workspace tests and all three clippy
+  runs are clean.
