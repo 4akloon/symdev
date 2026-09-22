@@ -44,7 +44,9 @@ the noise described above.
 **The largest remaining gap was `core::fmt` (L8).** In `hello` it was 1 330 of the 2 523 bytes
 that were left. The macro it needed was decided and built in experiment 101: `hello` is now
 1 245 bytes with no `core::fmt` in it (see L8). Experiment 103 took it out of the test harness, and with it out of
-every example that reports (see L8).
+every example that reports (see L8). Experiment 106 put text known at compile time into the
+image as UTF-16, as C++'s `_LIT` does: `hello` is **971** (C++ 802), with no run-time UTF-16
+encoder left.
 
 ## Every lever
 
@@ -168,7 +170,8 @@ and the JSON is plain appends. `core::fmt` is gone from every example that repor
 harness), and all four use it. Only `alloc` (its own `{:x}`) and `fmt` (a comparison with
 `core::write!`, on purpose) still link `core::fmt`. What is left of `hello`'s gap is
 `Buf16::push_str` (428, UTF-8 to UTF-16 at run time); compile-time UTF-16 literals are the
-next lever.
+next lever — applied in experiment 106 (`utf16!`, and `write!`'s literal pieces): `hello`
+1 245 → 971.
 
 *The measurement that motivated it (before experiment 101):*
 

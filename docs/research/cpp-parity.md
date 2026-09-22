@@ -319,3 +319,11 @@ image to the C++ model. Heap is at parity (open file +4 cells, Rust 168 B agains
 208 B; a held string +1 cell / +36 B on both); the image is `locale` **12 031** against
 C++'s 6 647, the difference being the `TRAP` exception runtime (~2.2 kB, which C++ pays
 too) and the reader (~2.1 kB).
+
+## hello after experiments 101, 103 and 106
+
+`hello` is **971** against C++'s 802: `core::fmt` went in experiment 101 (2 567 → 1 245), the
+run-time UTF-8 to UTF-16 conversion in experiment 106 (1 245 → 971). What is left is the
+`CTrapCleanup` pair of the `no_std` entry, `Buf16::new`'s zero fill, a room check per piece
+where C++ makes one `Format` call into ROM, and the 48-byte `Buf16::put_utf16`.
+

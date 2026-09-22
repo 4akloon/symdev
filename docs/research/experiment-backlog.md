@@ -2579,3 +2579,150 @@ Not run on an E52.
 Measurement scripts outside git, in `~/.cache/harness-fmt-agent/` (`measure.sh`,
 `cmp.sh`, `runall.sh`, `res-*.txt`, the result JSON of every run in `run-final/` and the
 failing one in `run-fail/`).
+
+## 106. Compile-time UTF-16 for text known at compile time: `utf16!` and the literal pieces of `write!` (T5, Rust SDK)
+
+**Requires:** the toolchain, `SYMDEV_EKA2L1`; for `net`, both peers in `examples/net/peer`.
+
+**Why.** After experiments 101 and 103, `hello` was 1 245 bytes against C++'s 802, and
+428 of them were `Buf16::push_str`: UTF-8 to UTF-16 at run time, because every Symbian
+text API takes UTF-16 and Rust text is UTF-8. C++'s `_LIT` has the compiler put UTF-16
+into the image.
+
+**First question: which examples could lose `push_str` at all.** Measured on `main` at
+de45e20 (`nm -S`, every symbol with `push_str`/`utf16` in its name):
+
+| example | links the encoder because | could lose it |
+|---|---|---|
+| every report writer (`async`, `atomics`, `cleanup`, `files`, `fmt`, `locale`, `net`, `notes`, `query`, `time`, `tls`, `ui`, `ui-list`) | the result file's path goes through `fs::path_of` → `Buf16<256>::push_str` | no |
+| `panic`, `spawnee` | file-system paths | no |
+| `alloc` | `HBuf16::push_str` of a `String` built at run time | no |
+| `shim` | `FileServer` paths; its own six `push_str("…")` are a separate 120-byte `Buf16<160>` copy | partly |
+| `hello` | only text known at compile time | **yes** |
+| `hello-raw` | nothing (a `Lit16` static) | already |
+
+So a program that touches the file system keeps the encoder whatever this experiment
+does, and only `hello` could lose it entirely. It was still worth doing, for three
+reasons: `hello` is the parity example and the file `symdev new --language rust` writes;
+the change needs no new API for literal text (the `write!` the program already calls
+does it); and a literal piece into a `Buf16` stops transcoding at run time in every
+program, whether or not the encoder is linked.
+
+**Design.**
+
+- `symbian_fmt::Utf16Str` (re-exported as `symbian_std::Utf16Str`): a `&'static str` and
+  its `&'static [u16]`, both in the image. Only `utf16!(expr)` builds one: it takes any
+  `&'static str` constant expression (a literal, `concat!`, the name of a `const &str`)
+  and expands to two `const` items, `[u16; utf16_len(S)]` filled by
+  `encode_utf16(S)`, both `const fn`s (an array length computed by a `const fn` on a
+  concrete `const` is stable Rust). The `const fn`s cannot panic: a unit past `N` is
+  dropped, a missing continuation byte reads as 0, and the macro only ever asks for
+  `N = utf16_len(S)` of a well-formed `str`. It `Deref`s to `str` and its `Display` and
+  `Debug` are the `str`'s, so `GREETING.len()` and `{GREETING:>24}` read as before.
+- `Sink::put_utf16(text, units)`, default `put_str(text)`: every destination but
+  `Buf16` — `String`, a `Formatter`, a user's `fmt::Write` — receives the `&str`
+  exactly as before. `Buf16` overrides it: a room check, then euser's
+  `TDes16::Append(const TUint16*, TInt)` (`_ZN6TDes166AppendEPKti`, new in
+  `symbian-sys::des16`), so the copy is ROM code. Its member ABI was observed, not
+  assumed: `d->Append(p, n)` compiled by `symdev build` from a C++ probe is `push {r4, lr};
+  blx Append; pop` — `this`, `aBuf`, `aLength` in r0–r2, as experiment 78's rule says.
+- The fast `write!` emits each literal piece as `{ const __T: Utf16Str = utf16!("…");
+  <piece &__T> }` instead of a `&str`, and `Utf16Str` is on the fast list (`Arg`).
+- **What `{GREETING}` of a `const &str` does:** stays on `push_str`. A macro sees tokens,
+  and constness is not in a type, so neither the proc macro nor autoref specialisation
+  can tell a `const` from a variable, and wrapping an argument in `const { … }` is a
+  compile error for a variable, not a fallback. So the program says it:
+  `const GREETING: Utf16Str = utf16!("Hello from Rust SDK");` — one line of `hello`
+  changed, the `write!` line did not.
+
+**Where the copy lives** (`.exe` bytes; `fmt` has 703 literal pieces into 25 `Buf16<N>`):
+
+| variant | `hello` | `fmt` (12 cases) |
+|---|---|---|
+| `main`, `push_str` | 1 245 | 100 031 |
+| Rust copy loop, inlined (`__aeabi_memcpy`) | 956 | 103 311 |
+| room check + euser `Append`, inlined per piece | **939** | 105 905 |
+| one non-generic helper per image | 972 | 100 454 |
+| **`Buf16::put_utf16` out of line, one per `N`** (chosen) | **971** | **97 666** |
+
+Inlined costs about 12 bytes per literal piece; out of line, a piece costs its call
+site what a `push_str` call did and each capacity one 48-byte function (break-even
+about four pieces per `N`). The inlined form is 32 bytes better for `hello` and 8 kB
+worse for `fmt`, so a program with more than a handful of pieces would pay; the
+out-of-line form is chosen, and `hello` pays those 32 bytes. Two more measured details:
+`#[inline(always)]` on the default `put_utf16` and on `Arg for Utf16Str`, without which
+`alloc` grew 4 bytes (LLVM stopped specialising `Generic<String>::put_str` on the
+constant `","`); and `utf16!` constants that only reach a `String` are dropped by the
+linker (`.rodata` grew only in `hello`, 28 → 56, and `fmt`: the UTF-16 text itself).
+
+**Resources — every example, `.exe` bytes, `main` at de45e20 against this branch:**
+
+| example | main | UTF-16 literals | Δ |
+|---|---|---|---|
+| `hello` | 1 245 | **971** | −274 (−22 %) |
+| `fmt` (the 12 cases of `main`) | 100 031 | 97 666 | −2 365 |
+| `alloc`, `async`, `atomics`, `cleanup`, `files`, `hello-raw`, `locale`, `net`, `notes`, `panic`, `query`, `shim`, `spawnee`, `time`, `tls`, `ui`, `ui-list` | | | 0 |
+
+For `atomics`, `time`, `query` and `alloc` the `.exe` was compared byte for byte: they
+differ from `main`'s only at offsets 20–23 and 36–39 (the E32 header's CRC and build
+time). `fmt` with its new 13th case is 107 928 (a test image: two more invocations,
+through both macros, at 26 capacities).
+
+**`hello` against C++: 971 against 802**, from 1 245. No UTF-16 encoder and no
+`core::fmt` left; `E32Main` is `CTrapCleanup::New`, a `memclr4` of the buffer, three
+`put_utf16` calls and one `AppendNum`, then `InfoPrint`. What remains of the 169 bytes:
+`E32Main` 260 against C++'s 52 + `KFormat` 32 + `KGreeting` 44 — the `CTrapCleanup`
+pair of `#[symbian_std::main]` (C++'s default `hello` has none, +31 when it does;
+cpp-parity), `Buf16::new`'s zero fill of all 64 units (C++'s `TBuf` leaves them), and a
+room check per piece where C++'s one `Format` call is ROM code — plus the 48-byte
+`put_utf16`. The zero fill is the next lever in this crate; the entry is not.
+
+**`shim`, measured and not applied:** its six `note.push_str("…")` as the fast
+`write!(note, "…")` → 4 517 → 4 450 (−67; the `Buf16<160>` `push_str` copy goes, the
+encoder stays for `FileServer`'s paths). The example is about the shim and euser's
+appends, not a parity pair, so it is left as it is.
+
+**Identity evidence.**
+
+- Host (`crates/symdev-build/tests/fast_write*.rs`): the `Buf16`-like `HostBuf` now
+  models `Buf16` in UTF-16 code units (capacity in units, `write_str` measured then
+  encoded, all or nothing) and its `put_utf16` appends the units the macro made —
+  never the `&str` — so every one of experiment 101's 16 tests, run into `HostBuf` at
+  capacities 0–47, now also compares the compile-time units against `core::write!`'s
+  run-time encoding. New `fast_write_utf16.rs` (5 tests): the `const fn` encoder
+  against `str::encode_utf16` (every UTF-8 width at its edges, the surrogate range's
+  neighbours, U+10FFFF, and every 401st code point); `utf16!` of a literal, a
+  `const &str`, a `concat!` and `""`; a `Utf16Str` argument against `core::write!` of
+  its `&str` into the recording destination under all 56 failure modes and into
+  `HostBuf` at every capacity; that literal pieces take the UTF-16 path (4 of them in
+  one invocation, 0 for `core`); astral literals straddling every capacity. Breaking
+  the encoder's low surrogate (`& 0x3ff` → `& 0x1ff`) fails all 5 (the older 9 do not
+  notice: none of their literals is astral). `symbian-macros`' expansion test checks
+  the `utf16!` constant (26 tests).
+- Emulator, on euser's own `Append` (`examples/fmt`): a 13th case, "text known at
+  compile time, appended as UTF-16" (astral literals at every capacity, a `utf16!`
+  constant as `{MIXED}` and `{}`), 0 mismatches over 26 capacities: **15 passed**.
+  Passing `len − 1` to `Append` instead: **12 failed**, 3 passed — every group with
+  literal text, the new one with 48 mismatches.
+
+**Verification.** `symdev test --emulator`: `net` 22 (both peers up), `async` 15,
+`atomics` 23, `cleanup` 2, `files` 26, `fmt` 14 (15 with the new case), `locale` 7,
+`notes` 3, `query` 4, `time` 29, `tls` 45, `ui` 3, `ui-list` 6 passed — experiment 103's
+counts. `shim` writes no report by design; its note reads `shim70 mkdirall=0
+trapped=-12 bad=0 ensured=0 sign=-42 alive`. `hello`'s note, from its `eka2l1.log`:
+`Trying to display: Hello from Rust SDK (19 chars)`. Host: `cargo test --workspace` and
+`cargo clippy --workspace --all-targets` clean; `symbian-rs`: `cargo clippy --release
+--workspace` clean but for the pre-existing `compiler_builtins` profile warning. Not run
+on an E52.
+
+**Not determined.** `TDes16::Append(const TUint16*, TInt)` was exercised only on
+EKA2L1, not on a phone; what a stock E52 shows for astral characters in `InfoPrint`.
+
+**Evidence.** `symbian-rs/crates/symbian-fmt/src/utf16.rs`, `sink.rs`, `arg.rs`;
+`symbian-rs/crates/symbian-core/src/des/buf16.rs` (`append_units`) and `buf16/sink.rs`;
+`symbian-rs/crates/symbian-sys/src/des16.rs` (`TDes16_AppendUnits`);
+`symbian-rs/crates/symbian-macros/src/fast_write/expand.rs`;
+`crates/symdev-build/tests/fast_write_utf16.rs` and `fast_write_support/`;
+`symbian-rs/examples/{hello,fmt}`. Scripts and results outside git, in
+`~/.cache/utf16-literals-agent/` (`measure.sh`, `runall.sh`, `res-*.txt`, `run-*/`);
+the C++ `Append` probe in this session's scratchpad (`appendprobe/`).
