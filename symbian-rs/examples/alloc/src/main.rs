@@ -14,6 +14,7 @@ use alloc::vec::Vec;
 use core::fmt::Write;
 
 use symbian_core::{Buf16, Des16, DesC16, ErrorKind, HBuf16, Result, SymbianError, user};
+use symbian_std::write;
 
 /// A value the Symbian heap cannot align on its own: 32 bytes, 32-aligned. The global
 /// allocator has to over-allocate and place it by hand (`MAX_TRUSTED_ALIGN` is 8).

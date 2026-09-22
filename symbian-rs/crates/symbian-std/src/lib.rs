@@ -133,6 +133,22 @@ pub use symbian_async as task;
 pub use symbian_ui as ui;
 
 pub use symbian_macros::{main, strings};
+
+/// `write!` and `writeln!` with `core`'s syntax and byte-for-byte `core`'s output,
+/// which append a plain `{}` of a string or an integer directly instead of going
+/// through `core::fmt` (experiment 99). A program opts in with one line, and nothing
+/// else in it changes:
+///
+/// ```ignore
+/// use core::fmt::Write;
+/// use symbian_std::{write, writeln};
+///
+/// write!(note, "{GREETING} ({} chars)", GREETING.len())?;
+/// ```
+///
+/// They are not in the [`prelude`]: a glob-imported `write` is ambiguous with
+/// `core`'s and would be a compile error (E0659).
+pub use symbian_fmt::{write, writeln};
 /// What a `fn main` may return, and the `TInt` it becomes. An application implements
 /// [`IntoExitCode`] for its own error type to return it from `main`; `()`, `i32`,
 /// `SymbianError`, `io::Error` and any `Result` of those are already covered.

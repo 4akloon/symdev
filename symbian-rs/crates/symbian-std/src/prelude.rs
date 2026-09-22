@@ -6,11 +6,11 @@
 //! ([`crate::io::Result`]), so globbing the prelude does not take `Result<T, E>` away
 //! from the rest of the file — the two-parameter form still means what it always did.
 //!
-//! And it brings [`write!`](symbian_fmt::write) and [`writeln!`](symbian_fmt::writeln),
-//! which shadow `core`'s: the same syntax and, byte for byte, the same output, but a
-//! plain `{}` of a string or an integer is appended directly instead of going through
-//! `core::fmt` (experiment 99). A program that formats nothing else links none of
-//! `core::fmt`; one that does gets `core::write!`'s exact behaviour for those pieces.
+//! It does **not** bring the fast [`crate::write!`] and [`crate::writeln!`], although
+//! that was the plan: a macro named `write` that arrives through a glob import is
+//! ambiguous with `core`'s (rustc E0659, experiment 99), so every program that globbed
+//! this prelude and called `write!` would stop compiling. They are imported by name:
+//! `use symbian_std::{write, writeln};`.
 //!
 //! It deliberately does not re-export `Vec`, `String` or `Box`: those come from
 //! `alloc`, which an application already has, and shadowing them here would make it
@@ -19,4 +19,3 @@
 pub use crate::io::{Read, Result, Seek, Write};
 #[cfg(feature = "std")]
 pub use std::io::{Read, Result, Seek, Write};
-pub use symbian_fmt::{write, writeln};

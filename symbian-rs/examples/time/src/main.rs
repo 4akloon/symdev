@@ -21,6 +21,7 @@ use symbian_std::fs;
 use symbian_std::io::Result;
 use symbian_std::test_report::Report;
 use symbian_std::time::{Duration, SystemTime, UNIX_EPOCH};
+use symbian_std::writeln;
 
 mod checks;
 

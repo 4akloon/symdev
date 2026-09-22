@@ -11,7 +11,7 @@
 use core::fmt::Write;
 
 use symbian_core::{Buf16, ErrorKind, Result, SymbianError, user};
-use symbian_std::prelude::*;
+use symbian_std::write;
 
 const GREETING: &str = "Hello from Rust SDK";
 

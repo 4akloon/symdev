@@ -7,6 +7,7 @@ use symbian_core::time::Ttime;
 use symbian_core::user::after;
 use symbian_std::test_report::Report;
 use symbian_std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use symbian_std::{write, writeln};
 
 use crate::{NOT_AFTER, NOT_BEFORE, SAMPLES, SAMPLES_PER_SLEEP};
 

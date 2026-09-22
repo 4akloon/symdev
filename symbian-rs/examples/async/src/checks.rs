@@ -9,6 +9,7 @@ use core::time::Duration;
 use symbian_async::{Either, block_on, join, race, sleep, spawn};
 use symbian_core::{ErrorKind, Result, SymbianError};
 use symbian_std::test_report::Report;
+use symbian_std::writeln;
 
 use crate::{SLACK_MS, millis, start_of};
 

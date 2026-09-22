@@ -27,6 +27,7 @@ use symbian_std::fs;
 use symbian_std::io::Result;
 use symbian_std::locale::Language;
 use symbian_std::test_report::{Report, alloc_size};
+use symbian_std::writeln;
 
 symbian_std::strings!();
 
