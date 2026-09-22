@@ -1960,3 +1960,138 @@ with only the caption pair changed.
 `symbian-rs/shims/common/symrs_rsc.cpp`, `symbian-rs/crates/symbian-core/src/locale/strings.rs`,
 `symbian-rs/crates/symbian-macros/src/strings.rs`, `symbian-rs/examples/locale/locales/`,
 `symbian-rs/examples/ui/locales/french.toml`.
+
+## 100. A Rust panic as a named Symbian panic: `User::Panic("RUST", …)`, and what it costs (T5, Rust SDK)
+
+**Requires:** the toolchain, `SYMDEV_EKA2L1`, `Kernel:trace` in the emulator's `log-filter`
+(restored to the stock value afterwards).
+
+**Why.** The user chose «User::Panic з категорією»: a `no_std` Rust panic should die the way
+a C++ program on this platform does, with a named category, and not through
+`User::Exit(-1)` or through the category-less trap that `-Cpanic=immediate-abort` would give.
+The user also asked what this costs and whether any of the 2.4 kB that immediate-abort saved
+(`size-levers.md`, L7) can be reclaimed while keeping the category.
+
+**The binding** already existed: `symbian-sys/src/euser.rs` `User_Panic`, from
+`nm -D euser.dso` `00000a24 T _ZN4User5PanicERK7TDesC16i`. The declaration is
+`e32std.h:4457` `IMPORT_C static void Panic(const TDesC& aCategory,TInt aReason);`.
+**Every EXE already imports it.** The SDK's `eexe.lib` startup (`KLitUser`,
+`_xxxx_call_user_invariant`) references both `User::Panic` and `User::Exit`, so the change
+adds no import.
+
+**Choices** (`symbian-runtime/src/panic.rs`):
+
+- **Category `RUST`.** The `std` PAL's `abort_internal` already raises it, so a panic reads the
+  same whichever library shape the program uses. It is 4 of the 16 UTF-16 units that
+  `KMaxExitCategoryName` allows (`e32const.h:167`, `=0x10`; `TExitCategoryName` in
+  `e32cmn.h:1750`). A longer name such as `RUST-PANIC` would cost 12 more bytes of
+  `.rodata` in every image and say nothing more.
+- **Reason `KErrGeneral` (-2)**, the same reason `std` uses. A line number was measured and
+  rejected: taking `PanicInfo::location().line()` keeps each panic site's `Location` static
+  and its file path. Against the chosen handler that is corpus `.exe` **+3 895** (`.rodata`
+  +5 928; async +672, query +351, tls +318). With `-Zlocation-detail=line` (file redacted)
+  it is still **+1 568**, and it buys a line number with no file. The message is not read
+  either, because reading it would pull in `core::fmt`.
+- **Out of memory becomes `User::Panic("RUST", KErrNoMemory)`, reason -4.** It was
+  `User::Exit(-4)`, but that never reached the log (see below). `symbian_alloc::oom` had no
+  other user and is deleted.
+
+**Observed** (EKA2L1, `symbian-rs/examples/panic`, new: it indexes out of bounds, or it
+runs out of memory when `E:\symdev\panic\oom` exists):
+
+| run | emulator log |
+|---|---|
+| Rust panic, new handler | `Thread Main panicked with category: RUST and exit code: -2` |
+| Rust OOM, new handler | `Thread Main panicked with category: RUST and exit code: -4` |
+| Rust panic, **old** handler `User::Exit(-1)` | `Access violation reading address 0x8000A4` then `terminated peacefully with category: KERN-EXEC and exit code: 3` |
+| Rust OOM, **old** `User::Exit(-4)` | the same `KERN-EXEC 3` |
+| C++ `User::Panic(_L("CPP"), 42)` | `Thread Main panicked with category: CPP and exit code: 42` |
+| C++ `CTrapCleanup::New(); User::Exit(45)` | `Access violation reading address 0x7000A4`, `KERN-EXEC 3` |
+| C++ `User::Exit(46)`, no cleanup stack | `forcefully killed with category: None and exit code: 46` |
+| C++ `CTrapCleanup::New(); User::LeaveNoMemory()`, no `TRAP` | `panicked with category: E32USER-CBase and exit code: 65` |
+| C++ top-level `TRAPD`, delete cleanup, `return err` | `forcefully killed with category: None and exit code: -4` |
+
+**In this emulator, `User::Exit` called while the thread's `CTrapCleanup` is installed dies
+`KERN-EXEC 3`.** C++ and Rust behave the same. Probes that exit before any file-server use and
+without allocating die the same way. A normal return is fine: `hello` logs `forcefully
+killed … exit code: 0`, because `start` frees the cleanup stack before `eexe` calls
+`User::Exit`. So under `#[symbian_std::main]` the old panic handler never showed `-1`, and OOM
+never showed `-4`. Whether a device does the same is **not known**. The fault is in ROM
+`euser` code (pc `0x80356afa`) reading the thread heap's base + `0xA4`.
+The recollection that an unhandled leave panics `USER 0` is wrong in both directions. The
+header gives `USER 175` (`EUserLeaveWithoutTrap`, `e32panic.h:1661`) for a leave with no trap
+handler. With a `CTrapCleanup` installed and no `TRAP`, the observed result is
+`E32USER-CBase 65` (`EClnLevelUnderflow`). So C++ reports OOM as an exit `-4` only through a
+top-level `TRAPD` and a return, which an abort that never unwinds cannot reproduce. Without a
+`TRAP`, a C++ OOM is a panic too. Hence a panic with a distinct reason.
+
+**Cost against `main` aae58bb** (`.exe` bytes, `symdev build`):
+
+| example | before | after | Δ |
+|---|---|---|---|
+| `alloc` | 3 876 | 3 896 | +20 |
+| `async` | 20 423 | 20 451 | +28 |
+| `atomics` | 10 720 | 10 723 | +3 |
+| `cleanup` | 5 767 | 5 783 | +16 |
+| `files` | 11 091 | 11 102 | +11 |
+| `hello` | 2 567 | 2 584 | +17 |
+| `hello-raw` | 808 | 808 | 0 |
+| `locale` | 12 031 | 12 045 | +14 |
+| `net` | 12 423 | 12 434 | +11 |
+| `notes` | 14 649 | 14 670 | +21 |
+| `query` | 19 374 | 19 392 | +18 |
+| `shim` | 4 520 | 4 520 | 0 |
+| `spawnee` | 3 261 | 3 274 | +13 |
+| `time` | 13 525 | 13 561 | +36 |
+| `tls` | 15 095 | 15 096 | +1 |
+| `ui` | 12 950 | 12 975 | +25 |
+| `ui-list` | 13 869 | 13 907 | +38 |
+
+Corpus **+272**. By symbol this is exactly `.text` +16 and `.rodata` +12. The handler grows
+from 16 to 24 bytes (`ldr r0, =CATEGORY` and its literal). `alloc_error` (24) replaces
+`symbian_alloc::oom` (16). The `Lit16<4>` category takes 12. `hello` has no allocation
+path, so its `.text` grows by only 8. The rest of each `.exe` delta is deflate and
+alignment. `hello-raw` and `shim` have no panic site that reaches the handler, so it is
+collected. The new `panic` example is 2 010 bytes.
+
+**C++ for comparison** is a scratch copy of `docs/research/cpp-parity/hello`; the baseline is
+untouched. One `if (note.Length() > 60) User::Panic(KCategory, 42);` with `_LIT(KCategory,
+"CPP")` takes the image from 802 to 831 bytes: `.text` +24 for the compare, the branch and
+the call, and `.rodata` +12 for the `_LIT`. It adds no import either. A C++ program pays its
++24 at every panic site. Rust pays +8 once, in the handler, because its panic sites already
+existed as calls to `core::panicking` stubs.
+
+**Levers, each measured against the chosen handler:**
+
+| lever | corpus `.exe` | verdict |
+|---|---|---|
+| `#[cold]` + `#[inline(never)]` on the handler | 0 | nothing to gain: the handler is already out of line |
+| reason = panic line | +3 895 (+1 568 with `-Zlocation-detail=line`) | rejected (above) |
+| `-Cpanic=immediate-abort` | **−2 768** (notes −473, query −450, ui −424, hello −31) | loses the category, and OOM becomes a trap as well: `alloc::handle_alloc_error` goes through `ct_error` → `panic!` under immediate-abort |
+| immediate-abort + `-Cllvm-args=-trap-func=…` | — | rustc ignores it: no call to the hook appears, and `udf #65006` stays |
+| immediate-abort + a patched `core` whose 7 `intrinsics::abort()` sites in `panicking.rs` call an `extern "C"` hook that panics `RUST` | **−776** (notes −251, query −269, ui −238) | keeps the category. Not applied: it needs a `core` patch, and OOM becomes `RUST -2` |
+| immediate-abort + `User::SetExceptionHandler` turning the trap into `RUST` | not measurable here | EKA2L1 never passes a CPU fault to a user handler (`src/emu/kernel/src/kernel.cpp:221-249` always kills with `KERN-EXEC 3`), and there is no device |
+
+*Where the 2.4 kB goes.* Panic call sites already pass nothing. `core::panicking::panic_fmt`
+is 12 bytes (`push`, `mov fp`, `bl rust_begin_unwind`), and the `Arguments` are already dead
+under LTO. What immediate-abort removes is cold **selection** code whose branches end in
+*different* noreturn stubs, for example `core::str::slice_error_fail_rt` (428 bytes in `notes`,
+`query` and `ui`), plus the frame each caller needs to make a call at all. A `udf` leaves a
+function a leaf, while a `bl` needs `push {fp, lr}` under `frame-pointer = always`. Routing
+the trap to a function, which is the patched-core row, recovers only 776 of the 2 768.
+The rest is the price of having a handler at all.
+
+**Checked:** `symdev test --emulator` passes on the rebased branch: async 15, atomics 23,
+cleanup 2, files 26, locale 7, notes 3, query 4, time 29, tls 45, ui 3, ui-list 6, net 22
+(peers on 18974/18975).
+
+**Not determined:** whether a device also turns `User::Exit` under an installed
+`CTrapCleanup` into `KERN-EXEC 3`, and what a device shows for `RUST -2`. No GUI
+application's panic was observed; only console panics were. `spawnee`'s documentation blames
+"an image with a writable data section" for a `KERN-EXEC 3` reading the heap base + `0xA4`,
+but `spawnee` calls `User::Exit` inside `main` with the cleanup stack installed, which is the
+signature above. The same may explain the `KERN-EXEC 3` after the C++ locale baseline's
+report in experiment 99. Neither was checked.
+
+**Evidence.** `symbian-rs/crates/symbian-runtime/src/panic.rs`, `symbian-rs/examples/panic`,
+`docs/research/avkon-rust-spec.md` §4.4.
