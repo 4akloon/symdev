@@ -30,10 +30,16 @@ Record an experiment in the backlog.
   operator delete (scppnwdl). No User::Leave*, no `L` function. Scripts in the session scratchpad
   (closure.py), not committed.
 
+- Pure reader `symbian-core/src/locale/layout.rs` (core only), host-tested unchanged via `#[path]`
+  from `crates/symdev-build/tests/strings_layout.rs` against real rcomp output: 70 keys (9-byte
+  bitmap), empty value, non-ASCII, signature; refusals are the writer's own output where possible
+  (UID3 statement -> flags 0; a BUF text -> packed bit). 9 tests pass.
+- Baseline sizes (this worktree at eb39761): ~/.cache/rsc-reader-agent/res-base.txt.
+
 ## Decisions
 
 ## Dead ends
 
 ## Next step
 
-- Read experiment 99, rcomp writer, current locale module.
+- Wire layout.rs into strings.rs over fs::File (positional RFile::Read), NearestLanguageFile binding, delete symrs_rsc.cpp.
