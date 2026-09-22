@@ -29,7 +29,7 @@ const KERR_GENERAL: i32 = -2;
 fn panic(_: &core::panic::PanicInfo) -> ! {
     // SAFETY: `User::Panic` is a euser static member function (plain EABI, no `this`)
     // that never returns and is callable from any thread. The category is a `'static`
-    // literal with the observed `_LIT16` layout; euser copies it before the thread dies.
+    // literal with the observed `_LIT16` layout, so it outlives the call.
     unsafe { symbian_sys::euser::User_Panic(CATEGORY.as_desc(), KERR_GENERAL) }
 }
 
@@ -41,12 +41,12 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 ///
 /// Why a panic and not `User::Exit(KErrNoMemory)`, which is what this was before
 /// experiment 100: the failure happens deep inside `main`, with the thread's
-/// `CTrapCleanup` installed, and `User::Exit` in that state was observed to die `KERN-EXEC 3` in the emulator — a C++
-/// `E32Main` calling `User::Exit` after `CTrapCleanup::New()` dies the same way — so the
-/// `-4` never reached the log. A C++ program reports `-4` as an exit only when a top-level
-/// `TRAPD` catches the leave and `E32Main` returns after deleting its cleanup stack, which
-/// an abort that never unwinds cannot do; the same leave without a `TRAP` is itself a
-/// panic (`E32USER-CBase 65`).
+/// `CTrapCleanup` installed, and `User::Exit` in that state was observed to die
+/// `KERN-EXEC 3` in the emulator — a C++ `E32Main` calling `User::Exit` after
+/// `CTrapCleanup::New()` dies the same way — so the `-4` never reached the log. A C++
+/// program reports `-4` as an exit only when a top-level `TRAPD` catches the leave and
+/// `E32Main` returns after deleting its cleanup stack, which an abort that never unwinds
+/// cannot do; the same leave without a `TRAP` is itself a panic (`E32USER-CBase 65`).
 #[alloc_error_handler]
 fn alloc_error(_: core::alloc::Layout) -> ! {
     // SAFETY: as in `panic` above.

@@ -27,7 +27,7 @@
 
 use symbian_std::fs;
 use symbian_sys::des16::{TPtr16_ctor, TPtr16Storage};
-use symbian_sys::euser::{User_CommandLine, User_CommandLineLength, User_Exit};
+use symbian_sys::euser::{User_CommandLine, User_CommandLineLength};
 
 /// Where the child writes the command line it was given.
 pub const MARK: &str = "E:\\symdev\\spawnee\\args.txt";
@@ -36,7 +36,7 @@ pub const MARK: &str = "E:\\symdev\\spawnee\\args.txt";
 const MAX: usize = 64;
 
 #[symbian_std::main]
-fn main() -> symbian_std::io::Result<()> {
+fn main() -> symbian_std::io::Result<i32> {
     let mut units = [0u16; MAX];
     let mut des = TPtr16Storage::zeroed();
     // SAFETY: `TPtr16::TPtr16(TUint16*, TInt, TInt)` is built in place in storage of
@@ -65,8 +65,9 @@ fn main() -> symbian_std::io::Result<()> {
     let _ = fs::create_dir_all("E:\\symdev\\spawnee");
     let _ = fs::write(MARK, line.as_bytes());
 
-    // `User::Exit(TInt)` is what the creator reads back as `RProcess::ExitReason()`.
-    // SAFETY: a euser static taking one scalar; it never returns, which is why nothing
-    // follows it.
-    unsafe { User_Exit(line.trim().parse::<i32>().unwrap_or(0)) }
+    // The number becomes the exit code the creator reads back as
+    // `RProcess::ExitReason()`, by returning it: `start` frees the cleanup stack and
+    // `eexe` calls `User::Exit` with it. Calling `User::Exit` here, with the cleanup stack
+    // still installed, dies `KERN-EXEC 3` in the emulator (experiment 100).
+    Ok(line.trim().parse::<i32>().unwrap_or(0))
 }

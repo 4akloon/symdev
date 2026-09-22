@@ -42,6 +42,8 @@ backlog (99 was taken on main; this is 100). Branch `named-panic`, base main 723
 - symdev test --emulator after rebase: async 15, atomics 23, cleanup 2, files 26, locale 7, notes 3, query 4, time 29, tls 45, ui 3, ui-list 6, net 22 passed (peers 18974/18975).
 - Backlog 99's note "C++ baseline's thread also ends KERN-EXEC 3 terminated peacefully after writing its report" is plausibly the same User::Exit-under-CTrapCleanup behaviour; not checked.
 
+- std-hello: on this branch AND on untouched main aae58bb (worktree named-panic-base) `no test result after 180s`; log: `Trying to summon: spawnee.exe` then `Access violation reading address 0x8000A4` — spawnee's own User_Exit inside main under CTrapCleanup. Fix: spawnee returns its number from main (`io::Result<i32>`) so start frees the cleanup stack and eexe exits -> std-hello `50 passed`. std-net `31 passed` (peers 18984/18985).
+
 ## Decisions
 - Category `RUST` (same as std PAL abort_internal, 4 of 16 units). Reason KErrGeneral (-2), same as std. Line-number reason rejected: +1.5..3.9 KB corpus for a line without a file.
 - Handler + alloc handler moved to symbian-runtime/src/panic.rs.
@@ -54,4 +56,4 @@ backlog (99 was taken on main; this is 100). Branch `named-panic`, base main 723
 
 ## Next step
 
-std-hello/std-net tests running; then gates, report examples with symdev test --emulator, gates, backlog entry 99.
+gates, final measure (spawnee changed), backlog update, report examples with symdev test --emulator, gates, backlog entry 99.
