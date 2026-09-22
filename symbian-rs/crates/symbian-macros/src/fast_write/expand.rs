@@ -37,7 +37,7 @@ pub fn expansion(plan: &Plan) -> String {
     let names: String = (0..plan.slots.len()).map(|i| format!("__a{i}, ")).collect();
     let mut out = format!(
         "{{ use @krate::__private::{{Enter as _, SinkKind as _, WriteKind as _, SlowKind as _}}; \
-         @dst.__symbian_fmt_enter(({slots}), |__d, ({names})| {{ "
+         (@dst).__symbian_fmt_enter(({slots}), |__d, ({names})| {{ "
     );
     for piece in &plan.pieces {
         let value = match piece {
