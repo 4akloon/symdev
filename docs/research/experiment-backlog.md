@@ -1830,3 +1830,54 @@ measured)** — requested from the C++ baseline work; do not quote a number unti
 
 **Evidence.** `symbian-rs/examples/cleanup`, `symbian-rs/crates/symbian-sys/src/cleanup.rs`,
 `symbian-rs/crates/symbian-runtime/src/lib.rs`.
+
+## 98. `read_dir` for `no_std`, measured against the C++ idiom (T5, Rust SDK)
+
+**Requires:** the toolchain, `SYMDEV_EKA2L1`.
+
+**Procedure.** Add `symbian_core::fs::Dir` over `RFs::GetDir` and `symbian_std::fs::read_dir`;
+measure with `User::CountAllocCells` (newly bound, `e32std.h:4486`) around reading, holding,
+walking and dropping a directory in `examples/files`; measure image size against `main` and
+against the raw-FFI version `examples/cleanup` had.
+
+**Outcome.**
+
+- **The module doc was wrong.** `symbian-std`'s `fs` said `read_dir` needed a shim because
+  `CDir::NewL`/`AddL` leave. `RFs::GetDir` is non-leaving and traps its private `GetDirL`
+  itself; what it needed was a cleanup stack, which experiment 97 installed.
+- **Shape — the C++ one, not `std`'s.** `std::fs::read_dir` yields owned entries (an
+  `OsString` and a `PathBuf`, two heap cells each). C++ yields `(*dir)[i]`, a reference
+  into the `CDir`. Ours is the C++ shape: `for entry in &fs::read_dir(path)?`, entries
+  borrow the `Dir`, and `Name` is the `TEntry`'s UTF-16 in place. The `&` is the DX price
+  — an iterator cannot lend out of itself — and entries are not `Result`s because nothing
+  can fail after the read.
+- **Heap, measured.** Holding a `Dir`: **4 cells** (the `CDir` is a small tree, not one
+  cell). Dropping it: **all 4 returned**, on the first read and the second
+  (`first: 20 -> held 24 -> 20; second: held 24 -> 20`). Walking every entry, comparing
+  every name, reading every size: **0 cells** (`27 -> 27`). The Rust side of `read_dir`
+  allocates nothing (stack buffers only), so the 4 are efsrv's own and a C++ caller of
+  `GetDir` holds the same 4 — **derived from the code, not yet measured in C++**.
+- **A wrong number of mine, caught by the test.** The first version asserted "C++ pays
+  one cell, the `CDir`" — a number I had never measured. It failed (`20 -> 25`, the fifth
+  being the report's own bookkeeping). The test now asserts only what can be proved from
+  here: no cell is left behind.
+- **Name comparison: euser beats Rust.** `Name == &str` written as
+  `units.eq(other.encode_utf16())` was **288 bytes**; a hand-tightened loop was the same
+  288 (LLVM emits the same code — dead end). Encoding `other` with the `Buf16::push_str`
+  every path already links and calling euser's `TDesC16::Compare` — how C++ compares
+  descriptors, with the loop in ROM — is **116 bytes**, image −151. Cost: a 516-byte stack
+  buffer for the duration of the compare, the same size every `fs` call already uses for
+  its path. `==` is exact; C++ code often uses `CompareF`.
+- **The safe API over raw FFI:** `examples/cleanup` 6 171 (raw `unsafe` calls) →
+  **6 468** (+297) with `fs::read_dir`, no `unsafe`, no `symbian-sys` dependency.
+- **`{:?}` is expensive, twice over.** One `{e:?}` on an `io::Error` cost **1 547 bytes**
+  in `cleanup`; one `{:?} {:?}` of `ErrorKind` and `Option<i32>` cost **917** in `files`
+  (`PadAdapter::write_str` +596, `Option<i32>: Debug` +348, `i32: Debug` +160). `{}` of an
+  integer cost nothing extra. Both removed from the tests; passed to the size audit.
+
+**Sizes against `main`:** `files` 10 586 → 12 171 (new cases and the API), `cleanup`
+6 171 → 6 468. Every other example unchanged (`hello` 3 231, `alloc` 4 525, `locale`
+9 713, `ui` 13 714).
+
+**Evidence.** `symbian-rs/crates/symbian-core/src/fs/dir.rs`, `examples/files` (26 cases),
+`examples/cleanup` (2).

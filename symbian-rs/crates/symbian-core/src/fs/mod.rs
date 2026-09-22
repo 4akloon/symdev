@@ -30,11 +30,13 @@
 //! `Y:\`, `Q:\` and a `*` inside a path component through the emulator's file server
 //! and every one succeeded — so an emulator run is never evidence that a device would
 //! accept a path.
+mod dir;
 mod entry;
 mod file;
 mod server;
 mod session;
 
+pub use dir::{Dir, DirEntry, Iter, Name};
 pub use entry::Entry;
 pub use file::{File, FileMode, Seek};
 pub use server::FileServer;

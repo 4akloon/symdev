@@ -31,9 +31,7 @@ dependencies = [
 name = "cleanupdemo"
 version = "0.1.0"
 dependencies = [
- "symbian-core",
  "symbian-std",
- "symbian-sys",
 ]
 
 [[package]]

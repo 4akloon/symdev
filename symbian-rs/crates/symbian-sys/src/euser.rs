@@ -44,6 +44,13 @@ unsafe extern "C" {
     #[link_name = "_ZN4User8AllocLenEPKv"]
     pub fn User_AllocLen(cell: *const u8) -> i32;
 
+    /// `00000980 T _ZN4User15CountAllocCellsEv` — `User::CountAllocCells()`
+    /// (`e32std.h:4486`): how many cells are allocated on the current thread's heap.
+    /// Non-leaving. It is how a test proves a code path allocates nothing, by counting
+    /// either side of it.
+    #[link_name = "_ZN4User15CountAllocCellsEv"]
+    pub fn User_CountAllocCells() -> i32;
+
     /// `00000a0c T _ZN4User4FreeEPv` — `User::Free(TAny*)`.
     #[link_name = "_ZN4User4FreeEPv"]
     pub fn User_Free(cell: *mut u8);

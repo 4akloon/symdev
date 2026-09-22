@@ -36,6 +36,12 @@ unsafe extern "C" {
     /// is.
     #[link_name = "_ZNK7TDesC163PtrEv"]
     pub fn TDesC16_Ptr(this: *const TDesC16) -> *const u16;
+
+    /// `00001c74 T _ZNK7TDesC167CompareERKS_` — `TInt TDesC16::Compare(const TDesC16&)
+    /// const`: 0 when the two hold the same code units. Non-leaving. It is how C++
+    /// compares descriptors, with the loop in euser rather than in every program.
+    #[link_name = "_ZNK7TDesC167CompareERKS_"]
+    pub fn TDesC16_Compare(this: *const TDesC16, other: *const TDesC16) -> i32;
 }
 
 impl<const N: usize> Lit16<N> {

@@ -2,7 +2,7 @@
 //!
 //! Only calls that cannot leave belong here. A leaving call needs the C++ `TRAP` shim of
 //! step 70 and is absent rather than guessed.
-use symbian_sys::euser::{User_After, User_Exit, User_InfoPrint};
+use symbian_sys::euser::{User_After, User_CountAllocCells, User_Exit, User_InfoPrint};
 
 use crate::des::DesC16;
 use crate::error::{Result, check};
@@ -32,4 +32,15 @@ pub fn exit(reason: i32) -> ! {
     // SAFETY: a euser static member function that never returns and takes the process
     // down without unwinding, as `panic = "abort"` requires.
     unsafe { User_Exit(reason) }
+}
+
+/// How many cells are allocated on this thread's heap (`User::CountAllocCells`).
+///
+/// Counting either side of a code path is how a claim like "this allocates nothing"
+/// becomes a measurement — the same count a C++ program would take.
+pub fn alloc_cells() -> usize {
+    // SAFETY: a euser static with no arguments that reads the current thread's heap
+    // and cannot leave.
+    let cells = unsafe { User_CountAllocCells() };
+    usize::try_from(cells).unwrap_or(0)
 }

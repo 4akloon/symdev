@@ -21,10 +21,26 @@
 //!
 //! # What is not here
 //!
-//! `read_dir`, `copy`, `remove_dir_all`, `set_permissions`, `canonicalize`,
-//! `hard_link`, `soft_link`. `read_dir` needs `RDir` and `CDir`, whose `NewL`/`AddL`
-//! do leave and would need a shim; the rest need either a type this SDK has not
-//! observed or a concept Symbian does not have. None of them is faked.
+//! `copy`, `remove_dir_all`, `set_permissions`, `canonicalize`, `hard_link`,
+//! `soft_link`: each needs either a type this SDK has not observed or a concept
+//! Symbian does not have. None of them is faked.
+//!
+//! # `read_dir` borrows, where `std`'s owns
+//!
+//! ```ignore
+//! for entry in &fs::read_dir("E:\\symdev")? {
+//!     if entry.is_file() && entry.name() == "notes.txt" { … }
+//! }
+//! ```
+//!
+//! Note the `&`, and that an entry is not a `Result`. `std::fs::read_dir` yields owned
+//! entries — an `OsString` and a `PathBuf` each, two heap cells per entry — and C++
+//! yields a reference into the one `CDir` the file server filled, with none. This
+//! shape is the C++ one: the directory is read in a single `RFs::GetDir`, and every
+//! entry and name borrows from it, so listing costs exactly the allocation the C++
+//! costs. The price is the `&`: an iterator cannot hand out entries that borrow from
+//! itself, so it iterates over the directory rather than consuming it. Nothing can
+//! fail after `read_dir` returns, which is why the items are not `Result`s.
 mod file;
 mod metadata;
 mod open_options;
@@ -32,6 +48,10 @@ mod open_options;
 pub use file::File;
 pub use metadata::Metadata;
 pub use open_options::OpenOptions;
+pub use symbian_core::fs::{DirEntry, Name};
+
+/// A directory's entries, as [`read_dir`] returns them.
+pub type ReadDir = symbian_core::fs::Dir;
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -57,6 +77,13 @@ pub fn create_dir_all(path: &str) -> Result<()> {
         other => other,
     })?;
     Ok(())
+}
+
+/// Reads a directory, as `std::fs::read_dir` — in one `RFs::GetDir` call, with no
+/// allocation per entry. Iterate it by reference: `for entry in &fs::read_dir(path)?`.
+/// See [the module documentation](self) for why it differs from `std` there.
+pub fn read_dir(path: &str) -> Result<ReadDir> {
+    Ok(with_session(|fs| symbian_core::fs::Dir::read(fs, path))?)
 }
 
 /// Removes a file, as `std::fs::remove_file` (`RFs::Delete`).

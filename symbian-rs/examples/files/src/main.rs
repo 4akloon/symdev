@@ -22,6 +22,8 @@ use symbian_std::test_report::Report;
 const DIR: &str = "E:\\symdev\\files71";
 const PATH: &str = "E:\\symdev\\files71\\roundtrip.bin";
 const RENAMED: &str = "E:\\symdev\\files71\\renamed.bin";
+/// A directory inside [`DIR`], so the listing has something that is not a file.
+const SUB: &str = "E:\\symdev\\files71\\sub";
 /// Left behind on purpose, so the bytes can be checked from the host afterwards
 /// (`~/.local/share/EKA2L1/data/drives/e/symdev/files71/kept.bin`).
 const KEPT: &str = "E:\\symdev\\files71\\kept.bin";
@@ -54,6 +56,89 @@ fn read_from_middle() -> io::Result<[u8; 3]> {
     let mut three = [0u8; 3];
     file.read_exact(&mut three)?;
     Ok(three)
+}
+
+/// What `read_dir` holds on the heap, and whether it gives all of it back.
+///
+/// Nothing on the Rust side of `read_dir` touches the heap — the path and the pattern
+/// are built on the stack — so every cell counted here is one `RFs::GetDir` allocated
+/// inside efsrv, and a C++ program making the same call pays the same. What *can* be
+/// proved from here is the leak property: once the first read has grown whatever the
+/// cleanup stack grows on first use, a second read must leave the count where it was.
+fn heap_cost_of_reading(report: &mut Report) {
+    let cells = symbian_std::test_report::alloc_cells;
+    let before_first = cells();
+    let held_first = fs::read_dir(DIR).map(|_dir| cells());
+    let after_first = cells();
+    let held_second = fs::read_dir(DIR).map(|_dir| cells());
+    let after_second = cells();
+    let (Ok(held_first), Ok(held_second)) = (held_first, held_second) else {
+        report.fail("read_dir twice, counting cells", "a read failed");
+        return;
+    };
+    report.check_detail(
+        "a second read_dir leaves no cell behind",
+        after_second == after_first,
+        format_args!(
+            "first: {before_first} -> held {held_first} -> {after_first}; \
+             second: held {held_second} -> {after_second}"
+        ),
+    );
+}
+
+/// `read_dir` over the directory the cases above filled: `roundtrip.bin`, `kept.bin`
+/// and the `sub` directory made here. Every run leaves exactly those three, so the
+/// listing is checked for exactly them.
+fn list_the_directory(report: &mut Report) {
+    report.checked("create a subdirectory", fs::create_dir_all(SUB));
+    heap_cost_of_reading(report);
+    let Some(dir) = report.checked("read_dir", fs::read_dir(DIR)) else {
+        return;
+    };
+
+    // The C++ parity claim, measured: the one `CDir` the file server filled is the
+    // only heap cell listing needs. Walking every entry, comparing every name and
+    // reading every size must leave the thread's cell count exactly where it was.
+    let before = symbian_std::test_report::alloc_cells();
+    let (mut count, mut dots, mut file, mut kept, mut sub) = (0, 0, false, false, false);
+    for entry in &dir {
+        count += 1;
+        if entry.name() == "." || entry.name() == ".." {
+            dots += 1;
+        } else if entry.name() == "roundtrip.bin" {
+            file = entry.is_file() && entry.size() == BYTES.len() as u64;
+        } else if entry.name() == "kept.bin" {
+            kept = entry.is_file();
+        } else if entry.name() == "sub" {
+            sub = entry.is_dir() && !entry.is_file();
+        }
+    }
+    let after = symbian_std::test_report::alloc_cells();
+
+    report.check("read_dir yields no . or ..", dots == 0);
+    report.check("the written file is listed, as a file of its size", file);
+    report.check("the kept file is listed", kept);
+    report.check("the subdirectory is listed as a directory", sub);
+    report.check_detail(
+        "and nothing else",
+        count == 3,
+        format_args!("{count} entries"),
+    );
+    report.check_detail(
+        "listing allocates no heap cell",
+        after == before,
+        format_args!("cells {before} -> {after}"),
+    );
+
+    // `KErrPathNotFound` (-12) underneath, `NotFound` on top — the same pair `File::open`
+    // gives for a missing file, checked as values rather than printed.
+    match fs::read_dir("E:\\symdev\\files71\\no-such-dir") {
+        Ok(_) => report.fail("read_dir of a missing directory fails", "it listed"),
+        Err(e) => report.check(
+            "read_dir of a missing directory is NotFound, KErrPathNotFound",
+            e.kind() == ErrorKind::NotFound && e.raw_os_error() == Some(-12),
+        ),
+    }
 }
 
 fn run(report: &mut Report) {
@@ -101,6 +186,8 @@ fn run(report: &mut Report) {
     // One file is written with the whole-file helper and left in place, so that what
     // landed on the drive can be compared byte for byte from outside the emulator.
     report.checked("fs::write leaves a file behind", fs::write(KEPT, BYTES));
+
+    list_the_directory(report);
 
     report.checked("rename", fs::rename(PATH, RENAMED));
     report.checked("remove_file", fs::remove_file(RENAMED));

@@ -22,6 +22,10 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt::Write as _;
+/// How many cells this thread's heap holds (`User::CountAllocCells`). Counting either
+/// side of a code path turns "allocates nothing" into a measured case, and it is the
+/// same count a C++ test would take, so the two can be compared.
+pub use symbian_core::user::alloc_cells;
 
 #[cfg(not(feature = "std"))]
 use crate::fs;
