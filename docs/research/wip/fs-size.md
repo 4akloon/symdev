@@ -78,6 +78,12 @@ Keep experiment 98's `read_dir` borrowing from the `CDir`. Stay out of `symbian-
   both into E32Main; code symbols are -32 vs base, the exe difference is the two `Call`
   vtables in .rodata and their relocations.
 
+- Candidate 6 (commit): `FileServer`'s explicit-session methods call efsrv directly again
+  (path built in their own frame) instead of through `Request::on`: for the one call the
+  `shim` example makes, the closure + vtable cost +40 B of code over base. `path_of`
+  deleted (no caller left). shim E32 code 6676 -> 6572 (-104; base 6636), exe 4491 ->
+  4468 (base 4517); every other example 0.
+
 ## Decisions
 
 ## Dead ends

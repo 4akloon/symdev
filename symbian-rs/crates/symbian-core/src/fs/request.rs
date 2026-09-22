@@ -87,8 +87,7 @@ impl<'a> Request<'a> {
     ///
     /// `fs` is a connected `RFs` that nothing else uses for the length of the call.
     pub(crate) unsafe fn on(self, fs: *mut RFs, path: &str) -> Result<i32> {
-        // Built where it is used: `path_of` returns the 516-byte buffer by value, and
-        // the copy is a `memcpy` at every caller.
+        // Built where it is used (see `MAX_FILE_NAME`).
         let mut name: Buf16<MAX_FILE_NAME> = Buf16::new();
         name.push_str(path)?;
         name.push_str(self.tail)?;

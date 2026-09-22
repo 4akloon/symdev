@@ -11,7 +11,11 @@
 //! Both report failure the same way: a `SymbianError` holding the exact `TInt`. Both
 //! take a `&str`, not a descriptor: an application using this SDK should not have to
 //! name a Symbian type to open a path.
-use symbian_sys::des::TDesC16;
+//!
+//! These calls do not go through the shared `Request` body the process session uses
+//! (experiment 105): a program that holds its own session makes one or two of them, and
+//! for one call a passed-in closure and its vtable cost more than the direct call (the
+//! `shim` example measured +40 bytes). Each builds its `TFileName` in its own frame.
 use symbian_sys::efsrv::{
     KFILE_SERVER_DEFAULT_MESSAGE_SLOTS, RFs, RFs_Att, RFs_Connect, RFs_Delete, RFs_Entry,
     RFs_MkDirAll,
@@ -19,10 +23,10 @@ use symbian_sys::efsrv::{
 use symbian_sys::euser::{RHandleBase, RHandleBase_Close};
 use symbian_sys::shim::symrs_bafl_ensure_path_exists;
 
+use super::MAX_FILE_NAME;
 use super::entry::Entry;
-use super::path_of;
-use super::request::{Request, rename};
-use crate::des::DesC16;
+use super::request::rename;
+use crate::des::{Buf16, DesC16};
 use crate::error::{Result, check};
 
 /// An open session with the file server.
@@ -61,10 +65,12 @@ impl FileServer {
     ///
     /// **No shim.** The call cannot leave, so Rust makes it itself.
     pub fn make_dir_all(&mut self, path: &str) -> Result<()> {
-        // SAFETY: `this` first, the path only read. Non-leaving, so no C++ exception can
-        // cross this frame. The session is `self`, borrowed mutably for the call.
-        let mut call = |fs: *mut RFs, path: *const TDesC16| unsafe { RFs_MkDirAll(fs, path) };
-        unsafe { Request::new(&mut call).on(&mut self.fs, path) }.map(|_| ())
+        let mut name: Buf16<MAX_FILE_NAME> = Buf16::new();
+        name.push_str(path)?;
+        // SAFETY: `this` in argument 0, the descriptor borrowed for the call and only
+        // read. Non-leaving, so no C++ exception can cross this frame.
+        let code = unsafe { RFs_MkDirAll(&mut self.fs, name.as_tdesc16()) };
+        check(code).map(|_| ())
     }
 
     /// Creates every missing directory of `path`, treating one that is already there as
@@ -74,11 +80,12 @@ impl FileServer {
     /// mounted, a path that cannot be written — and the shim's `TRAP` turns that into
     /// this `Err` while the process carries on.
     pub fn ensure_path_exists(&mut self, path: &str) -> Result<()> {
-        let path = path_of(path)?;
+        let mut name: Buf16<MAX_FILE_NAME> = Buf16::new();
+        name.push_str(path)?;
         // SAFETY: the shim takes `RFs*` and `const TDesC16*`, both borrowed for the
         // call, and is a complete `TRAP` unit: it returns `KErrNone`, the leave code or
         // `KErrArgument`, and never lets an exception out. Nothing unwinds into Rust.
-        let code = unsafe { symrs_bafl_ensure_path_exists(&mut self.fs, path.as_tdesc16()) };
+        let code = unsafe { symrs_bafl_ensure_path_exists(&mut self.fs, name.as_tdesc16()) };
         check(code).map(|_| ())
     }
 
@@ -87,9 +94,12 @@ impl FileServer {
     /// `KErrInUse` if it is open and `KErrAccessDenied` for a directory: the file
     /// server has no unlink-while-open.
     pub fn delete(&mut self, path: &str) -> Result<()> {
-        // SAFETY: as `make_dir_all`.
-        let mut call = |fs: *mut RFs, path: *const TDesC16| unsafe { RFs_Delete(fs, path) };
-        unsafe { Request::new(&mut call).on(&mut self.fs, path) }.map(|_| ())
+        let mut name: Buf16<MAX_FILE_NAME> = Buf16::new();
+        name.push_str(path)?;
+        // SAFETY: `this` in argument 0, the descriptor borrowed for the call and only
+        // read. Non-leaving.
+        let code = unsafe { RFs_Delete(&mut self.fs, name.as_tdesc16()) };
+        check(code).map(|_| ())
     }
 
     /// Renames a file or directory (`RFs::Rename`).
@@ -97,33 +107,36 @@ impl FileServer {
     /// `KErrAlreadyExists` if `to` is taken — Symbian does not replace silently the way
     /// POSIX `rename` does.
     pub fn rename(&mut self, from: &str, to: &str) -> Result<()> {
-        let mut call = |fs, from| unsafe { rename(fs, from, to) };
-        // SAFETY: the session is `self`, borrowed mutably for the call.
-        unsafe { Request::new(&mut call).on(&mut self.fs, from) }.map(|_| ())
+        let mut name: Buf16<MAX_FILE_NAME> = Buf16::new();
+        name.push_str(from)?;
+        // SAFETY: the session is `self`, borrowed mutably for the call; the descriptor
+        // is live for it.
+        check(unsafe { rename(&mut self.fs, name.as_tdesc16(), to) }).map(|_| ())
     }
 
     /// The `KEntryAtt*` bits of an existing entry (`RFs::Att`).
     pub fn attributes(&self, path: &str) -> Result<u32> {
-        let path = path_of(path)?;
+        let mut name: Buf16<MAX_FILE_NAME> = Buf16::new();
+        name.push_str(path)?;
         let mut att = 0u32;
         // SAFETY: a `const` member, so `this` is shared; the descriptor is borrowed and
         // only read, and `att` is a live `TUint` the call writes once. Non-leaving.
-        let code = unsafe { RFs_Att(&self.fs, path.as_tdesc16(), &mut att) };
+        let code = unsafe { RFs_Att(&self.fs, name.as_tdesc16(), &mut att) };
         check(code)?;
         Ok(att)
     }
 
     /// Everything the file server knows about one entry (`RFs::Entry`).
     pub fn entry(&self, path: &str) -> Result<Entry> {
+        let mut name: Buf16<MAX_FILE_NAME> = Buf16::new();
+        name.push_str(path)?;
         let mut entry = Entry::new();
-        // SAFETY: `RFs::Entry` is a `const` member, so the `*mut` is only ever read
-        // through; the `TEntry` is a real one, built by euser's own exported
-        // constructor in storage of the measured size and alignment, and borrowed
-        // mutably for the call. Non-leaving.
-        let tentry = entry.as_tentry();
-        let mut call = |fs: *mut RFs, path: *const TDesC16| unsafe { RFs_Entry(fs, path, tentry) };
-        let fs = (&raw const self.fs).cast_mut();
-        unsafe { Request::new(&mut call).on(fs, path) }?;
+        // SAFETY: a `const` member; the descriptor is borrowed and only read, and the
+        // `TEntry` is a real one, built by euser's own exported constructor in storage
+        // of the measured size and alignment and borrowed mutably for the call.
+        // Non-leaving.
+        let code = unsafe { RFs_Entry(&self.fs, name.as_tdesc16(), entry.as_tentry()) };
+        check(code)?;
         Ok(entry)
     }
 }

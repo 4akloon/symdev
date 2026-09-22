@@ -44,18 +44,12 @@ pub use request::Opening;
 pub use server::FileServer;
 pub use session::{ProcessSession, with_session};
 
-use crate::des::Buf16;
-use crate::error::Result;
-
 /// `KMaxFileName` (`e32const.h` line 390: `const TInt KMaxFileName=0x100;`): the longest
 /// path the file server accepts, and the size of the descriptor a path is built into.
+///
+/// A path is a `&str` in the application and a `Buf16<MAX_FILE_NAME>` by the time it
+/// reaches the file server: `KErrOverflow` if it is longer, `KErrArgument` if it is not
+/// valid UTF-16 — the same codes every other conversion in this crate reports. The
+/// buffer is always built in the frame that makes the call: returned by value it was a
+/// 516-byte `memcpy` at every caller (experiment 105).
 pub const MAX_FILE_NAME: usize = 0x100;
-
-/// A path is a `&str` in the application and a descriptor by the time it reaches the
-/// file server. `KErrOverflow` if it is longer than `KMaxFileName`, `KErrArgument` if it
-/// is not valid UTF-16 — the same codes every other conversion in this crate reports.
-pub(crate) fn path_of(path: &str) -> Result<Buf16<MAX_FILE_NAME>> {
-    let mut buf = Buf16::new();
-    buf.push_str(path)?;
-    Ok(buf)
-}
