@@ -24,7 +24,19 @@ in the backlog, update size-levers.md.
   still in async/notes/query/tls (their Debug details), time/locale (own write!), alloc, fmt.
   async +1 097, notes +196, query +330, tls +606 (Debug still linked + new code).
   In atomics `json::escape_into` is 680 B and `push_hex` 232 B — String::push per char.
+- JSON escape byte-run rewrite: escape_into 680→632 B (a 5-arm match, not worth more).
+- Step 3 (Debug details → `Evidence::shown()`, `{:#x}` → `Hex(..).shown()`): core::fmt 0 in
+  atomics cleanup files net notes tls ui ui-list; left in async 1772, query 2352, locale 2152,
+  time 3816 (their own `core::write!`), alloc 2020, fmt 10604. Every example shrinks:
+  query −3870, notes −1866, atomics −1794, net −1787, files −1726, tls −992, async −732.
+- Fast write! opt-in, same harness, core vs fast: async 19719→18603 (−1116), locale
+  11584→10233 (−1351), query 15522→14028 (−1494), time 11591→10256 (−1335) — time only
+  after its own three `{:?}` of `Result<_, i32>` in the notes became `.shown()` (same text).
+  All four then link no core::fmt.
+- alloc keeps core::fmt (2020 B): its own `{:x}` (LowerHex) into a Buf16 — not the harness
+  (alloc writes no report).
 
+## Decisions
 - `check_detail(name, ok, detail: impl FnOnce(&mut String))`; call sites write `detail!(...)`
   where they wrote `format_args!(...)` — `symbian_std::detail!` expands to a closure that
   runs the fast `write!` (with `core::fmt::Write` imported inside, which the fast
@@ -32,11 +44,12 @@ in the backlog, update size-levers.md.
 - `checked<T, E: Evidence>`: trait `test_report::Evidence` (`show(&self, &mut String)`,
   `shown() -> String`) writes Debug's text without core::fmt for SymbianError, io::Error,
   SystemTimeError, AccessError, (), ints, bool, str/String, Option, Result, slices, Either,
-  and `Hex(usize)` (= `{:#x}`). io::Error records "KErrNotFound (-1)" — name and TInt;
+  and `Hex(u32)` (= `{:#x}`). io::Error records "KErrNotFound (-1)" — name and TInt;
   the std-kind prefix of its Debug ("NotFound (...)") is dropped (would need a name table).
 - JSON/path hex via a private `push_hex`; test_report.rs split into test_report/{mod,json,evidence}.rs.
 
 ## Dead ends
 
 ## Next step
-- Read experiment 101, size-levers core::fmt, test_report.rs, symbian-fmt; measure baseline.
+- Full re-measure; emulator runs of every report-writing example; deliberate failure proof;
+  gates; backlog experiment + size-levers; delete this file.
