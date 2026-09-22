@@ -77,10 +77,10 @@ Every Rust slice is compared with the same program written in C++ against the SD
 
 | Example | C++ | Rust (`no_std`) |
 |---|---|---|
-| console hello | 802 | 1 245 |
-| file round trip | 6 058 | 9 341 |
-| localised strings | 6 647 | 8 202 |
-| Avkon app with a menu | 7 317 | 11 645 |
+| console hello | 802 | 968 |
+| file round trip | 6 058 | 8 288 |
+| localised strings | 6 647 | 8 122 |
+| Avkon app with a menu | 7 317 | 10 315 |
 
 On the heap the Rust side is at parity or better where it has been measured: reading a
 localised string holds the open language file in 1 heap cell (C++: 4) and each string in 1
