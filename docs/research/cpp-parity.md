@@ -248,6 +248,11 @@ failure. C++ additionally needs the 191-line report helper that Rust's SDK provi
 2. **Generic Avkon glue monomorphised per app**: `symbian_ui::vtbl::construct<App>` 2 212 B,
    `draw<App>` 1 360 B, `offer_key<App>` 184 B, `menu::item<App>` 160 B in `uidemo`, on top of a
    ~1.8 KB C++ shim that duplicates the Avkon class skeleton a C++ app writes once.
+   *Experiment 104 found the mechanism was not monomorphisation* — one `App` per image —
+   but inlining (the report into `construct`, `Gc::text` into `draw`) and the shim's
+   function-pointer tables. With plain symbols and a shim built for size, `ui` is
+   **10 460** (1.43×), and **7 218** with its test report taken out: the glue is under
+   C++'s 7 317, and the rest of the gap is the harness.
 3. **The `std`-shaped fs layer is static Rust over the same efsrv calls**: `OpenOptions::open`
    1 000 B, `create_dir_all` 392, `metadata` 388, `File::create_new`/`open` 232 each — 2.1 KB in
    `files`, whereas C++ `RFile::Replace/Open` are direct imports.

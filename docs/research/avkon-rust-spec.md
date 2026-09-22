@@ -181,6 +181,12 @@ of implementing two, has 185. **Subclassing cost is fixed; forwarding is nearly 
 
 ### 3.2 Recommendation: **B**, a Rust-owned vtable behind one exported symbol
 
+> **Superseded by experiment 104: the shim now uses shape A.** Measured, the tables
+> cost what A was expected to: `Vtbl()`'s call, size check and panic were inlined at
+> every call site, and within one statically linked image a per-virtual symbol costs no
+> PLT stub and no relocation. `ui` went 11 298 → 10 835 bytes on that change alone, and
+> a missing function is now a link error. The text below is the original reasoning.
+
 Reasons, in the terms the task asks for:
 
 - **Number of shim files.** B is one `shims/s60/avkon_app.cpp` holding all four

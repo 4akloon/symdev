@@ -2860,3 +2860,134 @@ in the argument of `Request::new`, whose `FnMut` bound types them.
 outside git, in `~/.cache/fs-size-agent/` (`measure.sh`, `symdiff.sh`, `dis.sh`,
 `runall.sh`, `res-*.txt` for every candidate, the result JSON of every run in
 `run-final/`).
+## 104. The smallest Avkon glue: plain symbols instead of two tables, and a shim built for size (T5, Rust SDK)
+
+**Requires:** the toolchain, `SYMDEV_EKA2L1`; for `net`, both peers in
+`examples/net/peer` (18974, 18975).
+
+**Why.** The C++ parity baseline (`cpp-parity.md`) had `examples/ui` at 11 645 bytes
+against C++'s 7 317 and named the cause as the Avkon glue: `symbian_ui::vtbl::*<App>`
+generic over the application type, "monomorphised into every application"
+(`construct<Bars>` 2 212, `draw<Bars>` 1 360), on top of ~1.8 kB of C++ shim repeating
+the Avkon class skeleton. The task was the smallest glue that leaves the public API —
+`App`, `#[symbian_std::main(gui)]`, `App::menu` with closures, `List`, notes, queries —
+exactly as an application writes it today.
+
+**What the audit's numbers really were.** Measured with a throwaway minimal application
+(`draw` is one `clear`, one menu item; not committed) and by disassembly:
+
+* **An image holds exactly one `App`, so monomorphisation duplicates nothing.** The
+  generic Rust glue of the minimal application was 564 bytes for all eight thunks and
+  the table. `construct<Bars>` was 2 468 bytes because `Bars::construct` — the test
+  report, with `Report::finish` — is inlined into it; `draw<Bars>` was 1 396 because
+  `Bars::draw` and `Gc::text` are. The mechanism is inlining, not per-type copies.
+* **The C++ shim was 3 083 bytes of symbols in `ui`**, more than the whole C++
+  application's classes (2 795). Its fat was `Vtbl()` — the call to `symrs_app_vtbl()`,
+  a null and size check and a `User::Panic(_L(…))` — inlined at all eight call sites:
+  `~CShimAppUi` 152, `ConstructL` 244 (C++: 46), `Draw` 120.
+
+**What changed, step by step** (`.exe` bytes; each step on top of the one before):
+
+| # | change | ui | ui-list | notes | query | probe |
+|---|---|---:|---:|---:|---:|---:|
+| | `main` | 11 645 | 12 624 | 12 805 | 14 031 | 6 998 |
+| 1 | `Gc::text` through the menu's cutting UTF-16 encoder (`utf16::encode_cut`, out of line), not an inlined erroring one plus a `char_indices().nth(64)` fallback | 11 298 | 12 624 | 12 641 | 13 829 | 6 953 |
+| 2 | both tables replaced by plain `extern "C"` symbols: down `symrs_gc_*`, `symrs_view_redraw`, `symrs_app_ui_exit`, `symrs_menu_add` (shim); up `symrs_app_*` (application, written by `symbian_ui::__export_app!`, which `#[main(gui)]` now emits as one line); `-u symrs_app_create` | 10 835 | 11 789 | 11 923 | 13 166 | 6 331 |
+| 3 | `-fno-rtti` on symdev's own shim line | 10 670 | 11 541 | 11 746 | 12 991 | — |
+| 4 | `-Os` on the same line, after the recorded `-O2` | 10 597 | 11 483 | 11 694 | 12 929 | 6 102 |
+| 5 | the framework's `TKeyEvent&` passed through by pointer (`SymRsKeyEvent` deleted) | 10 574 | 11 460 | 11 674 | 12 901 | 6 087 |
+| 6 | `draw`/`size_changed` get the view's width and height as two words (the origin is always (0,0)) | 10 506 | 11 386 | 11 614 | 12 821 | 6 013 |
+| 7 | `symrs_gc_clear`/`draw_rect` take `const TRect*`; `RawRect` is `TRect`'s own layout (`SymRsRect` deleted) | **10 460** | **11 331** | **11 589** | **12 792** | **5 963** |
+
+Step 2 alone was a third of the whole: every up-call lost the `symrs_app_vtbl()` call,
+the size check and the inlined panic, every down-call its table load, and `Host::checked`
+and the `host` field in `Ui`, `Gc` and `Menu` went away. A missing function on either side
+is now an undefined symbol at link time — the loud failure the tables' `size` words gave
+at startup, a step earlier. The spec's §3.2 predicted shape A would cost "one relocation
+and one PLT stub per virtual"; within one statically linked image it costs neither.
+Steps 3 and 4 are symdev's choice for symdev's own C++, like the section flags beside
+them (`RustBuild::SHIM_OPTIONS`); the SDK's own C++ line is untouched. `-fno-rtti` drops
+the `typeinfo` of the shim's classes, which nothing reads (no `dynamic_cast`, no
+`typeid`; `TRAP` catches `XLeaveException`, whose `typeinfo` stays), and with it imports:
+`notes` and `query` no longer load `eikcoctl.dll`.
+
+**Every example, `main` → branch** (`.exe` bytes, same session, `symdev` built from each
+tree): `ui` 11 645 → **10 460** (−1 185), `ui-list` 12 624 → **11 331** (−1 293), `notes`
+12 805 → **11 589** (−1 216), `query` 14 031 → **12 792** (−1 239); the console
+examples link `shims/common`, which steps 3 and 4 also reach: `shim` 4 517 → 4 493,
+`async` 18 603 → 18 553, `cleanup` 4 472 → 4 467, `files` 9 341 → 9 337, `alloc`
+3 767 → 3 765, `hello-raw` 808 → 805, `locale` 8 202 → 8 200, `time` 10 256 → 10 254,
+`panic` 2 010 → 2 009, `fmt` 100 031 → 100 030; `atomics` 8 903, `net` 10 643, `spawnee`
+3 076, `tls` 14 099 → 14 098 unchanged. **`hello` 1 245 → 1 248 (+3) is deflate noise**:
+its code is identical instruction for instruction but for one alignment pad in a Thumb
+shim function (`nop` → `0000`). Imports (ordinals / DLLs): `ui` 220/9 → 212/9,
+`ui-list` 247/11 → 231/11, `notes` 229/9 → 217/8, `query` 224/9 → 212/8. E32 code size
+of `ui` 17 592 → 15 620.
+
+**`ui` against C++.** 10 460 against 7 317: 1.43×, down from 1.59×. **The glue is no
+longer the gap.** With its test report taken out (a probe, not committed) `ui` is
+**7 218** bytes — smaller than C++'s 7 317, which still *includes* its report; on `main`
+the same report-free `ui` was 8 587. What is left between 10 460 and 7 317 is the Rust
+test harness: `Report::finish` inlined into `symrs_app_construct` (2 436 bytes in all),
+`test_report` 1 200, `alloc` 956, `Buf16::push_str` 448, against C++'s `CSymdevReport`
+1 616 plus `ReportStartupL` 224. The C++ shim is 1 786 bytes of symbols now (vtables
+744 of it, which the C++ application has too) against 3 083 on `main`.
+
+**The API is untouched.** No example changed except one comment in `examples/ui`. What
+went: `symbian_ui::AppVtbl` (public only so that generated code could name it) and the
+two `SymRs*` tables. What came: `#[doc(hidden)]` `__export_app!`, `__abi`, `__glue`, for
+the attribute's one-line expansion. One behaviour changed, for the better: text longer
+than `MAX_TEXT` is drawn as the whole characters that fit in 128 code units, which is
+what `MAX_TEXT`'s documentation already said, where it used to be the first 64
+characters.
+
+**Run-time cost.** Every framework→Rust call is one direct `bl`, where it was a call to
+`symrs_app_vtbl()`, a null and size check, a table load and an indirect `blx`; every
+Rust→framework call is one direct `bl` where it was two loads and an indirect `blx`.
+No extra indirect call anywhere; one fewer per event in each direction.
+
+**Measured and not kept.**
+
+* **Type-erased trampolines** — non-generic `#[no_mangle]` bodies over `Box<dyn
+  Erased>` with a blanket `impl<A: App> Erased for A`, the macro exporting only
+  `create`: `ui` +310, `ui-list` +383, `notes` +341, `query` +355 against step 3. With
+  one `App` per image there is nothing to share; erasure adds a dyn vtable and a second
+  box, stops the application's methods inlining into the thunks, adds an indirect call
+  per event and needs `A: 'static`.
+* **The list callback as an exported `symrs_list_on_select`** instead of the
+  one-entry `SymRsListCallbacks` table: `ui-list` −42 but `ui` **+91** — an exported
+  Rust function is kept by this link even when nothing calls it, so every GUI
+  application without a list would carry it. The table stays; `symrs_list.h` and
+  `rows.rs` say why.
+* **One encoder for cutting and erroring callers** (notes, list rows and query prompts
+  off `symbian_core::des::encode_utf16_into`): `ui-list` **+172**. The harness's
+  `Buf16::push_str` calls `encode_utf16_into` too, so it stays in every image with a
+  report, and taking its other callers away only made LLVM inline it into `push_str`
+  (280 → 448). A unit-based `encode_cut` was noise (±40). **The saving that is there
+  needs `des/**`**, another slice's: if `encode_utf16_into` reported how much it wrote
+  on overflow, `Gc::text` and `Menu` could call it, ~250 bytes in every image that also
+  has a report.
+* **`Ui` without the `Option`** (null handles until `construct`): `ui` −36, `ui-list` 0,
+  `notes` −32, `query` −24. Not kept: it makes a `Ui` with null handles representable,
+  against `Ui::new`'s own safety contract, for ~30 bytes.
+
+**Verification.** Emulator, `symdev test --emulator`, every example that writes a
+report, on the final tree: `async` 15, `atomics` 23, `cleanup` 2, `files` 26, `fmt` 14,
+`locale` 7, `net` 22, `notes` 3, `query` 4, `time` 29, `tls` 45, `ui` 3, `ui-list` 6 —
+all passed, the counts of experiment 103; `shim` writes none by design. By hand:
+`symdev run` of `ui`, screenshot stable on the second grab (`bars=3 keys=0 cmd=0`),
+`emukey.py keys <pid> F1` showed the menu (More bars, Fewer bars, Reset, Exit), `Down
+Return` → **`bars=2 keys=0 cmd=1`**, then `Up` → `bars=3 keys=1 cmd=1` (the key path
+through the passed-through `TKeyEvent`), and `F2` ended the process on its own.
+`ui-list`: stable on the third grab, `Down Down Down Return` → row 0 **`picked: 3`**,
+`F2` ended it. Host: `cargo test --workspace` 478 passed, `cargo clippy --workspace
+--all-targets` clean; `symbian-rs`: `cargo clippy --release --workspace` clean (the
+`compiler_builtins` profile warning is pre-existing), `symbian-macros` 26 tests passed.
+Not run on an E52.
+
+**Evidence.** `symbian-rs/crates/symbian-ui/src/{abi,vtbl,ui,gc,menu,utf16}.rs`,
+`symbian-rs/shims/s60/symrs_avkon.{h,cpp}`, `crates/symdev-build/src/driver/rust_shims.rs`
+(`SHIM_OPTIONS`), `rust_build.rs` (`APP_CREATE`), `symbian-macros/src/entry.rs`.
+Measurement scripts outside git, in `~/.cache/avkon-glue-agent/` (`measure.sh`,
+`runall.sh`, `cat.py`, `res-*.txt` and `nm-*/` for every step and probe, the run logs and
+result JSON in `run-final/`, the screenshots in `shots/`).
