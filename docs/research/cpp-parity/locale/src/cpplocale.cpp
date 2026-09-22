@@ -45,14 +45,18 @@ static const TText8* NameOf(TInt aLanguage)
     }
 
 /// One string out of the opened resource file. The caller owns the returned buffer.
+///
+/// A `TBUF` is the whole resource as UTF-16, with **no** length byte in front, so it is
+/// taken as it stands. `TResourceReader::ReadHBufCL` would read the first character as
+/// a length and run off the end of the buffer — BAFL 4, which is what this baseline hit
+/// before (`docs/research/cpp-parity.md`, "locale: C++ resource read").
 static HBufC* ReadStringL(RResourceFile& aFile, TInt aId)
     {
     HBufC8* raw = aFile.AllocReadLC(aId);
-    TResourceReader reader;
-    reader.SetBuffer(raw);
-    HBufC* text = reader.ReadHBufCL();
+    TPtrC16 text(reinterpret_cast<const TUint16*>(raw->Ptr()), raw->Length() / 2);
+    HBufC* copy = text.AllocL();
     CleanupStack::PopAndDestroy(raw);
-    return text;
+    return copy;
     }
 
 static void AppendLine(TDes8& aNotes, const TDesC8& aKey, const TDesC& aValue)
@@ -87,12 +91,10 @@ static void AppendLine(TDes8& aNotes, const TDesC8& aKey, const TDesC& aValue)
 /// Opens the language variant the loader picked and writes its three strings out.
 static void ReadTableL(RResourceFile& file, TDes8& aNotes)
     {
-    // UNRESOLVED (docs/research/cpp-parity.md, "locale: C++ resource read"):
-    // `ConfirmSignatureL` is what teaches `RResourceFile` the NAME offset the `.rsg`
-    // ids carry, but on this file, inside EKA2L1, it panics BAFL 4 — with no
-    // argument, with 4 (`EEikResourceSignatureValue`), and with a small NAME alike.
-    // Without it `Offset()` stays 0 and every read leaves KErrNotFound, which the
-    // caller records as a failed case instead of killing the run.
+    // The signature resource teaches `RResourceFile` the NAME offset the `.rsg` ids
+    // carry; without it every read is KErrNotFound. The argument is ignored by this
+    // BAFL — 0 is the conventional spelling.
+    file.ConfirmSignatureL(0);
 
     HBufC* greeting = ReadStringL(file, R_GREETING);
     CleanupStack::PushL(greeting);
