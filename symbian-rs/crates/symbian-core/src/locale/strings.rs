@@ -10,10 +10,13 @@
 //!
 //! The first `get` opens the file: `BaflUtils::NearestLanguageFile` picks the variant
 //! for the device language and `RFile::Open` opens it, and [`StringsLayout`] checks the
-//! header once. That file stays open for the life of the process, as a C++ application
-//! keeps its resource file open. What is held is the `RFile` handle and two numbers —
-//! no heap cell. Every `get` is then two positional `RFile::Read`s, the resource's two
-//! index entries and its bytes, into one heap cell held by the [`Text`].
+//! header once and reads the index into one heap cell. That file stays open for the life
+//! of the process, as a C++ application keeps its resource file open: the `RFile`
+//! handle, two numbers and the index — measured +1 cell / +36 B, against C++'s +4 /
+//! +208 B. Every `get` is then one positional `RFile::Read` of the resource's bytes into
+//! one heap cell held by the [`Text`]. Holding only the handle and reading the two index
+//! entries on each `get` saved that one cell and made a `get` twice as slow (experiment
+//! 102), which is why the index is kept.
 //!
 //! None of it leaves — `RFile` is all `TInt` (`f32file.h`), and `NearestLanguageFile`
 //! was followed through the ROM's `bafl.dll` to no leaving call (experiment 102) — so
@@ -25,6 +28,7 @@ use symbian_sys::bafl::BaflUtils_NearestLanguageFile;
 use symbian_sys::des::Lit16;
 use symbian_sys::shim::symrs_process_file_name;
 
+use super::heap_bytes::HeapBytes;
 use super::layout::{ReadAt, StringsLayout, Unreadable};
 use super::text::Text;
 use crate::des::{Buf16, DesC16, PtrC16};
@@ -64,9 +68,9 @@ impl Str {
         if self.0 < 2 {
             return Err(SymbianError::of(ErrorKind::Argument));
         }
-        let (file, layout) = open_file()?;
-        let span = layout.span(file, self.0)?;
-        Text::read(file, span)
+        let open = open_file()?;
+        let span = open.layout.span(open.index.as_bytes(), self.0)?;
+        Text::new(HeapBytes::read(&open.file, span)?)
     }
 }
 
@@ -95,10 +99,18 @@ impl ReadAt for File {
     }
 }
 
+/// The open strings file: the handle, where things are, and the index — one heap cell of
+/// 2(n+1) bytes, so a `get` is one read (C++'s `RResourceFile` holds its index too).
+struct OpenStrings {
+    file: File,
+    layout: StringsLayout,
+    index: HeapBytes,
+}
+
 /// The process's open strings file, plus the flag that keeps a second open from
 /// starting while one is under way.
 struct ProcessStrings {
-    file: UnsafeCell<Option<(File, StringsLayout)>>,
+    file: UnsafeCell<Option<OpenStrings>>,
     opening: Cell<bool>,
 }
 
@@ -118,7 +130,7 @@ static STRINGS: ProcessStrings = ProcessStrings {
 
 /// The open strings file, opening it on first use. Never closed: it lives as long as
 /// the process, and the kernel closes its handles when the process ends.
-fn open_file() -> Result<&'static (File, StringsLayout)> {
+fn open_file() -> Result<&'static OpenStrings> {
     let slot = STRINGS.file.get();
     // SAFETY: a shared read of the slot. The only write is below, made while it is
     // still `None` — so before any reference into it was handed out — and it is never
@@ -138,8 +150,8 @@ fn open_file() -> Result<&'static (File, StringsLayout)> {
 }
 
 /// Opens `<drive>:\resource\apps\<stem>_strings.rsc` — or the variant nearest the
-/// device language — and checks its layout.
-fn open_nearest() -> Result<(File, StringsLayout)> {
+/// device language — checks its layout and reads its index.
+fn open_nearest() -> Result<OpenStrings> {
     let mut path = strings_path()?;
     let file = with_session(|fs| {
         // SAFETY: `fs` is the process's connected session, borrowed for the call and
@@ -151,7 +163,12 @@ fn open_nearest() -> Result<(File, StringsLayout)> {
     })?;
     let size = u32::try_from(file.size()?).map_err(|_| SymbianError::of(ErrorKind::Corrupt))?;
     let layout = StringsLayout::read(&file, size)?;
-    Ok((file, layout))
+    let index = HeapBytes::read(&file, layout.index())?;
+    Ok(OpenStrings {
+        file,
+        layout,
+        index,
+    })
 }
 
 /// `<drive of RProcess::FileName()>\resource\apps\<exe stem>_strings.rsc`.

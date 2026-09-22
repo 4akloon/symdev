@@ -79,8 +79,8 @@ impl StringsLayout {
     const HEADER: u32 = 19;
 
     /// Reads and checks the header, the index position and every packed bit of a file
-    /// of `size` bytes. Three reads and one per 32 resources; nothing is kept but two
-    /// numbers.
+    /// of `size` bytes. Three reads and one per 32 resources; what is kept is two numbers,
+    /// and the caller keeps the index.
     pub fn read<R: ReadAt>(file: &R, size: u32) -> Result<Self, R::Error> {
         if size < Self::HEADER + 2 {
             return Err(Unreadable::TooShort { size }.into());
@@ -129,16 +129,24 @@ impl StringsLayout {
         Ok(())
     }
 
-    /// Where resource `resource` (1-based, as resource ids count) is: one read of its
-    /// two index entries.
-    pub fn span<R: ReadAt>(&self, file: &R, resource: u16) -> Result<Span, R::Error> {
-        if resource == 0 || u32::from(resource) > self.count {
-            let count = self.count;
-            return Err(Unreadable::NoResource { resource, count }.into());
+    /// Where the index is: read it once into memory and hand it to [`Self::span`].
+    pub fn index(&self) -> Span {
+        Span {
+            at: self.index_at,
+            len: 2 * (self.count + 1),
         }
-        let mut entries = [0u8; 4];
-        let at = self.index_at + 2 * (u32::from(resource) - 1);
-        file.read_exact_at(at, &mut entries)?;
+    }
+
+    /// Where resource `resource` (1-based, as resource ids count) is, from `index`, the
+    /// bytes at [`Self::index`].
+    pub fn span(&self, index: &[u8], resource: u16) -> Result<Span, Unreadable> {
+        let count = self.count;
+        let none = Unreadable::NoResource { resource, count };
+        if resource == 0 || u32::from(resource) > count {
+            return Err(none);
+        }
+        let at = 2 * (usize::from(resource) - 1);
+        let entries = index.get(at..at + 4).ok_or(none)?;
         let start = u32::from(u16::from_le_bytes([entries[0], entries[1]]));
         let end = u32::from(u16::from_le_bytes([entries[2], entries[3]]));
         if start > end || end > self.index_at || start < Self::HEADER {
@@ -146,8 +154,7 @@ impl StringsLayout {
                 resource,
                 start,
                 end,
-            }
-            .into());
+            });
         }
         Ok(Span {
             at: start,

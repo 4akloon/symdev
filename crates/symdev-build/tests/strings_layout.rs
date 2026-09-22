@@ -61,7 +61,10 @@ fn strings(pairs: &[(String, String)]) -> (StringsResources, Vec<u8>) {
 
 fn read(file: &Bytes, resource: u16) -> Result<Vec<u8>, Unreadable> {
     let layout = StringsLayout::read(file, file.0.len() as u32)?;
-    let Span { at, len } = layout.span(file, resource)?;
+    let index = layout.index();
+    let mut entries = vec![0; index.len as usize];
+    file.read_exact_at(index.at, &mut entries)?;
+    let Span { at, len } = layout.span(&entries, resource)?;
     let mut out = vec![0; len as usize];
     file.read_exact_at(at, &mut out)?;
     Ok(out)
@@ -96,7 +99,13 @@ fn every_resource_reads_back_as_the_value_the_writer_was_given() {
         resource: past,
         count,
     };
-    assert_eq!(layout.span(&file, past), Err(none));
+    let index = layout.index();
+    assert_eq!(
+        index.at + index.len,
+        file.0.len() as u32,
+        "the index ends the file"
+    );
+    assert_eq!(read(&file, past), Err(none));
     for (key, value) in &pairs {
         let index = s.locales.index(key).unwrap();
         assert_eq!(
