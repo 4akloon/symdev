@@ -48,9 +48,6 @@ dependencies = [
 [[package]]
 name = "symbian-macros"
 version = "0.1.0"
-dependencies = [
- "symdev-locale",
-]
 
 [[package]]
 name = "symbian-std"
@@ -74,7 +71,3 @@ version = "0.1.0"
 dependencies = [
  "symbian-core",
 ]
-
-[[package]]
-name = "symdev-locale"
-version = "0.1.0"
