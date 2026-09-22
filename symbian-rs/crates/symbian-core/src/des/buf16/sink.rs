@@ -19,6 +19,12 @@ impl<const N: usize> Sink for Buf16<N> {
         self.push_str(s).map_err(|_| fmt::Error)
     }
 
+    /// Text known at compile time: its UTF-16 is copied, nothing is transcoded.
+    #[inline(never)]
+    fn put_utf16(&mut self, _text: &str, units: &[u16]) -> fmt::Result {
+        self.append_units(units).map_err(|_| fmt::Error)
+    }
+
     fn put_char(&mut self, c: char) -> fmt::Result {
         self.push(c).map_err(|_| fmt::Error)
     }

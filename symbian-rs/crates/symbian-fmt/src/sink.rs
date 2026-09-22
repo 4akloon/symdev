@@ -14,6 +14,16 @@ pub trait Sink {
     /// `write_str(s)`.
     fn put_str(&mut self, s: &str) -> fmt::Result;
 
+    /// `write_str(text)`, for text whose UTF-16 is `units` — known at compile time, from
+    /// [`utf16!`](crate::utf16) or a literal piece of the format string. A destination
+    /// that holds UTF-16 copies `units` instead of converting `text`; it must end up
+    /// exactly as `put_str(text)` would have left it, failure included.
+    #[inline(always)]
+    fn put_utf16(&mut self, text: &str, units: &[u16]) -> fmt::Result {
+        let _ = units;
+        self.put_str(text)
+    }
+
     /// `write_char(c)`.
     fn put_char(&mut self, c: char) -> fmt::Result;
 

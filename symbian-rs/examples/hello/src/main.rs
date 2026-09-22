@@ -13,9 +13,9 @@
 use core::fmt::Write;
 
 use symbian_core::{Buf16, ErrorKind, Result, SymbianError, user};
-use symbian_std::write;
+use symbian_std::{Utf16Str, utf16, write};
 
-const GREETING: &str = "Hello from Rust SDK";
+const GREETING: Utf16Str = utf16!("Hello from Rust SDK");
 
 #[symbian_std::main]
 fn main() -> Result<()> {

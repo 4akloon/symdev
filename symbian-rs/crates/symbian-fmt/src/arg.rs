@@ -1,4 +1,4 @@
-//! The argument types a plain `{}` appends directly: `str`, `String`, `char` and the
+//! The argument types a plain `{}` appends directly: `str`, `String`, `Utf16Str`, `char` and the
 //! integers up to 64 bits. Each writes exactly what its `Display` writes with no
 //! flags, through the same calls. Everything else — `bool`, floats, 128-bit integers,
 //! a user's own `Display` — is not on the list and is formatted by `core::fmt`.
@@ -7,6 +7,7 @@ use alloc::string::String;
 use core::fmt;
 
 use crate::sink::Sink;
+use crate::utf16::Utf16Str;
 
 /// A type whose flag-less `Display` a [`Sink`] can reproduce.
 pub trait Arg {
@@ -22,6 +23,14 @@ impl Arg for str {
 impl Arg for String {
     fn put<S: Sink + ?Sized>(&self, sink: &mut S) -> fmt::Result {
         sink.put_str(self)
+    }
+}
+
+/// The `str`'s text, with its UTF-16 handed along for a destination that can use it.
+impl Arg for Utf16Str {
+    #[inline(always)]
+    fn put<S: Sink + ?Sized>(&self, sink: &mut S) -> fmt::Result {
+        sink.put_utf16(self.as_str(), self.units())
     }
 }
 

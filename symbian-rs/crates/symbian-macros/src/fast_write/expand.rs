@@ -45,15 +45,19 @@ pub fn expansion(plan: &Plan) -> String {
          (@dst).__symbian_fmt_enter(({slots}), |__d, ({names})| {{ "
     );
     for piece in &plan.pieces {
-        let (value, view) = match piece {
-            Piece::Text(text) => (format!("{text:?}"), String::from("a")),
-            Piece::Arg(slot) => (format!("__a{slot}"), format!("@view{slot}")),
+        let (bind, value, view) = match piece {
+            Piece::Text(text) => (
+                format!("const __T: @krate::Utf16Str = @krate::utf16!({text:?}); "),
+                String::from("&__T"),
+                String::from("a"),
+            ),
+            Piece::Arg(slot) => (String::new(), format!("__a{slot}"), format!("@view{slot}")),
         };
         out.push_str(&format!(
-            "match (&&&@krate::__private::Probe::of(&*__d, {value})).__symbian_kind()\
+            "{{ {bind}match (&&&@krate::__private::Probe::of(&*__d, {value})).__symbian_kind()\
              .put(&mut *__d, {value}, |d, {view}| d.write_fmt(::core::format_args!(\"{{}}\", {view}))) {{ \
              ::core::result::Result::Ok(()) => {{}} \
-             ::core::result::Result::Err(e) => return ::core::result::Result::Err(e), }} "
+             ::core::result::Result::Err(e) => return ::core::result::Result::Err(e), }} }} "
         ));
     }
     out.push_str("::core::result::Result::Ok(()) }) }");

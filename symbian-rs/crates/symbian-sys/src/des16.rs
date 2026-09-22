@@ -78,6 +78,13 @@ unsafe extern "C" {
     #[link_name = "_ZN6TDes166AppendERK7TDesC16"]
     pub fn TDes16_Append(this: *mut TDes16, src: *const TDesC16);
 
+    /// `00000f18 T _ZN6TDes166AppendEPKti` — `TDes16::Append(const TUint16* aBuf, TInt
+    /// aLength)`: `aLength` code units from `aBuf`. Panics `USER 11` on overflow.
+    /// Experiment 106 compiled `d->Append(p, n)` with symdev's GCCE argv: `push {r4, lr};
+    /// blx Append; pop` — no shuffle, so `this`, `aBuf`, `aLength` are r0, r1, r2.
+    #[link_name = "_ZN6TDes166AppendEPKti"]
+    pub fn TDes16_AppendUnits(this: *mut TDes16, units: *const u16, length: i32);
+
     /// `00000f5c T _ZN6TDes169AppendNumEx` — `TDes16::AppendNum(TInt64)`: the signed
     /// decimal integer, formatted by euser and therefore free of `core::fmt`.
     ///

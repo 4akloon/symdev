@@ -2,7 +2,9 @@
 use core::fmt;
 
 use symbian_sys::des::TDesC16;
-use symbian_sys::des16::{TDes16, TDes16_Append, TDes16_AppendNum, TDes16_Copy, TDes16_Num};
+use symbian_sys::des16::{
+    TDes16, TDes16_Append, TDes16_AppendNum, TDes16_AppendUnits, TDes16_Copy, TDes16_Num,
+};
 
 use super::{DesC16, EBUF, MAX_LENGTH, header, sealed, utf16};
 use crate::{ErrorKind, Result, SymbianError};
@@ -170,6 +172,19 @@ impl<const N: usize> Buf16<N> {
         // decimal integer — every digit plus a sign — so the overflow panic cannot
         // happen. The 64-bit argument lands in r2:r3 under the observed member ABI.
         unsafe { TDes16_AppendNum(self.as_tdes16(), value) };
+        Ok(())
+    }
+
+    /// Appends code units that are already UTF-16 (`TDes16::Append(const TUint16*,
+    /// TInt)`) — a [`symbian_fmt::Utf16Str`]'s, encoded at compile time — with the same
+    /// all-or-nothing room check as [`Buf16::push_str`], so the buffer ends up as
+    /// `push_str` of the same text leaves it. The copy is euser's, in ROM.
+    pub(crate) fn append_units(&mut self, units: &[u16]) -> Result<()> {
+        self.room_for(units.len(), self.length())?;
+        // SAFETY: as `append_des`: `units` is borrowed for the call and `room_for` has
+        // ruled out the overflow panic. The length fits a `TInt` because it fits `N`,
+        // which `LENGTH_FITS` bounds by `i32::MAX`.
+        unsafe { TDes16_AppendUnits(self.as_tdes16(), units.as_ptr(), units.len() as i32) };
         Ok(())
     }
 

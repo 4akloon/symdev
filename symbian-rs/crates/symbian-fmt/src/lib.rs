@@ -41,6 +41,7 @@ mod arg;
 mod decimal;
 mod probe;
 mod sink;
+mod utf16;
 
 /// `core::write!`, with plain `{}` of strings and integers appended directly. See
 /// the crate documentation for what is fast and what is `core::write!` exactly.
@@ -76,7 +77,9 @@ pub mod __private {
         Enter, Probe, SinkKind, SinkTag, SlowKind, SlowTag, WriteKind, WriteTag,
     };
     pub use crate::sink::Sink;
+    pub use crate::utf16::{encode_utf16, utf16_len};
     pub use symbian_macros::__write_pieces as write_pieces;
 }
 
 pub use sink::Sink;
+pub use utf16::Utf16Str;

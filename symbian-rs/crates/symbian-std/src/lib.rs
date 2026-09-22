@@ -148,7 +148,7 @@ pub use symbian_macros::{main, strings};
 ///
 /// They are not in the [`prelude`]: a glob-imported `write` is ambiguous with
 /// `core`'s and would be a compile error (E0659).
-pub use symbian_fmt::{write, writeln};
+pub use symbian_fmt::{Utf16Str, utf16, write, writeln};
 /// What a `fn main` may return, and the `TInt` it becomes. An application implements
 /// [`IntoExitCode`] for its own error type to return it from `main`; `()`, `i32`,
 /// `SymbianError`, `io::Error` and any `Result` of those are already covered.
