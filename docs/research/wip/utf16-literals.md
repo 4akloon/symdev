@@ -27,6 +27,8 @@ shims/s60, macros/entry.rs, std/src/fs, core/src/fs.
 
 - Gates clean: cargo test --workspace, clippy --all-targets (host), clippy --release --workspace (symbian-rs, only the pre-existing compiler_builtins profile warning). symbian-macros 26 tests pass (expansion test updated for the utf16! constant).
 
+- Final sizes (res-final.txt): hello 1245 -> 971, fmt 100031 -> 97666, every other example the same size; atomics, time, query, alloc .exe differ from main's only at offsets 20-23 and 36-39 (E32 header CRC and build time), so their code is byte-identical.
+
 ## Decisions
 
 - Design to try: `symbian_fmt::Utf16Str` = `&'static str` + its `&'static [u16]`, built only by `utf16!(expr)` (const items: `[u16; utf16_len(S)]` from a const fn), `Deref<Target = str>` and `Display` = str's, `Arg` -> new `Sink::put_utf16(text, units)` whose default is `put_str(text)` (so every non-Buf16 destination sees the same `write_str`), `Buf16` overrides with a room check + unit copy. The fast `write!` emits each literal piece as a `utf16!` const. `hello` changes one line: `const GREETING: Utf16Str = utf16!("…")`.
