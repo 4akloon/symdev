@@ -21,6 +21,7 @@ impl RustSdkPackage {
     /// symdev-build's `RustSdk::at` requires (a test there keeps the two lists equal).
     pub const REQUIRED: &'static [&'static str] = &[
         "symbian-rs/targets/arm-symbian-e32.json",
+        "symbian-rs/rust-toolchain.toml",
         "crates/symdev-locale/Cargo.toml",
         "Cargo.toml",
     ];
@@ -95,6 +96,12 @@ mod tests {
         ] {
             assert!(RustSdkPackage::REQUIRED.contains(&file), "{file}");
         }
+    }
+
+    /// The build compares a project's nightly with the SDK's, and the scaffold copies it.
+    #[test]
+    fn requires_the_toolchain_file_the_build_reads() {
+        assert!(RustSdkPackage::REQUIRED.contains(&"symbian-rs/rust-toolchain.toml"));
     }
 
     #[test]

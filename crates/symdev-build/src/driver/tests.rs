@@ -12,6 +12,7 @@ mod language;
 mod link;
 mod resolve_source;
 mod rust_build;
+mod rust_prepare;
 mod rust_ui;
 
 /// An SDK skeleton with just what preprocessing a project file needs: the variant

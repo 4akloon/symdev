@@ -150,8 +150,13 @@ version is a new id, installed beside the old one, which stays until it is unins
 A Rust project's SDK is `SYMDEV_RUST_SDK` when it is set; else the `symbian-rs/` of the source
 checkout symdev was built from, while that still exists, so a developer working on the SDK
 keeps building against their tree; else the `rust-sdk` package of the same version as symdev,
-installed like GCCE. `symdev new --lang rust` writes the absolute path of the SDK it found into
-the new project's `Cargo.toml` and `.cargo/config.toml`.
+installed like GCCE. A Rust project names its SDK only through the link `build/rust-sdk`
+(`build/rust-sdk/symbian-rs/crates/…` in `Cargo.toml`, `build/rust-sdk/symbian-rs/targets/…` in
+`.cargo/config.toml`), which `symdev new --lang rust` makes and every `symdev build` points at the
+SDK it resolved, so an upgrade or an uninstalled package never leaves a stale path in the project;
+when the link moves to another SDK, `build/cargo` is rebuilt from scratch. `symdev build` stops,
+with the exact lines to change, when the project still names another SDK by absolute path (as
+symdev 0.1.0 scaffolds did) or its `rust-toolchain.toml` names another nightly than the SDK's.
 
 EKA2L1 is GPL-3.0 and runs as a separate process; it is never linked into or copied into this
 repository. The SDK, ROM images and real signing keys are never committed. The only key material

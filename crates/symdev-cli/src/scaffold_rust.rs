@@ -2,9 +2,10 @@
 //! No `bld.inf`, no `.mmp`: `RustBuild` runs cargo and then the recorded link line.
 use std::path::{Path, PathBuf};
 
-use symdev_build::RustSdk;
+use symdev_build::{RustSdk, RustSdkLink};
 use symdev_core::Error;
 
+use crate::build_cmd::ignore_build_dir;
 use crate::cli::Template;
 use crate::scaffold::{io_err, uid3_hex};
 
@@ -22,13 +23,20 @@ pub fn write_rust(
         ));
     }
     let sdk = sdk()?;
+    // The resolved SDK's own file, not the one this symdev was built with: the build
+    // refuses a project whose nightly is not its SDK's.
+    let toolchain = sdk.toolchain()?;
+    let toolchain = std::fs::read_to_string(toolchain.path()).map_err(io_err)?;
     std::fs::create_dir_all(root.join("src")).map_err(io_err)?;
     std::fs::create_dir_all(root.join(".cargo")).map_err(io_err)?;
+    // `build/` ignores itself before the link is made in it, as `symdev build` does.
+    ignore_build_dir(root)?;
+    RustSdkLink::of(root).point_at(&sdk)?;
     let files = [
         ("symdev.toml".to_string(), manifest(name)),
-        ("Cargo.toml".into(), cargo_manifest(name, &sdk)),
-        (".cargo/config.toml".into(), cargo_config(&sdk)),
-        ("rust-toolchain.toml".into(), RustSdk::TOOLCHAIN_FILE.into()),
+        ("Cargo.toml".into(), cargo_manifest(name)),
+        (".cargo/config.toml".into(), cargo_config()),
+        ("rust-toolchain.toml".into(), toolchain),
         ("src/main.rs".into(), RustSdk::HELLO_MAIN.into()),
     ];
     for (path, text) in files {
@@ -61,14 +69,14 @@ fn manifest(name: &str) -> String {
 }
 
 /// A `staticlib` named after the package (`RustBuild` looks for `lib<name>.a`); the SDK
-/// crates by absolute path; the same profile as the SDK workspace (size, one object,
+/// crates through `build/rust-sdk` ([`RustSdkLink`]); the same profile as the SDK workspace (size, one object,
 /// no unwinder).
 ///
 /// `symbian-std` and not `symbian-runtime`: the entry point is `#[symbian_std::main]`
 /// (experiment 81), and the runtime underneath it — the panic handler, the heap and
 /// the older `entry!` — comes with it, so the template names one crate for the road
 /// and one (`symbian-core`) for the descriptors the escape hatch still needs.
-fn cargo_manifest(name: &str, sdk: &RustSdk) -> String {
+fn cargo_manifest(name: &str) -> String {
     format!(
         "[package]\n\
          name = \"{name}\"\n\
@@ -102,14 +110,15 @@ fn cargo_manifest(name: &str, sdk: &RustSdk) -> String {
          \n\
          [profile.dev]\n\
          panic = \"abort\"\n",
-        sdk.crate_dir("symbian-core").display(),
-        sdk.crate_dir("symbian-std").display()
+        RustSdkLink::crate_dir("symbian-core"),
+        RustSdkLink::crate_dir("symbian-std")
     )
 }
 
 /// What `symdev build` passes on the cargo command line, so a hand `cargo build` (or
-/// `cargo clippy`) in the project does the same.
-fn cargo_config(sdk: &RustSdk) -> String {
+/// `cargo clippy`) in the project does the same. The target spec is relative to the
+/// project, wherever cargo is run from in it (experiment 110 c).
+fn cargo_config() -> String {
     format!(
         "# Kept in step with `symdev build` (RustBuild::cargo_args).\n\
          [build]\n\
@@ -122,7 +131,7 @@ fn cargo_config(sdk: &RustSdk) -> String {
          # two-digit table), the small sort, the short padding path.\n\
          build-std-features = [\"optimize_for_size\"]\n\
          json-target-spec = true\n",
-        sdk.target_spec().display()
+        RustSdkLink::target_spec()
     )
 }
 
@@ -156,13 +165,41 @@ mod tests {
         assert!(read("symdev.toml").contains("uid3 = \"0xef9f2cab\""));
         let cargo = read("Cargo.toml");
         assert!(cargo.contains("crate-type = [\"staticlib\"]"));
-        assert!(cargo.contains(&sdk.crate_dir("symbian-core").display().to_string()));
-        assert!(cargo.contains(&sdk.crate_dir("symbian-std").display().to_string()));
-        assert!(read(".cargo/config.toml").contains(&sdk.target_spec().display().to_string()));
-        assert_eq!(read("rust-toolchain.toml"), RustSdk::TOOLCHAIN_FILE);
+        assert_eq!(
+            read("rust-toolchain.toml"),
+            sdk_file(&sdk, "rust-toolchain.toml")
+        );
         assert_eq!(read("src/main.rs"), RustSdk::HELLO_MAIN);
         assert!(!root.join("group").exists());
         assert!(!root.join("bld.inf").exists());
+    }
+
+    fn sdk_file(sdk: &RustSdk, file: &str) -> String {
+        std::fs::read_to_string(sdk.root().join(file)).unwrap()
+    }
+
+    /// The project names the SDK only through `build/rust-sdk`, which `symdev new` links
+    /// and every `symdev build` keeps pointing at the SDK it resolved (experiment 110).
+    #[test]
+    fn rust_project_names_the_sdk_through_build_rust_sdk() {
+        let dir = scratch();
+        let checkout = || RustSdk::at(Path::new(RustSdk::CHECKOUT.unwrap()));
+        let root = create_project(&dir, "hello", Template::Console, Lang::Rust, checkout).unwrap();
+        let sdk = checkout().unwrap();
+        let read = |p: &str| std::fs::read_to_string(root.join(p)).unwrap();
+        let cargo = read("Cargo.toml");
+        for name in ["symbian-core", "symbian-std"] {
+            let line = format!("{name} = {{ path = \"build/rust-sdk/symbian-rs/crates/{name}\" }}");
+            assert!(cargo.contains(&line), "{cargo}");
+        }
+        let config = read(".cargo/config.toml");
+        let target = "target = \"build/rust-sdk/symbian-rs/targets/arm-symbian-e32.json\"";
+        assert!(config.contains(target), "{config}");
+        let tree = sdk.root().parent().unwrap().display().to_string();
+        assert!(!cargo.contains(&tree) && !config.contains(&tree));
+        let link = std::fs::read_link(root.join("build/rust-sdk")).unwrap();
+        assert_eq!(link, sdk.root().parent().unwrap());
+        assert!(read("build/.gitignore").lines().any(|l| l == "*"));
     }
 
     #[test]

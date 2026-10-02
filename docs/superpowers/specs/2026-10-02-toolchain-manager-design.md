@@ -422,13 +422,26 @@ Rust for a C++ project.
   `RustSdk::CHECKOUT` is `None` when `SYMDEV_RELEASE` is set (not empty) at compile time, so
   on another machine nobody can plant a `symbian-rs` at the path of the machine that built
   it (review, 2026-10-02). The release recipe must build with `SYMDEV_RELEASE=1`.
-- **Known gap (follow-up, not phase 1).** `symdev new --lang rust` writes absolute SDK paths
-  into the project (`Cargo.toml` path dependencies, `.cargo/config.toml` `build.target`). With
-  the package route these name `rust-sdk/<ver>/`, so after an upgrade a build silently mixes
-  two SDK versions, and uninstalling the old one breaks the project. Proposed fix: the build
-  keeps a `build/rust-sdk` link to the SDK it resolved and the scaffold writes relative paths
-  through it; needs an experiment on how the pinned nightly resolves a relative
-  `build.target` first.
+- **Projects name the SDK through a link (resolved 2026-10-02, symdev 0.2.0; was the known
+  gap of 0.1.0).** 0.1.0's `symdev new --lang rust` wrote the SDK's absolute paths into the
+  project (`Cargo.toml` path dependencies, `.cargo/config.toml` `build.target`), which with
+  the package route name `rust-sdk/<ver>/`: after an upgrade a build mixed two SDKs, and
+  uninstalling the old one broke the project. Now `build/rust-sdk` is a link (`RustSdkLink`)
+  to the directory **above** the resolved `symbian-rs` — the package root, or the checkout's
+  root — and the project names `build/rust-sdk/symbian-rs/crates/<crate>` and
+  `build/rust-sdk/symbian-rs/targets/arm-symbian-e32.json`. `symdev new` makes the link,
+  every `symdev build` re-points it at the SDK it resolved, and the scaffold copies that
+  SDK's `rust-toolchain.toml`. Experiment 110 is the evidence: cargo joins a path
+  dependency's `..` lexically, so a link to `symbian-rs` itself breaks `symbian-macros`'
+  `../../../crates/symdev-locale`; a relative `build.target` in a config file is relative to
+  the directory holding `.cargo/` (any cwd); `-Zbuild-std` and the spec work through the
+  link, cargo canonicalising the spec's path; and cargo keeps outputs built from the old tree
+  when the link moves to one with older mtimes, so a re-point removes `build/cargo` first.
+  Before cargo runs, `symdev build` refuses (and does not rewrite) a project that still names
+  another SDK by absolute path — listing each `file:line` with the line as it is and as it
+  should be — and one whose `rust-toolchain.toml` names a channel other than the SDK's (a
+  project without that file, like the SDK's own examples, is not checked). The SDK directory
+  must be named `symbian-rs`, as it is in a checkout and in the package.
 - **Build.** Static, `x86_64-unknown-linux-musl`, so the binary runs on any Linux whatever its
   glibc; this can only be proven in CI (no musl tools on the owner's host). Fallback if musl
   fails: a glibc build in the AlmaLinux 8 container, as for GCCE.
@@ -464,5 +477,5 @@ or podman exists on the host, so the container variant was not run, and the CI r
 
 Found during acceptance: a Rust project needs a host C linker `cc` (build scripts, the SDK's
 proc macros, `-Zbuild-std`'s `compiler_builtins`), as any Rust project does — now in the
-README and §8. Open follow-ups: the scaffold's absolute `rust-sdk/<ver>` paths (§12); building
-Rust applications without GCCE (spike, experiment 109); index signing (§11).
+README and §8. Open follow-ups: the scaffold's absolute `rust-sdk/<ver>` paths (§12, resolved in
+0.2.0 by the `build/rust-sdk` link); building Rust applications without GCCE (spike, experiment 109); index signing (§11).

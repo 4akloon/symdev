@@ -101,7 +101,7 @@ pub fn build_project(m: Manifest, provision: &Provision) -> Result<ExitCode, Err
 /// That happened: a branch here once added 1 044 of them. So the directory ignores
 /// itself, the way a build tool's output directory should. An existing
 /// `build/.gitignore` is left alone: if someone wrote one, it is theirs.
-fn ignore_build_dir(root: &std::path::Path) -> Result<(), Error> {
+pub(crate) fn ignore_build_dir(root: &std::path::Path) -> Result<(), Error> {
     let dir = root.join("build");
     let io = |e: std::io::Error| Error::Other(format!("{}: {e}", dir.display()));
     std::fs::create_dir_all(&dir).map_err(io)?;

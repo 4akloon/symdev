@@ -1045,6 +1045,7 @@ dependencies = [
  "symdev-sis",
  "tempfile",
  "thiserror",
+ "toml",
  "x509-cert",
 ]
 
