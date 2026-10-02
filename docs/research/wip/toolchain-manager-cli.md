@@ -414,3 +414,20 @@ symdev-packages call sites (not edited; that repository builds against this crat
 - M4: `publish/src/bucket.rs:4-5` imports `resolve_url` (drop it from the `use`);
   `publish/src/bucket.rs:46` `resolve_url(&self.spec.base, key)` becomes
   `self.spec.resolve(key)`. No call of `builtin_source`/`BUILTIN_SOURCE` there.
+- C1/M10, by hand: with the new binary under `env -i`, an empty `SYMDEV_HOME` and
+  `builtin = false`, `symdev --offline sdk install` in `examples/hello`, `examples/gui` and
+  `symbian-rs/examples/hello` each names exactly `'gcce;12.1.0' 'sdk;s60-3rd-fp2;1.1'`
+  (the Rust example takes its SDK from the checkout), so the keyed install step covers what
+  the keyless build step needs.
+
+Checked at the end (2026-10-02): `cargo test --workspace --offline` 714 passed, 0 failed
+(690 before: +24); `cargo clippy --workspace --all-targets --offline -- -D warnings` no
+warning; `cargo fmt --all --check` clean; every tracked `.rs` file ≤ 300 lines; `ci.yml`
+parses (PyYAML). Commits: `git log 5c90f9c..tm-final-fixes`.
+
+Next step (lead): merge `tm-final-fixes` into `toolchain-manager`; apply the symdev-packages
+changes listed above (`bucket.rs` M2/M4, `build.sh` `SYMDEV_RELEASE=1`) when that repository
+moves to this crate version. Open, not fixed here: a server that sends its headers and then
+stalls the body is bounded only by the one-hour request limit (ureq 3.4.2 has no idle
+timeout); a developer's own `RUSTFLAGS` likewise replaces the libcall build's
+`build.rustflags` (24 bytes per affected example, review I3's mechanism outside CI).
