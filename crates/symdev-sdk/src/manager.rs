@@ -85,7 +85,14 @@ impl<'w> SdkManager<'w> {
                 cycle.join(" -> ")
             )));
         }
-        let (source, package, entry) = self.catalog.find(id, self.host)?;
+        let found = self.catalog.find(id, self.host);
+        // A failed lookup's error already names every refused source.
+        let untrusted = self.catalog.take_untrusted();
+        let (source, package, entry) = found?;
+        for why in untrusted {
+            // Progress is informational: a closed stderr must not stop an install.
+            let _ = writeln!(self.progress, "warning: {why}");
+        }
         chain.push(id.clone());
         for dependency in &package.depends {
             self.ensure_one(dependency, chain)?;
@@ -137,6 +144,8 @@ impl<'w> SdkManager<'w> {
             ));
         }
         let (packages, problems) = self.catalog.all();
+        // `problems` already lists the indexes refused for their signature.
+        self.catalog.take_untrusted();
         for problem in problems {
             let _ = writeln!(self.progress, "warning: {problem}");
         }

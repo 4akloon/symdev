@@ -72,6 +72,14 @@ fn an_index_signed_by_another_key_is_not_used_and_a_later_source_wins() {
         .ensure(&[id("gcce;12.1.0")])
         .unwrap();
     assert_eq!(receipts[0].source, "mirror");
+    // A refused index is a security event: said even though the install went on.
+    let text = String::from_utf8(progress).unwrap();
+    assert!(
+        text.starts_with("warning: source `public` could not be read: ")
+            && text.contains("does not verify"),
+        "{text}"
+    );
+    assert_eq!(text.matches("warning: ").count(), 1, "{text}");
 }
 
 #[test]

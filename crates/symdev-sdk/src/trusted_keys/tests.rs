@@ -1,7 +1,7 @@
 use super::TrustedKeys;
 use crate::{IndexSigningKey, SignedIndex};
 
-/// The project key's public half, as the spec (§11) records it.
+/// The project key's public half, as the spec (§14) records it.
 const PROJECT_KEY: &str = "C1yh60B72Qa4YE4rZOgoPJZmTYKbh/uzHjupoVwqfLU=";
 const PROJECT_FINGERPRINT: &str =
     "bdf5345cc3ca8c30661dbc53b2cbd16983d081bf26913d0c3ebe7480ca334d44";
@@ -73,6 +73,24 @@ fn anything_else_is_refused_with_both_forms_named() {
             "{text:?}: {e}"
         );
     }
+}
+
+#[test]
+fn a_weak_key_that_would_verify_nothing_is_refused() {
+    // The all-zero encoding is a point of small order: it loads, but proves nothing.
+    let e = TrustedKeys::parse("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("weak"), "{e}");
+}
+
+#[test]
+fn includes_tells_whether_every_key_of_another_set_is_trusted() {
+    let rotation = key(7).trusted().and(key(8).trusted());
+    assert!(rotation.includes(&key(8).trusted()));
+    assert!(rotation.includes(&rotation));
+    assert!(!key(7).trusted().includes(&rotation));
+    assert!(!TrustedKeys::builtin().includes(&key(7).trusted()));
 }
 
 #[test]

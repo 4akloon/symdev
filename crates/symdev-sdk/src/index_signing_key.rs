@@ -20,8 +20,8 @@ impl IndexSigningKey {
     pub fn from_base64(text: &str) -> Result<IndexSigningKey> {
         let bad = || {
             SdkError::Other(
-                "the index signing key is not the base64 of a 32-byte Ed25519 seed; make one \
-                 with `openssl genpkey -algorithm ed25519` as the toolchain spec (§11) shows"
+                "the index signing key is not the base64 of a 32-byte Ed25519 seed (the last \
+                 32 bytes of the key's PKCS#8 DER, as the toolchain spec's §14 shows)"
                     .into(),
             )
         };

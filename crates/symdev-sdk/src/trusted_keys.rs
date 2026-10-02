@@ -9,7 +9,7 @@ use crate::{Result, SdkError};
 
 /// symdev's own index-signing public keys (Ed25519), which the built-in source's index
 /// must be signed with. A key rotation ships a symdev that lists both keys before the
-/// indexes are re-signed with the new one. The spec (§11) records each key's fingerprint.
+/// indexes are re-signed with the new one. The spec (§14) records each key's fingerprint.
 const BUILTIN: [[u8; 32]; 1] = [
     // C1yh60B72Qa4YE4rZOgoPJZmTYKbh/uzHjupoVwqfLU=, generated 2026-10-03; fingerprint
     // bdf5345cc3ca8c30661dbc53b2cbd16983d081bf26913d0c3ebe7480ca334d44.
@@ -61,6 +61,11 @@ impl TrustedKeys {
             .map_err(|b: Vec<u8>| bad(format!("is {} bytes, not 32", b.len())))?;
         let key = VerifyingKey::from_bytes(&bytes)
             .map_err(|_| bad("is not a point of the Ed25519 curve".into()))?;
+        if key.is_weak() {
+            return Err(bad(
+                "is a weak key of small order, which verifies nothing".into()
+            ));
+        }
         Ok(Self::from_key(key))
     }
 
@@ -76,6 +81,11 @@ impl TrustedKeys {
             }
         }
         self
+    }
+
+    /// Whether every key of `other` is one of these.
+    pub fn includes(&self, other: &TrustedKeys) -> bool {
+        other.keys.iter().all(|key| self.keys.contains(key))
     }
 
     /// Each key's fingerprint: the SHA-256 of its 32 bytes, in lowercase hex.
