@@ -11,7 +11,7 @@ Inputs: `toolchain-manager-core.md` ("For Track D"), `toolchain-manager-net.md`.
 | D1 ToolchainOverrides / Toolchain::resolve | done | see `git log` |
 | D2 SdkManager / builtin | done | see `git log` |
 | D3 CLI sdk / --offline / provision / hermetic tests / docs | done | see `git log` |
-| smoke test (real toolchain, file:// source) | todo | |
+| smoke test (real toolchain, file:// source) | done (2026-10-02), see "Smoke test" | |
 
 ## Facts
 
@@ -97,8 +97,37 @@ Inputs: `toolchain-manager-core.md` ("For Track D"), `toolchain-manager-net.md`.
 - D3: the help test now compares the exact command list (it forbade the substring
   `sdk`, and `toolchain`, which help text now contains).
 
+## Smoke test (2026-10-02, scratchpad only, nothing committed)
+
+- Prefix: copy of `~/gcc-builds/gcc-12.1.0` with a copy of `~/gcc-builds/binutils-2.29.1`
+  overlaid (so `as`, `ld`, `ar` and the ldscripts are all 2.29.1). gcc found `as`/`ld`
+  in the relocated prefix by itself (`-print-prog-name=as` →
+  `<prefix>/bin/../lib/gcc/arm-none-symbianelf/12.1.0/../../../../arm-none-symbianelf/bin/as`);
+  nothing extra was needed. Packed with `ReproducibleTarGz` (`.`): 72 482 595 bytes,
+  7.9 s.
+- SDK: `epoc32/include`, `epoc32/release/armv5/lib/*.dso` (570), `epoc32/release/armv5/
+  urel/{eexe,edll,usrt2_2}.lib`, `epoc32/tools/variant/variant.cfg`: 2 697 files, 31 MB
+  staged, 4 941 155 bytes packed. **`usrt2_2.lib` is in `urel/`, not `lib/`** as spec §2
+  and plan E2's `include` list say (`~/sdk/S60_3rd_FP2/epoc32/release/armv5/lib/
+  usrt2_2.lib` does not exist; the link line takes it from `-L…/urel`). Input for E2.
+- `symdev build` in a copy of `examples/hello` with no `SYMDEV_*` toolchain variable and
+  only a `file://` source: printed `installing gcce;12.1.0 (72.5 MB) from local…` and
+  `installing sdk;s60-3rd-fp2;1.1 (4.9 MB) from local…`, wrote both receipts, produced
+  `build/hello.exe` (3 588 bytes), exit 0, 3.2 s. A second `symdev build --offline`
+  printed no install line; `symdev package` (installs nothing) produced `hello.sisx`.
+- Same copy, clean `build/`, classic env (all five variables): no package installed (the
+  empty `SYMDEV_HOME` was not even created). `cmp`: `hello.elf` **identical**;
+  `hello.exe` differs in 7 bytes, all inside `iHeaderCrc` (0x14) and `iTimeLo` (0x24):
+  equal with those two masked. Two classic builds differ in the same bytes: the native
+  elf2e32 stamps `SystemTime::now()` (`crates/symdev-elf2e32/src/elf2e32.rs:166`), so no
+  two `.exe` builds are byte-identical. Spec §8 item 1 ("`.exe` byte-identical") has to
+  mask the time and header CRC, or the comparison must be on `.elf`.
+- `hello.o` differs (section contents equal per `objdump -s`; `.text` at 0x44 vs 0x48):
+  the package's `as` is 2.29.1, the classic env's is gcc's own 2.35. The linked ELF is
+  the same.
+
 ## Dead ends
 
 ## Next step
 
-Smoke test with the real toolchain from a `file://` source (scratchpad only).
+Final verification (test, clippy, fmt), then report to the lead.
