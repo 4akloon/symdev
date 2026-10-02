@@ -82,6 +82,13 @@ builds' logs/config.log, reference toolchain's GCC output (c++config.h, objects,
 - Reference has 11 archives: libgcc+libgcov ×4 multilibs, libsupc++ for default, softfp,
   v5te/softfp (none for v5te), 7336 members.
 
+- Build P, default multilib's libstdc++ (build tree, before install): `c++config.h`
+  byte-identical (`cmp`) to the reference's. config.log: TR1 `<stdint.h>` no (first error
+  `'int8_t' does not name a type`), tmpnam no, gets no, C99 `<stdio.h>` C++98/C++11 no;
+  float.h, stdint.h, stdbool.h, stdalign.h found.
+- Comparator negative test: one flipped `.text` byte in a copy of the reference
+  libsupc++.a is reported (`DIFFER in array_type_info.o`).
+
 ## Dead ends
 
 ## Next step
