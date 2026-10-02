@@ -106,7 +106,7 @@ builds' logs/config.log, reference toolchain's GCC output (c++config.h, objects,
 - Packages commit `73e2d78` (variant P in the recipe; build.yml packs the recipe dir).
 
 - **Build D done** (297 s, exit 0). P vs D, same build and prefix paths, whole prefix
-  (archives member by member): same 665 files; all libgcc (4×1758) and libsupc++ (3×64,
+  (archives member by member): same 671 entries (6 symlinks, 2 sys-include files not compared); all libgcc (4×1758) and libsupc++ (3×64,
   incl. C-compiled cp-demangle.o) members byte-identical; only `_gcov_info_to_gcda.o` in
   the four libgcov.a differs, in `.debug_info`/`.debug_line` only (40 bytes: P's 4
   inserted lines shift line numbers), and the HOST `bin/arm-none-symbianelf-gcov-tool`
@@ -122,8 +122,22 @@ builds' logs/config.log, reference toolchain's GCC output (c++config.h, objects,
   build.sh's gcc step (fewest bytes changed; no GCC file modified, no `patch` needed).
   Packages commit after 73e2d78 removes `libgcov-intptr.patch`.
 
+- **Proof 4** (packages `0ac67db`): `build.sh` from an empty `~/src/gcce-own/e2e`
+  (0 entries), `env -i` as above, fetched all six tarballs (curl), every hash OK, exit 0,
+  369 s with downloads, prefix-e2e 208 912 547 bytes; `CFLAGS_FOR_TARGET = -g -O2
+  -D__INTPTR_TYPE__=int` in build-gcc/Makefile; `g++ -v` identical to the reference's
+  but the prefix.
+- **Proof 1** on prefix-e2e vs `~/gcc-builds`: 11 archives, 7336 members, code/data/
+  relocs/symbols identical (391 byte-identical; 9 `.group`-only = gas 2.35 vs 2.29.1);
+  four c++config.h identical; header trees 84 files, 82 identical + mkheaders.conf
+  (prefix path).
+- **Proof 2** (`work/e2e` vs `work/baseline`): 3 `.elf` identical; 3 `.exe` identical
+  outside 0x14-0x17/0x24-0x2B.
+- **Proof 3**: `cp -a prefix-e2e relocated/gcce`, prefix-e2e renamed away; the moved g++
+  runs its own cc1plus and as (`-v`); `work/relocated` vs baseline: same as proof 2.
+
 ## Dead ends
 
 ## Next step
-Proof 4: final build.sh from an empty dir with downloads → `prefix-e2e`; then proofs 1-3
-on that prefix; then experiment 108 in the backlog.
+Write experiment 108 in experiment-backlog.md; point the spec (§6 GCCE recipe bullet) and
+pipeline-and-tools.md at it.
