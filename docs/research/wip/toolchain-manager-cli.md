@@ -8,7 +8,7 @@ Inputs: `toolchain-manager-core.md` ("For Track D"), `toolchain-manager-net.md`.
 
 | Task | State | Commit |
 |---|---|---|
-| D1 ToolchainOverrides / Toolchain::resolve | in progress | |
+| D1 ToolchainOverrides / Toolchain::resolve | done | see `git log` |
 | D2 SdkManager / builtin | todo | |
 | D3 CLI sdk / --offline / provision / hermetic tests / docs | todo | |
 | smoke test (real toolchain, file:// source) | todo | |
@@ -29,8 +29,17 @@ Inputs: `toolchain-manager-core.md` ("For Track D"), `toolchain-manager-net.md`.
   is a shell command separator, so the unquoted form from the plan/spec runs
   `symdev sdk install gcce` and then `12.1.0`.
 
+- D1: `ToolchainOverrides` also carries `SYMDEV_AR` (spec §3 lists it as `ld`'s
+  override); `Toolchain` gained `ar: Option<PathBuf>`, so `Toolchain::ar()` no longer
+  reads the environment. Every set override is checked to exist, `SYMDEV_ELF2E32` and
+  `SYMDEV_AR` too (spec §5: "a `SYMDEV_*` path does not exist").
+- D1: the "no package" message for the EPOCROOT says `symdev sdk install` (no id) in the
+  project: `Toolchain` does not know the device, and the no-id form installs the
+  project's SDK. The GCCE one names `Pins::gcce()`.
+- D1: `Toolchain::from_env` / `Epocroot::from_env` stay until D3 moves their callers.
+
 ## Dead ends
 
 ## Next step
 
-D1 tests first.
+D2: SdkManager + builtin, tests first.
