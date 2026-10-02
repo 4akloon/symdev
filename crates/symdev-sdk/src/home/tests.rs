@@ -6,6 +6,8 @@ use super::SdkHome;
 use crate::{ArchiveEntry, Auth, Fetch, FileFetch, Host, PackageId, ReproducibleTarGz};
 use crate::{Result, SdkError, SourceSpec};
 
+mod receipts;
+
 /// Counts downloads, so a test can tell a cache hit from a fetch.
 struct Counting {
     downloads: AtomicUsize,
@@ -81,7 +83,7 @@ fn installs_the_files_and_writes_the_receipt() {
     let home = w.home();
     assert_eq!(home.installed(&w.id).unwrap(), None);
     let receipt = home
-        .install(&w.id, &w.source, &FileFetch, &w.entry)
+        .install(&w.id, &w.source, &FileFetch, &w.entry, || {})
         .unwrap();
     let dir = home.package_dir(&w.id);
     assert_eq!(dir, w.tmp.path().join("home/gcce/12.1.0"));
@@ -101,10 +103,10 @@ fn a_second_install_downloads_nothing() {
     let w = World::new();
     let fetch = counting();
     w.home()
-        .install(&w.id, &w.source, &fetch, &w.entry)
+        .install(&w.id, &w.source, &fetch, &w.entry, || {})
         .unwrap();
     w.home()
-        .install(&w.id, &w.source, &fetch, &w.entry)
+        .install(&w.id, &w.source, &fetch, &w.entry, || {})
         .unwrap();
     assert_eq!(fetch.downloads.load(Ordering::SeqCst), 1);
 }
@@ -114,11 +116,11 @@ fn a_verified_cached_archive_is_reused() {
     let w = World::new();
     let fetch = counting();
     w.home()
-        .install(&w.id, &w.source, &fetch, &w.entry)
+        .install(&w.id, &w.source, &fetch, &w.entry, || {})
         .unwrap();
     assert!(w.home().uninstall(&w.id).unwrap());
     w.home()
-        .install(&w.id, &w.source, &fetch, &w.entry)
+        .install(&w.id, &w.source, &fetch, &w.entry, || {})
         .unwrap();
     assert_eq!(fetch.downloads.load(Ordering::SeqCst), 1);
 }
@@ -130,7 +132,7 @@ fn a_package_dir_without_a_receipt_is_installed_again() {
     fs::create_dir_all(dir.join("bin")).unwrap();
     fs::write(dir.join("bin/half-written"), b"x").unwrap();
     w.home()
-        .install(&w.id, &w.source, &FileFetch, &w.entry)
+        .install(&w.id, &w.source, &FileFetch, &w.entry, || {})
         .unwrap();
     assert!(!dir.join("bin/half-written").exists());
     assert!(dir.join("bin/arm-none-symbianelf-g++").exists());
@@ -145,7 +147,7 @@ fn a_truncated_cached_download_is_fetched_again_not_extracted() {
     fs::write(w.cached(), &whole[..whole.len() / 2]).unwrap();
     let fetch = counting();
     w.home()
-        .install(&w.id, &w.source, &fetch, &w.entry)
+        .install(&w.id, &w.source, &fetch, &w.entry, || {})
         .unwrap();
     assert_eq!(fetch.downloads.load(Ordering::SeqCst), 1);
     assert_eq!(fs::read(w.cached()).unwrap(), whole);
@@ -156,7 +158,10 @@ fn a_hash_mismatch_deletes_the_download_and_installs_nothing() {
     let w = World::new();
     let mut entry = w.entry.clone();
     entry.sha256 = "0".repeat(64);
-    match w.home().install(&w.id, &w.source, &FileFetch, &entry) {
+    match w
+        .home()
+        .install(&w.id, &w.source, &FileFetch, &entry, || {})
+    {
         Err(SdkError::HashMismatch {
             id,
             url,
@@ -183,7 +188,7 @@ fn a_sha256_that_is_not_hex_never_becomes_a_cache_path() {
     entry.sha256 = "../../escape".into();
     let e = w
         .home()
-        .install(&w.id, &w.source, &FileFetch, &entry)
+        .install(&w.id, &w.source, &FileFetch, &entry, || {})
         .unwrap_err();
     assert!(e.to_string().contains("../../escape"), "{e}");
     assert!(!w.tmp.path().join("escape.tar.gz").exists());
@@ -209,7 +214,7 @@ fn an_unsafe_archive_leaves_no_staging_and_no_package() {
     entry.sha256 = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(&bytes));
     let e = w
         .home()
-        .install(&w.id, &w.source, &FileFetch, &entry)
+        .install(&w.id, &w.source, &FileFetch, &entry, || {})
         .unwrap_err();
     assert!(matches!(e, SdkError::UnsafeEntry { .. }), "{e:?}");
     let staging = w.home().root().join(".staging");
@@ -224,7 +229,7 @@ fn a_stale_staging_dir_is_removed_under_the_lock() {
     let stale = w.home().root().join(".staging/1-0");
     fs::create_dir_all(&stale).unwrap();
     w.home()
-        .install(&w.id, &w.source, &FileFetch, &w.entry)
+        .install(&w.id, &w.source, &FileFetch, &w.entry, || {})
         .unwrap();
     assert!(!stale.exists());
 }
@@ -234,8 +239,8 @@ fn two_threads_installing_one_id_end_with_one_install() {
     let w = World::new();
     let fetch = counting();
     let [a, b] = std::thread::scope(|s| {
-        let a = s.spawn(|| w.home().install(&w.id, &w.source, &fetch, &w.entry));
-        let b = s.spawn(|| w.home().install(&w.id, &w.source, &fetch, &w.entry));
+        let a = s.spawn(|| w.home().install(&w.id, &w.source, &fetch, &w.entry, || {}));
+        let b = s.spawn(|| w.home().install(&w.id, &w.source, &fetch, &w.entry, || {}));
         [a.join().unwrap(), b.join().unwrap()]
     });
     assert_eq!(a.unwrap(), b.unwrap());
@@ -245,43 +250,15 @@ fn two_threads_installing_one_id_end_with_one_install() {
 }
 
 #[test]
-fn uninstall_removes_the_package_once() {
+fn starting_runs_only_when_the_package_is_really_installed() {
     let w = World::new();
-    let home = w.home();
-    home.install(&w.id, &w.source, &FileFetch, &w.entry)
+    let mut starts = 0;
+    w.home()
+        .install(&w.id, &w.source, &FileFetch, &w.entry, || starts += 1)
         .unwrap();
-    assert!(home.uninstall(&w.id).unwrap());
-    assert!(!home.package_dir(&w.id).exists());
-    assert_eq!(home.installed(&w.id).unwrap(), None);
-    assert!(!home.uninstall(&w.id).unwrap());
-}
-
-#[test]
-fn list_returns_the_receipts_sorted_by_id() {
-    let w = World::new();
-    let home = w.home();
-    assert!(home.list().unwrap().is_empty());
-    let later = PackageId::parse("sdk;s60-3rd-fp2;1.1").unwrap();
-    let earlier = PackageId::parse("emulator;1").unwrap();
-    for id in [&later, &w.id, &earlier] {
-        home.install(id, &w.source, &FileFetch, &w.entry).unwrap();
-    }
-    fs::create_dir_all(home.root().join("gcce/9.9.9/bin")).unwrap();
-    let ids: Vec<_> = home.list().unwrap().into_iter().map(|r| r.id).collect();
-    assert_eq!(ids, [earlier, w.id.clone(), later]);
-}
-
-#[test]
-fn a_receipt_for_another_id_names_the_quoted_repair_commands() {
-    let w = World::new();
-    let home = w.home();
-    home.install(&w.id, &w.source, &FileFetch, &w.entry)
+    // As when a parallel build installed it between the caller's check and the lock.
+    w.home()
+        .install(&w.id, &w.source, &FileFetch, &w.entry, || starts += 1)
         .unwrap();
-    let other = PackageId::parse("gcce;12.2.0").unwrap();
-    fs::rename(home.package_dir(&w.id), home.package_dir(&other)).unwrap();
-    let e = home.installed(&other).unwrap_err().to_string();
-    assert!(
-        e.contains("symdev sdk uninstall 'gcce;12.2.0' && symdev sdk install 'gcce;12.2.0'"),
-        "{e}"
-    );
+    assert_eq!(starts, 1);
 }

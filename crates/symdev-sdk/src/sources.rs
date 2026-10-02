@@ -5,6 +5,8 @@ use crate::{Auth, Result, SdkError, SourceSpec};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Sources {
     pub list: Vec<SourceSpec>,
+    /// The path of `sources.toml`, which messages name, whether or not it exists.
+    pub file: String,
 }
 
 /// `sources.toml` as written; unknown keys are refused, so a typo (`auht = "s3"`) cannot
@@ -27,15 +29,12 @@ struct SourceEntry {
 }
 
 impl Sources {
-    /// `text` is the contents of `sources.toml` (`None` if the file does not exist);
-    /// `builtin` is the built-in source, if this symdev has one. Names must be unique.
-    pub fn parse(
-        text: Option<&str>,
-        path_for_errors: &str,
-        builtin: Option<&SourceSpec>,
-    ) -> Result<Sources> {
+    /// `text` is the contents of `sources.toml` (`None` if the file does not exist) and
+    /// `path` its path; `builtin` is the built-in source, if this symdev has one. Names
+    /// must be unique.
+    pub fn parse(text: Option<&str>, path: &str, builtin: Option<&SourceSpec>) -> Result<Sources> {
         let bad = |detail: String| SdkError::BadSources {
-            path: path_for_errors.to_string(),
+            path: path.to_string(),
             detail,
         };
         let file: SourcesFile = match text {
@@ -60,7 +59,10 @@ impl Sources {
             }
             list.push(spec);
         }
-        Ok(Sources { list })
+        Ok(Sources {
+            list,
+            file: path.to_string(),
+        })
     }
 }
 

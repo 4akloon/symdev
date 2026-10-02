@@ -53,7 +53,6 @@ fn test_without_emulator_binary_names_symdev_eka2l1() {
     std::fs::write(dir.path().join("build/hello.sisx"), b"sisx").unwrap();
     bin()
         .current_dir(&dir)
-        .env_remove("SYMDEV_EKA2L1")
         .env("SYMDEV_EKA2L1_DATA", dir.path())
         .args(["test", "--emulator"])
         .assert()

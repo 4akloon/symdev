@@ -88,14 +88,18 @@ impl<'w> SdkManager<'w> {
             .catalog
             .fetcher(&source)
             .ok_or_else(|| SdkError::Other(format!("source `{}` lost its keys", source.name)))?;
-        // Progress is informational: a closed stderr must not stop an install.
-        let _ = writeln!(
-            self.progress,
-            "installing {id} ({:.1} MB) from {}…",
-            entry.size as f64 / 1_000_000.0,
-            source.name
-        );
-        self.home.install(id, &source, fetch.as_ref(), &entry)
+        let progress = &mut *self.progress;
+        let announce = || {
+            // Progress is informational: a closed stderr must not stop an install.
+            let _ = writeln!(
+                progress,
+                "installing {id} ({:.1} MB) from {}…",
+                entry.size as f64 / 1_000_000.0,
+                source.name
+            );
+        };
+        self.home
+            .install(id, &source, fetch.as_ref(), &entry, announce)
     }
 
     fn offline_error(missing: &[PackageId]) -> SdkError {
@@ -113,9 +117,10 @@ impl<'w> SdkManager<'w> {
         ))
     }
 
-    /// Every package that the sources offer for this host, each id once, from the first
-    /// source that lists it. A source that is skipped or cannot be read is reported as a
-    /// warning on the progress output.
+    /// Every package that the sources offer for this host, each id once. The first
+    /// source that lists an id decides, as it does for `ensure`: if it has no archive
+    /// for this host, the id is not available, whatever later sources hold. A source
+    /// that is skipped or cannot be read is reported as a warning on the progress output.
     pub fn available(&mut self) -> Result<Vec<(String, IndexPackage)>> {
         if self.offline {
             return Err(SdkError::Other(
@@ -131,7 +136,7 @@ impl<'w> SdkManager<'w> {
         let mut seen = BTreeSet::new();
         Ok(packages
             .into_iter()
-            .filter(|(_, p)| p.archive_for(self.host).is_some() && seen.insert(p.id.clone()))
+            .filter(|(_, p)| seen.insert(p.id.clone()) && p.archive_for(self.host).is_some())
             .collect())
     }
 

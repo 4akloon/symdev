@@ -2,13 +2,13 @@ use predicates::prelude::*;
 
 mod common;
 use common::repo::World;
-use common::{bin_without_toolchain, hello_with_uid3, write_toml};
+use common::{bin, hello_with_uid3, write_toml};
 
 #[test]
 fn build_offline_without_packages_names_the_install_command() {
     let dir = tempfile::tempdir().unwrap();
     write_toml(&dir, &hello_with_uid3());
-    bin_without_toolchain()
+    bin()
         .current_dir(&dir)
         .args(["build", "--offline"])
         .assert()
@@ -120,6 +120,57 @@ fn build_installs_both_packages_then_runs_the_installed_compiler() {
         .stderr(predicate::str::contains("stub g++"));
 }
 
+/// Once everything is installed, what only a download needs — a readable `sources.toml`,
+/// whole key pairs — cannot stop a build.
+#[test]
+fn an_installed_build_ignores_what_only_a_download_needs() {
+    let mut w = World::new();
+    w.add_stub_gcce();
+    w.add_stub_sdk();
+    w.bin()
+        .current_dir(w.project())
+        .args(["sdk", "install"])
+        .assert()
+        .success();
+    w.sources("builtin = maybe\n");
+    let stub_compiler_ran = predicate::str::contains("stub g++");
+    w.bin()
+        .current_dir(w.project())
+        .arg("build")
+        .assert()
+        .failure()
+        .stderr(stub_compiler_ran.clone());
+    w.sources("[[source]]\nname = \"private\"\nurl = \"https://127.0.0.1:1/b/\"\nauth = \"s3\"\n");
+    w.bin()
+        .current_dir(w.project())
+        .arg("build")
+        .env("SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID", "AKID")
+        .assert()
+        .failure()
+        .stderr(stub_compiler_ran);
+}
+
+/// A Rust build that cannot find its Rust SDK says so before anything is downloaded.
+#[test]
+fn a_rust_build_without_its_rust_sdk_downloads_nothing() {
+    let mut w = World::new();
+    w.add_stub_gcce();
+    w.add_stub_sdk();
+    let project = w.project();
+    let toml = std::fs::read_to_string(project.join("symdev.toml")).unwrap();
+    let rust = toml.replace(r#"name = "cpp""#, r#"name = "rust""#);
+    std::fs::write(project.join("symdev.toml"), rust).unwrap();
+    w.bin()
+        .current_dir(&project)
+        .arg("build")
+        .env("SYMDEV_RUST_SDK", "/nonexistent/symdev/symbian-rs")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Rust SDK not found"))
+        .stderr(predicate::str::contains("installing").not());
+    assert!(!w.package_dir("gcce;12.1.0").exists());
+}
+
 #[test]
 fn an_sdk_only_in_a_keyless_private_source_names_the_keys_and_the_epocroot() {
     let mut w = World::new();
@@ -132,8 +183,6 @@ fn an_sdk_only_in_a_keyless_private_source_names_the_keys_and_the_epocroot() {
     w.bin()
         .current_dir(w.project())
         .arg("build")
-        .env_remove("SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID")
-        .env_remove("SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY")
         .assert()
         .failure()
         .stderr(predicate::str::contains(
@@ -153,6 +202,21 @@ fn an_id_in_no_source_names_the_sources_searched() {
         .stderr(predicate::str::contains(
             "error: gcce;99.0 was not found in the sources searched: `local`",
         ));
+}
+
+#[test]
+fn an_sdk_in_no_source_names_the_epocroot_and_this_sources_toml() {
+    let w = World::new();
+    let sources = w.tmp.path().join("config/symdev/sources.toml");
+    w.bin()
+        .args(["sdk", "install", "sdk;s60-3rd-fp2;1.1"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(format!(
+            "error: sdk;s60-3rd-fp2;1.1 was not found in the sources searched: `local`; set \
+             SYMDEV_EPOCROOT to your own SDK, or add a source that has it in {}",
+            sources.display()
+        )));
 }
 
 #[test]

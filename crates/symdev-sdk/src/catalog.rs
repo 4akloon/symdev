@@ -40,11 +40,14 @@ impl Catalog {
         id: &PackageId,
         host: Host,
     ) -> Result<(SourceSpec, IndexPackage, ArchiveEntry)> {
+        let sdk = id.kind() == "sdk";
         let mut searched = Vec::new();
         let mut problems = Vec::new();
+        let mut keyless = false;
         for source in self.sources.list.clone() {
             if self.fetcher(&source).is_none() {
-                problems.push(Self::keys_hint(&source, id.kind() == "sdk"));
+                problems.push(Self::keys_hint(&source, sdk));
+                keyless = true;
                 continue;
             }
             searched.push(format!("`{}`", source.name));
@@ -66,10 +69,7 @@ impl Catalog {
             }
         }
         let mut message = match (searched.is_empty(), self.sources.list.is_empty()) {
-            (_, true) => format!(
-                "{id} was not found: no package source is configured; list one in \
-                 `$XDG_CONFIG_HOME/symdev/sources.toml` (`~/.config/symdev/sources.toml`)"
-            ),
+            (_, true) => format!("{id} was not found: no package source is configured"),
             (true, false) => format!("{id} was not found: no source could be searched"),
             (false, false) => format!(
                 "{id} was not found in the sources searched: {}",
@@ -79,6 +79,15 @@ impl Catalog {
         for problem in problems {
             message.push_str("; ");
             message.push_str(&problem);
+        }
+        let file = &self.sources.file;
+        // A keyless source's hint already names SYMDEV_EPOCROOT as the way around it.
+        if sdk && !keyless {
+            message.push_str(&format!(
+                "; set SYMDEV_EPOCROOT to your own SDK, or add a source that has it in {file}"
+            ));
+        } else if self.sources.list.is_empty() {
+            message.push_str(&format!("; list one in {file}"));
         }
         Err(SdkError::Other(message))
     }
@@ -139,5 +148,41 @@ impl Catalog {
             Some(Err(why)) => Err(why.clone()),
             None => Err("its index was not kept".to_string()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::Catalog;
+    use crate::{Auth, S3Keys, SourceSpec, Sources};
+
+    /// An `s3` source is searchable exactly when it has keys; nothing is requested to
+    /// find that out (`cargo test` never touches the network).
+    #[test]
+    fn keys_give_an_s3_source_a_fetcher() {
+        let private = SourceSpec::new("private", "https://127.0.0.1:1/bucket/", Auth::S3).unwrap();
+        let sources = Sources {
+            list: vec![private.clone()],
+            file: "/config/symdev/sources.toml".into(),
+        };
+        let keys = BTreeMap::from([(
+            "private".to_string(),
+            S3Keys {
+                access_key_id: "AKID".into(),
+                secret_access_key: "secret".into(),
+            },
+        )]);
+        assert!(
+            Catalog::new(sources.clone(), keys)
+                .fetcher(&private)
+                .is_some()
+        );
+        assert!(
+            Catalog::new(sources, BTreeMap::new())
+                .fetcher(&private)
+                .is_none()
+        );
     }
 }

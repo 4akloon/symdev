@@ -130,4 +130,34 @@ Inputs: `toolchain-manager-core.md` ("For Track D"), `toolchain-manager-net.md`.
 
 ## Next step
 
-Final verification (test, clippy, fmt), then report to the lead.
+Review fixes done on `tm-review-fixes` (see "Review fixes"); waiting for the lead to merge.
+
+## Review fixes (branch `tm-review-fixes`, 2026-10-02)
+
+Independent review of the toolchain manager (line numbers from 34987b3). Each finding was
+checked against the code before changing it; baseline `cargo test --workspace --offline`:
+652 passed. State per finding (commits: `git log`):
+
+| # | Finding | Verified | State |
+|---|---|---|---|
+| 1 | `epocroot`/`installed_epocroot` check every `SYMDEV_*` path | yes: both call `overrides()` → `check()` of all 7 | fixed: both take the unchecked overrides; `Epocroot::resolve` checks `SYMDEV_EPOCROOT` itself (unit + CLI tests for package and freeze) |
+| 2 | `available` vs `find` disagree when the first source lacks this host's archive | yes: the `&&` short-circuits before `seen.insert` | fixed: `seen.insert` first, so the first source that lists an id decides for `available` as for `find` |
+| 3 | `keys_make_an_s3_source_searchable` makes a real HTTPS request | yes: `ensure` → `find` → ureq GET `https://127.0.0.1:1/…` (proxy from env) | fixed: replaced by `catalog::tests::keys_give_an_s3_source_a_fetcher` (no request; a mutant giving a keyless `s3` source a fetcher fails it). Not fixed, reported: `http_fetch` tests GET `http://127.0.0.1:<port>` and ureq takes the proxy from the environment, so with `HTTP_PROXY` set (and no `NO_PROXY` for 127.0.0.1) they go to the proxy |
+| 4 | `Provision` reads the toolchain variables past its own lookup | yes: `ToolchainOverrides::from_env()` in `overrides()`/`needed()` | fixed: `ToolchainOverrides::from_lookup` is public, `from_env` deleted (no caller left), `Provision::overrides(&self)` |
+| 5 | an all-installed build fails on download-only problems | yes: `manager()` (sources, keys, host) runs before `ensure` checks receipts | fixed: `Provision::install_missing` reads receipts first, builds the manager only for missing ids (CLI test: malformed `sources.toml`, half key pair; the host check sits in `SdkManager::new`, so it is skipped the same way) |
+| 6 | a Rust build downloads before `RustSdk::from_env` can fail | yes: `toolchain()` at the top, `RustSdk::from_env()` in the match | fixed: `RustSdk` resolved first for a Rust project (CLI test: stale `SYMDEV_RUST_SDK`, nothing installed) |
+| 7 | `installing …` printed before `install` re-checks under the lock | yes: `writeln!` precedes `home.install`, which returns early if installed | fixed: `SdkHome::install` takes `starting: impl FnOnce()`, run under the lock after the re-check; the manager prints from it (SdkHome prints nothing). Tests moved: `home/tests/receipts.rs` (300-line rule) |
+| 8 | without `HOME` the message names `SYMDEV_HOME` for every path | yes: one text for data, cache and config | fixed: packages → `SYMDEV_HOME or XDG_DATA_HOME`, cache → `XDG_CACHE_HOME`, config → `XDG_CONFIG_HOME` |
+| 9 | `bin()` keeps keys/toolchain vars; temp homes pile up in `target/tmp` | yes: 10+ `symdev-cli-home-*` after two runs | fixed: `bin()` removes every inherited `SYMDEV_*`/`PUBLISH_*` (tests set what they need after it, which wins); `bin_without_toolchain` and the per-test `env_remove`s deleted. Homes: `target/tmp/symdev-cli-homes/home-*`, one per process, `.lock` held for the process life; the first `bin()` removes every home whose lock it can take (made under a dot name, renamed once locked, so a sweep never takes one being made). `tests/hermetic.rs` checks both (mutants caught); after a full run one home is left, swept by the next. Supersedes the D3 note on the static `TempDir` |
+| 10 | `sdk;…` in no source and no private source: no way out named | yes | fixed: `Sources.file` keeps the real `sources.toml` path; an `sdk` id found nowhere without a keyless-source hint adds "set SYMDEV_EPOCROOT to your own SDK, or add a source that has it in <path>"; no sources at all names the path too (was a hard-coded `$XDG_CONFIG_HOME/…`). Spec §5, §8 (prerequisites + 4-line TOML, acceptance item 2), README, examples README |
+| 11 | host-mismatch test wording | nit, kept as is | — |
+
+Checked after the last fix (2026-10-02): `cargo test --workspace --offline` 665 passed, 0
+failed (652 before: +13 tests, one network test replaced); `cargo clippy --workspace
+--all-targets --offline` no warning; `cargo fmt --all --check` clean; every `.rs` file ≤ 300
+lines. By hand with the built binary under `env -i`: no `HOME` names `XDG_CONFIG_HOME` for
+`sources.toml`; `sdk install 'sdk;s60-3rd-fp2;1.1'` with no source names `SYMDEV_EPOCROOT`
+and the real `sources.toml` path, and creates nothing.
+
+Left for the lead: the `http_fetch` tests' proxy exposure (row 3); `bin()` strips every
+`SYMDEV_*`, not only the toolchain and key variables (a test sets what it needs after it).

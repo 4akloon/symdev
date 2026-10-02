@@ -44,15 +44,12 @@ impl Provision {
 
     /// The toolchain for a build: installs what the set variables leave to the packages.
     pub fn toolchain(&self, device: Device) -> Result<Toolchain, Error> {
-        let o = Self::overrides()?;
+        let o = self.checked_overrides()?;
         let needed = Self::needed_by(&o, device);
         if needed.is_empty() {
             return Toolchain::resolve(&o, None, None);
         }
-        let mut stderr = std::io::stderr();
-        let mut manager = self.manager(&mut stderr)?;
-        manager.ensure(&needed)?;
-        let home = manager.home();
+        let home = self.install_missing(&needed)?;
         let (gcce_id, sdk_id) = (Pins::gcce(), Pins::platform_sdk(device));
         let gcce = o
             .needs_gcce()
@@ -64,27 +61,26 @@ impl Provision {
     }
 
     /// The EPOCROOT for reading a `bld.inf`, installing the SDK if it is missing. The
-    /// device is asked for only then, so `SYMDEV_EPOCROOT` needs no `symdev.toml`.
+    /// device is asked for only then, so `SYMDEV_EPOCROOT` needs no `symdev.toml`. Only
+    /// `SYMDEV_EPOCROOT` is checked: the compiler variables are not this path's business.
     pub fn epocroot(
         &self,
         device: impl FnOnce() -> Result<Device, Error>,
     ) -> Result<Epocroot, Error> {
-        let o = Self::overrides()?;
+        let o = self.overrides();
         if !o.needs_sdk() {
             return Epocroot::resolve(&o, None);
         }
         let id = Pins::platform_sdk(device()?);
-        let mut stderr = std::io::stderr();
-        let mut manager = self.manager(&mut stderr)?;
-        manager.ensure(std::slice::from_ref(&id))?;
-        let sdk = PlatformSdk::at(manager.home().package_dir(&id), &id)?;
+        let home = self.install_missing(std::slice::from_ref(&id))?;
+        let sdk = PlatformSdk::at(home.package_dir(&id), &id)?;
         Epocroot::resolve(&o, Some(&sdk))
     }
 
     /// The same for `symdev package`, which installs nothing (spec §4): the SDK is
     /// there after `symdev build`, or the error says how to get it.
     pub fn installed_epocroot(&self, device: Device) -> Result<Epocroot, Error> {
-        let o = Self::overrides()?;
+        let o = self.overrides();
         if !o.needs_sdk() {
             return Epocroot::resolve(&o, None);
         }
@@ -102,10 +98,28 @@ impl Provision {
         Epocroot::resolve(&o, Some(&sdk))
     }
 
+    /// The packages, with every id of `ids` installed. The sources, their keys and the
+    /// host check matter only to a download, so they are read only for a missing id: a
+    /// build whose packages are installed cannot fail on them.
+    fn install_missing(&self, ids: &[PackageId]) -> Result<SdkHome, Error> {
+        let home = self.home()?;
+        let mut missing = Vec::new();
+        for id in ids {
+            if home.installed(id)?.is_none() {
+                missing.push(id.clone());
+            }
+        }
+        if !missing.is_empty() {
+            let mut stderr = std::io::stderr();
+            self.manager(&mut stderr)?.ensure(&missing)?;
+        }
+        Ok(home)
+    }
+
     /// The packages a build for `device` needs under the current environment: none for
     /// a part whose every field a `SYMDEV_*` variable sets.
     pub fn needed(&self, device: Device) -> Vec<PackageId> {
-        Self::needed_by(&ToolchainOverrides::from_env(), device)
+        Self::needed_by(&self.overrides(), device)
     }
 
     fn needed_by(o: &ToolchainOverrides, device: Device) -> Vec<PackageId> {
@@ -114,9 +128,14 @@ impl Provision {
         gcce.into_iter().chain(sdk).collect()
     }
 
-    /// The `SYMDEV_*` toolchain variables, each set path checked before any download.
-    fn overrides() -> Result<ToolchainOverrides, Error> {
-        let o = ToolchainOverrides::from_env();
+    /// The `SYMDEV_*` toolchain variables that are set.
+    fn overrides(&self) -> ToolchainOverrides {
+        ToolchainOverrides::from_lookup(|key| (self.lookup)(key))
+    }
+
+    /// The same, each set path checked before any download.
+    fn checked_overrides(&self) -> Result<ToolchainOverrides, Error> {
+        let o = self.overrides();
         o.check()?;
         Ok(o)
     }
@@ -155,33 +174,39 @@ impl Provision {
                 "SYMDEV_HOME must be an absolute path, not `{}`",
                 home.display()
             ))),
-            None => self.xdg("XDG_DATA_HOME", ".local/share", "symdev"),
+            None => self
+                .xdg("XDG_DATA_HOME", ".local/share", "symdev")
+                .ok_or_else(|| Self::no_home("keeps its packages", "SYMDEV_HOME or XDG_DATA_HOME")),
         }
     }
 
     /// `$XDG_CACHE_HOME/symdev/downloads`, else `~/.cache/symdev/downloads`.
     fn cache_dir(&self) -> Result<PathBuf, Error> {
         self.xdg("XDG_CACHE_HOME", ".cache", "symdev/downloads")
+            .ok_or_else(|| Self::no_home("keeps its download cache", "XDG_CACHE_HOME"))
     }
 
     /// `$XDG_CONFIG_HOME/symdev/sources.toml`, else `~/.config/symdev/sources.toml`.
     fn sources_file(&self) -> Result<PathBuf, Error> {
         self.xdg("XDG_CONFIG_HOME", ".config", "symdev/sources.toml")
+            .ok_or_else(|| Self::no_home("reads sources.toml from", "XDG_CONFIG_HOME"))
     }
 
-    /// `$<variable>/<rest>`, else `$HOME/<fallback>/<rest>`. A relative XDG value is
-    /// ignored, as the XDG base directory specification requires.
-    fn xdg(&self, variable: &str, fallback: &str, rest: &str) -> Result<PathBuf, Error> {
+    /// `$<variable>/<rest>`, else `$HOME/<fallback>/<rest>`, else `None`. A relative XDG
+    /// value is ignored, as the XDG base directory specification requires.
+    fn xdg(&self, variable: &str, fallback: &str, rest: &str) -> Option<PathBuf> {
         if let Some(base) = self.var(variable).filter(|p| p.is_absolute()) {
-            return Ok(base.join(rest));
+            return Some(base.join(rest));
         }
-        match self.var("HOME") {
-            Some(home) => Ok(home.join(fallback).join(rest)),
-            None => Err(Error::Other(format!(
-                "cannot tell where symdev keeps its packages: HOME is not set; set HOME, or \
-                 SYMDEV_HOME and {variable}"
-            ))),
-        }
+        self.var("HOME").map(|home| home.join(fallback).join(rest))
+    }
+
+    /// `HOME` is unset and so is every variable that would place this path instead.
+    fn no_home(what: &str, instead: &str) -> Error {
+        Error::Other(format!(
+            "cannot tell where symdev {what}: HOME is not set; set HOME, or set {instead} to \
+             an absolute path"
+        ))
     }
 
     /// The keys of every `s3` source that has both variables set; one variable without

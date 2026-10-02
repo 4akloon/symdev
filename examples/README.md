@@ -4,7 +4,7 @@
 
 `examples/hello` is exactly what `symdev new hello --target nokia-e52` generates; a test in `symdev-cli` fails if the two drift. It is a console EXE (`econs`) that prints `Hello, world!` and waits for a key.
 
-Build and package it on the Linux host. `symdev build` installs the GCCE and S60 SDK packages it is missing into `SYMDEV_HOME` from the sources in `~/.config/symdev/sources.toml` (setup: [Toolchain packages](../README.md#toolchain-packages)); `symdev sdk install` with no ids, run here, installs the same pair without building:
+Build and package it on the Linux host. `symdev build` installs the GCCE and S60 SDK packages it is missing into `SYMDEV_HOME` from the sources in `~/.config/symdev/sources.toml`; the SDK only from a source listed there whose key is in the environment (the private one), or set `SYMDEV_EPOCROOT` to your own SDK (setup: [Toolchain packages](../README.md#toolchain-packages)). `symdev sdk install` with no ids, run here, installs the same pair without building:
 
 ```bash
 cd examples/hello

@@ -198,7 +198,7 @@ Every error names what failed and the fix (`CLAUDE.md`):
 |---|---|
 | package only in a private source, keys not set | the source, both variable names, **and** "or set `SYMDEV_EPOCROOT` to your own SDK" |
 | SHA-256 or size mismatch | id, expected and actual hash, URL; file deleted; no automatic retry |
-| id in no source | id and the sources searched |
+| id in no source | id and the sources searched; for an `sdk` id also "set `SYMDEV_EPOCROOT` to your own SDK, or add a source that has it in `<sources.toml>`" |
 | `--offline` and not installed | id and `symdev sdk install <id>` |
 | a `SYMDEV_*` path does not exist | the variable and the path |
 | unknown index `schema` | source, schema number, "update symdev" |
@@ -294,12 +294,25 @@ published examples; `Toolchain` field-by-field override; an HTTP install served 
 `TcpListener` inside the test. CLI tests: `symdev sdk list/install/uninstall` and
 `symdev build --offline` against a `file://` source.
 
-**"One command" in phase 1.** Prerequisites: `curl`, the reader key in the environment and
-the private source in `sources.toml`. Then `curl -fsSL <public bucket>/install.sh | sh`, and
-the first `symdev build` of any project installs the rest (`symdev sdk install` installs the
-same set explicitly, without building). A C++ project needs no Rust at all; a Rust project
-needs rustup (its nightly comes from `rust-toolchain.toml`). Building symdev from source with
-`cargo install --git https://github.com/4akloon/symdev symdev-cli` keeps working.
+**"One command" in phase 1.** Prerequisites: `curl`, the reader key in the environment
+(`SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID`, `SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY`) **and** the
+private source listed in `~/.config/symdev/sources.toml` — the built-in source never carries
+the SDK, so without this entry the key is never used:
+
+```toml
+[[source]]
+name = "private"
+url = "https://<account-id>.r2.cloudflarestorage.com/symdev-private/"
+auth = "s3"
+```
+
+Then `curl -fsSL <public bucket>/install.sh | sh`, and the first `symdev build` of any
+project installs the rest (`symdev sdk install` installs the same set explicitly, without
+building). A C++ project needs no Rust at all; a Rust project needs rustup (its nightly comes
+from `rust-toolchain.toml`). Building symdev from source with
+`cargo install --git https://github.com/4akloon/symdev symdev-cli` keeps working. An `sdk;…`
+id that no source has is an error that says so: "set SYMDEV_EPOCROOT to your own SDK, or add
+a source that has it in <path of sources.toml>".
 
 **Phase 1 is done when all four hold, each checked by running it, not by reading code:**
 
@@ -310,8 +323,8 @@ needs rustup (its nightly comes from `rust-toolchain.toml`). Building symdev fro
    too (found 2026-10-02, track D). Objects may differ where the assembler differs:
    `~/gcc-builds/gcc-12.1.0` assembles with its own binutils 2.35, while the package uses
    binutils 2.29.1 throughout; the report says which `as` each side used.
-2. In a clean `ubuntu:24.04` container with only rustup, git and the reader key, the
-   commands above produce `hello.sisx` and `gui.sisx`, and both install and launch in
+2. In a clean `ubuntu:24.04` container with only rustup, git, the reader key and the
+   `sources.toml` above, the commands above produce `hello.sisx` and `gui.sisx`, and both install and launch in
    EKA2L1 on the host (window checked, not the log).
 3. The `examples` job is green on `main`.
 4. The owner's current `SYMDEV_*` environment builds everything exactly as before.

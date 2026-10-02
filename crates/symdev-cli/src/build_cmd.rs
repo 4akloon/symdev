@@ -20,6 +20,9 @@ pub fn build_project(m: Manifest, provision: &Provision) -> Result<ExitCode, Err
                 .into(),
         ));
     }
+    // Resolved before the toolchain, so a Rust project without its Rust SDK is told so
+    // before any package is downloaded.
+    let rust_sdk = m.language.is_rust().then(RustSdk::from_env).transpose()?;
     let tools = provision.toolchain(m.target.device)?;
     let epocroot = tools.epocroot.clone();
     let project = crate::current_project()?;
@@ -51,16 +54,16 @@ pub fn build_project(m: Manifest, provision: &Provision) -> Result<ExitCode, Err
         icons: m.icons,
         secure_id: m.symbian.secure_id,
     };
-    let artifacts = match m.language {
-        Language::Cpp => gcce.build(&project)?,
-        language => RustBuild {
+    let artifacts = match rust_sdk {
+        None => gcce.build(&project)?,
+        Some(sdk) => RustBuild {
             gcce,
-            sdk: RustSdk::from_env()?,
+            sdk,
             cargo: RustBuild::cargo_from_env(),
             rustc: RustBuild::rustc_from_env(),
             name: m.package.name,
             ui,
-            std: language.has_std(),
+            std: m.language.has_std(),
         }
         .build(&project)?,
     };

@@ -113,7 +113,9 @@ place of the native one.
 Packages come from the sources listed in `~/.config/symdev/sources.toml`
 (`$XDG_CONFIG_HOME/symdev/sources.toml`), searched in order. A built-in public source for GCCE
 is planned but not published yet, so for now list a source or set the variables. The S60 SDK
-is not redistributable: it lives in the owner's private bucket and is read with your own key.
+is not redistributable and the built-in source never carries it: it lives in the owner's
+private bucket, which a build reads only when that source is listed here **and** its key is in
+the environment. Otherwise set `SYMDEV_EPOCROOT` to your own SDK.
 
 ```toml
 # ~/.config/symdev/sources.toml
@@ -161,8 +163,9 @@ symdev run                                # install and launch in EKA2L1
 symdev test --emulator                    # run it and read back its test report
 ```
 
-The first `symdev build` needs a package source or the `SYMDEV_*` variables
-([Requirements](#requirements)). The C++ examples: [examples/README.md](examples/README.md).
+The first `symdev build` needs the `SYMDEV_*` variables, or a source for each package: the S60
+SDK comes only from a source you list in `~/.config/symdev/sources.toml` with its key in the
+environment ([Toolchain packages](#toolchain-packages)). The C++ examples: [examples/README.md](examples/README.md).
 
 ## Commands
 
