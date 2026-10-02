@@ -28,7 +28,7 @@ the S60 SDK from R2 by itself and builds; the GCCE and SDK packages exist and ar
 - Package ids: `gcce;12.1.0`, `sdk;s60-3rd-fp2;1.1`; index `schema = 1`; archives `.tar.gz`, stored as `<id path>/<sha256>.tar.gz`.
 - Env names: `SYMDEV_HOME`, `SYMDEV_SOURCE_<NAME>_ACCESS_KEY_ID`, `SYMDEV_SOURCE_<NAME>_SECRET_ACCESS_KEY` (`<NAME>` = source name upper-cased, `-` → `_`).
 - Do not invent tool argv or configure flags: only what is observed (`g++ -v`, recorded runs).
-- Keep `docs/research/wip/toolchain-manager.md` current after every finding; commit after every completed task.
+- Keep `docs/research/wip/toolchain-manager.md` current after every finding; commit after every completed task. (The notes were deleted after v0.1.0; their durable parts are the spec's §14.)
 
 ## Review Focus
 
@@ -342,7 +342,7 @@ Proxy from `HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` via ureq's env proxy support.
 
 - [ ] Read `~/src/GCC4Symbian` (its `build-toolchain.sh`, any patch directory, `git log -1`, `git status`) and determine whether the GCC behind `~/gcc-builds/gcc-12.1.0` is plain GCC 12.1.0 or patched. Evidence to use: the script's steps, `~/src/` build directories, `strings`/`-v` output of the built binaries. Record what is proven and what is not.
 - [ ] Recover binutils 2.29.1's configure line from `~/src/binutils-2.29.1-build/config.status` (or `config.log`).
-- [ ] Write findings into `docs/research/wip/toolchain-manager.md` ("GCCE build facts") on branch `tm-gcce` (worktree `~/worktrees/symdev/tm-gcce`) and commit.
+- [ ] Write findings into `docs/research/wip/toolchain-manager.md` ("GCCE build facts") on branch `tm-gcce` (worktree `~/worktrees/symdev/tm-gcce`) and commit. (They became experiment 107.)
 
 ### Task C2: build from official tarballs into one relocatable prefix
 
@@ -528,4 +528,4 @@ include = [
 - [ ] 2: fresh `HOME` on this host (`env -i HOME=$(mktemp -d) PATH=/usr/bin:/bin`, install rustup there, `cargo install --git … symdev-cli`, reader key only) builds `hello` and `gui`; plus the CI `examples` job (a clean ubuntu-24.04). Run both `.sisx` (local and CI artifact) in EKA2L1 with the eka2l1-host skill's PID-bound screenshot; look at the window. A container run needs docker/podman, absent here (installing them needs `sudo` — owner's call).
 - [ ] 3: `examples` job green on `main`.
 - [ ] 4: the owner's current `SYMDEV_*` environment builds `hello`/`gui` as before (`.elf` byte-identical, `.exe` identical outside the header time and CRC).
-- [ ] Move durable facts from the wip note into the spec / experiment 107; delete the wip note; commit.
+- [x] Move durable facts from the wip note into the spec / experiment 107; delete the wip note; commit. (Spec §14, 2026-10-02.)
