@@ -302,3 +302,12 @@ recipe in symdev-packages; `install.sh` in the public bucket). Awaiting approval
   third-party licence notices of the crates in the binary; run the install test in CI;
   `RustSdkPackage::REQUIRED` could also require an examples member.
 - GitHub secrets still not set (checked 2026-10-02 evening).
+- Owner set the 4 GitHub secrets (confirmed by name, 2026-10-02).
+- Whole-branch review (669dae1): "with fixes". Critical C1: the CI `examples` job cached
+  `~/.local/share/symdev` incl. the SDK — default-branch caches are restorable by fork PR
+  runs → would publish the SDK. Important: I1 uninstall deletes any dir a (partial) id names;
+  I2 shared download cache races across homes; I3 workflow RUSTFLAGS overrides libcalls'
+  rustflags. Minors M1–M10. Lead's ruling on a declined item: no compile-time checkout
+  fallback in release builds (`SYMDEV_RELEASE`). All dispatched to `tm-final-fixes`;
+  release-prep agent told to set `SYMDEV_RELEASE=1` in the symdev recipe's build.
+  The `examples` job has never run (secrets were set after the last push) — nothing leaked.
