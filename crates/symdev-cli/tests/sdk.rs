@@ -120,6 +120,36 @@ fn build_installs_both_packages_then_runs_the_installed_compiler() {
         .stderr(predicate::str::contains("stub g++"));
 }
 
+/// Once everything is installed, what only a download needs — a readable `sources.toml`,
+/// whole key pairs — cannot stop a build.
+#[test]
+fn an_installed_build_ignores_what_only_a_download_needs() {
+    let mut w = World::new();
+    w.add_stub_gcce();
+    w.add_stub_sdk();
+    w.bin()
+        .current_dir(w.project())
+        .args(["sdk", "install"])
+        .assert()
+        .success();
+    w.sources("builtin = maybe\n");
+    let stub_compiler_ran = predicate::str::contains("stub g++");
+    w.bin()
+        .current_dir(w.project())
+        .arg("build")
+        .assert()
+        .failure()
+        .stderr(stub_compiler_ran.clone());
+    w.sources("[[source]]\nname = \"private\"\nurl = \"https://127.0.0.1:1/b/\"\nauth = \"s3\"\n");
+    w.bin()
+        .current_dir(w.project())
+        .arg("build")
+        .env("SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID", "AKID")
+        .assert()
+        .failure()
+        .stderr(stub_compiler_ran);
+}
+
 #[test]
 fn an_sdk_only_in_a_keyless_private_source_names_the_keys_and_the_epocroot() {
     let mut w = World::new();

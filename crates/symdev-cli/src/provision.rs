@@ -49,10 +49,7 @@ impl Provision {
         if needed.is_empty() {
             return Toolchain::resolve(&o, None, None);
         }
-        let mut stderr = std::io::stderr();
-        let mut manager = self.manager(&mut stderr)?;
-        manager.ensure(&needed)?;
-        let home = manager.home();
+        let home = self.install_missing(&needed)?;
         let (gcce_id, sdk_id) = (Pins::gcce(), Pins::platform_sdk(device));
         let gcce = o
             .needs_gcce()
@@ -75,10 +72,8 @@ impl Provision {
             return Epocroot::resolve(&o, None);
         }
         let id = Pins::platform_sdk(device()?);
-        let mut stderr = std::io::stderr();
-        let mut manager = self.manager(&mut stderr)?;
-        manager.ensure(std::slice::from_ref(&id))?;
-        let sdk = PlatformSdk::at(manager.home().package_dir(&id), &id)?;
+        let home = self.install_missing(std::slice::from_ref(&id))?;
+        let sdk = PlatformSdk::at(home.package_dir(&id), &id)?;
         Epocroot::resolve(&o, Some(&sdk))
     }
 
@@ -101,6 +96,24 @@ impl Provision {
         }
         let sdk = PlatformSdk::at(home.package_dir(&id), &id)?;
         Epocroot::resolve(&o, Some(&sdk))
+    }
+
+    /// The packages, with every id of `ids` installed. The sources, their keys and the
+    /// host check matter only to a download, so they are read only for a missing id: a
+    /// build whose packages are installed cannot fail on them.
+    fn install_missing(&self, ids: &[PackageId]) -> Result<SdkHome, Error> {
+        let home = self.home()?;
+        let mut missing = Vec::new();
+        for id in ids {
+            if home.installed(id)?.is_none() {
+                missing.push(id.clone());
+            }
+        }
+        if !missing.is_empty() {
+            let mut stderr = std::io::stderr();
+            self.manager(&mut stderr)?.ensure(&missing)?;
+        }
+        Ok(home)
     }
 
     /// The packages a build for `device` needs under the current environment: none for
