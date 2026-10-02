@@ -13,8 +13,9 @@ manifests, side-by-side versions, Gradle installing what a build is missing).
 
 **Phase 1 (this spec): the owner and CI.** The owner's machines and the `symdev` GitHub
 Actions get GCCE and the S60 SDK from an object store, and `symdev build` installs them by
-itself. **Phase 2 (separate specs):** public users, licence acceptance, emulator and
-firmware packages, `symdev device create`, a prebuilt `symdev` + `install.sh`. The EKA2L1
+itself; a prebuilt `symdev` and the Rust SDK are packages too, installed by `install.sh`
+(added by the owner on 2026-10-02, §12). **Phase 2 (separate specs):** public users,
+licence acceptance, emulator and firmware packages, `symdev device create`. The EKA2L1
 fork the owner intends to maintain (upstream moves slowly) is its own sub-project; the
 manager only has to take the emulator from that fork's builds when phase 2 adds it.
 
@@ -50,6 +51,8 @@ in-place `ndk-bundle` to side-by-side `ndk;<version>` for exactly this reason.)
 |---|---|---|
 | `gcce;12.1.0` | GCC 12.1.0 and binutils 2.29.1 in one prefix | `x86_64-linux` |
 | `sdk;s60-3rd-fp2;1.1` | headers, `.dso` import stubs, three static libraries, `variant.cfg` | `any` |
+| `symdev;0.1.0` | `bin/symdev`, statically linked (§12) | `x86_64-linux` |
+| `rust-sdk;0.1.0` | the `symbian-rs` tree the Rust backend builds against (§12) | `any` |
 | `emulator;…`, `firmware;rm-469;…` | phase 2 | — |
 
 The SDK package is only what a GCCE build reads, measured on 2026-10-02: `epoc32/include`
@@ -291,10 +294,12 @@ published examples; `Toolchain` field-by-field override; an HTTP install served 
 `TcpListener` inside the test. CLI tests: `symdev sdk list/install/uninstall` and
 `symdev build --offline` against a `file://` source.
 
-**"One command" in phase 1.** Prerequisites: rustup, git, the reader key in the
-environment. Then `cargo install --git https://github.com/4akloon/symdev symdev-cli`, and the
-first `symdev build` of any project installs the rest (`symdev sdk install` installs the same
-set explicitly, without building).
+**"One command" in phase 1.** Prerequisites: `curl`, the reader key in the environment and
+the private source in `sources.toml`. Then `curl -fsSL <public bucket>/install.sh | sh`, and
+the first `symdev build` of any project installs the rest (`symdev sdk install` installs the
+same set explicitly, without building). A C++ project needs no Rust at all; a Rust project
+needs rustup (its nightly comes from `rust-toolchain.toml`). Building symdev from source with
+`cargo install --git https://github.com/4akloon/symdev symdev-cli` keeps working.
 
 **Phase 1 is done when all four hold, each checked by running it, not by reading code:**
 
@@ -310,6 +315,9 @@ set explicitly, without building).
    EKA2L1 on the host (window checked, not the log).
 3. The `examples` job is green on `main`.
 4. The owner's current `SYMDEV_*` environment builds everything exactly as before.
+5. On a clean Linux with no Rust installed, `install.sh` followed by `symdev build` and
+   `symdev package` in a copy of `examples/hello` produces `hello.sisx`; with rustup added,
+   the same works for `symbian-rs/examples/hello` through the `rust-sdk` package.
 
 ## 9. Code placement
 
@@ -339,6 +347,33 @@ Each step is placed in the implementation plan right before the step that needs 
 ## 11. Out of scope
 
 Licence acceptance, `symdev device create`, emulator and firmware packages, the EKA2L1 fork,
-a prebuilt symdev and `install.sh`, release channels, macOS/Windows hosts, a per-project
+`symdev self update` (re-running `install.sh` updates), release channels, macOS/Windows hosts,
+a per-project
 toolchain pin, index signing (proposed for phase 2: an ed25519 key kept offline, public key
 in symdev, so a leaked publisher key cannot swap the compiler).
+
+## 12. Prebuilt symdev and the Rust SDK (added 2026-10-02)
+
+The owner asked for the store to hold our own tools ready-built, so a clean machine needs no
+Rust for a C++ project.
+
+- **Packages.** `symdev;<ver>` holds `bin/symdev`; `rust-sdk;<ver>` holds the `symbian-rs`
+  tree. Both MIT, both in the public bucket, `<ver>` = the workspace version of the tagged
+  release. `Pins::rust_sdk()` pins `rust-sdk;<this symdev's version>`.
+- **Finding the Rust SDK.** `SYMDEV_RUST_SDK` first; then the source checkout symdev was built
+  from, if it still exists (a developer working on the SDK keeps using their tree); else the
+  installed `rust-sdk` package, auto-installed like GCCE. Today's compile-time path alone
+  cannot work for a prebuilt binary.
+- **Build.** Static, `x86_64-unknown-linux-musl`, so the binary runs on any Linux whatever its
+  glibc; this can only be proven in CI (no musl tools on the owner's host). Fallback if musl
+  fails: a glibc build in a Debian 11 container, as for GCCE.
+- **Release.** A recipe `recipes/symdev/<ver>/recipe.toml` in `symdev-packages` names a git
+  tag of `4akloon/symdev`; its CI checks the tag out, builds, and `publish public`es both
+  packages (source code: the tag's archive). Merging the recipe is the release, the same
+  model as GCCE, and the publisher key stays in one repository.
+- **`install.sh`** (POSIX `sh`, in `symdev-packages` and at the public bucket's root, served
+  `no-cache`): reads the public `index.toml`, takes the highest `symdev;*` with an archive for
+  this host, downloads it, checks its SHA-256 (`sha256sum`), extracts it into
+  `$SYMDEV_HOME/symdev/<ver>/` with a receipt, and links `~/.local/bin/symdev` to it.
+  Re-running it updates. It touches nothing else.
+
