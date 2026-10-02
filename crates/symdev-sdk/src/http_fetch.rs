@@ -42,6 +42,37 @@ impl HttpFetch {
         }
     }
 
+    /// Uploads `file` to `url` with a PUT, streamed with its length, signed when the source
+    /// has keys. `sha256` is the file's hex SHA-256: it is signed as the payload hash, so the
+    /// bucket refuses the upload if the bytes it receives differ. `content_type` and
+    /// `cache_control` are sent and signed.
+    pub fn put_file(
+        &self,
+        url: &str,
+        file: &Path,
+        sha256: &str,
+        content_type: &str,
+        cache_control: &str,
+    ) -> Result<()> {
+        let body = File::open(file).map_err(|source| SdkError::Io {
+            path: file.display().to_string(),
+            source,
+        })?;
+        let extra = [
+            ("content-type", content_type),
+            ("cache-control", cache_control),
+        ];
+        let mut request = self.agent.put(url);
+        for (name, value) in extra {
+            request = request.header(name, value);
+        }
+        for (name, value) in self.signed_headers("PUT", url, &extra, sha256)? {
+            request = request.header(name, value);
+        }
+        let response = request.send(body).map_err(|e| failed(url, e))?;
+        self.success(url, response).map(drop)
+    }
+
     fn get(&self, url: &str) -> Result<Response<Body>> {
         let mut request = self.agent.get(url);
         for (name, value) in self.signed_headers("GET", url, &[], EMPTY_SHA256)? {

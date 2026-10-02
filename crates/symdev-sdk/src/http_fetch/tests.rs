@@ -1,79 +1,16 @@
 //! `HttpFetch` against a `TcpListener` on 127.0.0.1 that serves canned responses; nothing
 //! here touches the network.
 
-use std::collections::BTreeMap;
-use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{TcpListener, TcpStream};
-use std::sync::mpsc;
-use std::thread;
+mod server;
+
+use std::net::TcpListener;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use self::server::{Request, response, serve};
 use super::HttpFetch;
 use crate::{AmzDate, Fetch, S3Keys, SdkError, SigV4};
 
 const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-
-/// One request as the server read it; header names lower-cased.
-struct Request {
-    method: String,
-    path: String,
-    headers: BTreeMap<String, String>,
-    body: Vec<u8>,
-}
-
-/// Serves each response on its own connection, in order; returns the base URL
-/// (`http://127.0.0.1:<port>/`) and the requests as they arrive.
-fn serve(responses: Vec<Vec<u8>>) -> (String, mpsc::Receiver<Request>) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let base = format!("http://{}/", listener.local_addr().unwrap());
-    let (sender, requests) = mpsc::channel();
-    thread::spawn(move || {
-        for response in responses {
-            let (mut stream, _) = listener.accept().unwrap();
-            let request = read_request(&mut stream);
-            stream.write_all(&response).unwrap();
-            sender.send(request).unwrap();
-        }
-    });
-    (base, requests)
-}
-
-fn read_request(stream: &mut TcpStream) -> Request {
-    let mut reader = BufReader::new(stream.try_clone().unwrap());
-    let mut line = String::new();
-    reader.read_line(&mut line).unwrap();
-    let mut start = line.split_whitespace();
-    let method = start.next().unwrap().to_string();
-    let path = start.next().unwrap().to_string();
-    let mut headers = BTreeMap::new();
-    loop {
-        line.clear();
-        reader.read_line(&mut line).unwrap();
-        let Some((name, value)) = line.trim_end().split_once(':') else {
-            break;
-        };
-        headers.insert(name.to_ascii_lowercase(), value.trim().to_string());
-    }
-    let length = headers
-        .get("content-length")
-        .map_or(0, |v| v.parse().unwrap());
-    let mut body = vec![0; length];
-    reader.read_exact(&mut body).unwrap();
-    Request {
-        method,
-        path,
-        headers,
-        body,
-    }
-}
-
-fn response(status: &str, body: &[u8]) -> Vec<u8> {
-    let head = format!(
-        "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-        body.len()
-    );
-    [head.as_bytes(), body].concat()
-}
 
 fn keys() -> S3Keys {
     S3Keys {
@@ -229,5 +166,102 @@ fn an_unsigned_get_carries_no_authorization() {
             .headers
             .keys()
             .any(|name| name.starts_with("x-amz-"))
+    );
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+#[test]
+fn put_file_sends_the_exact_body_with_signed_type_and_cache_headers() {
+    let bytes: Vec<u8> = (0..=255u8).rev().cycle().take(200_000).collect();
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("archive.tar.gz");
+    std::fs::write(&file, &bytes).unwrap();
+    let sha256 = sha256_hex(&bytes);
+    let (base, requests) = serve(vec![response("200 OK", b"")]);
+    let url = format!("{base}symdev-public/gcce/12.1.0/{sha256}.tar.gz");
+    let fetch = HttpFetch::new("public", Some(SigV4::s3(keys(), "auto")));
+    let cache = "public, max-age=31536000, immutable";
+    let before = unix_now();
+    fetch
+        .put_file(&url, &file, &sha256, "application/gzip", cache)
+        .unwrap();
+    let after = unix_now();
+    let request = requests.recv().unwrap();
+    assert_eq!(request.method, "PUT");
+    assert_eq!(
+        request.path,
+        format!("/symdev-public/gcce/12.1.0/{sha256}.tar.gz")
+    );
+    assert!(request.body == bytes, "the server got other bytes");
+    assert_eq!(request.headers["content-length"], "200000");
+    assert_eq!(request.headers["content-type"], "application/gzip");
+    assert_eq!(request.headers["cache-control"], cache);
+    assert_eq!(request.headers["x-amz-content-sha256"], sha256);
+    assert!(
+        request.headers["authorization"].contains(
+            ", SignedHeaders=cache-control;content-type;host;x-amz-content-sha256;x-amz-date, "
+        ),
+        "{}",
+        request.headers["authorization"]
+    );
+    let extra = [
+        ("content-type", "application/gzip"),
+        ("cache-control", cache),
+    ];
+    for (name, value) in expected_signature(&request, &url, &extra, &sha256, (before, after)) {
+        assert_eq!(request.headers[&name], value, "{name}");
+    }
+}
+
+#[test]
+fn put_file_refused_by_the_bucket_is_forbidden() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("index.toml");
+    std::fs::write(&file, "schema = 1\n").unwrap();
+    let (base, _requests) = serve(vec![response("403 Forbidden", b"<Error/>")]);
+    let url = format!("{base}index.toml");
+    let err = HttpFetch::new("public", Some(SigV4::s3(keys(), "auto")))
+        .put_file(
+            &url,
+            &file,
+            &sha256_hex(b"schema = 1\n"),
+            "application/toml",
+            "no-cache",
+        )
+        .unwrap_err();
+    assert!(
+        matches!(&err, SdkError::Forbidden { source_name, .. } if source_name == "public"),
+        "{err}"
+    );
+}
+
+#[test]
+fn put_file_of_a_missing_file_names_it_and_sends_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing = dir.path().join("missing.tar.gz");
+    let port = TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let err = HttpFetch::new("public", None)
+        .put_file(
+            &format!("http://127.0.0.1:{port}/missing.tar.gz"),
+            &missing,
+            EMPTY_SHA256,
+            "application/gzip",
+            "no-cache",
+        )
+        .unwrap_err();
+    assert!(
+        matches!(&err, SdkError::Io { path, .. } if *path == missing.display().to_string()),
+        "{err}"
     );
 }

@@ -7,7 +7,7 @@ Branch `tm-net`, worktree `~/worktrees/symdev/tm-net`. Plan:
 
 - [x] B1 `SigV4`, `AmzDate` — `src/sigv4.rs` (+ private `sigv4/{canonical_request,request_target}.rs`), `src/amz_date.rs`, tests in `src/sigv4/tests.rs` and `src/sigv4/request_target/tests.rs`; 22 crate tests green
 - [x] B2 `HttpFetch` GET — `src/http_fetch.rs`, `src/http_fetch/tests.rs`; 30 crate tests green
-- [ ] B3 `HttpFetch::put_file`
+- [x] B3 `HttpFetch::put_file` — tests in `src/http_fetch/tests.rs`, fake server moved to `src/http_fetch/tests/server.rs`; 33 crate tests green
 
 ## Facts
 
@@ -50,13 +50,6 @@ Branch `tm-net`, worktree `~/worktrees/symdev/tm-net`. Plan:
   `a%3Bb` (what S3 decodes on its side) and nothing is double-encoded.
 - `sign` emits `Authorization` with `, ` separators (test-suite form); the S3 page's form
   without spaces carries the same signature, which the tests compare.
-
-## Dead ends
-
-- WebFetch of the S3 SigV4 page returns only the redirect stub; curl shows 302 to the API
-  index. The S3 API PDF (`pdfs/AmazonS3/latest/API/s3-api.pdf`) has only SigV2 examples now.
-- `smithy-rs` no longer keeps `aws-sig-v4-test-suite/get-vanilla/*.req` at the old path (404).
-
 - `HttpFetch` maps 403 to `Forbidden` and every other non-2xx to `Fetch { detail: "HTTP <code>" }`
   with nothing appended, so E1's publisher can treat `HTTP 404` on `index.toml` as "no index
   yet" by matching the detail.
@@ -65,7 +58,17 @@ Branch `tm-net`, worktree `~/worktrees/symdev/tm-net`. Plan:
 - Known limit: tests build `HttpFetch::new`, which takes the proxy from the environment; a
   shell with `HTTP(S)_PROXY`/`ALL_PROXY` set and 127.0.0.1 not in `NO_PROXY` would send the
   test requests through that proxy. No such variable is set here or in CI.
+- `put_file` lets ureq stream the `File` (it sends `Content-Length` from the file's metadata,
+  no chunked encoding) and signs `content-type` and `cache-control` with the caller's sha256
+  as the payload hash; it does not re-hash the file (the bucket refuses a mismatch).
+
+## Dead ends
+
+- WebFetch of the S3 SigV4 page returns only the redirect stub; curl shows 302 to the API
+  index. The S3 API PDF (`pdfs/AmazonS3/latest/API/s3-api.pdf`) has only SigV2 examples now.
+- `smithy-rs` no longer keeps `aws-sig-v4-test-suite/get-vanilla/*.req` at the old path (404).
 
 ## Next step
 
-B3: `HttpFetch::put_file` (tests first, same harness).
+Track B done: workspace test/clippy/rustfmt check, then report to the lead. Integration (D2,
+E1) uses `HttpFetch::new(name, Some(SigV4::s3(keys, "auto")))`.
