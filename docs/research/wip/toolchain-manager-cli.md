@@ -170,7 +170,7 @@ Spec §12, symdev side, plus the `http_fetch` proxy exposure left above (row 3).
 |---|---|
 | 1 `Pins::rust_sdk`, `RustSdkPackage` | done |
 | 2 resolution order in `Provision` (env → checkout → package) | done |
-| 3 scaffold: how a new project names the SDK; proposal | todo |
+| 3 scaffold: how a new project names the SDK; proposal | done (proposal only) |
 | 4 `http_fetch` tests immune to `HTTP_PROXY`/`ALL_PROXY` | todo |
 | 5 README / examples README: the prebuilt route | todo |
 
@@ -217,3 +217,44 @@ Decisions:
   another test thread while the copy was open). Mutants caught: `from_env` without the
   checkout, `build_cmd` bypassing `Provision`, `needed` without `rust-sdk`, the missing
   variable hint.
+
+### Scaffold and a changing SDK version (task 3, 2026-10-02)
+
+What `symdev new <name> --lang rust` writes (`scaffold_rust.rs`; checked by
+`tests/rust_sdk.rs` and by hand in the scratchpad): **absolute, canonical paths of the SDK it
+resolved** — `symbian-core = { path = "<sdk>/crates/symbian-core" }` and the same for
+`symbian-std` in `Cargo.toml`, `build.target = "<sdk>/targets/arm-symbian-e32.json"` in
+`.cargo/config.toml` — plus verbatim copies of the SDK's `rust-toolchain.toml` and the hello
+`src/main.rs` (compiled into symdev with `include_str!`). From a prebuilt symdev `<sdk>` is
+the package directory, `$SYMDEV_HOME/rust-sdk/0.1.0`.
+
+After an upgrade to a symdev that pins `rust-sdk;0.2.0`:
+
+- `symdev build` resolves 0.2.0 and passes `--target <0.2.0>/targets/…json` on cargo's command
+  line (it overrides the config's 0.1.0 one), builds `symbian-libcalls` with
+  `--manifest-path <0.2.0>/…` and compiles the C++ shims from `<0.2.0>/shims` — but cargo
+  compiles the application against `symbian-std`/`symbian-core` from `<0.1.0>`, which stays
+  installed (no `update`; an old id stays until uninstalled). Two SDK versions end up in one
+  binary without any error, although the shim and the crates are one ABI ("the SDK and not
+  the project decides what the shim calls").
+- After `symdev sdk uninstall 'rust-sdk;0.1.0'` cargo stops: reproduced by renaming
+  `rust-sdk/0.1.0` to `0.2.0` under a scaffolded project — `no matching package named
+  symbian-core found / location searched: …/rust-sdk/0.1.0/crates/symbian-core`.
+- `rust-toolchain.toml` keeps 0.1.0's nightly; a hand `cargo build` keeps 0.1.0's target.
+- The checkout route has the same weakness when the checkout moves or is deleted.
+
+**Proposal (not implemented):** a project names the SDK through one project-local,
+unversioned path that symdev keeps pointed at the SDK it resolved, instead of an absolute
+one. `symdev new` and every `symdev build` make `build/rust-sdk` a symlink to the SDK of the
+running symdev (variable, checkout or package); the scaffold writes
+`path = "build/rust-sdk/crates/symbian-std"` (etc.) and `build.target =
+"build/rust-sdk/targets/arm-symbian-e32.json"`. Every build then takes the crates, the target,
+the shims and libcalls from one SDK, an upgrade needs no edit, and `build/` (already ignored
+by git, already holding symlinks into the EPOCROOT) is the right place for a host path. A
+fresh clone needs one `symdev build` (or `symdev sdk install`) before a hand `cargo`. Open
+points, each an experiment before code: whether cargo resolves a relative `build.target` in
+`.cargo/config.toml` against the config's parent (cargo's config-relative rule) on the pinned
+nightly; and `rust-toolchain.toml` — `symdev build` should compare the project's channel with
+the SDK's and stop with the fix (copy the SDK's file) when they differ, since rustup reads the
+file from the project and it cannot point elsewhere. Existing projects would need their three
+paths rewritten once (a `symdev` message can name them).
