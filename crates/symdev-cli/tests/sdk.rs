@@ -89,11 +89,25 @@ fn install_without_ids_outside_a_project_says_what_to_name() {
 fn uninstall_needs_an_id_and_install_refuses_a_bad_one() {
     let w = World::new();
     w.bin().args(["sdk", "uninstall"]).assert().failure();
+    // What an unquoted `gcce;12.1.0` becomes: the shell runs `symdev sdk install gcce`.
     w.bin()
         .args(["sdk", "install", "gcce"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("needs a kind and a version"));
+        .stderr(predicate::str::contains("needs a kind and a version"))
+        .stderr(predicate::str::contains("quote the id: 'gcce;12.1.0'"));
+    w.bin()
+        .args(["sdk", "uninstall", "sdk"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "quote the id: 'sdk;s60-3rd-fp2;1.1'",
+        ));
+    w.bin()
+        .args(["sdk", "install", "gcce;.."])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("quote the id").not());
 }
 
 #[test]
