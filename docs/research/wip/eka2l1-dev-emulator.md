@@ -26,9 +26,55 @@ work continues in parallel (agents C, D, E running; see `toolchain-manager.md` o
   it only across a process boundary (CLI / socket protocol), never link it. A from-scratch
   emulator written while reading EKA2L1 would need the clean-room two-role split.
 
+## Architecture (survey of `~/src/EKA2L1`, branch `symdev-fixes`, 2026-10-02)
+
+- Size by area (lines): services 80k (HLE servers), cpu 31k (dynarmic JIT x86_64/arm64,
+  an ARM-on-ARM recompiler, an interpreter; unicorn removed), drivers 28.5k (OpenGL only —
+  a Vulkan stub is not wired; audio cubeb/TSF/miniBAE/ffmpeg; SDL2 input; camera), common 23k,
+  kernel 22k (HLE kernel, scheduler, IPC, timers), dispatch 20k (host replacements of
+  patched guest DLLs: EGL/GLES/OpenVG/audio/video/camera), android 14k, qt 12k, loader 10k
+  (E32/ROM/ROFS/FPSX/SIS/RSC/MBM/MIF/SVGB parsers), ios 10k, system 5k, mem 5k, scripting
+  3k (LuaJIT), vfs 2k, gdbstub 1.7k, config 1k, ldd 1k, bridge (121k lines of `.def`).
+- Core = `eka2l1::system` (`system/include/system/epoc.h`): owns CPU, memory, kernel, device
+  manager, timer, VFS, gdbstub, dispatcher, packages; drivers are borrowed pointers. API:
+  startup, set_device/reset (loads `roms/<firm>/SYM.ROM`), mount, pause/unpause,
+  install_package, load, loop (one CPU slice). Launch-by-UID goes through the applist server.
+  A test (`src/tests/epoc/system/gamecard.cpp`) builds a `system` with no frontend.
+- The boot sequence is duplicated in three frontends (qt `state.cpp`, android `state.cpp`,
+  ios `IosEmulator.mm`). Core→frontend leaks: UI dialog hooks (`drivers/ui/input_dialog.h`
+  defined only by frontends), `launch_browser`, Qt Network linked into core drivers on Linux
+  (TLS trust). Frontend→core: raw window-server pointer for input injection, redraw
+  callbacks, direct VFS/loader calls.
+- Multi-instance: **the process CWD is the data folder** (Qt sets it to
+  `~/.local/share/EKA2L1/`, no override flag); config, compat, panic lists, log (rotated each
+  start), patch, shaders, sound banks, cache all resolve against it; scripting changes the CWD
+  while other threads run (a race even with one instance). Process-wide globals: logger,
+  scripting instance, libuv default loop, miniBAE mixer, camera collection, FreeType library,
+  SDL scoper, runtime resource root, gdbstub static buffers, CPU stats, UI singletons. No file
+  locks; C:/D:/E: are shared by all devices; QSettings shared. Ports: gdbstub 24689 (only
+  when enabled; blocks in accept), BT netplay off by default; guest sockets map to host
+  sockets. → **N instances in one process: large. One instance per process: medium**
+  (`--data-dir`, no CWD change, separate ports) — the Android Emulator's model.
+- Timing is real time (`system_clock`), not deterministic; guest threads multiplexed on one
+  host thread. Graphics needs OpenGL 3.x (GLES on mobile), no software renderer; headless =
+  GLX pbuffer, still needs an X display (Xvfb); no EGL-surfaceless/OSMesa path. Screenshots
+  offscreen are feasible (screen texture read-back exists; Android uses it).
+- Save state: none (`do_state` empty); blocked by raw-pointer object graphs, host-mmapped
+  chunks, JIT caches, GPU state, wall-clock timers, open host files/sockets. Real snapshots:
+  large to very large; cold snapshot (copy the data folder): small.
+- Frontends: Qt desktop; Android JNI (~40 calls: launchApp, installApp, installDevice,
+  pressKey, touchScreen, saveScreenshotTo, runTest); iOS bridge (~50 methods) — the closest
+  thing to a clean control API. CI builds Linux, Windows, macOS (Qt6), Android, iOS.
+- Device model: `devices.yml` under `data/`; firmware via ROM/RPKG/VPL install; Z: per
+  firmware, C:/D:/E: shared across devices.
+- `eka2l1_qt` CLI (parsed after boot): help, listapp (bug: prints nothing), listdevices,
+  app/run (name, UID or path), device, install (always E:), remove, fullscreen, mount,
+  keybindprofile, mmcid, runng. No data-dir, headless or port flags. Control surfaces today:
+  gdbstub (TCP), Lua scripts (in-process), BT netplay (peer-to-peer).
+- Agent's effort read: control API medium (primitives exist: pause/reset/install/launch,
+  input queue, screen read-back, device install; missing: thread-safe command queue on the OS
+  thread, app-exit and log event streams, an RPC server).
 ## Pending
 
-- Architecture survey (agent): core vs frontend, global state, multi-instance, headless,
-  snapshots, platforms, CLI.
 - Peripherals/control survey (agent): HLE services list, LDD/drivers, input/screenshot
   paths, scripting/gdbstub, capability table vs Android Emulator / iOS Simulator.
