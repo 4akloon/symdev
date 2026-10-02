@@ -199,7 +199,17 @@ Owner approved the spec as written, including the §1 rule wording ("Все ок
 продовжувати", 2026-10-02); `CLAUDE.md` and `licensing.md` updated on this branch.
 Owner then asked: "Роби все і паралельно" — do everything, in parallel.
 
+## Execution (2026-10-02)
+
+Plan: `docs/superpowers/plans/2026-10-02-toolchain-manager.md`. Task 0 (crate scaffold)
+done in 0866cab. Track G (CI `examples` job) written ahead of D on this branch.
+Wave 1 dispatched in parallel, each agent in its own worktree with its own wip note:
+A sdk-core (`tm-core`), B sigv4/http (`tm-net`), C GCCE recipe (`tm-gcce` +
+`~/projects/symdev-packages`, builds in `~/src/gcce-recipe`), F rustfmt fix (`ci-fmt` from
+main). Owner asked for O1 (Cloudflare setup). No docker/podman on host: clean-env acceptance
+= fresh HOME on host + CI runner (plan R5).
+
 ## Next step
 
-Write the implementation plan (superpowers:writing-plans), then dispatch independent
-tracks in parallel.
+On each agent report: review, merge its branch into `toolchain-manager` (F into main),
+then dispatch D and E.
