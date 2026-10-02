@@ -29,19 +29,31 @@ impl File {
     /// going through [`OpenOptions`]: the builder decides at run time, so every image
     /// that opened a file linked all of its strategies (experiment 105).
     pub fn open(path: &str) -> Result<Self> {
-        Ok(Self::of(SymFile::opened(path, Opening::Existing, FileMode::Read)?))
+        Ok(Self::of(SymFile::opened(
+            path,
+            Opening::Existing,
+            FileMode::Read,
+        )?))
     }
 
     /// Creates a file, truncating it if it is already there (`RFile::Replace`), as
     /// `OpenOptions::new().write(true).create(true).truncate(true).open(path)` does.
     pub fn create(path: &str) -> Result<Self> {
-        Ok(Self::of(SymFile::opened(path, Opening::Replace, FileMode::Write)?))
+        Ok(Self::of(SymFile::opened(
+            path,
+            Opening::Replace,
+            FileMode::Write,
+        )?))
     }
 
     /// Creates a file and fails if it already exists (`RFile::Create`), as
     /// `OpenOptions::new().write(true).create_new(true).open(path)` does.
     pub fn create_new(path: &str) -> Result<Self> {
-        Ok(Self::of(SymFile::opened(path, Opening::New, FileMode::Write)?))
+        Ok(Self::of(SymFile::opened(
+            path,
+            Opening::New,
+            FileMode::Write,
+        )?))
     }
 
     /// A builder, as `std::fs::File::options`.
