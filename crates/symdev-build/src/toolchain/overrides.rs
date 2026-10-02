@@ -56,6 +56,24 @@ impl ToolchainOverrides {
         self.epocroot.is_none()
     }
 
+    /// Fails on the first set variable whose path does not exist, so a typo is reported
+    /// before any package is downloaded.
+    pub fn check(&self) -> Result<()> {
+        let fields = [
+            ("SYMDEV_EPOCROOT", &self.epocroot),
+            ("SYMDEV_GXX", &self.gxx),
+            ("SYMDEV_LD", &self.ld),
+            ("SYMDEV_AR", &self.ar),
+            ("SYMDEV_ELF2E32", &self.elf2e32),
+            ("SYMDEV_GCC_LIB", &self.gcc_lib),
+            ("SYMDEV_GCC_TARGET_LIB", &self.gcc_target_lib),
+        ];
+        for (variable, set) in fields {
+            Self::existing(variable, set)?;
+        }
+        Ok(())
+    }
+
     /// `set` when the variable is set and its path exists; `None` when it is unset.
     pub(crate) fn existing(variable: &str, set: &Option<PathBuf>) -> Result<Option<PathBuf>> {
         match set {

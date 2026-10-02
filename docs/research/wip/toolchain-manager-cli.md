@@ -10,7 +10,7 @@ Inputs: `toolchain-manager-core.md` ("For Track D"), `toolchain-manager-net.md`.
 |---|---|---|
 | D1 ToolchainOverrides / Toolchain::resolve | done | see `git log` |
 | D2 SdkManager / builtin | done | see `git log` |
-| D3 CLI sdk / --offline / provision / hermetic tests / docs | todo | |
+| D3 CLI sdk / --offline / provision / hermetic tests / docs | done | see `git log` |
 | smoke test (real toolchain, file:// source) | todo | |
 
 ## Facts
@@ -62,8 +62,34 @@ Inputs: `toolchain-manager-core.md` ("For Track D"), `toolchain-manager-net.md`.
   on x86_64-linux every archive is either exact or `any`.
 - D2: tests never resolve a name: the keyed `s3` test source is `https://127.0.0.1:1/`.
 
+- D3: `Provision` (`crates/symdev-cli/src/provision.rs`) is a type, not loose fns (the
+  plan's `manager`/`toolchain`/`epocroot`): it holds `--offline` and an env lookup, so
+  its path and key rules are unit-tested with a map. Paths: `SYMDEV_HOME` (must be
+  absolute) else `$XDG_DATA_HOME/symdev`; cache `$XDG_CACHE_HOME/symdev/downloads`;
+  sources `$XDG_CONFIG_HOME/symdev/sources.toml`; relative XDG values ignored (XDG
+  spec); fallbacks under `$HOME`. One key variable without the other is an error.
+- D3: set `SYMDEV_*` paths are checked (`ToolchainOverrides::check`) before anything is
+  downloaded, so a typo does not cost a 58 MB download first.
+- D3: `symdev package` installs nothing (spec §4): for a `bld.inf` project it takes the
+  SDK only from `SYMDEV_EPOCROOT` or an installed package, else an error naming
+  `symdev build` / `symdev sdk install 'sdk;…'` / `SYMDEV_EPOCROOT`. `symdev freeze`
+  does auto-install (it reads `bld.inf`), and loads `symdev.toml` for the device only
+  when `SYMDEV_EPOCROOT` is unset.
+- D3: `main.rs` dispatch collapsed into one `result` + one error print (it would have
+  passed 300 lines with the `sdk` arm); `manifest()` keeps the `invalid manifest:`
+  prefix the tests check.
+- D3: `symdev sdk install` prints `installed  <id>  (<source>)` per id on stdout (the
+  list format); `uninstall` prints `removed  <id>`, and only warns for an id that is
+  not installed. `sdk list --offline` lists only the installed packages.
+- D3: hermetic CLI tests: `common::bin()` points `SYMDEV_HOME`/`XDG_*` at one
+  `tempfile` dir per test process inside `CARGO_TARGET_TMPDIR` (a static `TempDir`
+  is never dropped, so it stays in `target/tmp`, not `/tmp`), with `builtin = false`.
+  `common::repo::World` gives a test its own home and a `file://` source.
+- D3: the help test now compares the exact command list (it forbade the substring
+  `sdk`, and `toolchain`, which help text now contains).
+
 ## Dead ends
 
 ## Next step
 
-D3: CLI (`--offline`, `symdev sdk`, provision.rs), hermetic tests, docs.
+Smoke test with the real toolchain from a `file://` source (scratchpad only).

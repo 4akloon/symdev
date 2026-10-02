@@ -1,8 +1,13 @@
 use clap::{Parser, Subcommand, ValueEnum};
+use symdev_sdk::PackageId;
 
 #[derive(Parser)]
 #[command(name = "symdev", disable_help_subcommand = true)]
 pub struct Cli {
+    /// Never download: a missing toolchain package is an error naming the command that
+    /// installs it.
+    #[arg(long, global = true)]
+    pub offline: bool,
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
@@ -36,6 +41,26 @@ pub enum Commands {
     },
     /// Append the DLLs' new exports to their frozen .def files (eabi/<name>u.def).
     Freeze,
+    /// Manage the toolchain packages (GCCE, platform SDK) under SYMDEV_HOME, from the
+    /// sources listed in ~/.config/symdev/sources.toml.
+    Sdk {
+        #[command(subcommand)]
+        action: SdkAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SdkAction {
+    /// List the installed packages and those the sources offer.
+    List,
+    /// Install packages, e.g. 'gcce;12.1.0' (quote the `;`); with none, what the project
+    /// in the current directory needs.
+    Install { ids: Vec<PackageId> },
+    /// Remove installed packages.
+    Uninstall {
+        #[arg(required = true)]
+        ids: Vec<PackageId>,
+    },
 }
 
 #[derive(Clone, ValueEnum)]

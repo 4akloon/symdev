@@ -177,3 +177,14 @@ fn reads_each_variable_and_treats_an_empty_one_as_unset() {
     assert_eq!(o.gcc_target_lib, Some(PathBuf::from("/x/target")));
     assert!(o.needs_gcce(), "SYMDEV_LD is empty");
 }
+
+#[test]
+fn check_refuses_a_set_path_before_anything_is_installed() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut o = all_overrides(tmp.path());
+    assert!(o.check().is_ok());
+    o.ld = Some(tmp.path().join("missing-ld"));
+    let e = o.check().unwrap_err().to_string();
+    assert!(e.starts_with("SYMDEV_LD is set to "), "{e}");
+    assert!(ToolchainOverrides::default().check().is_ok());
+}

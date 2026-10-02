@@ -23,18 +23,6 @@ pub struct Toolchain {
 }
 
 impl Toolchain {
-    pub fn from_env() -> Result<Self> {
-        Ok(Self {
-            epocroot: Self::required("SYMDEV_EPOCROOT")?,
-            gxx: Self::required("SYMDEV_GXX")?,
-            ld: Self::required("SYMDEV_LD")?,
-            ar: Self::optional("SYMDEV_AR"),
-            elf2e32: Self::optional("SYMDEV_ELF2E32"),
-            gcc_lib: Self::required("SYMDEV_GCC_LIB")?,
-            gcc_target_lib: Self::required("SYMDEV_GCC_TARGET_LIB")?,
-        })
-    }
-
     /// Field by field: the override when it is set (an error names the variable if its
     /// path does not exist), else the installed package's file.
     pub fn resolve(
@@ -88,19 +76,6 @@ impl Toolchain {
                  end in `ld`, so set SYMDEV_AR to the matching `ar`",
                 self.ld.display()
             ))),
-        }
-    }
-
-    fn optional(key: &str) -> Option<PathBuf> {
-        std::env::var_os(key)
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from)
-    }
-
-    fn required(key: &str) -> Result<PathBuf> {
-        match std::env::var(key) {
-            Ok(v) if !v.is_empty() => Ok(PathBuf::from(v)),
-            _ => Err(Error::Other(format!("missing toolchain: {key}"))),
         }
     }
 }

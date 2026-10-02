@@ -18,6 +18,7 @@ symdev-locale = { path = "../symdev-locale" }
 symdev-core = { path = "../symdev-core" }
 symdev-emulator = { path = "../symdev-emulator" }
 symdev-manifest = { path = "../symdev-manifest" }
+symdev-sdk = { path = "../symdev-sdk" }
 
 [dev-dependencies]
 assert_cmd = "2"

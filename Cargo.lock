@@ -1061,6 +1061,7 @@ dependencies = [
  "symdev-emulator",
  "symdev-locale",
  "symdev-manifest",
+ "symdev-sdk",
  "tempfile",
 ]
 

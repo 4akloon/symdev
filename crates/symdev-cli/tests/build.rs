@@ -1,7 +1,7 @@
 use predicates::prelude::*;
 
 mod common;
-use common::{HELLO, bin, write_toml};
+use common::{HELLO, bin, bin_without_toolchain, write_toml};
 
 #[test]
 fn build_missing_manifest() {
@@ -27,19 +27,18 @@ fn build_valid_manifest_missing_toolchain() {
             "uid3 = \"0xE0000001\"\ncapabilities = []",
         ),
     );
-    bin()
+    // No variable, nothing installed, no source to install from (`bin` turns the
+    // built-in source off).
+    bin_without_toolchain()
         .current_dir(&dir)
-        .env_remove("SYMDEV_EPOCROOT")
-        .env_remove("SYMDEV_GXX")
-        .env_remove("SYMDEV_LD")
-        .env_remove("SYMDEV_ELF2E32")
-        .env_remove("SYMDEV_GCC_LIB")
-        .env_remove("SYMDEV_GCC_TARGET_LIB")
         .arg("build")
         .assert()
         .failure()
         .code(1)
-        .stderr(predicate::str::contains("missing toolchain"))
+        .stderr(predicate::str::contains(
+            "error: gcce;12.1.0 was not found: no package source is configured",
+        ))
+        .stderr(predicate::str::contains("sources.toml"))
         .stderr(predicate::str::contains("not implemented").not());
 }
 
@@ -65,6 +64,25 @@ fn build_omitted_uid3_errors() {
         .stderr(predicate::str::contains("not implemented").not());
 }
 
+/// A toolchain whose every `SYMDEV_*` path exists (the files are empty): enough for a
+/// build to get past resolving its toolchain.
+fn fake_toolchain(dir: &tempfile::TempDir) -> Vec<(&'static str, std::path::PathBuf)> {
+    let tools = dir.path().join("tools");
+    std::fs::create_dir_all(&tools).unwrap();
+    let file = |name: &str| {
+        let path = tools.join(name);
+        std::fs::write(&path, b"").unwrap();
+        path
+    };
+    vec![
+        ("SYMDEV_EPOCROOT", tools.clone()),
+        ("SYMDEV_GXX", file("g++")),
+        ("SYMDEV_LD", file("ld")),
+        ("SYMDEV_GCC_LIB", file("gcc-lib")),
+        ("SYMDEV_GCC_TARGET_LIB", file("gcc-target-lib")),
+    ]
+}
+
 #[test]
 fn build_valid_manifest_no_bld_inf() {
     let dir = tempfile::tempdir().unwrap();
@@ -75,14 +93,12 @@ fn build_valid_manifest_no_bld_inf() {
             "uid3 = \"0xE0000001\"\ncapabilities = []",
         ),
     );
-    bin()
+    let elf2e32 = dir.path().join("elf2e32");
+    std::fs::write(&elf2e32, b"").unwrap();
+    bin_without_toolchain()
         .current_dir(&dir)
-        .env("SYMDEV_EPOCROOT", "/sdk")
-        .env("SYMDEV_GXX", "/gcc/g++")
-        .env("SYMDEV_LD", "/gcc/ld")
-        .env("SYMDEV_ELF2E32", "/gcc/elf2e32")
-        .env("SYMDEV_GCC_LIB", "/gcc/lib")
-        .env("SYMDEV_GCC_TARGET_LIB", "/gcc/target")
+        .envs(fake_toolchain(&dir))
+        .env("SYMDEV_ELF2E32", &elf2e32)
         .arg("build")
         .assert()
         .failure()
@@ -101,20 +117,16 @@ fn build_does_not_require_external_elf2e32() {
             "uid3 = \"0xE0000001\"\ncapabilities = []",
         ),
     );
-    bin()
+    bin_without_toolchain()
         .current_dir(&dir)
-        .env("SYMDEV_EPOCROOT", "/sdk")
-        .env("SYMDEV_GXX", "/gcc/g++")
-        .env("SYMDEV_LD", "/gcc/ld")
-        .env_remove("SYMDEV_ELF2E32")
-        .env("SYMDEV_GCC_LIB", "/gcc/lib")
-        .env("SYMDEV_GCC_TARGET_LIB", "/gcc/target")
+        .envs(fake_toolchain(&dir))
         .arg("build")
         .assert()
         .failure()
         .code(1)
         .stderr(predicate::str::contains("no bld.inf"))
-        .stderr(predicate::str::contains("missing toolchain").not());
+        .stderr(predicate::str::contains("SYMDEV_ELF2E32").not())
+        .stderr(predicate::str::contains("installing").not());
 }
 
 #[test]
