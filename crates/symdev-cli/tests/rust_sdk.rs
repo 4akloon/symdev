@@ -110,12 +110,17 @@ fn a_prebuilt_symdev_scaffolds_against_the_installed_package() {
         .assert()
         .success()
         .stderr(predicate::str::contains(format!("installing {id} (")));
-    let cargo = fs::read_to_string(w.tmp.path().join("app/Cargo.toml")).unwrap();
-    let sdk = canonical(&w.package_dir(id.as_str()).join("symbian-rs"));
-    assert!(
-        cargo.contains(&format!("{sdk}/crates/symbian-std")),
-        "{cargo}"
-    );
+    assert_links_to(&w.tmp.path().join("app"), &w.package_dir(id.as_str()));
+}
+
+/// The scaffold names the SDK through `build/rust-sdk` (experiment 110), and links it to
+/// `tree`, the directory that holds the SDK's `symbian-rs`.
+fn assert_links_to(project: &Path, tree: &Path) {
+    let cargo = fs::read_to_string(project.join("Cargo.toml")).unwrap();
+    let relative = "path = \"build/rust-sdk/symbian-rs/crates/symbian-std\"";
+    assert!(cargo.contains(relative), "{cargo}");
+    let link = fs::read_link(project.join("build/rust-sdk")).unwrap();
+    assert_eq!(link.display().to_string(), canonical(tree));
 }
 
 #[test]
@@ -127,12 +132,8 @@ fn a_symdev_built_here_scaffolds_against_its_checkout_and_installs_nothing() {
         .assert()
         .success()
         .stderr(predicate::str::contains("installing").not());
-    let cargo = fs::read_to_string(w.tmp.path().join("app/Cargo.toml")).unwrap();
-    let checkout = canonical(Path::new(RustSdk::CHECKOUT.unwrap()));
-    assert!(
-        cargo.contains(&format!("{checkout}/crates/symbian-std")),
-        "{cargo}"
-    );
+    let checkout = Path::new(RustSdk::CHECKOUT.unwrap()).join("..");
+    assert_links_to(&w.tmp.path().join("app"), &checkout);
     assert!(!w.package_dir(Pins::rust_sdk().as_str()).exists());
 }
 
@@ -145,17 +146,46 @@ fn the_variable_wins_over_the_checkout() {
         fs::write(clone.join(file), "{}\n").unwrap();
     }
     let sdk = clone.join(RustSdkPackage::SDK_DIR);
+    fs::write(sdk.join("rust-toolchain.toml"), common::SDK_TOOLCHAIN).unwrap();
+    let workspace = "[workspace]\nmembers = []\n";
+    fs::write(sdk.join("Cargo.toml"), workspace).unwrap();
     w.bin()
         .current_dir(w.tmp.path())
         .args(["new", "app", "--lang", "rust"])
         .env("SYMDEV_RUST_SDK", &sdk)
         .assert()
         .success();
-    let cargo = fs::read_to_string(w.tmp.path().join("app/Cargo.toml")).unwrap();
-    assert!(
-        cargo.contains(&format!("{}/crates/symbian-std", canonical(&sdk))),
-        "{cargo}"
+    assert_links_to(&w.tmp.path().join("app"), &clone);
+}
+
+/// A project that a symdev 0.1.0 scaffolded names its SDK by absolute path; against
+/// another SDK, the build stops before cargo with the lines to change.
+#[test]
+fn a_project_naming_another_sdk_by_absolute_path_is_refused_before_cargo() {
+    let w = world();
+    let project = w.rust_project();
+    let old = "/home/u/.local/share/symdev/rust-sdk/0.1.0/symbian-rs";
+    let cargo = format!(
+        "[package]\nname = \"hello\"\nversion = \"0.1.0\"\n\n[dependencies]\n\
+         symbian-std = {{ path = \"{old}/crates/symbian-std\" }}\n"
     );
+    fs::write(project.join("Cargo.toml"), cargo).unwrap();
+    let stderr = w
+        .prebuilt()
+        .current_dir(&project)
+        .arg("build")
+        .env("SYMDEV_CARGO", stub_cargo(&w))
+        .assert()
+        .failure()
+        .get_output()
+        .stderr
+        .clone();
+    let stderr = String::from_utf8(stderr).unwrap();
+    let fixed = "    + symbian-std = { path = \"build/rust-sdk/symbian-rs/crates/symbian-std\" }";
+    assert!(stderr.contains("  Cargo.toml:6\n"), "{stderr}");
+    assert!(stderr.contains(fixed), "{stderr}");
+    assert!(!stderr.contains("stub cargo"), "{stderr}");
+    assert!(!project.join("build/rust-sdk").exists());
 }
 
 /// The prebuilt copy differs from the binary under test only in the checkout it names.

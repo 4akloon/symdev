@@ -2,12 +2,16 @@
 use std::path::{Path, PathBuf};
 
 use symdev_core::{Error, Result};
+use symdev_sdk::RustSdkWorkspace;
+
+use crate::rust_toolchain_file::RustToolchainFile;
 
 /// The `symbian-rs/` workspace: the target JSON, the SDK crates a project depends on by
 /// path, and the pinned toolchain. Which one a build uses is the CLI's `Provision`'s
 /// business (spec §12): `SYMDEV_RUST_SDK`, else [`Self::CHECKOUT`] (none in a release
-/// build), else the installed `rust-sdk` package. The scaffold writes the absolute paths
-/// into the project (experiment 65).
+/// build), else the installed `rust-sdk` package. A project names it only through
+/// `build/rust-sdk` ([`crate::RustSdkLink`], experiment 110), which every build points at
+/// the one it resolved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RustSdk {
     root: PathBuf,
@@ -15,8 +19,8 @@ pub struct RustSdk {
 
 impl RustSdk {
     /// The `symbian-rs/` of the source checkout this `symdev` was built from. It is where
-    /// [`Self::TOOLCHAIN_FILE`] and [`Self::HELLO_MAIN`] were read; a developer working on
-    /// the SDK keeps building against it while it exists.
+    /// [`Self::HELLO_MAIN`] was read; a developer working on the SDK keeps building against
+    /// it while it exists.
     ///
     /// `None` in a release build: one compiled with `SYMDEV_RELEASE` set (to anything but
     /// the empty string), as the release recipe must do. A prebuilt binary's checkout
@@ -37,10 +41,6 @@ impl RustSdk {
 
     /// The one Rust target (design spec §3): `targets/arm-symbian-e32.json`.
     pub const TARGET: &'static str = "arm-symbian-e32";
-    /// `symbian-rs/rust-toolchain.toml`, copied verbatim into every scaffolded project so
-    /// the project builds with the same pinned nightly as the SDK.
-    pub const TOOLCHAIN_FILE: &'static str =
-        include_str!("../../../symbian-rs/rust-toolchain.toml");
     /// The hello application (`symbian-rs/examples/hello`), the scaffold's `src/main.rs`:
     /// `#![no_std]`, `#[symbian_std::main]` and a `fn main` returning a `Result`
     /// (experiment 81). No `#![no_main]`: the crate is a `staticlib`, so rustc never
@@ -89,13 +89,17 @@ impl RustSdk {
         "gdi.dso",
     ];
 
-    /// What [`Self::at`] requires, relative to the SDK root: the target JSON, and what the
-    /// tree reaches outside itself — `symbian-macros` reads locales files with the host
-    /// crate `symdev-locale` (`../../../crates/symdev-locale`), which inherits its
-    /// version and edition from the root `Cargo.toml`. A checkout has both; so does the
-    /// `rust-sdk` package, which keeps the repository's layout.
+    /// What [`Self::at`] requires, relative to the SDK root: the target JSON, the
+    /// `rust-toolchain.toml` a project's nightly is checked against, the SDK's workspace
+    /// manifest (and, beyond this list, every member it names: [`RustSdkWorkspace`]), and
+    /// what the tree reaches outside itself — `symbian-macros` reads locales files with the
+    /// host crate `symdev-locale` (`../../../crates/symdev-locale`), which inherits its
+    /// version and edition from the root `Cargo.toml`. A checkout has all of them; so does
+    /// the `rust-sdk` package, which keeps the repository's layout.
     pub const REQUIRED: &'static [&'static str] = &[
         "targets/arm-symbian-e32.json",
+        "rust-toolchain.toml",
+        "Cargo.toml",
         "../crates/symdev-locale/Cargo.toml",
         "../Cargo.toml",
     ];
@@ -107,16 +111,42 @@ impl RustSdk {
         let root = root
             .canonicalize()
             .map_err(|e| Error::Other(format!("Rust SDK not found at {} ({e})", root.display())))?;
+        let no_sdk = |what: &str| {
+            Error::Other(format!(
+                "Rust SDK at {} has no {what}: it is the symbian-rs directory of a symdev \
+                 checkout or of the rust-sdk package",
+                root.display()
+            ))
+        };
         for file in Self::REQUIRED {
             if !root.join(file).is_file() {
-                return Err(Error::Other(format!(
-                    "Rust SDK at {} has no {file}: it is the symbian-rs directory of a symdev \
-                     checkout or of the rust-sdk package",
-                    root.display()
-                )));
+                return Err(no_sdk(file));
             }
         }
+        let workspace = RustSdkWorkspace::read(&root)?;
+        if let Some(manifest) = workspace.missing_member(&root) {
+            return Err(no_sdk(&format!("{manifest}, a member of its workspace")));
+        }
         Ok(Self { root })
+    }
+
+    /// The `symbian-rs/` directory, canonical.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// `rust-toolchain.toml`: the nightly the SDK is built with, which a project must name
+    /// too.
+    pub fn toolchain(&self) -> Result<RustToolchainFile> {
+        match RustToolchainFile::read(&self.root)? {
+            Some(file) if file.channel().is_some() => Ok(file),
+            _ => Err(Error::Other(format!(
+                "Rust SDK at {} has no {} that names a [toolchain] channel: it is the \
+                 symbian-rs directory of a symdev checkout or of the rust-sdk package",
+                self.root.display(),
+                RustToolchainFile::NAME
+            ))),
+        }
     }
 
     pub fn target_spec(&self) -> PathBuf {
@@ -207,82 +237,4 @@ impl RustSdk {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn checkout_sdk_is_found_and_has_the_target() {
-        let sdk = RustSdk::at(Path::new(RustSdk::CHECKOUT.unwrap())).unwrap();
-        assert!(sdk.target_spec().ends_with("targets/arm-symbian-e32.json"));
-        assert!(sdk.crate_dir("symbian-std").join("Cargo.toml").is_file());
-        assert!(RustSdk::TOOLCHAIN_FILE.contains("channel = \"nightly-"));
-        assert!(RustSdk::HELLO_MAIN.contains("#[symbian_std::main]"));
-        assert!(RustSdk::HELLO_MAIN.contains("fn main() -> Result<()>"));
-        assert!(!RustSdk::HELLO_MAIN.contains("no_main"));
-    }
-
-    /// A release build (`SYMDEV_RELEASE` set when it is compiled) has no checkout to fall
-    /// back on: on another machine, anyone could plant a `symbian-rs` at the path of the
-    /// machine that built it.
-    #[test]
-    fn a_release_build_has_no_checkout() {
-        let tree = "/build/symdev/crates/symdev-build/../../symbian-rs";
-        assert_eq!(RustSdk::checkout(Some("1"), tree), None);
-        assert_eq!(RustSdk::checkout(None, tree), Some(tree));
-        assert_eq!(RustSdk::checkout(Some(""), tree), Some(tree));
-    }
-
-    /// A tree holding `files` (relative paths), as an installed package would.
-    fn tree_with(files: &[&str]) -> tempfile::TempDir {
-        let tmp = tempfile::tempdir().unwrap();
-        for file in files {
-            let path = tmp.path().join(file);
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(path, b"{}").unwrap();
-        }
-        tmp
-    }
-
-    /// `RustSdkPackage::REQUIRED` is exactly what `at` checks: the `symbian-rs` of a package
-    /// with those files is an SDK, and that of a package missing any one of them is not.
-    #[test]
-    fn the_installed_package_checks_what_at_requires() {
-        use symdev_sdk::RustSdkPackage;
-        let required = RustSdkPackage::REQUIRED;
-        let whole = tree_with(required);
-        RustSdk::at(&whole.path().join(RustSdkPackage::SDK_DIR)).unwrap();
-        for missing in required {
-            let rest: Vec<_> = required.iter().copied().filter(|f| f != missing).collect();
-            let partial = tree_with(&rest);
-            std::fs::create_dir_all(partial.path().join(RustSdkPackage::SDK_DIR)).unwrap();
-            let sdk = partial.path().join(RustSdkPackage::SDK_DIR);
-            assert!(RustSdk::at(&sdk).is_err(), "{missing}");
-        }
-    }
-
-    #[test]
-    fn a_symbian_rs_without_symdev_locale_beside_it_is_no_sdk() {
-        let alone = tree_with(&["symbian-rs/targets/arm-symbian-e32.json"]);
-        let err = RustSdk::at(&alone.path().join("symbian-rs"))
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("../crates/symdev-locale/Cargo.toml"), "{err}");
-    }
-
-    #[test]
-    fn missing_sdk_names_the_path() {
-        let err = RustSdk::at(Path::new("/nonexistent/symbian-rs")).unwrap_err();
-        assert!(
-            err.to_string()
-                .starts_with("Rust SDK not found at /nonexistent/symbian-rs ("),
-            "{err}"
-        );
-    }
-
-    #[test]
-    fn a_directory_without_the_target_spec_is_no_sdk() {
-        let empty = tree_with(&[]);
-        let err = RustSdk::at(empty.path()).unwrap_err().to_string();
-        assert!(err.contains("has no targets/arm-symbian-e32.json"), "{err}");
-    }
-}
+mod tests;

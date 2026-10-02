@@ -29,6 +29,14 @@ vendor = "symdev"
 mode = "self-signed"
 "#;
 
+/// The checkout's `symbian-rs/rust-toolchain.toml`: what a stub Rust SDK names, so a
+/// scaffold copies a real one and a build compares real channels.
+pub const SDK_TOOLCHAIN: &str = include_str!("../../../../symbian-rs/rust-toolchain.toml");
+
+/// A stub Rust SDK's workspace manifest: the two crates a scaffold names, which a stub has.
+pub const SDK_WORKSPACE: &str =
+    "[workspace]\nmembers = [\"crates/symbian-core\", \"crates/symbian-std\"]\n";
+
 /// `symdev` with none of the developer's `SYMDEV_*` or `PUBLISH_*` variables (toolchain
 /// paths, source and publisher keys, the signing password), and with `SYMDEV_HOME` and
 /// every `XDG_*` directory in this test process's home, whose `sources.toml` turns the

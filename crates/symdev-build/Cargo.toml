@@ -21,6 +21,9 @@ symdev-sdk = { path = "../symdev-sdk" }
 # replaces is still the toolchain file it was derived from. Not a security use.
 sha1 = "0.10"
 thiserror = "2"
+# `rust-toolchain.toml` and the project's Cargo files, read to check that a Rust project
+# agrees with the SDK it is built against.
+toml = "1"
 
 [dev-dependencies]
 tempfile = "3"

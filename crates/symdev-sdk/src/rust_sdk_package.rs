@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::{PackageId, Result, SdkError};
+use crate::{PackageId, Result, RustSdkWorkspace, SdkError};
 
 /// An installed `rust-sdk;<version>` package: the `symbian-rs` tree a Rust project builds
 /// against (its crates, target spec, C++ shims and `std` overlay), in the repository's
@@ -18,32 +18,46 @@ impl RustSdkPackage {
     pub const SDK_DIR: &'static str = "symbian-rs";
 
     /// The files a Rust build cannot start without, relative to the package root: the ones
-    /// symdev-build's `RustSdk::at` requires (a test there keeps the two lists equal).
+    /// symdev-build's `RustSdk::at` requires (a test there keeps the two lists equal). On
+    /// top of them, [`Self::at`] requires every member the SDK's workspace manifest names
+    /// ([`RustSdkWorkspace`]).
     pub const REQUIRED: &'static [&'static str] = &[
         "symbian-rs/targets/arm-symbian-e32.json",
+        "symbian-rs/rust-toolchain.toml",
+        "symbian-rs/Cargo.toml",
         "crates/symdev-locale/Cargo.toml",
         "Cargo.toml",
     ];
 
-    /// The installed tree of `id` (`rust-sdk;<version>`). Checks [`Self::REQUIRED`], so a
-    /// package whose files were deleted by hand is reported with the command that repairs
-    /// it rather than as a Rust SDK that is not there.
+    /// The installed tree of `id` (`rust-sdk;<version>`). Checks [`Self::REQUIRED`] and the
+    /// SDK workspace's members, so a package whose files were deleted by hand (or that was
+    /// published without its `examples/`) is reported with the command that repairs it
+    /// rather than as a Rust SDK that is not there, or as a cargo error about a workspace
+    /// member.
     pub fn at(root: PathBuf, id: &PackageId) -> Result<RustSdkPackage> {
         if !matches!(id.segments().collect::<Vec<_>>()[..], ["rust-sdk", _]) {
             return Err(SdkError::Other(format!(
                 "{id} is not a Rust SDK package id (`rust-sdk;<version>`)"
             )));
         }
+        let reinstall = |what: String| {
+            SdkError::Other(format!(
+                "{what}; run `symdev sdk uninstall {word} && symdev sdk install {word}`",
+                word = id.shell_word()
+            ))
+        };
+        let missing =
+            |path: PathBuf| reinstall(format!("{} is missing from installed {id}", path.display()));
         for file in Self::REQUIRED {
             let path = root.join(file);
             if !path.is_file() {
-                return Err(SdkError::Other(format!(
-                    "{} is missing from installed {id}; run `symdev sdk uninstall {word} && \
-                     symdev sdk install {word}`",
-                    path.display(),
-                    word = id.shell_word()
-                )));
+                return Err(missing(path));
             }
+        }
+        let sdk = root.join(Self::SDK_DIR);
+        let workspace = RustSdkWorkspace::read(&sdk).map_err(|e| reinstall(e.to_string()))?;
+        if let Some(manifest) = workspace.missing_member(&sdk) {
+            return Err(missing(sdk.join(manifest)));
         }
         Ok(RustSdkPackage { root })
     }
@@ -66,12 +80,24 @@ mod tests {
         PackageId::parse(s).unwrap()
     }
 
-    /// The files of an installed `rust-sdk` tree that the build checks for.
+    /// The SDK workspace of a test tree: one crate and one example, as the real one
+    /// lists its crates and its examples.
+    const WORKSPACE: &str =
+        "[workspace]\nmembers = [\"crates/symbian-core\", \"examples/hello\"]\n";
+
+    /// The files of an installed `rust-sdk` tree that the build checks for, and the
+    /// members its workspace names.
     fn tree(root: &Path) {
         for file in RustSdkPackage::REQUIRED {
             let path = root.join(file);
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(path, b"{}").unwrap();
+        }
+        fs::write(root.join("symbian-rs/Cargo.toml"), WORKSPACE).unwrap();
+        for member in ["crates/symbian-core", "examples/hello"] {
+            let dir = root.join("symbian-rs").join(member);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("Cargo.toml"), "").unwrap();
         }
     }
 
@@ -95,6 +121,52 @@ mod tests {
         ] {
             assert!(RustSdkPackage::REQUIRED.contains(&file), "{file}");
         }
+    }
+
+    /// The build compares a project's nightly with the SDK's, and the scaffold copies it.
+    #[test]
+    fn requires_the_toolchain_file_the_build_reads() {
+        assert!(RustSdkPackage::REQUIRED.contains(&"symbian-rs/rust-toolchain.toml"));
+    }
+
+    /// The SDK's own workspace manifest: cargo loads it, and every member it names, for
+    /// the libcalls build of every Rust application.
+    #[test]
+    fn requires_the_sdk_workspace_manifest() {
+        assert!(RustSdkPackage::REQUIRED.contains(&"symbian-rs/Cargo.toml"));
+    }
+
+    #[test]
+    fn a_workspace_member_missing_is_named_with_the_reinstall_command() {
+        let tmp = tempfile::tempdir().unwrap();
+        tree(tmp.path());
+        let hello = tmp.path().join("symbian-rs/examples/hello/Cargo.toml");
+        fs::remove_file(&hello).unwrap();
+        let e = RustSdkPackage::at(tmp.path().to_path_buf(), &id("rust-sdk;0.1.0"))
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            e,
+            format!(
+                "{} is missing from installed rust-sdk;0.1.0; run `symdev sdk uninstall \
+                 'rust-sdk;0.1.0' && symdev sdk install 'rust-sdk;0.1.0'`",
+                hello.display()
+            )
+        );
+    }
+
+    #[test]
+    fn a_workspace_manifest_naming_no_members_is_refused_with_the_reinstall_command() {
+        let tmp = tempfile::tempdir().unwrap();
+        tree(tmp.path());
+        fs::write(tmp.path().join("symbian-rs/Cargo.toml"), "[package]\n").unwrap();
+        let e = RustSdkPackage::at(tmp.path().to_path_buf(), &id("rust-sdk;0.1.0"))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains("names no [workspace] members; run `symdev sdk uninstall"),
+            "{e}"
+        );
     }
 
     #[test]

@@ -3,14 +3,17 @@
 //! cargo compiles the project to a static library for `arm-symbian-e32` (rustc never
 //! links, design spec §3); the recorded GCCE link line, the native post-linker and the
 //! packaging are `GcceBuild`'s, unchanged but for `-u _Z7E32Mainv`.
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use symdev_core::{Artifact, BuildBackend, Error, Project, RemotePath, Result};
 
 use super::{GcceBuild, LibcallArchive, arg, io, produced};
+use crate::foreign_sdk_paths::ForeignSdkPaths;
 use crate::required_capability::RequiredCapability;
 use crate::rust_sdk::RustSdk;
+use crate::rust_sdk_link::RustSdkLink;
+use crate::rust_toolchain_file::RustToolchainFile;
 use crate::std_src::StdSrc;
 use crate::ui_resources::UiResources;
 
@@ -137,6 +140,19 @@ impl RustBuild {
             .join(format!("lib{}.a", self.name))
     }
 
+    /// What a build checks and sets up before cargo runs, in the project at `root`: its
+    /// `rust-toolchain.toml`, if it has one, names the SDK's nightly; nothing in it names
+    /// another SDK by absolute path; and `build/rust-sdk` links to this one, the only way
+    /// the scaffold names it (experiment 110). The checks come first, so a refused
+    /// project's link is left as it was.
+    pub fn prepare(&self, root: &Path) -> Result<()> {
+        if let Some(own) = RustToolchainFile::read(root)? {
+            own.check_against(&self.sdk.toolchain()?)?;
+        }
+        ForeignSdkPaths::find(root, &self.sdk)?.check()?;
+        RustSdkLink::of(root).point_at(&self.sdk)
+    }
+
     fn run_cargo(&self, project: &Project, cwd: &RemotePath) -> Result<()> {
         let src = match self.std {
             true => Some(StdSrc::materialise(&self.sdk, &self.rustc, &project.root)?),
@@ -180,6 +196,7 @@ impl BuildBackend for RustBuild {
         let build_dir = project.root.join("build");
         std::fs::create_dir_all(&build_dir).map_err(io)?;
         let cwd = RemotePath::new(arg(&project.root));
+        self.prepare(&project.root)?;
         self.run_cargo(project, &cwd)?;
         let archive = produced(
             self.archive(project),

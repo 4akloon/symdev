@@ -2,29 +2,29 @@ use std::fmt::Display;
 use std::fs::File;
 use std::io::{ErrorKind, Read, Write};
 use std::path::Path;
-use std::time::Duration;
 
 use ureq::http::Response;
 use ureq::{Agent, Body, Proxy};
 
+use crate::http_timeouts::HttpTimeouts;
 use crate::{AmzDate, Fetch, Result, SdkError, SigV4, SourceSpec};
 
 /// SHA-256 of an empty body, the payload hash of every GET.
 const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 /// An `index.toml` larger than this is refused rather than read into memory.
 const MAX_TEXT_BYTES: u64 = 10 * 1024 * 1024;
-/// How long a server may take to answer a request (its response headers).
-const RESPONSE_WAIT: Duration = Duration::from_secs(60);
 
 /// The HTTP(S) adapter for one source: plain requests, or S3 requests signed with SigV4
 /// when the source has keys.
 ///
 /// The proxy comes from `ALL_PROXY` / `HTTPS_PROXY` / `HTTP_PROXY` and `NO_PROXY` (ureq's
 /// environment support). Connecting may take 30 s, the server's answer (its response
-/// headers) 60 s, and a whole request an hour: a 60 MB archive then still arrives over a
-/// 20 KB/s link, while a stalled one does not hang a build for ever (ureq has no idle
-/// timeout to use instead). A download stops as soon as it passes its limit, the index's
-/// `size`. An `https` source sends no plain-HTTP request, so no redirect can downgrade it
+/// headers) 60 s, and the body a minute plus its size at 32 KiB/s ([`HttpTimeouts`]):
+/// the index's `size` for a download, the 10 MiB cap for an index. ureq has no idle
+/// timeout, so a server that sends the headers and then stalls is given up on once a
+/// 32 KiB/s link would have delivered the whole body (35 minutes for the 67 MB GCCE), not
+/// after an hour. A whole request may take an hour, or longer when its body may. A
+/// download stops as soon as it passes its limit. An `https` source sends no plain-HTTP request, so no redirect can downgrade it
 /// (the index is checked by nothing but TLS), and a signed request follows no redirect at
 /// all. A non-2xx answer (a redirect not followed too) is `SdkError::Forbidden` for 403
 /// and otherwise `SdkError::Fetch` whose `detail` is exactly `HTTP <code>`, so a caller can
@@ -33,6 +33,7 @@ pub struct HttpFetch {
     agent: Agent,
     signer: Option<SigV4>,
     source_name: String,
+    timeouts: HttpTimeouts,
 }
 
 impl HttpFetch {
@@ -45,7 +46,7 @@ impl HttpFetch {
             https,
             signer,
             Proxy::try_from_env(),
-            RESPONSE_WAIT,
+            HttpTimeouts::STANDARD,
         )
     }
 
@@ -54,21 +55,35 @@ impl HttpFetch {
     /// `HTTP_PROXY` must not take their requests.
     #[cfg(test)]
     pub(crate) fn direct(source_name: &str, signer: Option<SigV4>) -> HttpFetch {
-        Self::with(source_name, false, signer, None, RESPONSE_WAIT)
+        Self::with(source_name, false, signer, None, HttpTimeouts::STANDARD)
     }
 
     /// [`Self::new`] without any proxy, for the tests' servers on 127.0.0.1.
     #[cfg(test)]
     pub(crate) fn direct_for(source: &SourceSpec, signer: Option<SigV4>) -> HttpFetch {
         let https = source.base.starts_with("https://");
-        Self::with(&source.name, https, signer, None, RESPONSE_WAIT)
+        Self::with(&source.name, https, signer, None, HttpTimeouts::STANDARD)
     }
 
     /// [`Self::direct`] waiting only `wait` for a response, so a test of a silent server
     /// ends in a moment.
     #[cfg(test)]
-    pub(crate) fn impatient(source_name: &str, signer: Option<SigV4>, wait: Duration) -> HttpFetch {
-        Self::with(source_name, false, signer, None, wait)
+    pub(crate) fn impatient(
+        source_name: &str,
+        signer: Option<SigV4>,
+        wait: std::time::Duration,
+    ) -> HttpFetch {
+        let timeouts = HttpTimeouts {
+            response: wait,
+            ..HttpTimeouts::STANDARD
+        };
+        Self::with(source_name, false, signer, None, timeouts)
+    }
+
+    /// [`Self::direct`] with other limits, so a test of a stalled body ends in a moment.
+    #[cfg(test)]
+    pub(crate) fn with_timeouts(source_name: &str, timeouts: HttpTimeouts) -> HttpFetch {
+        Self::with(source_name, false, None, None, timeouts)
     }
 
     fn with(
@@ -76,7 +91,7 @@ impl HttpFetch {
         https_only: bool,
         signer: Option<SigV4>,
         proxy: Option<Proxy>,
-        response_wait: Duration,
+        timeouts: HttpTimeouts,
     ) -> HttpFetch {
         // ureq checks `https_only` on every call, a redirected one too.
         let redirects = if signer.is_some() { 0 } else { 10 };
@@ -85,14 +100,15 @@ impl HttpFetch {
             .https_only(https_only)
             .max_redirects(redirects)
             .http_status_as_error(false)
-            .timeout_connect(Some(Duration::from_secs(30)))
-            .timeout_recv_response(Some(response_wait))
-            .timeout_global(Some(Duration::from_secs(60 * 60)))
+            .timeout_connect(Some(timeouts.connect))
+            .timeout_recv_response(Some(timeouts.response))
+            .timeout_global(Some(timeouts.request))
             .build();
         HttpFetch {
             agent: Agent::new_with_config(config),
             signer,
             source_name: source_name.to_string(),
+            timeouts,
         }
     }
 
@@ -127,8 +143,16 @@ impl HttpFetch {
         self.success(url, response).map(drop)
     }
 
-    fn get(&self, url: &str) -> Result<Response<Body>> {
-        let mut request = self.agent.get(url);
+    /// A GET whose body may be `size` bytes at most: it gets [`HttpTimeouts::body`] for
+    /// that size, and the request [`HttpTimeouts::download`].
+    fn get(&self, url: &str, size: u64) -> Result<Response<Body>> {
+        let mut request = self
+            .agent
+            .get(url)
+            .config()
+            .timeout_recv_body(Some(self.timeouts.body(size)))
+            .timeout_global(Some(self.timeouts.download(size)))
+            .build();
         for (name, value) in self.signed_headers("GET", url, &[], EMPTY_SHA256)? {
             request = request.header(name, value);
         }
@@ -164,7 +188,7 @@ impl HttpFetch {
 
 impl Fetch for HttpFetch {
     fn text(&self, url: &str) -> Result<String> {
-        self.get(url)?
+        self.get(url, MAX_TEXT_BYTES)?
             .body_mut()
             .with_config()
             .limit(MAX_TEXT_BYTES)
@@ -173,7 +197,7 @@ impl Fetch for HttpFetch {
     }
 
     fn download(&self, url: &str, dest: &Path, limit: u64) -> Result<u64> {
-        let mut response = self.get(url)?;
+        let mut response = self.get(url, limit)?;
         let disk = |source| SdkError::Io {
             path: dest.display().to_string(),
             source,

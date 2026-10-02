@@ -119,6 +119,12 @@ impl World {
                 ("Cargo.toml", "", false),
                 ("crates/symdev-locale/Cargo.toml", "", false),
                 ("symbian-rs/targets/arm-symbian-e32.json", "{}\n", false),
+                (
+                    "symbian-rs/rust-toolchain.toml",
+                    super::SDK_TOOLCHAIN,
+                    false,
+                ),
+                ("symbian-rs/Cargo.toml", super::SDK_WORKSPACE, false),
                 ("symbian-rs/crates/symbian-std/Cargo.toml", "", false),
                 ("symbian-rs/crates/symbian-core/Cargo.toml", "", false),
             ],

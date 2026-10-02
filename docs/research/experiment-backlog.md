@@ -3547,3 +3547,85 @@ tool, which never saw such an ELF — the emulator, not a byte golden, is their 
 `prebuilt/{lib,obj,rt}`, `prebuilt-src/` (the UID-free `symrs_avkon.cpp`),
 `elf2e32-fork/` (grep `SPIKE 109`), `dso-fixed/` and `sdk-fixed/` (SDK copies, never to
 be committed). Projects in `work/`.
+
+## 110. A project that names its Rust SDK through `build/rust-sdk`: how cargo resolves relative paths, and through a link (gaps G1, symdev 0.2.0)
+
+**Requires:** the pinned nightly (`nightly-2026-09-19`, cargo 1.100.0-nightly 495c385d0
+2026-09-16), a host `cc`. No device, no emulator, no network.
+
+**Why.** `symdev new --lang rust` wrote the resolved SDK's absolute paths into the project
+(spec §12, known gap): after an upgrade a build mixes two SDKs, and uninstalling the old
+package breaks the project. The proposal was a link `build/rust-sdk` → the SDK the build
+resolved, and project paths relative to the project through it. What had to be observed:
+how cargo resolves a relative `build.target` JSON path in `.cargo/config.toml`, relative
+`path =` dependencies through a link, and whether `-Zbuild-std` and the target spec work
+through one.
+
+**Setup.** Two copies of the `rust-sdk` package's layout (`git archive HEAD Cargo.toml
+crates/symdev-locale symbian-rs`) as `home/rust-sdk/0.1.0` and `…/0.2.0`; a hello project
+as the scaffold writes it (`symbian-rs/examples/hello/src/main.rs`, the SDK's
+`rust-toolchain.toml`) with relative paths; `cargo build --release -v` run from the project
+with `RUSTUP_TOOLCHAIN` unset.
+
+| # | What | Result |
+|---|---|---|
+| a | link → the SDK itself (`…/0.1.0/symbian-rs`), deps `build/rust-sdk/crates/symbian-core` | **fails**: `no matching package named symdev-locale found, location searched: <project>/build/crates/symdev-locale`. cargo joins `symbian-macros`' `../../../crates/symdev-locale` to the path **lexically**, so the three `..` climb out of the link, not out of its target |
+| b | link → the package root (`…/0.1.0`, the directory that holds `symbian-rs/`, `crates/symdev-locale`, `Cargo.toml`), deps `build/rust-sdk/symbian-rs/crates/symbian-core`, `build.target = "build/rust-sdk/symbian-rs/targets/arm-symbian-e32.json"` | **builds** (7.6 s, `librhello.a`); the macros' `../../../crates/symdev-locale` lands on `build/rust-sdk/crates/symdev-locale`, which exists through the link; `-Zbuild-std` builds `core`/`alloc` as before; cargo hands rustc the target spec **canonicalised** (`--target …/home/rust-sdk/0.1.0/symbian-rs/targets/arm-symbian-e32.json`) and names the output directory after the file stem (`build/cargo/arm-symbian-e32/`) |
+| c | the same `.cargo/config.toml`, `cargo build` run from `src/` | builds (fresh): a relative `build.target` in a config **file** is relative to the directory that holds `.cargo/`, not to the cwd |
+| c′ | from `src/`, `--config 'build.target="build/rust-sdk/…"'` or `--target build/rust-sdk/…` | `target path <project>/src/build/rust-sdk/… is not a valid file`: on the command line it is relative to the cwd |
+| d | link re-pointed at `0.2.0` (same commit, so same contents and mtimes) | everything `Fresh` |
+| e | link re-pointed back at `0.1.0`, whose `symbian-core/src/lib.rs` now differs but keeps its **older** mtime | everything `Fresh`: **a stale build**. The package paths cargo sees (`build/rust-sdk/…`) did not change, and its freshness check compares mtimes |
+| f | the same file touched (as a fresh extraction would be) | `Dirty symbian-core … has changed`, rebuilt with its dependants |
+
+**Conclusions.** (1) The link points at the directory **above** `symbian-rs`, because the
+SDK reaches `../crates/symdev-locale` and `../Cargo.toml`; a checkout and the package both
+have that shape, so the project's paths are `build/rust-sdk/symbian-rs/…` whichever it is.
+(2) The relative `build.target` in the project's `.cargo/config.toml` is
+project-relative wherever `cargo` is run; `symdev build` itself keeps passing the
+resolved spec on the command line (cargo canonicalises both to the same path). (3) Cargo
+cannot see that the link now names another tree, so when `symdev build` re-points it,
+it must throw away `build/cargo` — row e is otherwise a silent mix of two SDKs, the very
+thing the link is for. Implemented as `RustSdkLink` (symdev-build).
+
+## 111. A developer's `RUSTFLAGS` and the libcalls build's `-Zdefault-visibility=hidden` (gaps G1, symdev 0.2.0)
+
+**Requires:** as experiment 110.
+
+**Why.** `LibcallArchive` passed `--config build.rustflags=["-Zdefault-visibility=hidden"]`.
+Cargo takes rustflags from the first of `CARGO_ENCODED_RUSTFLAGS`, `RUSTFLAGS`,
+`target.*.rustflags`, `build.rustflags` that is set, so a developer's `RUSTFLAGS` — even an
+empty one — would silently drop it. Each variant below is the libcalls invocation run from
+a project (`cargo build --profile libcalls -p symbian-libcalls --manifest-path
+<sdk>/crates/symbian-libcalls/Cargo.toml --target <spec> -Zbuild-std=core,alloc
+-Zbuild-std-features=optimize_for_size -Zjson-target-spec -v`); the table says which flags
+each rustc line carried: ours (`hidden`), the user's from the environment (`--cfg
+symdev_user`) or from the project's `.cargo/config.toml` `build.rustflags` (`--cfg
+symdev_config`).
+
+| # | Mechanism, user's flags | `core` | `symbian_sys` | `symbian_libcalls` |
+|---|---|---|---|---|
+| a | `--config build.rustflags`, none | hidden | hidden | hidden |
+| b | `--config build.rustflags`, `RUSTFLAGS=` (empty) | — | — | **—** (the bug) |
+| c | `--config build.rustflags`, `RUSTFLAGS='--cfg symdev_user'` | user | user | **user only** |
+| g | `--config build.rustflags`, config file | hidden + config | hidden + config | hidden + config |
+| e | `-Zprofile-rustflags --config profile.libcalls.rustflags=[…]`, `RUSTFLAGS` user | both | both | both — but also on the host build script of `compiler_builtins`, and a different `-C metadata` |
+| f | `CARGO_ENCODED_RUSTFLAGS` = user + ours | both | both | both |
+| i | `CARGO_ENCODED_RUSTFLAGS` = ours, config file | hidden | hidden | hidden — **the config file's flags are dropped** |
+| d | `cargo rustc … -- -Zdefault-visibility=hidden`, `RUSTFLAGS` user | user | user | **both** |
+| l | `cargo rustc`, `RUSTFLAGS=` (empty) | — | — | **hidden** |
+| m | `cargo rustc`, `CARGO_ENCODED_RUSTFLAGS` user | user | user | **both** |
+| n | `cargo rustc`, config file | config | config | **hidden + config** |
+
+**Is `cargo rustc` the same build?** Only `libsymbian_libcalls.rlib` reaches the link line,
+so only that crate needs the flag. With no user flags, variant a (today) and `cargo rustc`
+give the libcalls crate the same `-C metadata` (`5e3defa7f1e79561`), four object members of
+18 772 bytes each way, **identical disassembly and identical symbol tables** (objdump of
+every member); variant e changes the metadata of every crate and with it the mangled
+names. The final `.exe` comparison is in the G1 record (`docs/research/wip/v0.2.md`).
+
+**Conclusion.** The libcalls build runs `cargo rustc … -- -Zdefault-visibility=hidden`:
+the flag reaches exactly the crate that is linked, whatever the developer sets, and the
+developer's own flags (environment or config, by cargo's own precedence) reach every
+crate as they do in the application's build. `CARGO_ENCODED_RUSTFLAGS` merging was
+rejected because it drops config-file rustflags (row i), profile rustflags because they
+reach host build scripts and change every crate's metadata (row e).

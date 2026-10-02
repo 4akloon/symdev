@@ -26,9 +26,9 @@ jobs:
     # Pinned, not ubuntu-latest: that label migrates to Ubuntu 26 on 2026-10-19.
     runs-on: ubuntu-24.04
     env:
-      # Same gate as CLAUDE.md: zero warnings, from rustc and from clippy. Only here: a set
-      # RUSTFLAGS, even an empty one, replaces the `build.rustflags` that `symdev build`
-      # passes to the Rust SDK's libcall build, so the examples job must not have it.
+      # Same gate as CLAUDE.md: zero warnings, from rustc and from clippy, in this job.
+      # (A RUSTFLAGS no longer touches `symdev build`'s own libcall flag: it is an
+      # argument of `cargo rustc`, experiment 111.)
       RUSTFLAGS: -D warnings
     steps:
       - uses: actions/checkout@v7

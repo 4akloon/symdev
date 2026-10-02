@@ -204,8 +204,13 @@ There is no `update`: ids are immutable. When a symdev release pins `gcce;14.2.0
 build installs it beside `gcce;12.1.0`, which stays until uninstalled.
 
 **Network.** `ureq` with rustls, proxy from the environment, and timeouts: 30 s to connect,
-60 s for the server's answer, an hour per request. A download stops one byte past the
-index's `size`. An `https` source sends no plain-HTTP request, a redirect included (the
+60 s for the server's answer, and for the body a minute plus its size at 32 KiB/s — the
+index's `size` for an archive, the 10 MiB cap for an index (`HttpTimeouts`, symdev 0.2.0).
+ureq 3.4.2 has no idle timeout; its `timeout_recv_body` is a total for the body, set per
+request, so a server that sends its headers and then stalls is dropped once a 32 KiB/s
+link would have delivered everything (35 minutes for the 67 MB `gcce;12.1.0`) instead of
+after the hour that 0.1.0 allowed. A whole request may take an hour, or connect + answer +
+body when that is longer. A download stops one byte past the index's `size`. An `https` source sends no plain-HTTP request, a redirect included (the
 index has no hash of its own to check), and a signed request follows no redirect (review
 M1, M2, 2026-10-02). Sources with
 `auth = "s3"` sign requests with AWS Signature V4 (region `auto` for R2). The signer is our
@@ -309,9 +314,10 @@ A new job `examples` in `.github/workflows/ci.yml`, beside the existing Rust gat
   The reader key is set **only** on the install step, which runs nothing but symdev:
   `cargo build` runs third-party build scripts, and the build and package steps find
   everything installed and read no source;
-- sets `RUSTFLAGS` (`-D warnings`) only on the Rust gate: a set `RUSTFLAGS`, even an empty
-  one, replaces the `build.rustflags` that `symdev build` passes to the Rust SDK's libcall
-  build;
+- sets `RUSTFLAGS` (`-D warnings`) only on the Rust gate. (It once had to: a set
+  `RUSTFLAGS`, even an empty one, replaced the `build.rustflags` that `symdev build` passed
+  to the Rust SDK's libcall build. Since 0.2.0 that flag is an argument of `cargo rustc`,
+  which no developer's rustflags replace — experiment 111.)
 - sets `SYMDEV_SIGN_PASSWORD` to a dummy value in the workflow (the key is throwaway and
   generated per run).
 
@@ -420,7 +426,13 @@ Rust for a C++ project.
   `symbian-rs` — because `symbian-macros` depends on `../../../crates/symdev-locale`, which
   takes its version and edition from the root `[workspace.package]` (found 2026-10-02); the
   SDK proper is `<package>/symbian-rs`. Both MIT, both in the public bucket, `<ver>` = the workspace version of the tagged
-  release. `Pins::rust_sdk()` pins `rust-sdk;<this symdev's version>`.
+  release. `Pins::rust_sdk()` pins `rust-sdk;<this symdev's version>`. An installed
+  package (and any SDK `RustSdk::at` accepts) must hold the target spec, `rust-toolchain.toml`,
+  `symbian-rs/Cargo.toml`, the two files outside `symbian-rs`, and the `Cargo.toml` of
+  every member that workspace manifest names (`RustSdkWorkspace`, 0.2.0): the libcalls
+  build of every Rust application runs in the SDK's workspace, and cargo loads all of its
+  members first, so a package without `symbian-rs/examples` is refused with the reinstall
+  command instead of failing inside cargo.
 - **Finding the Rust SDK.** `SYMDEV_RUST_SDK` first; then the source checkout symdev was built
   from, if it still exists (a developer working on the SDK keeps using their tree); else the
   installed `rust-sdk` package, auto-installed like GCCE. Today's compile-time path alone
@@ -428,13 +440,26 @@ Rust for a C++ project.
   `RustSdk::CHECKOUT` is `None` when `SYMDEV_RELEASE` is set (not empty) at compile time, so
   on another machine nobody can plant a `symbian-rs` at the path of the machine that built
   it (review, 2026-10-02). The release recipe must build with `SYMDEV_RELEASE=1`.
-- **Known gap (follow-up, not phase 1).** `symdev new --lang rust` writes absolute SDK paths
-  into the project (`Cargo.toml` path dependencies, `.cargo/config.toml` `build.target`). With
-  the package route these name `rust-sdk/<ver>/`, so after an upgrade a build silently mixes
-  two SDK versions, and uninstalling the old one breaks the project. Proposed fix: the build
-  keeps a `build/rust-sdk` link to the SDK it resolved and the scaffold writes relative paths
-  through it; needs an experiment on how the pinned nightly resolves a relative
-  `build.target` first.
+- **Projects name the SDK through a link (resolved 2026-10-02, symdev 0.2.0; was the known
+  gap of 0.1.0).** 0.1.0's `symdev new --lang rust` wrote the SDK's absolute paths into the
+  project (`Cargo.toml` path dependencies, `.cargo/config.toml` `build.target`), which with
+  the package route name `rust-sdk/<ver>/`: after an upgrade a build mixed two SDKs, and
+  uninstalling the old one broke the project. Now `build/rust-sdk` is a link (`RustSdkLink`)
+  to the directory **above** the resolved `symbian-rs` — the package root, or the checkout's
+  root — and the project names `build/rust-sdk/symbian-rs/crates/<crate>` and
+  `build/rust-sdk/symbian-rs/targets/arm-symbian-e32.json`. `symdev new` makes the link,
+  every `symdev build` re-points it at the SDK it resolved, and the scaffold copies that
+  SDK's `rust-toolchain.toml`. Experiment 110 is the evidence: cargo joins a path
+  dependency's `..` lexically, so a link to `symbian-rs` itself breaks `symbian-macros`'
+  `../../../crates/symdev-locale`; a relative `build.target` in a config file is relative to
+  the directory holding `.cargo/` (any cwd); `-Zbuild-std` and the spec work through the
+  link, cargo canonicalising the spec's path; and cargo keeps outputs built from the old tree
+  when the link moves to one with older mtimes, so a re-point removes `build/cargo` first.
+  Before cargo runs, `symdev build` refuses (and does not rewrite) a project that still names
+  another SDK by absolute path — listing each `file:line` with the line as it is and as it
+  should be — and one whose `rust-toolchain.toml` names a channel other than the SDK's (a
+  project without that file, like the SDK's own examples, is not checked). The SDK directory
+  must be named `symbian-rs`, as it is in a checkout and in the package.
 - **Build.** Static, `x86_64-unknown-linux-musl`, so the binary runs on any Linux whatever its
   glibc; this can only be proven in CI (no musl tools on the owner's host). Fallback if musl
   fails: a glibc build in the AlmaLinux 8 container, as for GCCE.
@@ -470,8 +495,10 @@ or podman exists on the host, so the container variant was not run, and the CI r
 
 Found during acceptance: a Rust project needs a host C linker `cc` (build scripts, the SDK's
 proc macros, `-Zbuild-std`'s `compiler_builtins`), as any Rust project does — now in the
-README and §8. Open follow-ups: the scaffold's absolute `rust-sdk/<ver>` paths (§12); building
-Rust applications without GCCE (spike, experiment 109); index signing (§11; done in 0.2.0, §15).
+README and §8. Open follow-ups: the scaffold's absolute `rust-sdk/<ver>` paths (§12, resolved in
+0.2.0 by the `build/rust-sdk` link); building Rust applications without GCCE (spike, experiment 109); index
+signing (§11; done in 0.2.0, §15).
+
 
 ## 14. As built: decisions and findings not obvious from the code
 
@@ -646,12 +673,11 @@ and M1–M10 are the whole-branch review of 669dae1, as elsewhere in this spec.
 
 **Open follow-ups** (beyond §13's)
 
-- A server that sends its headers and then stalls the body is bounded only by the one-hour
-  request limit: ureq 3.4.2 has no idle timeout.
-- A developer's own `RUSTFLAGS` replaces the libcall build's `build.rustflags` exactly as in
-  review I3, changing an affected example by 24 bytes; symdev neither warns nor merges them.
-- `RustSdkPackage::REQUIRED` could also require a `symbian-rs/examples` member, so a package
-  without them fails at install rather than inside cargo.
+- Resolved in 0.2.0 (gaps G1): a stalled body is now bounded per request by 60 s plus its
+  size at 32 KiB/s (`HttpTimeouts`, ureq's `timeout_recv_body`); the libcall build runs
+  `cargo rustc … -- -Zdefault-visibility=hidden`, so a developer's `RUSTFLAGS` no longer drops
+  it (experiment 111); both `REQUIRED` lists check every `symbian-rs` workspace member
+  (`RustSdkWorkspace`).
 
 ## 15. Signed indexes (added 2026-10-03, symdev 0.2.0)
 
