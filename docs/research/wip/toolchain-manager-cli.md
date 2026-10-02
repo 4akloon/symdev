@@ -366,3 +366,21 @@ above (`Cargo.toml`, `crates/symdev-locale`, `symbian-rs`), or decide to move
 Rust examples cannot be built outside the clone; use `symdev new hello --lang rust`); (3) the
 task-3 proposal (`build/rust-sdk` link) if wanted. Nothing pushed or merged.
 
+
+## Whole-branch review fixes (branch `tm-final-fixes`, 2026-10-02)
+
+Whole-branch review of the toolchain manager (reviewer's line numbers from 669dae1; branch
+from `toolchain-manager` at 5c90f9c). Each finding is checked against the code before it is
+changed; every behaviour fix starts with a failing test. Baseline `cargo test --workspace
+--offline`: 690 passed, 0 failed.
+
+| # | Finding | Verified | State |
+|---|---|---|---|
+
+Facts found on the way:
+
+- I3: cargo takes `RUSTFLAGS` over `build.rustflags` even when it is **set but empty**:
+  in a scratch crate, `cargo build -v --config 'build.rustflags=["--cfg","foo"]'` passes
+  `--cfg foo` with `RUSTFLAGS` unset, and not with `RUSTFLAGS=""` nor `RUSTFLAGS="-D
+  warnings"`. So the review's `RUSTFLAGS: ""` on the examples job would not help; the
+  workflow-level `RUSTFLAGS` moves to the `check` job instead, and the examples job has none.
