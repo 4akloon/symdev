@@ -275,3 +275,20 @@ recipe in symdev-packages; `install.sh` in the public bucket). Awaiting approval
   the review-fixes branch to land (both touch provision.rs/build_cmd.rs).
 - Do NOT push symdev-packages before own GCC4Symbian replacements (experiment 108) land and
   R4 switches publish to a git tag: publish.yml would otherwise try to publish GCCE.
+
+## Later (2026-10-02, evening)
+
+- Review fixes (10 findings) merged (553fb0f); Rust SDK package side merged (tm-rust-sdk):
+  `Pins::rust_sdk`, `RustSdkPackage`, resolution SYMDEV_RUST_SDK → build checkout → package,
+  proxy-proof HTTP tests; 690 tests, clippy 0, fmt clean. rust-sdk package keeps the repo
+  layout (`Cargo.toml`, `crates/symdev-locale`, `symbian-rs`) — told the packages agent;
+  spec §2/§8/§12 updated (87ce963), incl. the scaffold absolute-path gap as a follow-up.
+- Experiment 108 merged (f1c58ec): GCCE builds from official tarballs + our MIT
+  sys-include headers + `CFLAGS_FOR_TARGET=-D__INTPTR_TYPE__=int`; all proofs pass. Packages
+  `main` has it (172426d) and the licence `GPL-3.0-or-later AND MIT` (ac81872).
+- Whole-branch review dispatched before merging to main.
+- Owner still to set the 4 GitHub secrets (one-line command given; the lead must not move
+  keys into GitHub itself).
+- Next: review fixes → merge to main + push + tag v0.1.0 → switch publish's symdev-sdk dep to
+  the tag → merge prebuilt branch → push symdev-packages → CI publishes gcce, symdev, rust-sdk
+  → install.sh at bucket root → acceptance R5.
