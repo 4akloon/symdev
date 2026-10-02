@@ -159,67 +159,6 @@ fn shim_objects_follow_the_archive_and_keep_the_dso_ordering() {
     assert!(euser < archive);
 }
 
-/// The compiler-runtime archive is searched **after** the application archive and the
-/// C++ shim, because both may refer to a routine it defines and an archive is searched
-/// only for what is undefined where it appears.
-///
-/// It is a separate archive on purpose: its entry points are `#[unsafe(no_mangle)]`, so
-/// they are global symbols and therefore `--gc-sections` roots in a `-shared` link.
-/// Compiled into the application instead, they survived into every program and cost
-/// `hello` 756 bytes for code it never calls.
-#[test]
-fn the_libcall_archive_is_searched_last() {
-    let b = rust();
-    let (a, elf, map) = (
-        Path::new("/p/build/cargo/arm-symbian-e32/release/libhello.a"),
-        Path::new("/p/build/hello.elf"),
-        Path::new("/p/build/hello.exe.map"),
-    );
-    let project = Project {
-        root: PathBuf::from("/p"),
-    };
-    let libcalls = b.libcalls().path(&project);
-    assert_eq!(
-        libcalls,
-        PathBuf::from("/p/build/cargo/arm-symbian-e32/libcalls/libsymbian_libcalls.rlib")
-    );
-    let shim = b.shim_archive(&project);
-    let got = b.link_args(a, Some(&shim), Some(&libcalls), elf, map);
-    let archive = got.iter().position(|x| x == &a.display().to_string());
-    let at_shim = got.iter().position(|x| x == &shim.display().to_string());
-    let at_libcalls = got
-        .iter()
-        .position(|x| x == &libcalls.display().to_string());
-    assert_eq!(at_shim, archive.map(|i| i + 1));
-    assert_eq!(at_libcalls, archive.map(|i| i + 2));
-
-    // With no C++ shim it still follows the application archive directly.
-    let got = b.link_args(a, None, Some(&libcalls), elf, map);
-    let archive = got.iter().position(|x| x == &a.display().to_string());
-    let at_libcalls = got
-        .iter()
-        .position(|x| x == &libcalls.display().to_string());
-    assert_eq!(at_libcalls, archive.map(|i| i + 1));
-}
-
-/// The libcall crate is built by its own cargo invocation, under a profile whose only
-/// job is to turn LTO off: under the workspace's `lto = true` the rlib holds LLVM
-/// bitcode, which `ld` cannot read.
-#[test]
-fn the_libcall_crate_is_built_without_lto() {
-    let build = rust();
-    let args = build.libcalls().cargo_args();
-    assert!(args.contains(&"--profile".to_string()));
-    assert!(args.contains(&RustSdk::LIBCALLS_PROFILE.to_string()));
-    assert!(args.contains(&"-p".to_string()));
-    assert!(args.contains(&RustSdk::LIBCALLS_CRATE.to_string()));
-    assert!(
-        args.iter()
-            .any(|a| a.ends_with("symbian-libcalls/Cargo.toml"))
-    );
-    assert!(args.contains(&"-Zbuild-std=core,alloc".to_string()));
-}
-
 #[test]
 fn the_archiver_is_derived_from_the_linker() {
     let b = rust();

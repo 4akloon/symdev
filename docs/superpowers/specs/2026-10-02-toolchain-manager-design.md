@@ -303,9 +303,10 @@ A new job `examples` in `.github/workflows/ci.yml`, beside the existing Rust gat
   The reader key is set **only** on the install step, which runs nothing but symdev:
   `cargo build` runs third-party build scripts, and the build and package steps find
   everything installed and read no source;
-- sets `RUSTFLAGS` (`-D warnings`) only on the Rust gate: a set `RUSTFLAGS`, even an empty
-  one, replaces the `build.rustflags` that `symdev build` passes to the Rust SDK's libcall
-  build;
+- sets `RUSTFLAGS` (`-D warnings`) only on the Rust gate. (It once had to: a set
+  `RUSTFLAGS`, even an empty one, replaced the `build.rustflags` that `symdev build` passed
+  to the Rust SDK's libcall build. Since 0.2.0 that flag is an argument of `cargo rustc`,
+  which no developer's rustflags replace — experiment 111.)
 - sets `SYMDEV_SIGN_PASSWORD` to a dummy value in the workflow (the key is throwaway and
   generated per run).
 

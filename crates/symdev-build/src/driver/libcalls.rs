@@ -39,10 +39,19 @@ impl<'a> LibcallArchive<'a> {
     /// cannot read it; and it raises `codegen-units`, so the archive has one member per
     /// module. With one member for everything, `examples/files` — which uses `memcmp`
     /// and no atomic — pulled the atomics too and grew 714 bytes.
+    ///
+    /// `cargo rustc`, not `cargo build`, so that the visibility flag after `--` reaches
+    /// this crate whatever the developer sets: cargo takes rustflags from the first of
+    /// `CARGO_ENCODED_RUSTFLAGS`, `RUSTFLAGS`, `target.*.rustflags` and `build.rustflags`
+    /// that is set, so a `RUSTFLAGS` — even an empty one — replaced the
+    /// `--config build.rustflags` this used to pass, while `cargo rustc`'s own arguments
+    /// are added to whichever of them applies. The developer's flags still reach every
+    /// crate, as in the application's build. Measured (experiment 111): the same
+    /// `-C metadata` and identical object code to the `build.rustflags` build.
     pub fn cargo_args(&self) -> Vec<String> {
         vec![
             arg(self.cargo),
-            "build".into(),
+            "rustc".into(),
             "--profile".into(),
             RustSdk::LIBCALLS_PROFILE.into(),
             "-p".into(),
@@ -55,16 +64,17 @@ impl<'a> LibcallArchive<'a> {
             // The same `core` switch the application is built with, so the two
             // halves of one program agree on which `core` they saw.
             "-Zbuild-std-features=optimize_for_size".into(),
+            "-Zjson-target-spec".into(),
+            "--target-dir".into(),
+            "build/cargo".into(),
+            "--".into(),
             // Hidden by default, so a mangled function the archive still carries out of
             // line — `AtomicLock`'s `Drop`, inlined into every entry point — is not a
             // `--gc-sections` root of the `-shared` link. The `no_mangle` entry points
             // stay `GLOBAL DEFAULT` regardless, which is what the application links to.
-            // Measured: 24 bytes off each of `atomics`, `async` and `tls`.
-            "--config".into(),
-            "build.rustflags=[\"-Zdefault-visibility=hidden\"]".into(),
-            "-Zjson-target-spec".into(),
-            "--target-dir".into(),
-            "build/cargo".into(),
+            // Measured: 24 bytes off each of `atomics`, `async` and `tls`. Only this
+            // crate's objects reach the link line, so only this crate needs it.
+            "-Zdefault-visibility=hidden".into(),
         ]
     }
 
