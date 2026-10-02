@@ -95,7 +95,49 @@ Downloads/builds: `~/src/gcce-recipe/` (outside git). Recipes: `~/projects/symde
   `~/.local/bin` wrappers). A Debian container needs `gcc-ar` (package gcc) or
   `/usr/lib/bfd-plugins/liblto_plugin.so` — derived, not observed.
 
+## C2: build-a (recipe as committed, ca00929)
+
+- `env -i HOME PATH=hostbin(make):~/.local/bin:~/.local/native-cc/usr/bin:/usr/bin:/bin
+  bash build.sh ~/src/gcce-recipe/prefix-a` in `~/src/gcce-recipe/build-a`: **exit 0, wall
+  291 s** (make -j16, 16 cores, 26 GB), plain `make` (no `-k`) — the only errors are the
+  same `largefile-config.h ... Error 1 (ignored)` as the original, plus fixincludes'
+  `mkdir` with no operand (uutils' message; the original log has it too).
+- Installed: **201 MiB** (`du -sb` 208 986 024). `g++ -v` = original's line but the prefix;
+  `Supported LTO compression algorithms: zlib` (same); as/ld = 2.29.1.
+- `cp -a prefix-a moved`; symlinks: 6, all relative and inside the tree (`lib/libcc1.so*`,
+  `plugin/libc{c1,p1}plugin.so*`). Hard links: 11 groups (binutils `bin/arm-none-symbianelf-X`
+  ↔ `arm-none-symbianelf/bin/X`, ld ×4 with ld.bfd, g++ ↔ c++, gcc ↔ gcc-12.1.0) — the
+  original prefixes have the same; as plain files they add **20 266 720 bytes** uncompressed.
+- Installed tree vs `~/gcc-builds/gcc-12.1.0` (`work/compare-prefix.sh`, result in
+  `work/compare-prefix-a.txt`): file lists differ only in binutils' own files (2.35's extra
+  `ldscripts/armsymbian.x*e`, 2.29.1's `nlmconv.1`); headers identical except
+  `include-fixed/stdio.h` (one comment line naming the sys-include path) and
+  `plugin/include/{configargs.h (prefix), auto-host.h}`. auto-host.h: 2.29.1 lacks
+  `HAVE_AS_DWARF2_DEBUG_VIEW` (only `-g`), `HAVE_GAS_ARM_EXTENDED_ARCH` (only rewrites
+  `-march=…+ext` for gas; `arm-common.cc`), `HAVE_GAS_SECTION_LINK_ORDER` (only
+  `-fpatchable-function-entry`). Every member of all 11 target archives (libgcc, libgcov,
+  libsupc++, four multilibs) has the same disassembly, allocated-section bytes and
+  non-debug relocations (symbol index ignored); the bytes differ in `.debug_*` and symtab.
+
+## C3: examples
+
+- `build-examples.sh moved …/moved …/moved/bin/arm-none-symbianelf-ld` with `prefix-a`
+  renamed away during the build: **`cmp` identical** to the baseline for `hello.exe` (3588),
+  `gui.exe` (5061), Rust `hello.exe` (968), and their `.elf` (24244, 58532, 16456).
+- `.o`: 5 of 8 differ — exactly the 5 with COMDAT groups — and all 8 are byte-identical to
+  the old g++ 12.1.0 run with `-B` gas 2.29.1 (`work/as2291`), so the new cc1plus emits the
+  same assembly; only gas 2.35 → 2.29.1 changes the objects.
+- Maps equal after replacing the toolchain path, except libgcc `pr-support.o`'s
+  discarded `.debug_*` sizes.
+
+## C1: necessity of GCC4Symbian's changes (variants of build.sh, same env)
+
+- Pristine `libgcov-driver.c`: `libgcov-driver.c:457:56: error: '__INTPTR_TYPE__'
+  undeclared` → `_gcov_info_to_gcda.o Error 1`, build exit 2 (327 s, `build-nogcov.log`).
+- No sys-include: `libsupc++/new_opa.cc:28:10: fatal error: stdint.h: No such file or
+  directory` → exit 2 (387 s, `build-nosysinc.log`).
+- stdint.h only (no stdio.h): running.
+
 ## Next step
 
-build-a running (`~/src/gcce-recipe/build-a.log`), then compare prefix-a with
-`~/gcc-builds`, relocate to `moved`, build examples.
+Finish the stdio.h variant; experiment 107; Debian 11 apt list.
