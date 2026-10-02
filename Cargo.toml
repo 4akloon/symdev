@@ -16,6 +16,7 @@ members = [
     "crates/symdev-cli",
     "crates/symdev-build",
     "crates/symdev-emulator",
+    "crates/symdev-sdk",
 ]
 
 [workspace.package]

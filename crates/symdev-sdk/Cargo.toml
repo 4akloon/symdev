@@ -1,0 +1,22 @@
+[package]
+name = "symdev-sdk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+symdev-core = { path = "../symdev-core" }
+symdev-manifest = { path = "../symdev-manifest" }
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+sha2 = "0.10"
+hmac = "0.12"
+flate2 = "1"
+tar = "0.4"
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+
+[dev-dependencies]
+tempfile = "3"
