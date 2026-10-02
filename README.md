@@ -95,7 +95,7 @@ and their causes are tracked in [docs/research/size-levers.md](docs/research/siz
 | S60 3rd FP2 SDK (headers, `.dso` stubs, static libraries) | compiling and linking | package `sdk;s60-3rd-fp2;1.1`, or `SYMDEV_EPOCROOT` |
 | Self-signing password (4+ characters) | `symdev package` | `SYMDEV_SIGN_PASSWORD` |
 | Rust SDK (`symbian-rs/`) | Rust projects only | `SYMDEV_RUST_SDK`, else the checkout symdev was built from, else package `rust-sdk;<symdev's version>` |
-| Rust nightly, pinned in `symbian-rs/rust-toolchain.toml` | Rust projects only (`-Zbuild-std`); a C++ project needs no Rust | rustup |
+| Rust nightly, pinned in `symbian-rs/rust-toolchain.toml`, and a host C linker (`cc`, e.g. `build-essential`) | Rust projects only (`-Zbuild-std`; build scripts and the SDK's proc macros link on the host, as for any Rust project); a C++ project needs neither | rustup, your distribution |
 | EKA2L1 (optional) | `symdev run`, `symdev test --emulator` | `SYMDEV_EKA2L1` |
 
 ### Toolchain packages
@@ -171,8 +171,9 @@ curl -fsSL https://pub-15670d2771364287b9982e497c29f586.r2.dev/install.sh | sh
 
 It installs the newest `symdev` package into `SYMDEV_HOME` and links `~/.local/bin/symdev` to
 it; running it again updates. A C++ project then needs no Rust at all. A Rust project needs
-rustup (the project's `rust-toolchain.toml` names the nightly), and its first `symdev build`
-installs the `rust-sdk` package beside GCCE.
+rustup (the project's `rust-toolchain.toml` names the nightly) and a host C linker `cc`, as any
+Rust project with build scripts does, and its first `symdev build` installs the `rust-sdk`
+package beside GCCE.
 
 **From source**, with Rust 1.98.1, in a clone of this repository:
 

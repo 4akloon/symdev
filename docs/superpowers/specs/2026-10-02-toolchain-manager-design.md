@@ -345,7 +345,8 @@ auth = "s3"
 Then `curl -fsSL <public bucket>/install.sh | sh`, and the first `symdev build` of any
 project installs the rest (`symdev sdk install` installs the same set explicitly, without
 building). A C++ project needs no Rust at all; a Rust project needs rustup (its nightly comes
-from `rust-toolchain.toml`). Building symdev from source with
+from `rust-toolchain.toml`) and a host C linker `cc`, which build scripts and proc macros
+link with (found in acceptance, 2026-10-02). Building symdev from source with
 `cargo install --git https://github.com/4akloon/symdev symdev-cli` keeps working. An `sdk;…`
 id that no source has is an error that says so: "set SYMDEV_EPOCROOT to your own SDK, or add
 a source that has it in <path of sources.toml>".
@@ -441,3 +442,27 @@ Rust for a C++ project.
   `$SYMDEV_HOME/symdev/<ver>/` with a receipt, and links `~/.local/bin/symdev` to it.
   Re-running it updates. It touches nothing else.
 
+
+## 13. Acceptance, as run on 2026-10-02 (release v0.1.0)
+
+Published: `gcce;12.1.0` (67 463 658 bytes, built by symdev-packages CI on AlmaLinux 8, with
+its GPL source archive), `rust-sdk;0.1.0` (377 928), `symdev;0.1.0` (3 112 677, static-pie
+musl, with `LICENSE` and `THIRD-PARTY-NOTICES.txt`), `install.sh` at the public root
+(`text/plain; charset=utf-8`, `no-cache`); `sdk;s60-3rd-fp2;1.1` (4 941 155) in the private
+bucket. The clean environment was an empty `HOME` with `PATH=/usr/bin:/bin` on the owner's
+host (no `cargo`, `rustc` or `g++` on it), the reader key and `sources.toml` only; no docker
+or podman exists on the host, so the container variant was not run, and the CI runner
+(item 3) is the second clean machine.
+
+| # | Check | Result |
+|---|---|---|
+| 1 | `hello`, `gui` built with the **published** `gcce;12.1.0` vs `~/gcc-builds`, same path | `.elf` byte-identical (24 244 / 58 532 bytes); `.exe` identical outside 0x14–0x17 and 0x24–0x2B |
+| 2 | `curl … install.sh \| sh`, then `symdev build` + `symdev package` | installed `symdev;0.1.0`; the build installed `gcce;12.1.0` (67.5 MB, public) and the SDK (4.9 MB, private); `hello.sisx` and `gui.sisx` installed and launched in EKA2L1 (RM-469): console "Hello, world! [press any key]"; Avkon status pane "gui", "Hello from symdev", softkey Exit (PID-bound screenshots) |
+| 3 | CI `examples` on `main` | green (run 37051833143, re-run after the packages were published; the first attempt failed only because `gcce` was not yet in the index) |
+| 4 | the owner's `SYMDEV_*` environment | builds `hello` and `gui` with no install line, outputs identical to item 1's reference |
+| 5 | `symdev new rhello --lang rust` + build + package with the prebuilt symdev | installed `rust-sdk;0.1.0` (0.4 MB, public), `rhello.exe` 968 bytes, `rhello.sisx` 2 304; in EKA2L1 the guest's `User::InfoPrint` arrived as `Trying to display: Hello from Rust SDK (19 chars)` (EKA2L1 logs InfoPrint and draws nothing — `notifier.cpp` TODO — the signal experiments 69/71 use) |
+
+Found during acceptance: a Rust project needs a host C linker `cc` (build scripts, the SDK's
+proc macros, `-Zbuild-std`'s `compiler_builtins`), as any Rust project does — now in the
+README and §8. Open follow-ups: the scaffold's absolute `rust-sdk/<ver>` paths (§12); building
+Rust applications without GCCE (spike, experiment 109); index signing (§11).
