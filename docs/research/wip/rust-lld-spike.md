@@ -72,6 +72,24 @@ Branch: `rust-lld-spike` (worktree `~/worktrees/symdev/rust-lld-spike`). No prod
   d. `relocation at 0x8154 targets 0x0` -- lld RELATIVE relocs have symbol 0; elf2e32 takes the
      target (code vs data reloc kind) from the symbol value (GNU always names a section sym).
 
+- elf2e32: product code untouched; scratch fork `~/src/rust-lld-spike/elf2e32-fork` (copy of
+  symdev-elf2e32/core/uidcrc) with 5 `SPIKE 109` changes: import addend only for ABS32
+  (JUMP_SLOT/GLOB_DAT = S); symbol-less RELATIVE target = linked word; target == code end counts
+  as code (lld `.ARM.exidx$$Limit`); missing RW PT_LOAD = empty data at 0x400000; exception
+  descriptor looked up in .symtab when not in .dynsym. Its 42 unit tests pass and it gives
+  byte-identical E32 (mask 0x14-17, 0x24-2B) for all 4 GNU ELFs. Used via SYMDEV_ELF2E32.
+  Wrapper `bin/ld-lld` then needs no post-link patching (LLD_POSTFIX=1 path unused).
+- RESULT (lld link + fork elf2e32), all 4 build: E32 .exe gnu/lld: hello 968/1044, async
+  18431/18577, shim 4452/4572, ui 10315/10511 (uncompressed 1340/1584, 33948/34684,
+  7092/7552, 17092/17936). Import section bytes identical; import words (addend<<16|ordinal)
+  identical per DLL in all 4; DT_NEEDED identical in all 4; data section identical; code relocs
+  equal except async 211->203 text, ui 124->115 text: GNU makes PLT entries (+ABS32 reloc) for
+  the image's own `symrs_app_*`/`_ZdlPvj` called from the Thumb shim; lld -Bsymbolic calls them
+  directly. Growth = PLT+GOT: GNU 8 B/import, lld 16 B PLT + 4 B GOT + 44 B fixed (PLT0 32,
+  3 reserved GOT words); .ARM.exidx +8..+32 B. Everything else same size.
+- Tools: `e32dump.py`, `e32cmp.py`, `relocmap.py`, `e2e.sh` (symdev's EXE elf2e32 argv; rerun
+  reproduces symdev's .exe exactly). Outputs in `e32/`, `gnu/`, `lld/`.
+
 ## Dead ends
 
 ## Next step
