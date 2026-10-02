@@ -221,8 +221,10 @@ publish/                           # Rust binary; symdev-sdk as a git dependency
   --disable-hosted-libstdcxx --disable-libstdcxx-pch --disable-shared
   --disable-option-checking --disable-threads --disable-nls --disable-win32-registry
   --disable-libssp --disable-libquadmath`.
-- **To verify first, not assume:** whether `~/gcc-builds` applied GCC4Symbian patches
-  (`~/src/GCC4Symbian`), and binutils' configure flags (`~/src/binutils-2.29.1-build`).
+- Verified in experiment 107: `~/gcc-builds` also used GCC4Symbian's libgcov fix and two
+  sys-include headers (each needed) and in-tree gmp/mpfr/mpc/isl, so the recipe pins those
+  sources too; binutils' flags are GCC4Symbian's binutils step. Examples built with the
+  relocated result are byte-identical.
 - Built in a Debian 11 container (glibc 2.31), so it runs on Ubuntu 20.04+ / Debian 11+.
   The current host build needs glibc 2.38 and would not.
 - The GPL source archive (tarballs, patches, `build.sh`) is published beside the package.
