@@ -52,6 +52,17 @@ fn rejects_dot_segments() {
 }
 
 #[test]
+fn rejects_a_segment_starting_with_a_dot() {
+    // `.staging` and `.lock` are the home's own; `list` skips dot directories too.
+    let dot = "has a segment starting with `.`";
+    assert_eq!(reason(".staging;x"), dot);
+    assert_eq!(reason(".lock;1"), dot);
+    assert_eq!(reason("gcce;.hidden"), dot);
+    assert_eq!(reason("gcce;12.1.0;.x"), dot);
+    assert!(PackageId::parse("gcce;12.1.0").is_ok());
+}
+
+#[test]
 fn rejects_path_separators_and_nul() {
     let path = "has a `/`, `\\` or NUL in a segment";
     assert_eq!(reason("gcce;a/b"), path);

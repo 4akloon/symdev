@@ -3,10 +3,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use sha2::{Digest, Sha256};
-
-use crate::resolve_url;
 use crate::{ArchiveEntry, Fetch, PackageId, Receipt, Result, SdkError, SourceSpec, TarGz};
+use download_cache::DownloadCache;
 
 /// How deep `list` looks for receipts: ids of up to this many segments.
 const MAX_SEGMENTS: usize = 8;
@@ -18,12 +16,17 @@ static STAGED: AtomicU64 = AtomicU64::new(0);
 /// lives at `root/<id path>` and counts as installed only once its receipt is written.
 pub struct SdkHome {
     root: PathBuf,
-    cache: PathBuf,
+    cache: DownloadCache,
 }
 
 impl SdkHome {
+    /// `cache` may be shared with other homes (one `XDG_CACHE_HOME`, several
+    /// `SYMDEV_HOME`s): it has a lock of its own.
     pub fn new(root: PathBuf, cache: PathBuf) -> Self {
-        SdkHome { root, cache }
+        SdkHome {
+            root,
+            cache: DownloadCache::new(cache),
+        }
     }
 
     pub fn root(&self) -> &Path {
@@ -79,10 +82,11 @@ impl SdkHome {
     }
 
     /// Spec §3 steps 1–6. Takes `root/.lock`, re-checks `installed` after locking (another
-    /// process may have finished it), clears stale staging, reuses a cached archive only
-    /// if its size and SHA-256 match, deletes a mismatching download and returns
-    /// `HashMismatch`, extracts into `root/.staging/<pid>-<n>`, replaces a receipt-less
-    /// package dir, renames, and writes the receipt last.
+    /// process may have finished it), refuses a place inside or above another package,
+    /// clears stale staging, reuses a cached archive only if its size and SHA-256 match,
+    /// deletes a mismatching download and returns `HashMismatch`, extracts into
+    /// `root/.staging/<pid>-<n>`, writes the receipt there, replaces a receipt-less
+    /// package dir, and renames the staging dir into place last.
     ///
     /// `starting` runs under the lock once the package is known to be missing, right
     /// before the download or extraction: the caller announces the install there, so a
@@ -99,18 +103,30 @@ impl SdkHome {
         if let Some(receipt) = self.installed(id)? {
             return Ok(receipt);
         }
+        self.check_placement(id)?;
         starting();
         // Holding the lock, no other install is running: anything staged is left over.
         let staging_root = self.root.join(".staging");
         remove_dir_if_exists(&staging_root)?;
-        let url = resolve_url(&source.base, &entry.url)?;
-        let archive = self.download(id, &url, fetch, entry)?;
+        let url = source.resolve(&entry.url)?;
+        let archive = self.cache.archive(id, &url, fetch, entry)?;
         let n = STAGED.fetch_add(1, Ordering::Relaxed);
         let staging = staging_root.join(format!("{}-{n}", std::process::id()));
         fs::create_dir_all(&staging).map_err(io_at(&staging))?;
-        if let Err(e) = TarGz::new(&archive, &url).extract(&staging) {
-            // The extraction error is the one to report; a staging dir that cannot be
-            // removed now is removed by the next install.
+        let receipt = Receipt {
+            id: id.clone(),
+            sha256: entry.sha256.clone(),
+            source: source.name.clone(),
+            url,
+        };
+        // The receipt goes in before the rename, so the package appears with it at once.
+        let staged = TarGz::new(&self.cache.path(entry), &receipt.url)
+            .extract_file(archive, &staging)
+            .and_then(|()| Self::refuse_own_receipt(&staging, &receipt.url))
+            .and_then(|()| receipt.write(&staging));
+        if let Err(e) = staged {
+            // That error is the one to report; a staging dir that cannot be removed now
+            // is removed by the next install.
             let _ = fs::remove_dir_all(&staging);
             return Err(e);
         }
@@ -120,104 +136,42 @@ impl SdkHome {
             fs::create_dir_all(parent).map_err(io_at(parent))?;
         }
         fs::rename(&staging, &dir).map_err(io_at(&dir))?;
-        let receipt = Receipt {
-            id: id.clone(),
-            sha256: entry.sha256.clone(),
-            source: source.name.clone(),
-            url,
-        };
-        receipt.write(&dir)?;
         Ok(receipt)
     }
 
-    /// The verified archive in the cache: the cached copy if it has the right size and
-    /// hash, else a fresh download (into `.part`, renamed only once verified).
-    fn download(
-        &self,
-        id: &PackageId,
-        url: &str,
-        fetch: &dyn Fetch,
-        entry: &ArchiveEntry,
-    ) -> Result<PathBuf> {
-        let hex = |c: char| c.is_ascii_digit() || ('a'..='f').contains(&c);
-        if entry.sha256.len() != 64 || !entry.sha256.chars().all(hex) {
-            return Err(SdkError::Other(format!(
-                "{id}: sha256 `{}` of {url} is not 64 lowercase hex digits; the source's index \
-                 is damaged",
-                entry.sha256
-            )));
+    /// An archive may not bring its own receipt, nor anything under the name the receipt
+    /// is written to first: only symdev says a package is installed.
+    fn refuse_own_receipt(staging: &Path, url: &str) -> Result<()> {
+        for name in [Receipt::FILE, Receipt::PARTIAL] {
+            if fs::symlink_metadata(staging.join(name)).is_ok() {
+                return Err(SdkError::UnsafeEntry {
+                    url: url.to_string(),
+                    entry: name.to_string(),
+                    reason: "has the name of symdev's package receipt",
+                });
+            }
         }
-        fs::create_dir_all(&self.cache).map_err(io_at(&self.cache))?;
-        let cached = self.cache.join(format!("{}.tar.gz", entry.sha256));
-        // A truncated or damaged copy (an interrupted run) is never extracted.
-        if fs::metadata(&cached).is_ok_and(|m| m.len() == entry.size)
-            && digest(&cached)?.0 == entry.sha256
-        {
-            return Ok(cached);
-        }
-        remove_file_if_exists(&cached)?;
-        let part = self.cache.join(format!("{}.tar.gz.part", entry.sha256));
-        if let Err(e) = fetch.download(url, &part) {
-            remove_file_if_exists(&part)?;
-            return Err(e);
-        }
-        let (actual, actual_size) = digest(&part)?;
-        if actual != entry.sha256 || actual_size != entry.size {
-            remove_file_if_exists(&part)?;
-            return Err(SdkError::HashMismatch {
-                id: id.to_string(),
-                url: url.to_string(),
-                expected: entry.sha256.clone(),
-                actual,
-                expected_size: entry.size,
-                actual_size,
-            });
-        }
-        fs::rename(&part, &cached).map_err(io_at(&cached))?;
-        Ok(cached)
-    }
-
-    /// Removes `id` under the lock; `false` if it was not there. The receipt goes first,
-    /// so an interrupted removal leaves an unfinished package that an install replaces.
-    pub fn uninstall(&self, id: &PackageId) -> Result<bool> {
-        let _lock = self.lock()?;
-        let dir = self.package_dir(id);
-        if fs::symlink_metadata(&dir).is_err() {
-            return Ok(false);
-        }
-        remove_file_if_exists(&dir.join(Receipt::FILE))?;
-        fs::remove_dir_all(&dir).map_err(io_at(&dir))?;
-        // Drop the now empty `gcce/` and the like; stop at the first non-empty one.
-        let mut parent = dir.parent();
-        while let Some(p) = parent
-            && p != self.root
-            && fs::remove_dir(p).is_ok()
-        {
-            parent = p.parent();
-        }
-        Ok(true)
+        Ok(())
     }
 
     /// `root/.lock`, held until the returned file is dropped.
     fn lock(&self) -> Result<File> {
-        fs::create_dir_all(&self.root).map_err(io_at(&self.root))?;
-        let path = self.root.join(".lock");
-        let file = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(&path)
-            .map_err(io_at(&path))?;
-        file.lock().map_err(io_at(&path))?;
-        Ok(file)
+        lock(&self.root)
     }
 }
 
-fn digest(path: &Path) -> Result<(String, u64)> {
-    let mut file = File::open(path).map_err(io_at(path))?;
-    let mut hasher = Sha256::new();
-    let size = io::copy(&mut file, &mut hasher).map_err(io_at(path))?;
-    Ok((format!("{:x}", hasher.finalize()), size))
+/// `dir/.lock` (`dir` created if missing), locked until the returned file is dropped.
+fn lock(dir: &Path) -> Result<File> {
+    fs::create_dir_all(dir).map_err(io_at(dir))?;
+    let path = dir.join(".lock");
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .map_err(io_at(&path))?;
+    file.lock().map_err(io_at(&path))?;
+    Ok(file)
 }
 
 fn remove_dir_if_exists(path: &Path) -> Result<()> {
@@ -239,5 +193,7 @@ fn io_at(path: &Path) -> impl FnOnce(io::Error) -> SdkError + use<> {
     move |source| SdkError::Io { path, source }
 }
 
+mod download_cache;
+mod placement;
 #[cfg(test)]
 mod tests;

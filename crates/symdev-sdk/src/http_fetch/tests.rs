@@ -1,7 +1,9 @@
 //! `HttpFetch` against a `TcpListener` on 127.0.0.1 that serves canned responses; nothing
 //! here touches the network.
 
+mod limits;
 mod proxy;
+mod redirects;
 mod server;
 
 use std::net::TcpListener;
@@ -69,7 +71,7 @@ fn download_writes_the_exact_bytes_over_an_older_file_and_counts_them() {
     std::fs::write(&dest, vec![7u8; 400_000]).unwrap();
     let url = format!("{base}gcce/12.1.0/a.tar.gz");
     let written = HttpFetch::direct("public", None)
-        .download(&url, &dest)
+        .download(&url, &dest, 300_000)
         .unwrap();
     assert_eq!(written, 300_000);
     assert_eq!(std::fs::read(&dest).unwrap(), bytes);
@@ -83,7 +85,7 @@ fn a_body_cut_short_is_an_error_not_a_short_file() {
     let dir = tempfile::tempdir().unwrap();
     let url = format!("{base}a.tar.gz");
     let err = HttpFetch::direct("public", None)
-        .download(&url, &dir.path().join("a.tar.gz"))
+        .download(&url, &dir.path().join("a.tar.gz"), 100)
         .unwrap_err();
     assert!(
         matches!(&err, SdkError::Fetch { url: u, .. } if *u == url),

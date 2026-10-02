@@ -5,7 +5,7 @@ use std::io::{self, BufReader};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Component, Path, PathBuf};
 
-use flate2::read::GzDecoder;
+use flate2::read::MultiGzDecoder;
 use tar::EntryType;
 
 use crate::{Result, SdkError};
@@ -31,6 +31,16 @@ impl<'a> TarGz<'a> {
     /// the kernel would, so a chain of links cannot leave `into` either. On error `into`
     /// may hold part of the package; the caller removes it.
     pub fn extract(&self, into: &Path) -> Result<()> {
+        let file = File::open(self.path).map_err(|source| SdkError::Io {
+            path: self.path.display().to_string(),
+            source,
+        })?;
+        self.extract_file(file, into)
+    }
+
+    /// [`Self::extract`] from `file`, an open handle on the archive (the install opens
+    /// it to verify its hash and extracts exactly what it verified).
+    pub(crate) fn extract_file(&self, file: File, into: &Path) -> Result<()> {
         let io_at = |path: &Path| {
             let path = path.display().to_string();
             move |source| SdkError::Io { path, source }
@@ -43,8 +53,7 @@ impl<'a> TarGz<'a> {
                 self.url
             )));
         }
-        let file = File::open(self.path).map_err(io_at(self.path))?;
-        let mut archive = tar::Archive::new(GzDecoder::new(BufReader::new(file)));
+        let mut archive = tar::Archive::new(MultiGzDecoder::new(BufReader::new(file)));
         let mut links = Vec::new();
         for entry in archive.entries().map_err(io_at(self.path))? {
             let mut entry = entry.map_err(io_at(self.path))?;

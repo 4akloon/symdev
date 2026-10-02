@@ -18,6 +18,8 @@ pub struct Receipt {
 
 impl Receipt {
     pub(crate) const FILE: &str = ".symdev-package.toml";
+    /// Where [`Self::write`] puts the text before renaming it to [`Self::FILE`].
+    pub(crate) const PARTIAL: &str = ".symdev-package.toml.partial";
 
     /// The receipt in `dir`, or `None` if there is none (not installed, or unfinished).
     pub fn read(dir: &Path) -> Result<Option<Receipt>> {
@@ -46,7 +48,7 @@ impl Receipt {
             SdkError::Other(format!("cannot write the receipt of {}: {e}", self.id))
         })?;
         let path = dir.join(Self::FILE);
-        let partial = dir.join(format!("{}.partial", Self::FILE));
+        let partial = dir.join(Self::PARTIAL);
         let io_at = |p: &Path| {
             let p = p.display().to_string();
             move |source| SdkError::Io { path: p, source }

@@ -1,7 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::url::relative_url_problem;
-use crate::{IndexPackage, PackageId, Result, SdkError};
+use crate::{IndexPackage, PackageId, Result, SdkError, SourceSpec};
 
 /// The only index schema this symdev reads and writes.
 const SCHEMA: u32 = 1;
@@ -83,7 +82,7 @@ impl Index {
         }
         let urls = p.archives.iter().map(|a| &a.url).chain(&p.source_code);
         for url in urls {
-            if let Some(reason) = relative_url_problem(url) {
+            if let Some(reason) = SourceSpec::relative_problem(url) {
                 return Some(format!("package {}: URL `{url}` {reason}", p.id));
             }
         }

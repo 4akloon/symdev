@@ -50,6 +50,19 @@ pub enum SdkError {
 
 pub type Result<T> = std::result::Result<T, SdkError>;
 
+impl SdkError {
+    /// A download of `url` that brought more than `limit` bytes, the index's `size`.
+    pub(crate) fn longer_than(url: &str, limit: u64) -> SdkError {
+        SdkError::Fetch {
+            url: url.to_string(),
+            detail: format!(
+                "stopped after more than the {limit} bytes the index lists; the source's index \
+                 or its file is wrong"
+            ),
+        }
+    }
+}
+
 impl From<SdkError> for symdev_core::Error {
     fn from(e: SdkError) -> Self {
         symdev_core::Error::Other(e.to_string())

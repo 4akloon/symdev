@@ -64,12 +64,14 @@ preprocessing. Left out: the 570 RVCT `.lib` import libraries beside the `.dso` 
 include tree is 3.8 MB and the `.dso` files 1.5 MB; the whole earlier directory-level subset
 was 9.9 MB.
 
-**Ids are validated**: segments are non-empty, are not `.` or `..`, and contain no `/`, `\`
-or NUL. The id maps
+**Ids are validated**: segments are non-empty, do not start with `.` (so not `.` or `..`,
+nor the home's own `.staging` and `.lock`), and contain no `/`, `\`, NUL or whitespace. The
+id maps
 to an install path by replacing `;` with `/`: `gcce;12.1.0` → `gcce/12.1.0`.
 
 **Archives** are `.tar.gz` (`flate2` is already a workspace dependency; the `tar` crate is
-new). The archive root is the package root. Archives are stored content-addressed,
+new); every gzip member is read, so an archive written in several members (`pigz`, or
+concatenated) is not cut short at the first. The archive root is the package root. Archives are stored content-addressed,
 `<kind>/<…>/<sha256>.tar.gz`, and never overwritten.
 
 **Index**: one `index.toml` per source.
@@ -125,14 +127,28 @@ order wins (built-in first). SHA-256 and size are always checked before extracti
 **Install procedure** — no half-installed state is ever visible:
 
 1. take `$SYMDEV_HOME/.lock` (`std::fs::File::lock`), so parallel builds do not race;
-2. download into the cache (skip if the cached file already has the right size and hash);
-3. verify size and SHA-256; on mismatch delete the file and fail (§5);
-4. extract into `$SYMDEV_HOME/.staging/<random>`, refusing absolute paths, `..`, and links
-   that point outside the package;
-5. rename the staging directory to `$SYMDEV_HOME/<id path>`;
-6. write the receipt `.symdev-package.toml` (id, sha256, source name, archive URL) **last**.
+2. under the cache's own `downloads/.lock` (several `SYMDEV_HOME`s may share one
+   `XDG_CACHE_HOME`), reuse the cached file if it has the right size and hash, else
+   download into a `.part` file named for this process and rename it over the cached name
+   only once verified — a cached file is never written into nor deleted, so another
+   install that opened it keeps reading verified bytes (review I2, 2026-10-02);
+3. verify size and SHA-256; on mismatch delete the download and fail (§5); the archive is
+   extracted from the handle that was verified;
+4. extract into `$SYMDEV_HOME/.staging/<random>`, refusing absolute paths, `..`, links
+   that point outside the package, and a `.symdev-package.toml` or
+   `.symdev-package.toml.partial` at the archive's root (an archive cannot bring its own
+   receipt);
+5. write the receipt `.symdev-package.toml` (id, sha256, source name, archive URL) into the
+   staging directory;
+6. rename the staging directory to `$SYMDEV_HOME/<id path>` **last**, so the package
+   appears with its receipt in one step (review M3, 2026-10-02; the receipt used to be
+   written after the rename).
 
 A package directory without a receipt is unfinished and is replaced on the next install.
+A package never sits inside another or above one: `install` refuses such an id (naming
+both), and `uninstall` removes a directory only if it holds a receipt, or if it is an
+unfinished package that neither lies inside a package nor holds one — so a partial id
+(`sdk;s60-3rd-fp2`) or an id inside a package (`gcce;12.1.0;bin`) removes nothing.
 
 **Layouts are types.** `Gcce` knows its files, `PlatformSdk` its root:
 
@@ -185,7 +201,11 @@ nothing.
 There is no `update`: ids are immutable. When a symdev release pins `gcce;14.2.0`, the next
 build installs it beside `gcce;12.1.0`, which stays until uninstalled.
 
-**Network.** `ureq` with rustls, timeouts, proxy from the environment. Sources with
+**Network.** `ureq` with rustls, proxy from the environment, and timeouts: 30 s to connect,
+60 s for the server's answer, an hour per request. A download stops one byte past the
+index's `size`. An `https` source sends no plain-HTTP request, a redirect included (the
+index has no hash of its own to check), and a signed request follows no redirect (review
+M1, M2, 2026-10-02). Sources with
 `auth = "s3"` sign requests with AWS Signature V4 (region `auto` for R2). The signer is our
 own, GET and PUT only (PUT is for `publish`, §6), built on the workspace's `hmac` and
 `sha2`, and tested against AWS's published SigV4 examples. No S3 client crate.
@@ -269,11 +289,20 @@ A new job `examples` in `.github/workflows/ci.yml`, beside the existing Rust gat
 
 - runs on push to `main` and on PRs from this repository; a first step skips the job when
   the reader key is absent (forks, dependabot), instead of failing;
-- caches `$SYMDEV_HOME` with the hash of `pins.rs` as the key, so an unchanged pin touches
-  no bucket;
-- builds symdev, then `symdev build` and `symdev package` for `examples/hello`,
-  `examples/gui` and the Rust examples, through auto-install — the path a clean machine
-  takes;
+- caches only `$SYMDEV_HOME/gcce` (GPL, public anyway) with the hash of `pins.rs` as the key,
+  so an unchanged pin downloads no compiler. The SDK (about 5 MB) downloads on every run and
+  is never cached: pull-request runs — a fork's too, running the fork's own workflow — can
+  restore the default branch's caches, so a cached SDK would be a copy anyone could take
+  (review C1, 2026-10-02);
+- builds symdev, then installs the packages with `symdev sdk install` in each example
+  (what the project needs, as a clean machine's first build would), then runs `symdev
+  build` and `symdev package` for `examples/hello`, `examples/gui` and the Rust examples.
+  The reader key is set **only** on the install step, which runs nothing but symdev:
+  `cargo build` runs third-party build scripts, and the build and package steps find
+  everything installed and read no source;
+- sets `RUSTFLAGS` (`-D warnings`) only on the Rust gate: a set `RUSTFLAGS`, even an empty
+  one, replaces the `build.rustflags` that `symdev build` passes to the Rust SDK's libcall
+  build;
 - sets `SYMDEV_SIGN_PASSWORD` to a dummy value in the workflow (the key is throwaway and
   generated per run).
 
@@ -385,7 +414,10 @@ Rust for a C++ project.
 - **Finding the Rust SDK.** `SYMDEV_RUST_SDK` first; then the source checkout symdev was built
   from, if it still exists (a developer working on the SDK keeps using their tree); else the
   installed `rust-sdk` package, auto-installed like GCCE. Today's compile-time path alone
-  cannot work for a prebuilt binary.
+  cannot work for a prebuilt binary. A release build has **no** checkout step:
+  `RustSdk::CHECKOUT` is `None` when `SYMDEV_RELEASE` is set (not empty) at compile time, so
+  on another machine nobody can plant a `symbian-rs` at the path of the machine that built
+  it (review, 2026-10-02). The release recipe must build with `SYMDEV_RELEASE=1`.
 - **Known gap (follow-up, not phase 1).** `symdev new --lang rust` writes absolute SDK paths
   into the project (`Cargo.toml` path dependencies, `.cargo/config.toml` `build.target`). With
   the package route these name `rust-sdk/<ver>/`, so after an upgrade a build silently mixes

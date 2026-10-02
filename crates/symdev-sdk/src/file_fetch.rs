@@ -1,5 +1,5 @@
 use std::fs::{self, File};
-use std::io;
+use std::io::{self, Read};
 use std::path::Path;
 
 use crate::{Fetch, Result, SdkError};
@@ -26,8 +26,8 @@ impl Fetch for FileFetch {
         })
     }
 
-    fn download(&self, url: &str, dest: &Path) -> Result<u64> {
-        let mut from = File::open(Self::path(url)?).map_err(|e| SdkError::Fetch {
+    fn download(&self, url: &str, dest: &Path, limit: u64) -> Result<u64> {
+        let from = File::open(Self::path(url)?).map_err(|e| SdkError::Fetch {
             url: url.to_string(),
             detail: e.to_string(),
         })?;
@@ -36,7 +36,11 @@ impl Fetch for FileFetch {
             source,
         };
         let mut to = File::create(dest).map_err(io_at_dest)?;
-        io::copy(&mut from, &mut to).map_err(io_at_dest)
+        let copied = io::copy(&mut from.take(limit.saturating_add(1)), &mut to);
+        match copied.map_err(io_at_dest)? {
+            copied if copied > limit => Err(SdkError::longer_than(url, limit)),
+            copied => Ok(copied),
+        }
     }
 }
 
@@ -61,11 +65,25 @@ mod tests {
         fs::write(&dest, b"longer old content").unwrap();
         assert_eq!(
             FileFetch
-                .download(&format!("{base}a.tar.gz"), &dest)
+                .download(&format!("{base}a.tar.gz"), &dest, 6)
                 .unwrap(),
             6
         );
         assert_eq!(fs::read(&dest).unwrap(), b"\x1f\x8bdata");
+    }
+
+    #[test]
+    fn a_file_longer_than_its_limit_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("a.tar.gz"), b"0123456789").unwrap();
+        let url = format!("file://{}/a.tar.gz", tmp.path().display());
+        match FileFetch.download(&url, &tmp.path().join("out"), 4) {
+            Err(SdkError::Fetch { url: u, detail }) => {
+                assert_eq!(u, url);
+                assert!(detail.contains("more than the 4 bytes"), "{detail}");
+            }
+            other => panic!("expected Fetch, got {other:?}"),
+        }
     }
 
     #[test]

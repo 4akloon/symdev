@@ -9,6 +9,8 @@ use tar::{EntryType, Header};
 use super::TarGz;
 use crate::SdkError;
 
+mod multi_member;
+
 const URL: &str = "file:///srv/pkg/x.tar.gz";
 
 /// One raw tar entry; the name and link are written into the header as bytes, so the

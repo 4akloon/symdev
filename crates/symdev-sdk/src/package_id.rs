@@ -9,8 +9,8 @@ use crate::{Result, SdkError};
 pub struct PackageId(String);
 
 impl PackageId {
-    /// Splits `s` on `;` and checks every segment: non-empty, not `.` or `..`, and free of
-    /// `/`, `\`, NUL, whitespace and control characters.
+    /// Splits `s` on `;` and checks every segment: non-empty, not starting with `.`, and
+    /// free of `/`, `\`, NUL, whitespace and control characters.
     pub fn parse(s: &str) -> Result<Self> {
         let invalid = |reason| SdkError::InvalidId {
             id: s.to_string(),
@@ -40,6 +40,9 @@ impl PackageId {
             Some("has an empty segment")
         } else if segment == "." || segment == ".." {
             Some("has a `.` or `..` segment")
+        } else if segment.starts_with('.') {
+            // `.staging` and `.lock` belong to the home, and `list` skips dot directories.
+            Some("has a segment starting with `.`")
         } else if segment.contains(['/', '\\', '\0']) {
             Some("has a `/`, `\\` or NUL in a segment")
         } else if segment.chars().any(|c| c.is_whitespace() || c.is_control()) {

@@ -140,6 +140,9 @@ checked against the code before changing it; baseline `cargo test --workspace --
 
 | # | Finding | Verified | State |
 |---|---|---|---|
+| C1 | CI caches the SDK | yes: `path: ~/.local/share/symdev` holds `sdk/s60-3rd-fp2/1.1`; `main` has no examples job yet, so no SDK cache was ever saved in the default branch's scope | fixed: only `~/.local/share/symdev/gcce` is cached (key `symdev-gcce-<pins.rs>`); spec §7 says why |
+| M10 | reader keys are job-level env | yes: `cargo build` (third-party build scripts) ran with them | fixed: keys only on the step "Install the toolchain packages", which runs `symdev sdk install` (no ids) in each example; build and package run without them |
+| I3 | workflow `RUSTFLAGS` overrides libcalls' `build.rustflags` | yes, and an empty `RUSTFLAGS` overrides it too (fact below), so the suggested `RUSTFLAGS: ""` would not fix it | fixed differently: `RUSTFLAGS: -D warnings` moved from the workflow to the `check` job; the header comment no longer speaks of "missing toolchain" tests |
 | 1 | `epocroot`/`installed_epocroot` check every `SYMDEV_*` path | yes: both call `overrides()` → `check()` of all 7 | fixed: both take the unchecked overrides; `Epocroot::resolve` checks `SYMDEV_EPOCROOT` itself (unit + CLI tests for package and freeze) |
 | 2 | `available` vs `find` disagree when the first source lacks this host's archive | yes: the `&&` short-circuits before `seen.insert` | fixed: `seen.insert` first, so the first source that lists an id decides for `available` as for `find` |
 | 3 | `keys_make_an_s3_source_searchable` makes a real HTTPS request | yes: `ensure` → `find` → ureq GET `https://127.0.0.1:1/…` (proxy from env) | fixed: replaced by `catalog::tests::keys_give_an_s3_source_a_fetcher` (no request; a mutant giving a keyless `s3` source a fetcher fails it). Not fixed, reported: `http_fetch` tests GET `http://127.0.0.1:<port>` and ureq takes the proxy from the environment, so with `HTTP_PROXY` set (and no `NO_PROXY` for 127.0.0.1) they go to the proxy |
@@ -366,3 +369,65 @@ above (`Cargo.toml`, `crates/symdev-locale`, `symbian-rs`), or decide to move
 Rust examples cannot be built outside the clone; use `symdev new hello --lang rust`); (3) the
 task-3 proposal (`build/rust-sdk` link) if wanted. Nothing pushed or merged.
 
+
+## Whole-branch review fixes (branch `tm-final-fixes`, 2026-10-02)
+
+Whole-branch review of the toolchain manager (reviewer's line numbers from 669dae1; branch
+from `toolchain-manager` at 5c90f9c). Each finding is checked against the code before it is
+changed; every behaviour fix starts with a failing test. Baseline `cargo test --workspace
+--offline`: 690 passed, 0 failed.
+
+| # | Finding | Verified | State |
+|---|---|---|---|
+| M4 | two types per file; free `pub fn`s | yes: `index_package.rs` (`ArchiveEntry`, `IndexPackage`), `source.rs` (`Auth`, `SourceSpec`); `resolve_url`, `builtin_source` | fixed: `archive_entry.rs`, `auth.rs`; `SourceSpec::resolve(&self, relative)`, `SourceSpec::builtin()` (the URL is a private const of `source.rs`), crate-private `SourceSpec::relative_problem` for `Index`; `url.rs`, `builtin.rs` and the `BUILTIN_SOURCE` export deleted. Crate-root re-exports of `Auth`, `ArchiveEntry`, `IndexPackage` unchanged |
+| I1 | `sdk uninstall` deletes whatever a valid id points at | yes: `uninstall` did `remove_dir_all(package_dir(id))` with no receipt check; `install` did `remove_dir_if_exists` on a receipt-less dir, wiping packages below it | fixed: `home/placement.rs` — a dir is a package iff it holds a receipt file; `uninstall` refuses an id inside a package or a receipt-less dir that holds one (error names the package and its uninstall command), and still finishes an unfinished package; `install` checks placement under the lock before announcing or downloading. Tests: 5 unit (partial id, inside, install inside, install above, unfinished) + 1 CLI; RED seen for the 4 refusals and the CLI test |
+| M3 | an archive can bring its own receipt | yes: a root `.symdev-package.toml` was visible from the rename until `Receipt::write` replaced it, and a root `.symdev-package.toml.partial/` made the write fail after the rename, leaving the archive's receipt in place (test RED: Io error, package dir left) | fixed: the receipt is written into the staging dir, then renamed into place; both names at the archive root are `UnsafeEntry` ("has the name of symdev's package receipt"), staging removed. `Receipt::PARTIAL` names the temporary file. Spec §3 steps 4–6. The order itself is not observable by a test (both refusals pass either way); reasoned, not tested |
+| I2 | the download cache has no lock | yes: every process wrote `<sha>.tar.gz.part` and deleted a mismatching cached file; 8 threads with 8 homes and one cache failed 3/3 (`….tar.gz.part: No such file`), 6 `symdev sdk install` processes failed (`….tar.gz: No such file`) | fixed: `home/download_cache.rs` (`DownloadCache`, private to `home`): check/download/rename under `downloads/.lock`; `.part` named `<sha>.tar.gz.<pid>-<n>.part` and renamed over the cached name only once verified; a damaged cached copy is replaced, never deleted; stale parts of the same archive are removed under the lock (Ctrl-C leftovers); the verified handle is returned and extracted (`TarGz::extract_file`). Tests: 8 threads/8 homes/1 cache → one download, 20/20 green; mutant without the lock fails 3/3; stale part removed (mutant caught); CLI test with 6 processes (RED on the old code) |
+| M9 | dot-leading id segments; multi-member gzip truncated | yes: `.staging;x` parsed (it would install into the staging dir that every install clears); a two-member `.tar.gz` whose first member ends at an entry boundary extracted only the first file, silently (test RED: `second` missing) | fixed: a segment starting with `.` is refused ("has a segment starting with `.`"; `.`/`..` keep their own reason); `TarGz` reads through `MultiGzDecoder`. Spec §2 |
+| M1 | downloads not capped; no response timeout | yes: `HttpFetch::download` read to EOF, `FileFetch` copied all; only connect (30 s) and global (1 h) timeouts | fixed: `Fetch::download(url, dest, limit)` reads at most `limit + 1` bytes and errs past `limit` (`SdkError::longer_than`: URL, limit, "the source's index or its file is wrong"); `DownloadCache` passes the entry's `size`; `timeout_recv_response` 60 s, global 1 h kept. Tests (all RED first): HTTP 300 bytes with limit 100; `FileFetch` 10 bytes, limit 4; install with `size` one short → the download stops (was `HashMismatch` after the whole file); a silent server with a 200 ms wait (`HttpFetch::impatient`, test-only) errs instead of hanging (RED: still waiting after 10 s). Left: a server that answers and then stalls the body is bounded only by the hour |
+| M2 | redirects may downgrade https→http; signed requests follow redirects | yes: ureq 3.4.2 defaults `https_only = false`, `max_redirects = 10`; checked in its `run.rs` that `https_only` is tested on every call, redirected ones included, before connecting | fixed: `HttpFetch::new(&SourceSpec, signer)` (was `(name, signer)`): `https_only` for an `https` source, `max_redirects(0)` when signed (the 3xx comes back as `HTTP 302`). Tests (RED first): an `https` source's fetcher asked for `http://127.0.0.1:<port>` is refused with nothing reaching the port (what a downgrading redirect would ask; no TLS server is needed to prove it); a signed request answered by 302 is `HTTP 302` and the target sees nothing; an unsigned http source still follows a redirect |
+| M8 | spec §8's HTTP install through `SdkManager` is missing | yes: only `HttpFetch` had `TcpListener` tests; `Catalog::fetcher` always built `HttpFetch::new` (environment proxy) | fixed: `Catalog.http: fn(&SourceSpec, Option<SigV4>) -> HttpFetch`, `HttpFetch::new` in production; test-only `SdkManager::direct_http()` swaps in `HttpFetch::direct_for`. `manager/tests/http.rs` serves a `Repo` directory from a `TcpListener` and installs `gcce;12.1.0` over HTTP (paths asked: `/index.toml`, then the archive). With `ALL_PROXY`/`HTTP_PROXY` at a dead port it passes; with `direct_http` made a no-op it fails (mutant caught) |
+| M6 | `sdk list --offline` builds a full `SdkManager` | yes: `list` called `provision.manager()` (sources.toml, keys, host) before reading receipts; CLI test with `builtin = maybe` RED (`bad sources file`) | fixed: `list` reads `provision.home()?.list()` first and builds the manager only without `--offline`; `SdkManager::home()` lost its last caller and is deleted. CLI test `tests/sdk_list.rs`: bad `sources.toml`, then a half key pair — both list the installed package, nothing on stderr |
+| M7 | an id without `;` gets no quoting hint | yes: `symdev sdk install gcce` said only "needs a kind and a version" | fixed: `cli.rs` parses `sdk install`/`uninstall` ids through `package_id`, which adds `; quote the id: '<pinned id of that kind, else gcce's>' (unquoted, the shell ends the command at the `;`)` for a non-empty id without `;`; library parsing (`PackageId::parse`, index, receipts) unchanged. CLI test (RED first): `install gcce` → `'gcce;12.1.0'`, `uninstall sdk` → `'sdk;s60-3rd-fp2;1.1'`, `gcce;..` gets no hint |
+| M5 | README calls the built-in source "planned but not published yet" | yes: `SourceSpec::builtin()` is searched first by every build; `curl` on 2026-10-02: the bucket's `index.toml` and `install.sh` are both HTTP 404, and `Catalog::find` skips a source whose index cannot be read (its reason goes into the not-found error) | fixed: README "Toolchain packages" names the built-in source and its URL, says it is queried today, carries GCCE, `symdev` and `rust-sdk` from the first release, and is skipped while its `index.toml` 404s |
+| Extra | `RustSdk::CHECKOUT` must not exist in release builds (lead's ruling) | yes: a prebuilt binary carried the CI build path and used it if `RustSdk::at` accepted whatever is there | fixed: `CHECKOUT: Option<&str>` = `RustSdk::checkout(option_env!("SYMDEV_RELEASE"), <path>)` (private `const fn`: `None` when set and not empty); `Provision::from_env` maps it; tests unwrap it. Unit test of both branches (`Some("1")` → none, `None`/`Some("")` → the path). Checked by hand: `SYMDEV_RELEASE=1 cargo build -p symdev-cli` into a scratch target dir — the binary holds the checkout path 0 times (the normal build: once), and `symdev --offline new app --lang rust` in an empty home asks for `rust-sdk;0.1.0` where the normal build scaffolds from the checkout. Spec §12 says the release recipe must set it |
+
+Facts found on the way:
+
+- I3: cargo takes `RUSTFLAGS` over `build.rustflags` even when it is **set but empty**:
+  in a scratch crate, `cargo build -v --config 'build.rustflags=["--cfg","foo"]'` passes
+  `--cfg foo` with `RUSTFLAGS` unset, and not with `RUSTFLAGS=""` nor `RUSTFLAGS="-D
+  warnings"`. So the review's `RUSTFLAGS: ""` on the examples job would not help; the
+  workflow-level `RUSTFLAGS` moves to the `check` job instead, and the examples job has none.
+
+symdev-packages call sites (not edited; that repository builds against this crate by path):
+
+- M1: `Fetch::download` gained a `limit` argument; the publisher neither calls `download`
+  nor implements `Fetch`, so nothing there changes.
+- M2: `HttpFetch::new` takes the `&SourceSpec` (was its name): `publish/src/bucket.rs:35`
+  `HttpFetch::new(name, signer)` becomes `HttpFetch::new(&spec, signer)`, built before
+  `spec` moves into the `Bucket`. The publisher's signed PUTs and GETs then follow no
+  redirect, and an `https` bucket gets no plain-HTTP request.
+- Extra: `recipes/symdev/0.1.0/build.sh:89` (`cargo build --release --locked -p symdev-cli
+  --target "$target"`) must run with `SYMDEV_RELEASE=1` in its environment, or the prebuilt
+  symdev keeps the build machine's checkout as a Rust SDK fallback.
+- M4: `publish/src/bucket.rs:4-5` imports `resolve_url` (drop it from the `use`);
+  `publish/src/bucket.rs:46` `resolve_url(&self.spec.base, key)` becomes
+  `self.spec.resolve(key)`. No call of `builtin_source`/`BUILTIN_SOURCE` there.
+- C1/M10, by hand: with the new binary under `env -i`, an empty `SYMDEV_HOME` and
+  `builtin = false`, `symdev --offline sdk install` in `examples/hello`, `examples/gui` and
+  `symbian-rs/examples/hello` each names exactly `'gcce;12.1.0' 'sdk;s60-3rd-fp2;1.1'`
+  (the Rust example takes its SDK from the checkout), so the keyed install step covers what
+  the keyless build step needs.
+
+Checked at the end (2026-10-02): `cargo test --workspace --offline` 714 passed, 0 failed
+(690 before: +24); `cargo clippy --workspace --all-targets --offline -- -D warnings` no
+warning; `cargo fmt --all --check` clean; every tracked `.rs` file ≤ 300 lines; `ci.yml`
+parses (PyYAML). Commits: `git log 5c90f9c..tm-final-fixes`.
+
+Next step (lead): merge `tm-final-fixes` into `toolchain-manager`; apply the symdev-packages
+changes listed above (`bucket.rs` M2/M4, `build.sh` `SYMDEV_RELEASE=1`) when that repository
+moves to this crate version. Open, not fixed here: a server that sends its headers and then
+stalls the body is bounded only by the one-hour request limit (ureq 3.4.2 has no idle
+timeout); a developer's own `RUSTFLAGS` likewise replaces the libcall build's
+`build.rustflags` (24 bytes per affected example, review I3's mechanism outside CI).

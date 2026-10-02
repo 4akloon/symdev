@@ -18,7 +18,7 @@ pub fn bin() -> Command {
 
 /// The checkout path as the copy has it.
 pub fn missing_checkout() -> String {
-    let checkout = RustSdk::CHECKOUT;
+    let checkout = RustSdk::CHECKOUT.unwrap();
     let stem = checkout.strip_suffix("symbian-rs").unwrap();
     format!("{stem}symbian-xx")
 }
@@ -27,7 +27,7 @@ fn binary() -> &'static Path {
     static COPY: OnceLock<PathBuf> = OnceLock::new();
     COPY.get_or_init(|| {
         let mut bytes = fs::read(assert_cmd::cargo::cargo_bin("symdev")).unwrap();
-        let (from, to) = (RustSdk::CHECKOUT.as_bytes(), missing_checkout());
+        let (from, to) = (RustSdk::CHECKOUT.unwrap().as_bytes(), missing_checkout());
         assert!(!Path::new(&to).exists(), "{to} exists");
         let mut replaced = 0;
         let mut at = 0;
@@ -40,7 +40,7 @@ fn binary() -> &'static Path {
         assert!(
             replaced > 0,
             "{} is not in the symdev binary",
-            RustSdk::CHECKOUT
+            RustSdk::CHECKOUT.unwrap()
         );
         let path = super::home().join("symdev-prebuilt");
         let part = path.with_extension("part");

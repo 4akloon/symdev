@@ -41,6 +41,13 @@ impl<'w> SdkManager<'w> {
         })
     }
 
+    /// The same manager reaching HTTP sources without the environment's proxy (tests).
+    #[cfg(test)]
+    pub(crate) fn direct_http(mut self) -> Self {
+        self.catalog = self.catalog.direct_http();
+        self
+    }
+
     /// Installs every id that is not installed yet (and its dependencies), and returns
     /// the receipts of `ids` in order.
     pub fn ensure(&mut self, ids: &[PackageId]) -> Result<Vec<Receipt>> {
@@ -138,10 +145,6 @@ impl<'w> SdkManager<'w> {
             .into_iter()
             .filter(|(_, p)| seen.insert(p.id.clone()) && p.archive_for(self.host).is_some())
             .collect())
-    }
-
-    pub fn home(&self) -> &SdkHome {
-        &self.home
     }
 }
 
