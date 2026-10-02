@@ -83,17 +83,23 @@ impl SdkHome {
     /// if its size and SHA-256 match, deletes a mismatching download and returns
     /// `HashMismatch`, extracts into `root/.staging/<pid>-<n>`, replaces a receipt-less
     /// package dir, renames, and writes the receipt last.
+    ///
+    /// `starting` runs under the lock once the package is known to be missing, right
+    /// before the download or extraction: the caller announces the install there, so a
+    /// package another process has just installed announces nothing.
     pub fn install(
         &self,
         id: &PackageId,
         source: &SourceSpec,
         fetch: &dyn Fetch,
         entry: &ArchiveEntry,
+        starting: impl FnOnce(),
     ) -> Result<Receipt> {
         let _lock = self.lock()?;
         if let Some(receipt) = self.installed(id)? {
             return Ok(receipt);
         }
+        starting();
         // Holding the lock, no other install is running: anything staged is left over.
         let staging_root = self.root.join(".staging");
         remove_dir_if_exists(&staging_root)?;

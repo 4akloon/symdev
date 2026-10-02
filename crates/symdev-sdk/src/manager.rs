@@ -88,14 +88,18 @@ impl<'w> SdkManager<'w> {
             .catalog
             .fetcher(&source)
             .ok_or_else(|| SdkError::Other(format!("source `{}` lost its keys", source.name)))?;
-        // Progress is informational: a closed stderr must not stop an install.
-        let _ = writeln!(
-            self.progress,
-            "installing {id} ({:.1} MB) from {}…",
-            entry.size as f64 / 1_000_000.0,
-            source.name
-        );
-        self.home.install(id, &source, fetch.as_ref(), &entry)
+        let progress = &mut *self.progress;
+        let announce = || {
+            // Progress is informational: a closed stderr must not stop an install.
+            let _ = writeln!(
+                progress,
+                "installing {id} ({:.1} MB) from {}…",
+                entry.size as f64 / 1_000_000.0,
+                source.name
+            );
+        };
+        self.home
+            .install(id, &source, fetch.as_ref(), &entry, announce)
     }
 
     fn offline_error(missing: &[PackageId]) -> SdkError {
