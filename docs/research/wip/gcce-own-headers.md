@@ -105,9 +105,25 @@ builds' logs/config.log, reference toolchain's GCC output (c++config.h, objects,
     0x14-0x17/0x24-0x2B ×3. A bogus SYMDEV_GXX makes symdev fail, so the env is used.
 - Packages commit `73e2d78` (variant P in the recipe; build.yml packs the recipe dir).
 
+- **Build D done** (297 s, exit 0). P vs D, same build and prefix paths, whole prefix
+  (archives member by member): same 665 files; all libgcc (4×1758) and libsupc++ (3×64,
+  incl. C-compiled cp-demangle.o) members byte-identical; only `_gcov_info_to_gcda.o` in
+  the four libgcov.a differs, in `.debug_info`/`.debug_line` only (40 bytes: P's 4
+  inserted lines shift line numbers), and the HOST `bin/arm-none-symbianelf-gcov-tool`
+  (21 bytes: gcov-tool #includes libgcov-driver.c and its host asserts embed __LINE__).
+  `DW_AT_producer` identical (GCC drops -D from it). D's bytes are what GCC's unchanged
+  source gives; P changes 4×40 + 21 bytes. c++config.h identical in both.
+- The host's uutils `mkdir` prints "required arguments were not provided" during
+  fixincludes (empty directory list): once in build P and once in 107's build-b.log;
+  harmless.
+
+## Decisions (cont.)
+- `__INTPTR_TYPE__`: option D, `CFLAGS_FOR_TARGET="-g -O2 -D__INTPTR_TYPE__=int"` in
+  build.sh's gcc step (fewest bytes changed; no GCC file modified, no `patch` needed).
+  Packages commit after 73e2d78 removes `libgcov-intptr.patch`.
+
 ## Dead ends
 
 ## Next step
-Build D running (`run-variant.sh D`). Then: P vs D byte comparison (which changes fewer
-bytes), DW_AT_producer check for -D, choose; relocation (proof 3); build.sh end to end
-from an empty dir with downloads (proof 4); experiment 108 in the backlog.
+Proof 4: final build.sh from an empty dir with downloads → `prefix-e2e`; then proofs 1-3
+on that prefix; then experiment 108 in the backlog.
