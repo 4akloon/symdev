@@ -102,6 +102,20 @@ Branch: `rust-lld-spike` (worktree `~/worktrees/symdev/rust-lld-spike`). No prod
     Reset, Exit) -> DynInitMenuPaneL + trapped AddMenuItemL work.
   - async: `symdev test --emulator` -> 15 passed (CActiveScheduler::Start TRAP, timers).
 
+- GNU runs (rebuilt; ELFs == saved baselines) with the same steps: hello and leave probe give
+  the same log lines (`trapped=-1 ... alive`); runshot.py now deletes the old log first (a
+  stale log of the other variant could satisfy the wait -- reran gnu-hello/gnu-shim after the
+  fix). GUI: F1, F1 (Select "More bars") -> `bars=4 keys=0 cmd=1` in both
+  (`shots/{gnu,lld}-ui-cmd-{1,2}.png`); pixel diff GNU vs lld = 46 px in a 7x9 box at
+  (548,157) = the status-pane clock minute; hello/shim shots identical (black). async GNU:
+  15 passed.
+- NEGATIVE control (`lld-neg/`): lld with `--target2=got-rel` and the unfixed shim archive ->
+  leave probe never reaches InfoPrint; emulator logs a CPU register dump and exits within ~2 s.
+  So the positive `trapped=-1` really depends on the extab TARGET2 encoding.
+- XLeaveException typeinfo: both linkers bind the catch's `_ZTI15XLeaveException` to the shim's
+  own COMDAT copy (GNU: ABS32 vs its local dynsym entry; lld: RELATIVE); its vtable
+  `_ZTVN10__cxxabiv117__class_type_infoE` is imported from drtaeabi in both.
+
 ## Dead ends
 
 ## Next step
