@@ -2,13 +2,13 @@ use predicates::prelude::*;
 
 mod common;
 use common::repo::World;
-use common::{bin_without_toolchain, hello_with_uid3, write_toml};
+use common::{bin, hello_with_uid3, write_toml};
 
 #[test]
 fn build_offline_without_packages_names_the_install_command() {
     let dir = tempfile::tempdir().unwrap();
     write_toml(&dir, &hello_with_uid3());
-    bin_without_toolchain()
+    bin()
         .current_dir(&dir)
         .args(["build", "--offline"])
         .assert()
@@ -183,8 +183,6 @@ fn an_sdk_only_in_a_keyless_private_source_names_the_keys_and_the_epocroot() {
     w.bin()
         .current_dir(w.project())
         .arg("build")
-        .env_remove("SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID")
-        .env_remove("SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY")
         .assert()
         .failure()
         .stderr(predicate::str::contains(

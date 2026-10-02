@@ -109,9 +109,9 @@ impl World {
         );
     }
 
-    /// `symdev` in this world, with no toolchain variable set.
+    /// `symdev` in this world ([`super::bin`] with this world's directories).
     pub fn bin(&self) -> Command {
-        let mut cmd = super::bin_without_toolchain();
+        let mut cmd = super::bin();
         cmd.env("SYMDEV_HOME", self.home())
             .env("XDG_DATA_HOME", self.tmp.path().join("data"))
             .env("XDG_CACHE_HOME", self.tmp.path().join("cache"))

@@ -42,8 +42,6 @@ fn package_missing_epocroot_still_packages() {
     dummy_e32(&dir);
     bin()
         .current_dir(&dir)
-        .env_remove("SYMDEV_EPOCROOT")
-        .env_remove("SYMDEV_WINE")
         .env("SYMDEV_SIGN_PASSWORD", "secret")
         .arg("package")
         .assert()
@@ -63,8 +61,6 @@ fn package_missing_sign_password() {
     dummy_e32(&dir);
     bin()
         .current_dir(&dir)
-        .env_remove("SYMDEV_EPOCROOT")
-        .env_remove("SYMDEV_SIGN_PASSWORD")
         .arg("package")
         .assert()
         .failure()

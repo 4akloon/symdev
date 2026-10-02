@@ -37,7 +37,6 @@ fn run_without_emulator_names_symdev_eka2l1() {
     std::fs::write(dir.path().join("build/hello.sisx"), b"sisx").unwrap();
     bin()
         .current_dir(&dir)
-        .env_remove("SYMDEV_EKA2L1")
         .arg("run")
         .assert()
         .failure()

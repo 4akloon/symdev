@@ -1,7 +1,7 @@
 use predicates::prelude::*;
 
 mod common;
-use common::{HELLO, bin, bin_without_toolchain, write_toml};
+use common::{HELLO, bin, write_toml};
 
 #[test]
 fn build_missing_manifest() {
@@ -29,7 +29,7 @@ fn build_valid_manifest_missing_toolchain() {
     );
     // No variable, nothing installed, no source to install from (`bin` turns the
     // built-in source off).
-    bin_without_toolchain()
+    bin()
         .current_dir(&dir)
         .arg("build")
         .assert()
@@ -48,12 +48,6 @@ fn build_omitted_uid3_errors() {
     write_toml(&dir, HELLO);
     bin()
         .current_dir(&dir)
-        .env_remove("SYMDEV_EPOCROOT")
-        .env_remove("SYMDEV_GXX")
-        .env_remove("SYMDEV_LD")
-        .env_remove("SYMDEV_ELF2E32")
-        .env_remove("SYMDEV_GCC_LIB")
-        .env_remove("SYMDEV_GCC_TARGET_LIB")
         .arg("build")
         .assert()
         .failure()
@@ -95,7 +89,7 @@ fn build_valid_manifest_no_bld_inf() {
     );
     let elf2e32 = dir.path().join("elf2e32");
     std::fs::write(&elf2e32, b"").unwrap();
-    bin_without_toolchain()
+    bin()
         .current_dir(&dir)
         .envs(fake_toolchain(&dir))
         .env("SYMDEV_ELF2E32", &elf2e32)
@@ -117,7 +111,7 @@ fn build_does_not_require_external_elf2e32() {
             "uid3 = \"0xE0000001\"\ncapabilities = []",
         ),
     );
-    bin_without_toolchain()
+    bin()
         .current_dir(&dir)
         .envs(fake_toolchain(&dir))
         .arg("build")
