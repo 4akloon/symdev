@@ -527,5 +527,5 @@ include = [
 - [ ] 1: C3's `cmp` repeated with the **published** `gcce;12.1.0` installed by `symdev sdk install`.
 - [ ] 2: fresh `HOME` on this host (`env -i HOME=$(mktemp -d) PATH=/usr/bin:/bin`, install rustup there, `cargo install --git … symdev-cli`, reader key only) builds `hello` and `gui`; plus the CI `examples` job (a clean ubuntu-24.04). Run both `.sisx` (local and CI artifact) in EKA2L1 with the eka2l1-host skill's PID-bound screenshot; look at the window. A container run needs docker/podman, absent here (installing them needs `sudo` — owner's call).
 - [ ] 3: `examples` job green on `main`.
-- [ ] 4: the owner's current `SYMDEV_*` environment builds `hello`/`gui` byte-identically to before.
+- [ ] 4: the owner's current `SYMDEV_*` environment builds `hello`/`gui` as before (`.elf` byte-identical, `.exe` identical outside the header time and CRC).
 - [ ] Move durable facts from the wip note into the spec / experiment 107; delete the wip note; commit.

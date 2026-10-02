@@ -296,8 +296,13 @@ set explicitly, without building).
 
 **Phase 1 is done when all four hold, each checked by running it, not by reading code:**
 
-1. The examples' `.exe` built with `gcce;12.1.0` extracted into a different directory are
-   byte-identical to those built with `~/gcc-builds`.
+1. The examples built with `gcce;12.1.0` extracted into a different directory match those
+   built with `~/gcc-builds`: the linked `.elf` byte for byte, and the `.exe` byte for byte
+   except the E32 header's time stamp (0x24–0x2B) and header CRC (0x14–0x17), which the
+   post-linker writes from the clock, so two builds with the same compiler differ there
+   too (found 2026-10-02, track D). Objects may differ where the assembler differs:
+   `~/gcc-builds/gcc-12.1.0` assembles with its own binutils 2.35, while the package uses
+   binutils 2.29.1 throughout; the report says which `as` each side used.
 2. In a clean `ubuntu:24.04` container with only rustup, git and the reader key, the
    commands above produce `hello.sisx` and `gui.sisx`, and both install and launch in
    EKA2L1 on the host (window checked, not the log).
