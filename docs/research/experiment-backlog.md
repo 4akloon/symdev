@@ -3104,7 +3104,12 @@ copies of the tree at one fixed path (rustc embeds source paths), `SYMDEV_GXX`, 
 `SYMDEV_GCC_LIB`, `SYMDEV_GCC_TARGET_LIB` all inside `moved`. `symdev-elf2e32` stamps
 `SystemTime::now()` into the E32 header (two baseline builds differ in bytes 21–24,
 `iHeaderCrc`, and 37–40, `iTimeLo`), so both sides ran under an `LD_PRELOAD` shim that pins
-`CLOCK_REALTIME` (outside git); two baseline builds are then identical.
+`CLOCK_REALTIME` (outside git); two baseline builds are then identical. Without the shim
+the new prefix's `.exe` differ from the baseline's only at 0x14–0x17 (`iHeaderCrc`) and
+0x24–0x27 (`iTimeLo`); with 0x14–0x17 and 0x24–0x2B masked they are equal, and the
+`.elf` files are equal byte for byte. Assembler on each side: baseline gas **2.35** (the
+one inside `~/gcc-builds/gcc-12.1.0`) with ld/ar 2.29.1; new prefix gas, ld and ar
+**2.29.1**.
 
 | example | `.exe` | `.elf` |
 |---|---|---|
