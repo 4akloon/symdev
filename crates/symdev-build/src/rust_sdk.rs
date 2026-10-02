@@ -197,6 +197,31 @@ mod tests {
         assert!(!RustSdk::HELLO_MAIN.contains("no_main"));
     }
 
+    /// A tree holding `files` (relative paths), as an installed package would.
+    fn tree_with(files: &[&str]) -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        for file in files {
+            let path = tmp.path().join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, b"{}").unwrap();
+        }
+        tmp
+    }
+
+    /// `RustSdkPackage::REQUIRED` is exactly what `at` checks: a tree with those files is an
+    /// SDK, and a tree missing any one of them is not.
+    #[test]
+    fn the_installed_package_checks_what_at_requires() {
+        let required = symdev_sdk::RustSdkPackage::REQUIRED;
+        let whole = tree_with(required);
+        RustSdk::at(whole.path()).unwrap();
+        for missing in required {
+            let rest: Vec<_> = required.iter().copied().filter(|f| f != missing).collect();
+            let partial = tree_with(&rest);
+            assert!(RustSdk::at(partial.path()).is_err(), "{missing}");
+        }
+    }
+
     #[test]
     fn missing_sdk_names_the_env_var() {
         let err = RustSdk::at(Path::new("/nonexistent/symbian-rs")).unwrap_err();

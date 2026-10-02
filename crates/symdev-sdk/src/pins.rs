@@ -18,6 +18,12 @@ impl Pins {
             Device::NokiaE52 => PackageId::pinned("sdk;s60-3rd-fp2;1.1"),
         }
     }
+
+    /// The Rust SDK (`symbian-rs`) published with this symdev release: the two come from
+    /// one tag, so the version is the workspace's (spec §12).
+    pub fn rust_sdk() -> PackageId {
+        PackageId::pinned(concat!("rust-sdk;", env!("CARGO_PKG_VERSION")))
+    }
 }
 
 #[cfg(test)]
@@ -40,9 +46,29 @@ mod tests {
         );
     }
 
+    /// `version` under `[workspace.package]` in the workspace's `Cargo.toml`.
+    fn workspace_version() -> String {
+        let manifest: toml::Table = include_str!("../../../Cargo.toml").parse().unwrap();
+        manifest["workspace"]["package"]["version"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    }
+
+    #[test]
+    fn the_rust_sdk_is_the_one_of_this_symdev_release() {
+        let expected = format!("rust-sdk;{}", workspace_version());
+        assert_eq!(Pins::rust_sdk(), PackageId::parse(&expected).unwrap());
+    }
+
     #[test]
     fn every_pin_is_a_valid_id() {
-        for pinned in [Pins::gcce(), Pins::platform_sdk(Device::NokiaE52)] {
+        let pins = [
+            Pins::gcce(),
+            Pins::platform_sdk(Device::NokiaE52),
+            Pins::rust_sdk(),
+        ];
+        for pinned in pins {
             assert_eq!(PackageId::parse(pinned.as_str()).unwrap(), pinned);
         }
     }
