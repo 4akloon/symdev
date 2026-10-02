@@ -94,14 +94,15 @@ and their causes are tracked in [docs/research/size-levers.md](docs/research/siz
 | GCCE cross compiler (GCC 12.1.0 + binutils 2.29.1, `arm-none-symbianelf`) | C++ projects and the Rust SDK's C++ shims | package `gcce;12.1.0`, or `SYMDEV_GXX`, `SYMDEV_LD`, `SYMDEV_GCC_LIB`, `SYMDEV_GCC_TARGET_LIB` |
 | S60 3rd FP2 SDK (headers, `.dso` stubs, static libraries) | compiling and linking | package `sdk;s60-3rd-fp2;1.1`, or `SYMDEV_EPOCROOT` |
 | Self-signing password (4+ characters) | `symdev package` | `SYMDEV_SIGN_PASSWORD` |
-| Rust nightly, pinned in `symbian-rs/rust-toolchain.toml` | the Rust SDK (`-Zbuild-std`) | rustup |
+| Rust SDK (`symbian-rs/`) | Rust projects only | `SYMDEV_RUST_SDK`, else the checkout symdev was built from, else package `rust-sdk;<symdev's version>` |
+| Rust nightly, pinned in `symbian-rs/rust-toolchain.toml` | Rust projects only (`-Zbuild-std`); a C++ project needs no Rust | rustup |
 | EKA2L1 (optional) | `symdev run`, `symdev test --emulator` | `SYMDEV_EKA2L1` |
 
 ### Toolchain packages
 
 `symdev build` installs the GCCE and platform SDK packages it is missing into `SYMDEV_HOME`
-(default `~/.local/share/symdev`), printing one line per download, and touches no network once
-they are there. `--offline` forbids downloading: a missing package is then an error that names
+(default `~/.local/share/symdev`), and for a Rust project the Rust SDK, printing one line per
+download, and touches no network once they are there. `--offline` forbids downloading: a missing package is then an error that names
 the install command. `symdev package` installs nothing. Downloads are cached in
 `~/.cache/symdev/downloads` and checked against the index's SHA-256 before they are unpacked.
 
@@ -143,6 +144,12 @@ mirror); `builtin = false` at the top of the file turns the built-in source off.
 Package ids contain `;` (`gcce;12.1.0`), so quote them in a shell. There is no `update`: a new
 version is a new id, installed beside the old one, which stays until it is uninstalled.
 
+A Rust project's SDK is `SYMDEV_RUST_SDK` when it is set; else the `symbian-rs/` of the source
+checkout symdev was built from, while that still exists, so a developer working on the SDK
+keeps building against their tree; else the `rust-sdk` package of the same version as symdev,
+installed like GCCE. `symdev new --lang rust` writes the absolute path of the SDK it found into
+the new project's `Cargo.toml` and `.cargo/config.toml`.
+
 EKA2L1 is GPL-3.0 and runs as a separate process; it is never linked into or copied into this
 repository. The SDK, ROM images and real signing keys are never committed. The only key material
 in the tree is the throwaway DSA keys, certificate and signed test packages under
@@ -151,10 +158,32 @@ tests, which sign nothing else.
 
 ## Quick start
 
+Get `symdev` one of two ways.
+
+**Prebuilt** — available from the first release on; until then, build from source:
+
+```bash
+curl -fsSL https://pub-15670d2771364287b9982e497c29f586.r2.dev/install.sh | sh
+```
+
+It installs the newest `symdev` package into `SYMDEV_HOME` and links `~/.local/bin/symdev` to
+it; running it again updates. A C++ project then needs no Rust at all. A Rust project needs
+rustup (the project's `rust-toolchain.toml` names the nightly), and its first `symdev build`
+installs the `rust-sdk` package beside GCCE.
+
+**From source**, with Rust 1.98.1, in a clone of this repository:
+
 ```bash
 cargo build --release --workspace
 export PATH="$PWD/target/release:$PATH"
+```
 
+A `symdev` built this way builds Rust projects against the clone's `symbian-rs/` for as long as
+it is there.
+
+Then:
+
+```bash
 symdev new hello --lang rust              # or --lang cpp; add --template gui for an Avkon app
 cd hello
 symdev build                              # installs missing toolchain packages; build/hello.exe

@@ -172,7 +172,7 @@ Spec §12, symdev side, plus the `http_fetch` proxy exposure left above (row 3).
 | 2 resolution order in `Provision` (env → checkout → package) | done |
 | 3 scaffold: how a new project names the SDK; proposal | done (proposal only) |
 | 4 `http_fetch` tests immune to `HTTP_PROXY`/`ALL_PROXY` | done |
-| 5 README / examples README: the prebuilt route | todo |
+| 5 README / examples README: the prebuilt route | done |
 
 Facts (before the change, commit 553fb0f):
 
@@ -311,3 +311,20 @@ reads it).
   parent's environment is never changed (`set_var` would race the parallel tests). RED
   seen with `direct` = `new` (the child's `direct` hit the spent proxy: connection refused).
   ureq 3.4.2 tunnels plain-`http` requests through an HTTP proxy with `CONNECT` too.
+
+### Docs (task 5) and what they found
+
+- README: Requirements gains a "Rust SDK" row (variable → checkout → `rust-sdk` package) and
+  the nightly row says Rust projects only; "Toolchain packages" names the Rust SDK and the
+  order; Quick start has the prebuilt route (`curl -fsSL
+  https://pub-15670d2771364287b9982e497c29f586.r2.dev/install.sh | sh`, "from the first
+  release on") and keeps the from-source one. examples/README: how to get `symdev`, C++
+  needs no Rust, Rust needs rustup and gets `rust-sdk`.
+- `symbian-rs/examples/*` are members of the `symbian-rs` workspace (`version.workspace`,
+  `path = "../../crates/…"`): a copy outside the clone does not build, and inside the clone
+  a prebuilt `symdev` would compile the clone's crates against the package's shims and
+  libcalls (the mix of task 3). So spec §8 item 5's "the same works for
+  `symbian-rs/examples/hello` through the rust-sdk package" can only mean `symdev new hello
+  --lang rust` (same `src/main.rs` — `RustSdk::HELLO_MAIN` is that file — same UID3), and
+  the examples README says to build the in-tree examples with a symdev from the same clone
+  or `SYMDEV_RUST_SDK=<clone>/symbian-rs`. For the lead: reword item 5.
