@@ -3533,7 +3533,9 @@ tool, which never saw such an ELF — the emulator, not a byte golden, is their 
 * **(c) Impossible without GCCE:** compiling any C++ — an MMP project, user C++ inside a
   Rust project, a new or changed shim (each needs a `rust-sdk` release), a shim for another
   SDK than S60 3rd FP2; a per-application compile-time C++ setting other than the UID;
-  libsupc++/libgcc members outside the shipped closure. Not tried here: a Rust DLL
+  libsupc++/libgcc members outside the shipped closure. Still needed and not GCCE: the
+  host's own C linker `cc` for build scripts and the SDK's proc macros (`bf03b11`). Not
+  tried here: a Rust DLL
   (`edll.lib`, exports), `std` examples, a device.
 
 **Evidence.** 2026-10-02, this host. Outside git, `~/src/rust-lld-spike/`: `env.sh`,

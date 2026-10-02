@@ -13,7 +13,7 @@ Branch: `rust-lld-spike` (worktree `~/worktrees/symdev/rust-lld-spike`). No prod
 - [x] 3. Replay with rust-lld; adaptations; readelf comparison
 - [x] 4. elf2e32 on lld ELF; E32 compare
 - [x] 5. EKA2L1 run + screenshot; leave probe
-- [ ] 6. Effort estimate; experiment 109 record
+- [x] 6. Effort estimate; experiment 109 record
 
 ## Facts
 - Setup: symdev built from worktree (`target/debug/symdev`); env in `~/src/rust-lld-spike/env.sh`
@@ -141,6 +141,8 @@ Branch: `rust-lld-spike` (worktree `~/worktrees/symdev/rust-lld-spike`). No prod
 ## Dead ends
 
 ## Next step
-Experiment 109 drafted at the end of experiment-backlog.md; `BATCH_PLACEHOLDER` waits for
-`batch.sh` (15 more examples GNU vs lld, results in `~/src/rust-lld-spike/logs/batch.txt`).
-Then verification pass and report.
+Done: experiment 109 complete (batch filled in: 15/15 examples link + post-link, import words
+identical; notes/query DT_NEEDED keep eikcoctl under GNU only). Verification 2026-10-02: cargo
+test --workspace 714 passed / 0 failed, clippy 0 warnings (docs-only branch); nogcce == lld E32
+for 4/4; fork-on-GNU == symdev for 4/4; 0 gcc-builds accesses in all 4 straces; none of my
+emulator PIDs alive. Branch diff vs merge-base: only experiment-backlog.md and this note.
