@@ -111,10 +111,13 @@ environment that sets all of them installs nothing and builds as before. `SYMDEV
 the `ar` that otherwise sits beside the linker, and `SYMDEV_ELF2E32` an external post-linker in
 place of the native one.
 
-Packages come from the sources listed in `~/.config/symdev/sources.toml`
-(`$XDG_CONFIG_HOME/symdev/sources.toml`), searched in order. A built-in public source for GCCE
-is planned but not published yet, so for now list a source or set the variables. The S60 SDK
-is not redistributable and the built-in source never carries it: it lives in the owner's
+Packages come from symdev's built-in public source, searched first, and then from the
+sources listed in `~/.config/symdev/sources.toml` (`$XDG_CONFIG_HOME/symdev/sources.toml`), in
+order. The built-in source is the owner's public bucket,
+`https://pub-15670d2771364287b9982e497c29f586.r2.dev/`, and every symdev already queries it; it
+carries GCCE, `symdev` and `rust-sdk` from the first release on. Until that release its
+`index.toml` does not exist (HTTP 404) and the source is skipped, so for now list a source or set
+the variables. The S60 SDK is not redistributable and the built-in source never carries it: it lives in the owner's
 private bucket, which a build reads only when that source is listed here **and** its key is in
 the environment. Otherwise set `SYMDEV_EPOCROOT` to your own SDK.
 
