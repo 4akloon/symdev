@@ -6,6 +6,7 @@ use super::SdkHome;
 use crate::{ArchiveEntry, Auth, Fetch, FileFetch, Host, PackageId, ReproducibleTarGz};
 use crate::{Result, SdkError, SourceSpec};
 
+mod own_receipt;
 mod placement;
 mod receipts;
 

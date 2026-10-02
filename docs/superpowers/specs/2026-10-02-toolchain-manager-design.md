@@ -127,10 +127,15 @@ order wins (built-in first). SHA-256 and size are always checked before extracti
 1. take `$SYMDEV_HOME/.lock` (`std::fs::File::lock`), so parallel builds do not race;
 2. download into the cache (skip if the cached file already has the right size and hash);
 3. verify size and SHA-256; on mismatch delete the file and fail (§5);
-4. extract into `$SYMDEV_HOME/.staging/<random>`, refusing absolute paths, `..`, and links
-   that point outside the package;
-5. rename the staging directory to `$SYMDEV_HOME/<id path>`;
-6. write the receipt `.symdev-package.toml` (id, sha256, source name, archive URL) **last**.
+4. extract into `$SYMDEV_HOME/.staging/<random>`, refusing absolute paths, `..`, links
+   that point outside the package, and a `.symdev-package.toml` or
+   `.symdev-package.toml.partial` at the archive's root (an archive cannot bring its own
+   receipt);
+5. write the receipt `.symdev-package.toml` (id, sha256, source name, archive URL) into the
+   staging directory;
+6. rename the staging directory to `$SYMDEV_HOME/<id path>` **last**, so the package
+   appears with its receipt in one step (review M3, 2026-10-02; the receipt used to be
+   written after the rename).
 
 A package directory without a receipt is unfinished and is replaced on the next install.
 A package never sits inside another or above one: `install` refuses such an id (naming

@@ -78,10 +78,11 @@ impl SdkHome {
     }
 
     /// Spec §3 steps 1–6. Takes `root/.lock`, re-checks `installed` after locking (another
-    /// process may have finished it), clears stale staging, reuses a cached archive only
-    /// if its size and SHA-256 match, deletes a mismatching download and returns
-    /// `HashMismatch`, extracts into `root/.staging/<pid>-<n>`, replaces a receipt-less
-    /// package dir, renames, and writes the receipt last.
+    /// process may have finished it), refuses a place inside or above another package,
+    /// clears stale staging, reuses a cached archive only if its size and SHA-256 match,
+    /// deletes a mismatching download and returns `HashMismatch`, extracts into
+    /// `root/.staging/<pid>-<n>`, writes the receipt there, replaces a receipt-less
+    /// package dir, and renames the staging dir into place last.
     ///
     /// `starting` runs under the lock once the package is known to be missing, right
     /// before the download or extraction: the caller announces the install there, so a
@@ -108,9 +109,20 @@ impl SdkHome {
         let n = STAGED.fetch_add(1, Ordering::Relaxed);
         let staging = staging_root.join(format!("{}-{n}", std::process::id()));
         fs::create_dir_all(&staging).map_err(io_at(&staging))?;
-        if let Err(e) = TarGz::new(&archive, &url).extract(&staging) {
-            // The extraction error is the one to report; a staging dir that cannot be
-            // removed now is removed by the next install.
+        let receipt = Receipt {
+            id: id.clone(),
+            sha256: entry.sha256.clone(),
+            source: source.name.clone(),
+            url,
+        };
+        // The receipt goes in before the rename, so the package appears with it at once.
+        let staged = TarGz::new(&archive, &receipt.url)
+            .extract(&staging)
+            .and_then(|()| Self::refuse_own_receipt(&staging, &receipt.url))
+            .and_then(|()| receipt.write(&staging));
+        if let Err(e) = staged {
+            // That error is the one to report; a staging dir that cannot be removed now
+            // is removed by the next install.
             let _ = fs::remove_dir_all(&staging);
             return Err(e);
         }
@@ -120,14 +132,22 @@ impl SdkHome {
             fs::create_dir_all(parent).map_err(io_at(parent))?;
         }
         fs::rename(&staging, &dir).map_err(io_at(&dir))?;
-        let receipt = Receipt {
-            id: id.clone(),
-            sha256: entry.sha256.clone(),
-            source: source.name.clone(),
-            url,
-        };
-        receipt.write(&dir)?;
         Ok(receipt)
+    }
+
+    /// An archive may not bring its own receipt, nor anything under the name the receipt
+    /// is written to first: only symdev says a package is installed.
+    fn refuse_own_receipt(staging: &Path, url: &str) -> Result<()> {
+        for name in [Receipt::FILE, Receipt::PARTIAL] {
+            if fs::symlink_metadata(staging.join(name)).is_ok() {
+                return Err(SdkError::UnsafeEntry {
+                    url: url.to_string(),
+                    entry: name.to_string(),
+                    reason: "has the name of symdev's package receipt",
+                });
+            }
+        }
+        Ok(())
     }
 
     /// The verified archive in the cache: the cached copy if it has the right size and
