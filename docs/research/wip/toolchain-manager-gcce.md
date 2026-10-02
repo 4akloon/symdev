@@ -63,11 +63,39 @@ Downloads/builds: `~/src/gcce-recipe/` (outside git). Recipes: `~/projects/symde
   when built at the same path (rustc embeds source paths: the Rust hello's `.elf`
   differed between `work/baseline` and `work/baseline2`). Helper
   `~/src/gcce-recipe/work/build-examples.sh` builds at one fixed path `work/run`.
+- With `LD_PRELOAD=work/fixtime.so FIXTIME_EPOCH=1790000000` (pins `CLOCK_REALTIME`; test
+  aid outside git) two baseline builds give **identical** `.exe` files (all three).
 - Same g++ 12.1.0, gas 2.29.1 instead of 2.35 (`-B` wrapper): every `.o` that has a
   COMDAT group differs (gas 2.35 lists the group member's `.rel` section in `.group`,
   12 vs 8 bytes; `objdump -dr` identical), but every `.elf` and `.exe.map` is identical.
 
+- The original gcc build was run through `~/.local/bin/make`, a wrapper that exports
+  `CPATH`, `CPLUS_INCLUDE_PATH` (host libstdc++ 15 headers), `LIBRARY_PATH`,
+  `GCC_EXEC_PREFIX` to every child — including the new cross compiler building the target
+  libraries: `build-gcc/arm-none-symbianelf/libstdc++-v3/config.log` has 55 hits of
+  `~/.local/native-cc/usr/include/c++/15/...` (each test that reached them failed on
+  `features.h`). A Debian container has no such leak; build.sh unsets these variables.
+- Prerequisites: `gmp-6.1.0.tar.bz2`, `mpfr-4.1.0.tar.bz2`, `mpc-1.2.1.tar.gz` from
+  ftp.gnu.org (Good signatures: Niels Möller, Vincent Lefevre, Andreas Enge) have the same
+  SHA-256 as the copies on gcc.gnu.org/pub/gcc/infrastructure and in `~/src/GCC4Symbian`;
+  `isl-0.16.1.tar.bz2` (gcc.gnu.org only, no signature) equals the GCC4Symbian copy.
+  GCC4Symbian files at fe1b15a via raw.githubusercontent.com equal the local clone.
+- GCC4Symbian has no LICENSE file; its scripts say "Attribution-NonCommercial 4.0".
+  The libgcov file is GCC's own (GPL-3+ with the runtime exception) plus 8 lines; the two
+  headers carry no notice. **Owner's call** before they go into a public package.
+
+## Dead ends
+
+- build-a, first run (env -i, PATH = clean make + `~/.local/bin` + `/usr/bin`): in-tree
+  mpfr inherits GCC's `--enable-lto`, builds itself with `-flto` and checks that
+  `ar` handles LTO objects; `/usr/bin/ar` has no `bfd-plugins` here, and `gcc-ar` was not
+  on PATH → `configure: error: Link Time Optimisation is not supported`. The original
+  passed because the make wrapper put `~/.local/native-cc/usr/bin` (ar with
+  `../lib/bfd-plugins/liblto_plugin.so`) first. Rerun with that dir on PATH (after the
+  `~/.local/bin` wrappers). A Debian container needs `gcc-ar` (package gcc) or
+  `/usr/lib/bfd-plugins/liblto_plugin.so` — derived, not observed.
+
 ## Next step
 
-Write build.sh (binutils 2.29.1 + gcc with the GCC4Symbian libgcov fix, sys-include,
-in-tree gmp/mpfr/mpc/isl), run it into prefix-a.
+build-a running (`~/src/gcce-recipe/build-a.log`), then compare prefix-a with
+`~/gcc-builds`, relocate to `moved`, build examples.
