@@ -125,3 +125,31 @@ fn the_toolchain_variables_come_from_the_lookup() {
     assert_eq!(tools.gxx, tmp.path());
     assert_eq!(tools.epocroot, tmp.path());
 }
+
+#[test]
+fn the_epocroot_paths_do_not_check_the_compiler_variables() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().display().to_string();
+    let p = provision(&[
+        ("SYMDEV_EPOCROOT", &root),
+        ("SYMDEV_GXX", "/nonexistent/symdev/g++"),
+        ("SYMDEV_ELF2E32", "/nonexistent/symdev/elf2e32"),
+    ]);
+    let device = || panic!("SYMDEV_EPOCROOT is set: no device is needed");
+    assert_eq!(p.epocroot(device).unwrap().path(), tmp.path());
+    let installed = p.installed_epocroot(Device::NokiaE52).unwrap();
+    assert_eq!(installed.path(), tmp.path());
+}
+
+#[test]
+fn a_stale_epocroot_still_names_itself() {
+    let p = provision(&[("SYMDEV_EPOCROOT", "/nonexistent/symdev/sdk")]);
+    let e = p
+        .installed_epocroot(Device::NokiaE52)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        e.contains("SYMDEV_EPOCROOT is set to /nonexistent/symdev/sdk"),
+        "{e}"
+    );
+}

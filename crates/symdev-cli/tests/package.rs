@@ -160,3 +160,33 @@ fn package_reports_a_missing_install_file() {
         .stderr(predicate::str::contains("file to install not found"))
         .stderr(predicate::str::contains("games.mbm"));
 }
+
+/// `symdev package` reads only the EPOCROOT; a stale compiler variable is not its
+/// business.
+#[test]
+fn package_ignores_a_stale_compiler_variable() {
+    let dir = tempfile::tempdir().unwrap();
+    write_toml(&dir, &hello_with_uid3());
+    std::fs::create_dir_all(dir.path().join("group")).unwrap();
+    std::fs::write(
+        dir.path().join("group/bld.inf"),
+        "PRJ_MMPFILES\nhello.mmp\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("group/hello.mmp"),
+        "TARGET hello.exe\nTARGETTYPE EXE\nSOURCE main.cpp\n",
+    )
+    .unwrap();
+    dummy_e32(&dir);
+    let epocroot = fake_epocroot(&dir);
+    bin()
+        .current_dir(&dir)
+        .env("SYMDEV_EPOCROOT", &epocroot)
+        .env("SYMDEV_GXX", "/nonexistent/symdev/g++")
+        .env("SYMDEV_SIGN_PASSWORD", "secret")
+        .arg("package")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("hello.sisx"));
+}

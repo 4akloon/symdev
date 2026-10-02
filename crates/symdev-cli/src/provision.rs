@@ -64,12 +64,13 @@ impl Provision {
     }
 
     /// The EPOCROOT for reading a `bld.inf`, installing the SDK if it is missing. The
-    /// device is asked for only then, so `SYMDEV_EPOCROOT` needs no `symdev.toml`.
+    /// device is asked for only then, so `SYMDEV_EPOCROOT` needs no `symdev.toml`. Only
+    /// `SYMDEV_EPOCROOT` is checked: the compiler variables are not this path's business.
     pub fn epocroot(
         &self,
         device: impl FnOnce() -> Result<Device, Error>,
     ) -> Result<Epocroot, Error> {
-        let o = self.checked_overrides()?;
+        let o = self.overrides();
         if !o.needs_sdk() {
             return Epocroot::resolve(&o, None);
         }
@@ -84,7 +85,7 @@ impl Provision {
     /// The same for `symdev package`, which installs nothing (spec §4): the SDK is
     /// there after `symdev build`, or the error says how to get it.
     pub fn installed_epocroot(&self, device: Device) -> Result<Epocroot, Error> {
-        let o = self.checked_overrides()?;
+        let o = self.overrides();
         if !o.needs_sdk() {
             return Epocroot::resolve(&o, None);
         }
