@@ -414,7 +414,10 @@ Rust for a C++ project.
 - **Finding the Rust SDK.** `SYMDEV_RUST_SDK` first; then the source checkout symdev was built
   from, if it still exists (a developer working on the SDK keeps using their tree); else the
   installed `rust-sdk` package, auto-installed like GCCE. Today's compile-time path alone
-  cannot work for a prebuilt binary.
+  cannot work for a prebuilt binary. A release build has **no** checkout step:
+  `RustSdk::CHECKOUT` is `None` when `SYMDEV_RELEASE` is set (not empty) at compile time, so
+  on another machine nobody can plant a `symbian-rs` at the path of the machine that built
+  it (review, 2026-10-02). The release recipe must build with `SYMDEV_RELEASE=1`.
 - **Known gap (follow-up, not phase 1).** `symdev new --lang rust` writes absolute SDK paths
   into the project (`Cargo.toml` path dependencies, `.cargo/config.toml` `build.target`). With
   the package route these name `rust-sdk/<ver>/`, so after an upgrade a build silently mixes

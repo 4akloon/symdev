@@ -30,7 +30,7 @@ type Lookup = Box<dyn Fn(&str) -> Option<OsString>>;
 
 impl Provision {
     pub fn from_env(offline: bool) -> Provision {
-        let checkout = Some(PathBuf::from(RustSdk::CHECKOUT));
+        let checkout = RustSdk::CHECKOUT.map(PathBuf::from);
         Self::from_lookup(offline, checkout, |key| std::env::var_os(key))
     }
 

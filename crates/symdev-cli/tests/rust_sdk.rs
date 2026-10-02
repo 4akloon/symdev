@@ -128,7 +128,7 @@ fn a_symdev_built_here_scaffolds_against_its_checkout_and_installs_nothing() {
         .success()
         .stderr(predicate::str::contains("installing").not());
     let cargo = fs::read_to_string(w.tmp.path().join("app/Cargo.toml")).unwrap();
-    let checkout = canonical(Path::new(RustSdk::CHECKOUT));
+    let checkout = canonical(Path::new(RustSdk::CHECKOUT.unwrap()));
     assert!(
         cargo.contains(&format!("{checkout}/crates/symbian-std")),
         "{cargo}"
@@ -162,7 +162,7 @@ fn the_variable_wins_over_the_checkout() {
 #[test]
 fn the_prebuilt_copy_names_a_checkout_that_does_not_exist() {
     let missing = common::prebuilt::missing_checkout();
-    assert_eq!(missing.len(), RustSdk::CHECKOUT.len());
+    assert_eq!(missing.len(), RustSdk::CHECKOUT.unwrap().len());
     assert!(!Path::new(&missing).exists());
-    assert!(Path::new(RustSdk::CHECKOUT).exists());
+    assert!(Path::new(RustSdk::CHECKOUT.unwrap()).exists());
 }

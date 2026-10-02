@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn rust_project_has_cargo_files_and_no_mmp() {
         let dir = scratch();
-        let checkout = || RustSdk::at(Path::new(RustSdk::CHECKOUT));
+        let checkout = || RustSdk::at(Path::new(RustSdk::CHECKOUT.unwrap()));
         let root = create_project(&dir, "hello", Template::Console, Lang::Rust, checkout).unwrap();
         let sdk = checkout().unwrap();
         let read = |p: &str| std::fs::read_to_string(root.join(p)).unwrap();

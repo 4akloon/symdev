@@ -390,6 +390,7 @@ changed; every behaviour fix starts with a failing test. Baseline `cargo test --
 | M6 | `sdk list --offline` builds a full `SdkManager` | yes: `list` called `provision.manager()` (sources.toml, keys, host) before reading receipts; CLI test with `builtin = maybe` RED (`bad sources file`) | fixed: `list` reads `provision.home()?.list()` first and builds the manager only without `--offline`; `SdkManager::home()` lost its last caller and is deleted. CLI test `tests/sdk_list.rs`: bad `sources.toml`, then a half key pair — both list the installed package, nothing on stderr |
 | M7 | an id without `;` gets no quoting hint | yes: `symdev sdk install gcce` said only "needs a kind and a version" | fixed: `cli.rs` parses `sdk install`/`uninstall` ids through `package_id`, which adds `; quote the id: '<pinned id of that kind, else gcce's>' (unquoted, the shell ends the command at the `;`)` for a non-empty id without `;`; library parsing (`PackageId::parse`, index, receipts) unchanged. CLI test (RED first): `install gcce` → `'gcce;12.1.0'`, `uninstall sdk` → `'sdk;s60-3rd-fp2;1.1'`, `gcce;..` gets no hint |
 | M5 | README calls the built-in source "planned but not published yet" | yes: `SourceSpec::builtin()` is searched first by every build; `curl` on 2026-10-02: the bucket's `index.toml` and `install.sh` are both HTTP 404, and `Catalog::find` skips a source whose index cannot be read (its reason goes into the not-found error) | fixed: README "Toolchain packages" names the built-in source and its URL, says it is queried today, carries GCCE, `symdev` and `rust-sdk` from the first release, and is skipped while its `index.toml` 404s |
+| Extra | `RustSdk::CHECKOUT` must not exist in release builds (lead's ruling) | yes: a prebuilt binary carried the CI build path and used it if `RustSdk::at` accepted whatever is there | fixed: `CHECKOUT: Option<&str>` = `RustSdk::checkout(option_env!("SYMDEV_RELEASE"), <path>)` (private `const fn`: `None` when set and not empty); `Provision::from_env` maps it; tests unwrap it. Unit test of both branches (`Some("1")` → none, `None`/`Some("")` → the path). Checked by hand: `SYMDEV_RELEASE=1 cargo build -p symdev-cli` into a scratch target dir — the binary holds the checkout path 0 times (the normal build: once), and `symdev --offline new app --lang rust` in an empty home asks for `rust-sdk;0.1.0` where the normal build scaffolds from the checkout. Spec §12 says the release recipe must set it |
 
 Facts found on the way:
 
@@ -407,6 +408,9 @@ symdev-packages call sites (not edited; that repository builds against this crat
   `HttpFetch::new(name, signer)` becomes `HttpFetch::new(&spec, signer)`, built before
   `spec` moves into the `Bucket`. The publisher's signed PUTs and GETs then follow no
   redirect, and an `https` bucket gets no plain-HTTP request.
+- Extra: `recipes/symdev/0.1.0/build.sh:89` (`cargo build --release --locked -p symdev-cli
+  --target "$target"`) must run with `SYMDEV_RELEASE=1` in its environment, or the prebuilt
+  symdev keeps the build machine's checkout as a Rust SDK fallback.
 - M4: `publish/src/bucket.rs:4-5` imports `resolve_url` (drop it from the `use`);
   `publish/src/bucket.rs:46` `resolve_url(&self.spec.base, key)` becomes
   `self.spec.resolve(key)`. No call of `builtin_source`/`BUILTIN_SOURCE` there.

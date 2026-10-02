@@ -5,9 +5,9 @@ use symdev_core::{Error, Result};
 
 /// The `symbian-rs/` workspace: the target JSON, the SDK crates a project depends on by
 /// path, and the pinned toolchain. Which one a build uses is the CLI's `Provision`'s
-/// business (spec §12): `SYMDEV_RUST_SDK`, else [`Self::CHECKOUT`], else the installed
-/// `rust-sdk` package. The scaffold writes the absolute paths into the project
-/// (experiment 65).
+/// business (spec §12): `SYMDEV_RUST_SDK`, else [`Self::CHECKOUT`] (none in a release
+/// build), else the installed `rust-sdk` package. The scaffold writes the absolute paths
+/// into the project (experiment 65).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RustSdk {
     root: PathBuf,
@@ -16,9 +16,25 @@ pub struct RustSdk {
 impl RustSdk {
     /// The `symbian-rs/` of the source checkout this `symdev` was built from. It is where
     /// [`Self::TOOLCHAIN_FILE`] and [`Self::HELLO_MAIN`] were read; a developer working on
-    /// the SDK keeps building against it while it exists. A prebuilt binary's checkout is
-    /// a path on the machine that built it.
-    pub const CHECKOUT: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../symbian-rs");
+    /// the SDK keeps building against it while it exists.
+    ///
+    /// `None` in a release build: one compiled with `SYMDEV_RELEASE` set (to anything but
+    /// the empty string), as the release recipe must do. A prebuilt binary's checkout
+    /// would be a path of the machine that built it, where on another machine any local
+    /// user could plant a `symbian-rs` for every other user's builds to pick up.
+    pub const CHECKOUT: Option<&'static str> = Self::checkout(
+        option_env!("SYMDEV_RELEASE"),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../../symbian-rs"),
+    );
+    /// `tree`, unless `release` (`SYMDEV_RELEASE` as the compiler saw it) is set and not
+    /// empty.
+    const fn checkout(release: Option<&str>, tree: &'static str) -> Option<&'static str> {
+        match release {
+            Some(release) if !release.is_empty() => None,
+            _ => Some(tree),
+        }
+    }
+
     /// The one Rust target (design spec §3): `targets/arm-symbian-e32.json`.
     pub const TARGET: &'static str = "arm-symbian-e32";
     /// `symbian-rs/rust-toolchain.toml`, copied verbatim into every scaffolded project so
@@ -196,13 +212,24 @@ mod tests {
 
     #[test]
     fn checkout_sdk_is_found_and_has_the_target() {
-        let sdk = RustSdk::at(Path::new(RustSdk::CHECKOUT)).unwrap();
+        let sdk = RustSdk::at(Path::new(RustSdk::CHECKOUT.unwrap())).unwrap();
         assert!(sdk.target_spec().ends_with("targets/arm-symbian-e32.json"));
         assert!(sdk.crate_dir("symbian-std").join("Cargo.toml").is_file());
         assert!(RustSdk::TOOLCHAIN_FILE.contains("channel = \"nightly-"));
         assert!(RustSdk::HELLO_MAIN.contains("#[symbian_std::main]"));
         assert!(RustSdk::HELLO_MAIN.contains("fn main() -> Result<()>"));
         assert!(!RustSdk::HELLO_MAIN.contains("no_main"));
+    }
+
+    /// A release build (`SYMDEV_RELEASE` set when it is compiled) has no checkout to fall
+    /// back on: on another machine, anyone could plant a `symbian-rs` at the path of the
+    /// machine that built it.
+    #[test]
+    fn a_release_build_has_no_checkout() {
+        let tree = "/build/symdev/crates/symdev-build/../../symbian-rs";
+        assert_eq!(RustSdk::checkout(Some("1"), tree), None);
+        assert_eq!(RustSdk::checkout(None, tree), Some(tree));
+        assert_eq!(RustSdk::checkout(Some(""), tree), Some(tree));
     }
 
     /// A tree holding `files` (relative paths), as an installed package would.
