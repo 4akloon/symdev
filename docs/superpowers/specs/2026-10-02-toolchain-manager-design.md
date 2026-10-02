@@ -515,21 +515,30 @@ unreadable, with an error naming the URL and which of the three it is. A source 
 `sources.toml` may set `key = "builtin"` (the built-in keys) or `key = "<base64 Ed25519 public
 key>"`; then the same rule holds for it. Without `key` a source's index is read unverified, as
 in 0.1.0 (the tests' `file://` sources stay unsigned unless a test opts in). Only the verified
-bytes are parsed. The owner's private source uses `key = "builtin"` once 0.2.0 is installed
-(0.1.0's `sources.toml` parser refuses unknown keys).
+bytes are parsed. An index refused for its signature is a warning on stderr even when a later
+source provides the package (a sign of tampering is never silent). A `key` that is not a valid
+or is a weak (small-order) Ed25519 key is refused when `sources.toml` is read. The owner's
+private source uses `key = "builtin"` once 0.2.0 is installed (0.1.0's `sources.toml` parser
+refuses unknown keys).
 
 **Signing in the publisher.** `publish public|private` signs every index it writes with
-`PUBLISH_SIGNING_KEY`, which an upload requires; a `--dry-run` signs with it when it is set and
-says when it is not. It extends only an index whose signature verifies with a built-in key or
+`PUBLISH_SIGNING_KEY`, which an upload requires and which must be one of symdev's built-in
+keys (a stale or mistyped key would sign an index every client refuses, and the right key
+could then not even re-sign it; review, 2026-10-03); the upload names the signer's
+fingerprint. A `--dry-run` signs with it when it is set and says when it is not, or when
+symdev would not trust it. It extends only an index whose signature verifies with a built-in key or
 the signing key's own public half: a bad signature is refused (the bucket was written by
 someone else), and an unsigned index is refused by an upload and only warned about in a dry
 run. This check was added to the lead's design (2026-10-03) because without it the next CI
 publish would sign whatever a leaked R2 key had written, which is the attack the signature
-exists to stop. `publish sign-index --bucket public|private [--dry-run]` re-signs the existing
-index as it is: it reads it, checks that a signature it has verifies and that it parses, lists
-its packages, signs the same body and uploads it with `no-cache`. It is how the indexes
-published before 0.2.0 get their signature, and the one way to accept an unsigned index, so
-the owner reads the list first.
+exists to stop. `publish sign-index --bucket public|private [--accept-unsigned <sha256>]
+[--dry-run]` re-signs the existing index as it is: it reads it, checks that a signature it has
+verifies and that it parses, lists its archives, signs the same body and uploads it with
+`no-cache` (nothing when no byte would change). It is how the indexes published before 0.2.0
+get their signature, and the one way to accept an unsigned index. After that migration an
+unsigned index means someone else wrote the bucket, so an unsigned index is signed only with
+`--accept-unsigned` and the SHA-256 that the dry run printed for it: exactly the bytes the
+owner checked, never a later swap (review, 2026-10-03).
 
 **install.sh** verifies the index when `openssl version` reports OpenSSL 3 or newer
 (`openssl pkeyutl -verify -pubin -inkey <pem> -rawin -in <body> -sigfile <sig>`), with the
@@ -541,11 +550,22 @@ for mirrors signed with their own key.
 **CI.** `publish.yml` and `symdev.yml` give `secrets.PUBLISH_SIGNING_KEY` only to the steps
 that upload an index; the install.sh upload and the pull-request dry runs do not see it.
 
+**Limits** (recorded, not solved here). The signing key sits beside the R2 publisher key, in
+the `publish` environment and in `keys.env`, so the signature protects against a leak of the R2
+key alone (or of a bucket token), not of both; §11's original proposal kept the key offline.
+`install.sh` is served from the same public bucket, so whoever can write the bucket can replace
+the script a first `curl … | sh` runs; the signature protects every later `symdev` download
+and re-runs of a saved script. The signature binds no source name, date or version, so an
+older validly signed index can be served again (a rollback to packages that were good when
+published).
+
 **Owner steps.** (1) Add the secret: `set -a; . ~/.config/symdev/keys.env; set +a; printf
 '%s' "$PUBLISH_SIGNING_KEY" | gh secret set PUBLISH_SIGNING_KEY --repo 4akloon/symdev-packages
 --env publish`. (2) Re-sign the live indexes once, from the packages repository with
-`keys.env` loaded: `cargo run -p publish -- sign-index --bucket public --dry-run`, read the
-list, then the same without `--dry-run`; then both again with `--bucket private`. (3) Only
+`keys.env` loaded: `cargo run -p publish -- sign-index --bucket public --dry-run`, check every
+archive it lists against §13 and the recorded hashes, then run it without `--dry-run` and
+with `--accept-unsigned <the SHA-256 it printed>`; then both again with `--bucket
+private`. (3) Only
 then upload the new `install.sh` (it refuses an unsigned index) and release symdev 0.2.0 (its
 built-in source must be signed). (4) After installing 0.2.0, add `key = "builtin"` to the
 private source in `sources.toml`.

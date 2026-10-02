@@ -142,7 +142,8 @@ mirror); `builtin = false` at the top of the file turns the built-in source off.
 Indexes are signed. The first line of the built-in source's `index.toml` is
 `# symdev-signature: ed25519 <base64>`, the project key's Ed25519 signature of the rest of the
 file, and symdev carries the public key: an index that is unsigned, or whose signature does not
-verify, is not used, and the error names its URL. A listed source is held to the same rule when
+verify, is not used, and the error names its URL (a warning, even when a later source has the
+package). A listed source is held to the same rule when
 it has a `key`: `"builtin"` for the project key (the owner's private bucket is signed with it),
 or the base64 of another Ed25519 public key (a mirror you sign yourself). Without `key` its index
 is read unverified, as before; symdev 0.1.0 refuses a `key` it does not know, so add the line
