@@ -1,5 +1,3 @@
-use predicates::prelude::*;
-
 mod common;
 use common::{bin, fake_epocroot, hello_with_uid3, write_toml};
 

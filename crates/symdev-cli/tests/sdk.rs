@@ -150,6 +150,27 @@ fn an_installed_build_ignores_what_only_a_download_needs() {
         .stderr(stub_compiler_ran);
 }
 
+/// A Rust build that cannot find its Rust SDK says so before anything is downloaded.
+#[test]
+fn a_rust_build_without_its_rust_sdk_downloads_nothing() {
+    let mut w = World::new();
+    w.add_stub_gcce();
+    w.add_stub_sdk();
+    let project = w.project();
+    let toml = std::fs::read_to_string(project.join("symdev.toml")).unwrap();
+    let rust = toml.replace(r#"name = "cpp""#, r#"name = "rust""#);
+    std::fs::write(project.join("symdev.toml"), rust).unwrap();
+    w.bin()
+        .current_dir(&project)
+        .arg("build")
+        .env("SYMDEV_RUST_SDK", "/nonexistent/symdev/symbian-rs")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Rust SDK not found"))
+        .stderr(predicate::str::contains("installing").not());
+    assert!(!w.package_dir("gcce;12.1.0").exists());
+}
+
 #[test]
 fn an_sdk_only_in_a_keyless_private_source_names_the_keys_and_the_epocroot() {
     let mut w = World::new();
