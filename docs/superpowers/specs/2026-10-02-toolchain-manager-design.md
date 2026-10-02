@@ -125,8 +125,13 @@ order wins (built-in first). SHA-256 and size are always checked before extracti
 **Install procedure** — no half-installed state is ever visible:
 
 1. take `$SYMDEV_HOME/.lock` (`std::fs::File::lock`), so parallel builds do not race;
-2. download into the cache (skip if the cached file already has the right size and hash);
-3. verify size and SHA-256; on mismatch delete the file and fail (§5);
+2. under the cache's own `downloads/.lock` (several `SYMDEV_HOME`s may share one
+   `XDG_CACHE_HOME`), reuse the cached file if it has the right size and hash, else
+   download into a `.part` file named for this process and rename it over the cached name
+   only once verified — a cached file is never written into nor deleted, so another
+   install that opened it keeps reading verified bytes (review I2, 2026-10-02);
+3. verify size and SHA-256; on mismatch delete the download and fail (§5); the archive is
+   extracted from the handle that was verified;
 4. extract into `$SYMDEV_HOME/.staging/<random>`, refusing absolute paths, `..`, links
    that point outside the package, and a `.symdev-package.toml` or
    `.symdev-package.toml.partial` at the archive's root (an archive cannot bring its own

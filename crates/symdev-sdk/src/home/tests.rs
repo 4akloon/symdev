@@ -9,6 +9,7 @@ use crate::{Result, SdkError, SourceSpec};
 mod own_receipt;
 mod placement;
 mod receipts;
+mod shared_cache;
 
 /// Counts downloads, so a test can tell a cache hit from a fetch.
 struct Counting {
@@ -178,7 +179,12 @@ fn a_hash_mismatch_deletes_the_download_and_installs_nothing() {
         }
         other => panic!("expected HashMismatch, got {other:?}"),
     }
-    let left: Vec<_> = fs::read_dir(w.cache()).unwrap().collect();
+    // Only the cache's lock is left: no download, no `.part`.
+    let left: Vec<_> = fs::read_dir(w.cache())
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .filter(|name| name != ".lock")
+        .collect();
     assert!(left.is_empty(), "{left:?}");
     assert!(!w.home().package_dir(&w.id).exists());
 }
