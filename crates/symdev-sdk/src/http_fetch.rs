@@ -18,7 +18,9 @@ const MAX_TEXT_BYTES: u64 = 10 * 1024 * 1024;
 /// when the source has keys.
 ///
 /// The proxy comes from `ALL_PROXY` / `HTTPS_PROXY` / `HTTP_PROXY` and `NO_PROXY` (ureq's
-/// environment support). Connecting may take 30 s and a whole request 10 min. A non-2xx
+/// environment support). Connecting may take 30 s and a whole request an hour: a 60 MB
+/// archive then still arrives over a 20 KB/s link, while a stalled one does not hang a
+/// build for ever (ureq has no idle timeout to use instead). A non-2xx
 /// answer is `SdkError::Forbidden` for 403 and otherwise `SdkError::Fetch` whose `detail` is
 /// exactly `HTTP <code>`, so a caller can tell a missing object (`HTTP 404`) apart.
 pub struct HttpFetch {
@@ -33,7 +35,7 @@ impl HttpFetch {
         let config = Agent::config_builder()
             .http_status_as_error(false)
             .timeout_connect(Some(Duration::from_secs(30)))
-            .timeout_global(Some(Duration::from_secs(10 * 60)))
+            .timeout_global(Some(Duration::from_secs(60 * 60)))
             .build();
         HttpFetch {
             agent: Agent::new_with_config(config),
