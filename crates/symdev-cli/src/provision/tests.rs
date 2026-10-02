@@ -63,9 +63,31 @@ fn a_relative_xdg_variable_is_ignored_as_the_spec_says() {
 }
 
 #[test]
-fn without_home_the_error_names_the_variables_to_set() {
-    let e = provision(&[]).home_dir().unwrap_err().to_string();
-    assert!(e.contains("SYMDEV_HOME") && e.contains("HOME"), "{e}");
+fn without_home_each_error_names_the_variables_that_place_that_path() {
+    let p = provision(&[]);
+    let e = p.home_dir().unwrap_err().to_string();
+    assert!(
+        e.contains("set HOME, or set SYMDEV_HOME or XDG_DATA_HOME"),
+        "{e}"
+    );
+    let e = p.cache_dir().unwrap_err().to_string();
+    assert!(e.contains("download cache"), "{e}");
+    assert!(e.contains("set HOME, or set XDG_CACHE_HOME"), "{e}");
+    assert!(!e.contains("SYMDEV_HOME"), "{e}");
+    let e = p.sources_file().unwrap_err().to_string();
+    assert!(e.contains("sources.toml"), "{e}");
+    assert!(e.contains("set HOME, or set XDG_CONFIG_HOME"), "{e}");
+    assert!(!e.contains("SYMDEV_HOME"), "{e}");
+    // SYMDEV_HOME places the packages, not the cache.
+    let e = provision(&[("SYMDEV_HOME", "/opt/symdev")])
+        .home()
+        .err()
+        .unwrap();
+    assert!(e.to_string().contains("XDG_CACHE_HOME"), "{e}");
+}
+
+#[test]
+fn symdev_home_must_be_absolute() {
     let e = provision(&[("SYMDEV_HOME", "relative")])
         .home_dir()
         .unwrap_err()

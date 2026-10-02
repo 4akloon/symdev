@@ -174,33 +174,39 @@ impl Provision {
                 "SYMDEV_HOME must be an absolute path, not `{}`",
                 home.display()
             ))),
-            None => self.xdg("XDG_DATA_HOME", ".local/share", "symdev"),
+            None => self
+                .xdg("XDG_DATA_HOME", ".local/share", "symdev")
+                .ok_or_else(|| Self::no_home("keeps its packages", "SYMDEV_HOME or XDG_DATA_HOME")),
         }
     }
 
     /// `$XDG_CACHE_HOME/symdev/downloads`, else `~/.cache/symdev/downloads`.
     fn cache_dir(&self) -> Result<PathBuf, Error> {
         self.xdg("XDG_CACHE_HOME", ".cache", "symdev/downloads")
+            .ok_or_else(|| Self::no_home("keeps its download cache", "XDG_CACHE_HOME"))
     }
 
     /// `$XDG_CONFIG_HOME/symdev/sources.toml`, else `~/.config/symdev/sources.toml`.
     fn sources_file(&self) -> Result<PathBuf, Error> {
         self.xdg("XDG_CONFIG_HOME", ".config", "symdev/sources.toml")
+            .ok_or_else(|| Self::no_home("reads sources.toml from", "XDG_CONFIG_HOME"))
     }
 
-    /// `$<variable>/<rest>`, else `$HOME/<fallback>/<rest>`. A relative XDG value is
-    /// ignored, as the XDG base directory specification requires.
-    fn xdg(&self, variable: &str, fallback: &str, rest: &str) -> Result<PathBuf, Error> {
+    /// `$<variable>/<rest>`, else `$HOME/<fallback>/<rest>`, else `None`. A relative XDG
+    /// value is ignored, as the XDG base directory specification requires.
+    fn xdg(&self, variable: &str, fallback: &str, rest: &str) -> Option<PathBuf> {
         if let Some(base) = self.var(variable).filter(|p| p.is_absolute()) {
-            return Ok(base.join(rest));
+            return Some(base.join(rest));
         }
-        match self.var("HOME") {
-            Some(home) => Ok(home.join(fallback).join(rest)),
-            None => Err(Error::Other(format!(
-                "cannot tell where symdev keeps its packages: HOME is not set; set HOME, or \
-                 SYMDEV_HOME and {variable}"
-            ))),
-        }
+        self.var("HOME").map(|home| home.join(fallback).join(rest))
+    }
+
+    /// `HOME` is unset and so is every variable that would place this path instead.
+    fn no_home(what: &str, instead: &str) -> Error {
+        Error::Other(format!(
+            "cannot tell where symdev {what}: HOME is not set; set HOME, or set {instead} to \
+             an absolute path"
+        ))
     }
 
     /// The keys of every `s3` source that has both variables set; one variable without
