@@ -73,22 +73,34 @@ impl RustSdk {
         "gdi.dso",
     ];
 
-    /// `root` must hold the target JSON; the path is canonicalised so the scaffold can
+    /// What [`Self::at`] requires, relative to the SDK root: the target JSON, and what the
+    /// tree reaches outside itself — `symbian-macros` reads locales files with the host
+    /// crate `symdev-locale` (`../../../crates/symdev-locale`), which inherits its
+    /// version and edition from the root `Cargo.toml`. A checkout has both; so does the
+    /// `rust-sdk` package, which keeps the repository's layout.
+    pub const REQUIRED: &'static [&'static str] = &[
+        "targets/arm-symbian-e32.json",
+        "../crates/symdev-locale/Cargo.toml",
+        "../Cargo.toml",
+    ];
+
+    /// `root` must hold [`Self::REQUIRED`]; the path is canonicalised so the scaffold can
     /// write it into a project anywhere. The error says what is wrong with `root`; which
     /// variable or package named it is for the caller to add.
     pub fn at(root: &Path) -> Result<Self> {
         let root = root
             .canonicalize()
             .map_err(|e| Error::Other(format!("Rust SDK not found at {} ({e})", root.display())))?;
-        let sdk = Self { root };
-        if !sdk.target_spec().is_file() {
-            return Err(Error::Other(format!(
-                "Rust SDK at {} has no targets/{}.json",
-                sdk.root.display(),
-                Self::TARGET
-            )));
+        for file in Self::REQUIRED {
+            if !root.join(file).is_file() {
+                return Err(Error::Other(format!(
+                    "Rust SDK at {} has no {file}: it is the symbian-rs directory of a symdev \
+                     checkout or of the rust-sdk package",
+                    root.display()
+                )));
+            }
         }
-        Ok(sdk)
+        Ok(Self { root })
     }
 
     /// The `symbian-rs/` directory, canonical.
@@ -209,18 +221,30 @@ mod tests {
         tmp
     }
 
-    /// `RustSdkPackage::REQUIRED` is exactly what `at` checks: a tree with those files is an
-    /// SDK, and a tree missing any one of them is not.
+    /// `RustSdkPackage::REQUIRED` is exactly what `at` checks: the `symbian-rs` of a package
+    /// with those files is an SDK, and that of a package missing any one of them is not.
     #[test]
     fn the_installed_package_checks_what_at_requires() {
-        let required = symdev_sdk::RustSdkPackage::REQUIRED;
+        use symdev_sdk::RustSdkPackage;
+        let required = RustSdkPackage::REQUIRED;
         let whole = tree_with(required);
-        RustSdk::at(whole.path()).unwrap();
+        RustSdk::at(&whole.path().join(RustSdkPackage::SDK_DIR)).unwrap();
         for missing in required {
             let rest: Vec<_> = required.iter().copied().filter(|f| f != missing).collect();
             let partial = tree_with(&rest);
-            assert!(RustSdk::at(partial.path()).is_err(), "{missing}");
+            std::fs::create_dir_all(partial.path().join(RustSdkPackage::SDK_DIR)).unwrap();
+            let sdk = partial.path().join(RustSdkPackage::SDK_DIR);
+            assert!(RustSdk::at(&sdk).is_err(), "{missing}");
         }
+    }
+
+    #[test]
+    fn a_symbian_rs_without_symdev_locale_beside_it_is_no_sdk() {
+        let alone = tree_with(&["symbian-rs/targets/arm-symbian-e32.json"]);
+        let err = RustSdk::at(&alone.path().join("symbian-rs"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("../crates/symdev-locale/Cargo.toml"), "{err}");
     }
 
     #[test]
@@ -237,9 +261,6 @@ mod tests {
     fn a_directory_without_the_target_spec_is_no_sdk() {
         let empty = tree_with(&[]);
         let err = RustSdk::at(empty.path()).unwrap_err().to_string();
-        assert!(
-            err.ends_with("has no targets/arm-symbian-e32.json"),
-            "{err}"
-        );
+        assert!(err.contains("has no targets/arm-symbian-e32.json"), "{err}");
     }
 }

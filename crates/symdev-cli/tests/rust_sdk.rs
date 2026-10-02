@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use predicates::prelude::*;
 use symdev_build::RustSdk;
-use symdev_sdk::Pins;
+use symdev_sdk::{Pins, RustSdkPackage};
 
 mod common;
 use common::repo::World;
@@ -51,11 +51,8 @@ fn a_prebuilt_symdev_installs_the_rust_sdk_first_and_builds_against_it() {
     let rust_sdk = stderr.find(&format!("installing {id} (")).expect(&stderr);
     let gcce = stderr.find("installing gcce;12.1.0 (").expect(&stderr);
     assert!(rust_sdk < gcce, "{stderr}");
-    let package = w.package_dir(id.as_str());
-    let target = format!(
-        "--target {}/targets/arm-symbian-e32.json",
-        canonical(&package)
-    );
+    let sdk = canonical(&w.package_dir(id.as_str()).join("symbian-rs"));
+    let target = format!("--target {sdk}/targets/arm-symbian-e32.json");
     assert!(stderr.contains("stub cargo build"), "{stderr}");
     assert!(stderr.contains(&target), "{stderr}");
 }
@@ -114,9 +111,9 @@ fn a_prebuilt_symdev_scaffolds_against_the_installed_package() {
         .success()
         .stderr(predicate::str::contains(format!("installing {id} (")));
     let cargo = fs::read_to_string(w.tmp.path().join("app/Cargo.toml")).unwrap();
-    let package = canonical(&w.package_dir(id.as_str()));
+    let sdk = canonical(&w.package_dir(id.as_str()).join("symbian-rs"));
     assert!(
-        cargo.contains(&format!("{package}/crates/symbian-std")),
+        cargo.contains(&format!("{sdk}/crates/symbian-std")),
         "{cargo}"
     );
 }
@@ -142,9 +139,12 @@ fn a_symdev_built_here_scaffolds_against_its_checkout_and_installs_nothing() {
 #[test]
 fn the_variable_wins_over_the_checkout() {
     let w = world();
-    let sdk = w.tmp.path().join("my-symbian-rs");
-    fs::create_dir_all(sdk.join("targets")).unwrap();
-    fs::write(sdk.join("targets/arm-symbian-e32.json"), "{}\n").unwrap();
+    let clone = w.tmp.path().join("my-symdev");
+    for file in RustSdkPackage::REQUIRED {
+        fs::create_dir_all(clone.join(file).parent().unwrap()).unwrap();
+        fs::write(clone.join(file), "{}\n").unwrap();
+    }
+    let sdk = clone.join(RustSdkPackage::SDK_DIR);
     w.bin()
         .current_dir(w.tmp.path())
         .args(["new", "app", "--lang", "rust"])

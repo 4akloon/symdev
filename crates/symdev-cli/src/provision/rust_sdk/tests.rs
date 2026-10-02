@@ -88,15 +88,22 @@ impl World {
     fn package_dir(&self) -> PathBuf {
         self.path("home").join(Pins::rust_sdk().relative_path())
     }
+
+    /// The SDK inside the installed package, canonical.
+    fn package_sdk(&self) -> PathBuf {
+        canonical(&self.package_dir().join(RustSdkPackage::SDK_DIR))
+    }
 }
 
-/// A directory with the files a Rust SDK must have.
-fn sdk_tree(root: &Path) {
+/// A directory laid out as a `rust-sdk` package (as a checkout is), with the files a
+/// Rust SDK must have; returns its `symbian-rs`.
+fn sdk_tree(root: &Path) -> PathBuf {
     for file in RustSdkPackage::REQUIRED {
         let path = root.join(file);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, b"{}").unwrap();
     }
+    root.join(RustSdkPackage::SDK_DIR)
 }
 
 fn canonical(path: &Path) -> PathBuf {
@@ -106,9 +113,7 @@ fn canonical(path: &Path) -> PathBuf {
 #[test]
 fn the_variable_wins_over_the_checkout() {
     let w = World::new();
-    let (set, checkout) = (w.path("set"), w.path("checkout"));
-    sdk_tree(&set);
-    sdk_tree(&checkout);
+    let (set, checkout) = (sdk_tree(&w.path("set")), sdk_tree(&w.path("checkout")));
     let p = w.provision(false, Some(&checkout), &[("SYMDEV_RUST_SDK", &set)]);
     assert_eq!(p.rust_sdk().unwrap().root(), canonical(&set));
     assert!(p.needed_rust_sdk().is_none());
@@ -117,8 +122,7 @@ fn the_variable_wins_over_the_checkout() {
 #[test]
 fn a_variable_that_is_no_sdk_names_itself_and_installs_nothing() {
     let w = World::new();
-    let checkout = w.path("checkout");
-    sdk_tree(&checkout);
+    let checkout = sdk_tree(&w.path("checkout"));
     let stale = w.path("stale");
     let p = w.provision(false, Some(&checkout), &[("SYMDEV_RUST_SDK", &stale)]);
     let e = p.rust_sdk().unwrap_err().to_string();
@@ -133,8 +137,7 @@ fn a_variable_that_is_no_sdk_names_itself_and_installs_nothing() {
 #[test]
 fn the_checkout_is_used_while_it_is_an_sdk() {
     let w = World::new();
-    let checkout = w.path("checkout");
-    sdk_tree(&checkout);
+    let checkout = sdk_tree(&w.path("checkout"));
     let p = w.provision(false, Some(&checkout), &[]);
     assert_eq!(p.rust_sdk().unwrap().root(), canonical(&checkout));
     assert!(p.needed_rust_sdk().is_none());
@@ -146,7 +149,7 @@ fn without_a_checkout_the_package_is_installed() {
     let w = World::new();
     let p = w.provision(false, None, &[]);
     assert_eq!(p.needed_rust_sdk(), Some(Pins::rust_sdk()));
-    assert_eq!(p.rust_sdk().unwrap().root(), canonical(&w.package_dir()));
+    assert_eq!(p.rust_sdk().unwrap().root(), w.package_sdk());
     assert!(w.package_dir().join(".symdev-package.toml").is_file());
 }
 
@@ -155,11 +158,11 @@ fn a_checkout_that_is_gone_or_no_sdk_falls_back_to_the_package() {
     let w = World::new();
     let gone = w.path("gone");
     let p = w.provision(false, Some(&gone), &[]);
-    assert_eq!(p.rust_sdk().unwrap().root(), canonical(&w.package_dir()));
+    assert_eq!(p.rust_sdk().unwrap().root(), w.package_sdk());
     let empty = w.path("empty");
     fs::create_dir_all(&empty).unwrap();
     let p = w.provision(false, Some(&empty), &[]);
-    assert_eq!(p.rust_sdk().unwrap().root(), canonical(&w.package_dir()));
+    assert_eq!(p.rust_sdk().unwrap().root(), w.package_sdk());
 }
 
 /// Installed, the package needs no source: a broken `sources.toml` cannot stop a build.
@@ -169,7 +172,7 @@ fn an_installed_package_reads_no_source() {
     w.provision(false, None, &[]).rust_sdk().unwrap();
     w.sources("builtin = maybe\n");
     let p = w.provision(true, None, &[]);
-    assert_eq!(p.rust_sdk().unwrap().root(), canonical(&w.package_dir()));
+    assert_eq!(p.rust_sdk().unwrap().root(), w.package_sdk());
 }
 
 #[test]

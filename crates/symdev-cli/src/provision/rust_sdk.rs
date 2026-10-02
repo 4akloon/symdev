@@ -26,7 +26,7 @@ impl Provision {
                 Error::Other(format!("{e}; or set {VARIABLE} to a symbian-rs directory"))
             })?;
         let package = RustSdkPackage::at(home.package_dir(&id), &id)?;
-        RustSdk::at(package.root())
+        RustSdk::at(&package.symbian_rs())
     }
 
     /// The `rust-sdk` package, when a Rust project would take its SDK from it: neither

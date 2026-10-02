@@ -281,3 +281,15 @@ So the package must keep the repository's relative layout — pack the tag with 
 Alternatives that change the repository instead (the owner's or lead's call): give
 `symdev-locale` its own `version`/`edition` and move it under `symbian-rs/`, or stop
 `symbian-macros` depending on a host crate.
+
+Decision (symdev side, so the package route can build at all; the lead aligns the packages
+track and spec §2/§12): the `rust-sdk` package keeps the repository's layout — `Cargo.toml`,
+`crates/symdev-locale/`, `symbian-rs/` — and its SDK is `<package>/symbian-rs`
+(`RustSdkPackage::SDK_DIR`, `RustSdkPackage::symbian_rs()`). `RustSdkPackage::REQUIRED` =
+`symbian-rs/targets/arm-symbian-e32.json`, `crates/symdev-locale/Cargo.toml`, `Cargo.toml`;
+`RustSdk::REQUIRED` = the same seen from the SDK root (`targets/…`, `../crates/symdev-locale/
+Cargo.toml`, `../Cargo.toml`), so `SYMDEV_RUST_SDK` pointing at a bare copy of `symbian-rs` is
+refused up front ("it is the symbian-rs directory of a symdev checkout or of the rust-sdk
+package") instead of failing inside cargo. The packer's include list follows:
+`["Cargo.toml", "crates/symdev-locale", "symbian-rs"]` (`corpus/` may be left out: no build
+reads it).

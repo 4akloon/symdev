@@ -1,18 +1,29 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::{PackageId, Result, SdkError};
 
 /// An installed `rust-sdk;<version>` package: the `symbian-rs` tree a Rust project builds
-/// against (its crates, target spec, C++ shims and `std` overlay).
+/// against (its crates, target spec, C++ shims and `std` overlay), in the repository's
+/// layout. `symbian-rs` is not self-contained: `symbian-macros` depends on
+/// `../../../crates/symdev-locale`, which inherits its version and edition from the root
+/// `Cargo.toml`, so the package holds those two beside `symbian-rs/` where the relative
+/// paths expect them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RustSdkPackage {
     root: PathBuf,
 }
 
 impl RustSdkPackage {
+    /// The directory inside the package that is the Rust SDK.
+    pub const SDK_DIR: &'static str = "symbian-rs";
+
     /// The files a Rust build cannot start without, relative to the package root: the ones
     /// symdev-build's `RustSdk::at` requires (a test there keeps the two lists equal).
-    pub const REQUIRED: &'static [&'static str] = &["targets/arm-symbian-e32.json"];
+    pub const REQUIRED: &'static [&'static str] = &[
+        "symbian-rs/targets/arm-symbian-e32.json",
+        "crates/symdev-locale/Cargo.toml",
+        "Cargo.toml",
+    ];
 
     /// The installed tree of `id` (`rust-sdk;<version>`). Checks [`Self::REQUIRED`], so a
     /// package whose files were deleted by hand is reported with the command that repairs
@@ -38,8 +49,8 @@ impl RustSdkPackage {
     }
 
     /// The `symbian-rs` directory: what `SYMDEV_RUST_SDK` would name.
-    pub fn root(&self) -> &Path {
-        &self.root
+    pub fn symbian_rs(&self) -> PathBuf {
+        self.root.join(Self::SDK_DIR)
     }
 }
 
@@ -65,23 +76,32 @@ mod tests {
     }
 
     #[test]
-    fn the_package_root_is_the_symbian_rs_tree() {
+    fn the_sdk_is_the_symbian_rs_directory_of_the_package() {
         let tmp = tempfile::tempdir().unwrap();
         tree(tmp.path());
         let sdk = RustSdkPackage::at(tmp.path().to_path_buf(), &id("rust-sdk;0.1.0")).unwrap();
-        assert_eq!(sdk.root(), tmp.path());
+        assert_eq!(sdk.symbian_rs(), tmp.path().join("symbian-rs"));
     }
 
+    /// `symbian-macros` depends on `../../../crates/symdev-locale`, which inherits its
+    /// version and edition from the root `Cargo.toml`: the package keeps the repository's
+    /// layout so both resolve.
     #[test]
-    fn requires_the_target_spec_the_rust_build_reads() {
-        assert!(RustSdkPackage::REQUIRED.contains(&"targets/arm-symbian-e32.json"));
+    fn requires_what_symbian_rs_reaches_outside_itself() {
+        for file in [
+            "symbian-rs/targets/arm-symbian-e32.json",
+            "crates/symdev-locale/Cargo.toml",
+            "Cargo.toml",
+        ] {
+            assert!(RustSdkPackage::REQUIRED.contains(&file), "{file}");
+        }
     }
 
     #[test]
     fn a_file_deleted_by_hand_is_named_with_the_reinstall_command() {
         let tmp = tempfile::tempdir().unwrap();
         tree(tmp.path());
-        let spec = tmp.path().join("targets/arm-symbian-e32.json");
+        let spec = tmp.path().join("symbian-rs/targets/arm-symbian-e32.json");
         fs::remove_file(&spec).unwrap();
         let e = RustSdkPackage::at(tmp.path().to_path_buf(), &id("rust-sdk;0.1.0"))
             .unwrap_err()

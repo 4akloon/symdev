@@ -116,9 +116,11 @@ impl World {
             id.as_str(),
             Host::Any,
             &[
-                ("targets/arm-symbian-e32.json", "{}\n", false),
-                ("crates/symbian-std/Cargo.toml", "", false),
-                ("crates/symbian-core/Cargo.toml", "", false),
+                ("Cargo.toml", "", false),
+                ("crates/symdev-locale/Cargo.toml", "", false),
+                ("symbian-rs/targets/arm-symbian-e32.json", "{}\n", false),
+                ("symbian-rs/crates/symbian-std/Cargo.toml", "", false),
+                ("symbian-rs/crates/symbian-core/Cargo.toml", "", false),
             ],
         );
     }
