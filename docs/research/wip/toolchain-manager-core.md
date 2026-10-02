@@ -10,7 +10,7 @@ Track B (sigv4, amz_date, http_fetch) runs in parallel in `tm-net`; do not touch
 |---|---|---|
 | A1 PackageId | done | d9a7cb7 |
 | A2 Index / IndexPackage / Host / resolve_url | done | see `git log` |
-| A3 SourceSpec / Sources | todo | |
+| A3 SourceSpec / Sources | done | see `git log` |
 | A4 TarGz / ReproducibleTarGz | todo | |
 | A5 SdkHome / Receipt / FileFetch | todo | |
 | A6 Gcce / PlatformSdk / Pins | todo | |
@@ -40,9 +40,18 @@ Track B (sigv4, amz_date, http_fetch) runs in parallel in `tm-net`; do not touch
   empty/`.`/`..` segments; `a..b` (dots inside a name) is allowed. It is a free function
   because the plan's contract names it so (`pub fn resolve_url`).
 - `Host` also implements `Display` (= `as_str`), for D2's "no archive for {host}" message.
+- A3: added `SourceSpec::new(name, url, auth) -> Result<SourceSpec>` (not in the plan's
+  contract, additive): validates the name (`[a-z0-9-]+`) and URL, adds the trailing `/`,
+  refuses `auth = s3` on `file://`. `Sources::parse` uses it and wraps its message in
+  `BadSources`; D2's `builtin_source()` should use it too instead of a struct literal.
+- A3: plain `http://` is accepted only when the host is exactly `localhost`, `127.0.0.1`
+  or `[::1]` (optional numeric port), so `http://localhost.evil.com/` is refused.
+- A3: `sources.toml` and its `[[source]]` tables deny unknown keys (`auht = "s3"` would
+  otherwise silently disable signing). A user source named like the built-in one is a
+  duplicate while the built-in is enabled.
 
 ## Dead ends
 
 ## Next step
 
-A3: tests for `SourceSpec` / `Sources`, then implement.
+A4: tests for `TarGz` / `ReproducibleTarGz` (archives built in the test), then implement.
