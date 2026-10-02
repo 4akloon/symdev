@@ -202,8 +202,13 @@ There is no `update`: ids are immutable. When a symdev release pins `gcce;14.2.0
 build installs it beside `gcce;12.1.0`, which stays until uninstalled.
 
 **Network.** `ureq` with rustls, proxy from the environment, and timeouts: 30 s to connect,
-60 s for the server's answer, an hour per request. A download stops one byte past the
-index's `size`. An `https` source sends no plain-HTTP request, a redirect included (the
+60 s for the server's answer, and for the body a minute plus its size at 32 KiB/s — the
+index's `size` for an archive, the 10 MiB cap for an index (`HttpTimeouts`, symdev 0.2.0).
+ureq 3.4.2 has no idle timeout; its `timeout_recv_body` is a total for the body, set per
+request, so a server that sends its headers and then stalls is dropped once a 32 KiB/s
+link would have delivered everything (35 minutes for the 67 MB `gcce;12.1.0`) instead of
+after the hour that 0.1.0 allowed. A whole request may take an hour, or connect + answer +
+body when that is longer. A download stops one byte past the index's `size`. An `https` source sends no plain-HTTP request, a redirect included (the
 index has no hash of its own to check), and a signed request follows no redirect (review
 M1, M2, 2026-10-02). Sources with
 `auth = "s3"` sign requests with AWS Signature V4 (region `auto` for R2). The signer is our

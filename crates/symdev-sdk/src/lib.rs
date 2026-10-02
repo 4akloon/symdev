@@ -12,6 +12,7 @@ mod gcce;
 mod home;
 mod host;
 mod http_fetch;
+mod http_timeouts;
 mod index;
 mod index_package;
 mod keys;
