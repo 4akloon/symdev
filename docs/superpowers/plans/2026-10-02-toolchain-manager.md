@@ -483,7 +483,7 @@ Flow: parse recipe (`id`, `license`, `host`, `include` for SDK, `sha256` optiona
 include = [
   "epoc32/include",
   "epoc32/release/armv5/lib/*.dso",
-  "epoc32/release/armv5/lib/usrt2_2.lib",
+  "epoc32/release/armv5/urel/usrt2_2.lib",
   "epoc32/release/armv5/urel/eexe.lib",
   "epoc32/release/armv5/urel/edll.lib",
   "epoc32/tools/variant/variant.cfg",

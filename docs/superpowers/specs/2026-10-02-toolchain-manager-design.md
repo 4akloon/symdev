@@ -54,8 +54,8 @@ in-place `ndk-bundle` to side-by-side `ndk;<version>` for exactly this reason.)
 
 The SDK package is only what a GCCE build reads, measured on 2026-10-02: `epoc32/include`
 (2 123 files, 24 MB), the 570 `.dso` import stubs in `epoc32/release/armv5/lib` (6.3 MB), the
-static libraries the link line names (`usrt2_2.lib` there, `eexe.lib` and `edll.lib` in
-`urel`) and `epoc32/tools/variant/variant.cfg`, which names the variant header for `bld.inf`
+static libraries the link line names (`usrt2_2.lib`, `eexe.lib` and `edll.lib`, all in
+`epoc32/release/armv5/urel`) and `epoc32/tools/variant/variant.cfg`, which names the variant header for `bld.inf`
 preprocessing. Left out: the 570 RVCT `.lib` import libraries beside the `.dso` files
 (77.5 MB; GCCE links the `.dso`), and everything else in the 466 MB SDK. Compressed, the
 include tree is 3.8 MB and the `.dso` files 1.5 MB; the whole earlier directory-level subset
