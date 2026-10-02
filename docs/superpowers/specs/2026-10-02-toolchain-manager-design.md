@@ -257,7 +257,10 @@ publish/                           # Rust binary; symdev-sdk as a git dependency
   files (unclear licence) with our own, written clean-room — two sys-include headers and a
   `-D__INTPTR_TYPE__=int` in `CFLAGS_FOR_TARGET` — with the same target libraries,
   `c++config.h` and examples; the recipe pins only official GNU tarballs.
-- Built in a Debian 11 container (glibc 2.31), so it runs on Ubuntu 20.04+ / Debian 11+.
+- Built in an AlmaLinux 8 container (glibc 2.28, supported until 2029), so it runs on any
+  Linux with glibc 2.28 or newer. Debian 11 was the first choice; its LTS ended on
+  2026-08-31 and its security pool already returned 404 in the first publish run
+  (2026-10-02), so the build moved before it ever ran.
   The current host build needs glibc 2.38 and would not.
 - The GPL source archive (tarballs and the recipe directory: `recipe.toml`, `build.sh`, our
   headers) is published beside the package.
@@ -427,7 +430,7 @@ Rust for a C++ project.
   `build.target` first.
 - **Build.** Static, `x86_64-unknown-linux-musl`, so the binary runs on any Linux whatever its
   glibc; this can only be proven in CI (no musl tools on the owner's host). Fallback if musl
-  fails: a glibc build in a Debian 11 container, as for GCCE.
+  fails: a glibc build in the AlmaLinux 8 container, as for GCCE.
 - **Release.** A recipe `recipes/symdev/<ver>/recipe.toml` in `symdev-packages` names a git
   tag of `4akloon/symdev`; its CI checks the tag out, builds, and `publish public`es both
   packages (source code: the tag's archive). Merging the recipe is the release, the same
