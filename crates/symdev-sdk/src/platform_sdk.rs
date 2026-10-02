@@ -19,9 +19,10 @@ impl PlatformSdk {
         let include = root.join("epoc32/include");
         if !include.is_dir() {
             return Err(SdkError::Other(format!(
-                "{} is missing from installed {id}; run `symdev sdk uninstall {id} && symdev \
-                 sdk install {id}`",
-                include.display()
+                "{} is missing from installed {id}; run `symdev sdk uninstall {word} && symdev \
+                 sdk install {word}`",
+                include.display(),
+                word = id.shell_word()
             )));
         }
         Ok(PlatformSdk { root })
@@ -64,7 +65,7 @@ mod tests {
         );
         assert!(
             e.contains(
-                "symdev sdk uninstall sdk;s60-3rd-fp2;1.1 && symdev sdk install sdk;s60-3rd-fp2;1.1"
+                "symdev sdk uninstall 'sdk;s60-3rd-fp2;1.1' && symdev sdk install 'sdk;s60-3rd-fp2;1.1'"
             ),
             "{e}"
         );

@@ -1,11 +1,13 @@
 //! `symdev build`: one backend per manifest language.
 use std::process::ExitCode;
 
-use symdev_build::{FrozenExports, GcceBuild, RustBuild, RustSdk, Toolchain, UiResources};
+use symdev_build::{FrozenExports, GcceBuild, RustBuild, RustSdk, UiResources};
 use symdev_core::{BuildBackend, Error, LocalEnv};
 use symdev_manifest::{Language, Manifest};
 
-pub fn build_project(m: Manifest) -> Result<ExitCode, Error> {
+use crate::provision::Provision;
+
+pub fn build_project(m: Manifest, provision: &Provision) -> Result<ExitCode, Error> {
     let uid3 = m
         .symbian
         .uid3
@@ -18,7 +20,7 @@ pub fn build_project(m: Manifest) -> Result<ExitCode, Error> {
                 .into(),
         ));
     }
-    let tools = Toolchain::from_env()?;
+    let tools = provision.toolchain(m.target.device)?;
     let epocroot = tools.epocroot.clone();
     let project = crate::current_project()?;
     ignore_build_dir(&project.root)?;

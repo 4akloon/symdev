@@ -1041,6 +1041,7 @@ dependencies = [
  "symdev-mbm",
  "symdev-mif",
  "symdev-rcomp",
+ "symdev-sdk",
  "symdev-sis",
  "tempfile",
  "thiserror",
@@ -1060,6 +1061,7 @@ dependencies = [
  "symdev-emulator",
  "symdev-locale",
  "symdev-manifest",
+ "symdev-sdk",
  "tempfile",
 ]
 

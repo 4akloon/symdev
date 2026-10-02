@@ -1,7 +1,12 @@
 // Shared by several integration-test binaries; each uses a different subset.
 #![allow(dead_code)]
 
+use std::path::PathBuf;
+use std::sync::OnceLock;
+
 use assert_cmd::Command;
+
+pub mod repo;
 
 pub const HELLO: &str = r#"
 [package]
@@ -22,8 +27,50 @@ vendor = "symdev"
 mode = "self-signed"
 "#;
 
+/// The toolchain variables a test may not inherit from the developer's shell when it
+/// means "no toolchain configured".
+pub const TOOLCHAIN_VARIABLES: [&str; 7] = [
+    "SYMDEV_EPOCROOT",
+    "SYMDEV_GXX",
+    "SYMDEV_LD",
+    "SYMDEV_AR",
+    "SYMDEV_ELF2E32",
+    "SYMDEV_GCC_LIB",
+    "SYMDEV_GCC_TARGET_LIB",
+];
+
+/// `symdev` with `SYMDEV_HOME` and every `XDG_*` directory in a temporary directory of
+/// this test process, whose `sources.toml` turns the built-in source off: no test can
+/// reach the network or touch the developer's installed packages. A test that needs a
+/// source points these variables somewhere else (`repo::World`).
 pub fn bin() -> Command {
-    Command::cargo_bin("symdev").unwrap()
+    static ROOT: OnceLock<tempfile::TempDir> = OnceLock::new();
+    let root = ROOT.get_or_init(|| {
+        let tmp = tempfile::Builder::new()
+            .prefix("symdev-cli-home-")
+            .tempdir_in(env!("CARGO_TARGET_TMPDIR"))
+            .unwrap();
+        let config = tmp.path().join("config/symdev");
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::write(config.join("sources.toml"), "builtin = false\n").unwrap();
+        tmp
+    });
+    let dir = |name: &str| -> PathBuf { root.path().join(name) };
+    let mut cmd = Command::cargo_bin("symdev").unwrap();
+    cmd.env("SYMDEV_HOME", dir("data/symdev"))
+        .env("XDG_DATA_HOME", dir("data"))
+        .env("XDG_CACHE_HOME", dir("cache"))
+        .env("XDG_CONFIG_HOME", dir("config"));
+    cmd
+}
+
+/// [`bin`] without any toolchain variable of the developer's shell.
+pub fn bin_without_toolchain() -> Command {
+    let mut cmd = bin();
+    for variable in TOOLCHAIN_VARIABLES {
+        cmd.env_remove(variable);
+    }
+    cmd
 }
 
 pub fn write_toml(dir: &tempfile::TempDir, src: &str) {

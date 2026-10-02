@@ -25,5 +25,5 @@ pub use resources::{AppTarget, BuildOutputs, GeneratedCaseFold, MmpPath, SdkIncl
 pub use rust_sdk::RustSdk;
 pub use std_src::StdSrc;
 pub use strings_resources::StringsResources;
-pub use toolchain::{Epocroot, Toolchain};
+pub use toolchain::{Epocroot, Toolchain, ToolchainOverrides};
 pub use ui_resources::UiResources;

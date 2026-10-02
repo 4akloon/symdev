@@ -66,6 +66,12 @@ impl PackageId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// The id as one shell word (`'gcce;12.1.0'`), for the commands that messages
+    /// suggest: `;` separates shell commands, so the bare id would split the command.
+    pub fn shell_word(&self) -> String {
+        format!("'{}'", self.0.replace('\'', r"'\''"))
+    }
 }
 
 impl std::fmt::Display for PackageId {
