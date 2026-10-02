@@ -52,7 +52,7 @@ in-place `ndk-bundle` to side-by-side `ndk;<version>` for exactly this reason.)
 | `gcce;12.1.0` | GCC 12.1.0 and binutils 2.29.1 in one prefix | `x86_64-linux` |
 | `sdk;s60-3rd-fp2;1.1` | headers, `.dso` import stubs, three static libraries, `variant.cfg` | `any` |
 | `symdev;0.1.0` | `bin/symdev`, statically linked (§12) | `x86_64-linux` |
-| `rust-sdk;0.1.0` | the `symbian-rs` tree the Rust backend builds against (§12) | `any` |
+| `rust-sdk;0.1.0` | the Rust SDK in the repository's layout: `Cargo.toml`, `crates/symdev-locale`, `symbian-rs` (§12) | `any` |
 | `emulator;…`, `firmware;rm-469;…` | phase 2 | — |
 
 The SDK package is only what a GCCE build reads, measured on 2026-10-02: `epoc32/include`
@@ -330,7 +330,9 @@ a source that has it in <path of sources.toml>".
 4. The owner's current `SYMDEV_*` environment builds everything exactly as before.
 5. On a clean Linux with no Rust installed, `install.sh` followed by `symdev build` and
    `symdev package` in a copy of `examples/hello` produces `hello.sisx`; with rustup added,
-   the same works for `symbian-rs/examples/hello` through the `rust-sdk` package.
+   the same works for a project made by `symdev new hello --lang rust`, through the
+   `rust-sdk` package. (The in-tree `symbian-rs/examples` inherit their workspace and nightly
+   from `symbian-rs` and build only inside the clone.)
 
 ## 9. Code placement
 
@@ -370,13 +372,23 @@ in symdev, so a leaked publisher key cannot swap the compiler).
 The owner asked for the store to hold our own tools ready-built, so a clean machine needs no
 Rust for a C++ project.
 
-- **Packages.** `symdev;<ver>` holds `bin/symdev`; `rust-sdk;<ver>` holds the `symbian-rs`
-  tree. Both MIT, both in the public bucket, `<ver>` = the workspace version of the tagged
+- **Packages.** `symdev;<ver>` holds `bin/symdev`; `rust-sdk;<ver>` holds the Rust SDK in
+  the repository's own layout — the root `Cargo.toml`, `crates/symdev-locale` and
+  `symbian-rs` — because `symbian-macros` depends on `../../../crates/symdev-locale`, which
+  takes its version and edition from the root `[workspace.package]` (found 2026-10-02); the
+  SDK proper is `<package>/symbian-rs`. Both MIT, both in the public bucket, `<ver>` = the workspace version of the tagged
   release. `Pins::rust_sdk()` pins `rust-sdk;<this symdev's version>`.
 - **Finding the Rust SDK.** `SYMDEV_RUST_SDK` first; then the source checkout symdev was built
   from, if it still exists (a developer working on the SDK keeps using their tree); else the
   installed `rust-sdk` package, auto-installed like GCCE. Today's compile-time path alone
   cannot work for a prebuilt binary.
+- **Known gap (follow-up, not phase 1).** `symdev new --lang rust` writes absolute SDK paths
+  into the project (`Cargo.toml` path dependencies, `.cargo/config.toml` `build.target`). With
+  the package route these name `rust-sdk/<ver>/`, so after an upgrade a build silently mixes
+  two SDK versions, and uninstalling the old one breaks the project. Proposed fix: the build
+  keeps a `build/rust-sdk` link to the SDK it resolved and the scaffold writes relative paths
+  through it; needs an experiment on how the pinned nightly resolves a relative
+  `build.target` first.
 - **Build.** Static, `x86_64-unknown-linux-musl`, so the binary runs on any Linux whatever its
   glibc; this can only be proven in CI (no musl tools on the owner's host). Fallback if musl
   fails: a glibc build in a Debian 11 container, as for GCCE.
