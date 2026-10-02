@@ -227,7 +227,18 @@ Progress:
   dependency (R4). New owner-side settings E introduced: repo variable `PUBLIC_READ_URL`,
   env `publish` variable `PUBLISH_PUBLIC_URL` (both non-secret — the lead can set them).
   GCCE dry-run pack of C's prefix: 72 365 105 bytes.
-- C still running.
+- D done and merged (d4c52df): workspace 652 tests pass, clippy 0, fmt clean. Smoke test:
+  `symdev build` with no `SYMDEV_*` vars and only a `file://` source installed gcce (merged
+  copy of ~/gcc-builds) + the SDK subset and built hello.exe; `.elf` identical to the classic
+  env, `.exe` differs only in the E32 time stamp and header CRC (native elf2e32 stamps the
+  clock) → acceptance 1 amended (eee296e). `~/gcc-builds/gcc-12.1.0` has its own binutils
+  2.35 (`as`), classic env links with 2.29.1 — told track C.
+  Deviations worth knowing: ids quoted in suggested commands (`'gcce;12.1.0'`);
+  `SYMDEV_AR` is an override and `Toolchain` has an `ar` field; `Provision` type with
+  injectable env; `symdev package` installs nothing, `freeze` does; first source listing an
+  id decides; unreadable sources skipped like keyless ones; README says the built-in source
+  is not published yet.
+- C still running. Spike on a developer-first emulator done on branch `emu-spike`.
 
 ## Next step
 
