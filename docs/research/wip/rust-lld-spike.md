@@ -116,6 +116,22 @@ Branch: `rust-lld-spike` (worktree `~/worktrees/symdev/rust-lld-spike`). No prod
   own COMDAT copy (GNU: ABS32 vs its local dynsym entry; lld: RELATIVE); its vtable
   `_ZTVN10__cxxabiv117__class_type_infoE` is imported from drtaeabi in both.
 
+- NO-GCCE LINK (prebuilt set in `~/src/rust-lld-spike/prebuilt/lib`, 90 592 B, 23 619 B .tar.gz):
+  `libsymrs.a` 19 322 (6 common shims; objects byte-identical across all 4 projects, the GUI
+  build's -DSYMRS_UID3 included), `libsymrs_ui.a` 59 362 (avkon/list/note/query; avkon edited
+  in scratch `prebuilt-src/` to read UID3 from `extern "C" char symrs_uid3[]`, link adds
+  `--defsym=symrs_uid3=0x<uid3>`; list/note/query objects == per-app ones), both with TARGET2
+  -> ABS32 (3 + 7 relocs); `libsupc++.a` 7 736 (del_ops.o, eh_personality.o, --strip-debug),
+  `libgcc.a` 4 172 (pr-support.o, _thumb1_case_uqi.o). Closure computed by linking ALL 10 shims
+  `--whole-archive` with lld `--why-extract` (`closure/why.txt`): exactly those 4 members
+  (_thumb1_case_uqi from symrs_note.o's Thumb switch).
+  `nogcce-link.py`: GNU argv with every GCCE path remapped, rust-lld inside
+  `bwrap --tmpfs ~/gcc-builds` under strace: all 4 link, 0 accesses to gcc-builds; files opened =
+  SDK copies, prebuilt/lib, script, the 2 Rust archives, rust-lld's own libs.
+  Fork elf2e32 on those ELFs: E32 IDENTICAL (mask header CRC+time) to the per-app-shim lld
+  builds for all 4, the GUI one included (--defsym gives the same literal word).
+- readelf -a dumps: `~/src/rust-lld-spike/readelf/{gnu,lld}-<p>.txt`.
+
 ## Dead ends
 
 ## Next step
