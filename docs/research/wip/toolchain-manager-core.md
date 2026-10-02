@@ -96,4 +96,20 @@ Track B (sigv4, amz_date, http_fetch) runs in parallel in `tm-net`; do not touch
 
 ## Next step
 
-Track A done. Final checks: workspace test + clippy, rustfmt on every created file, report.
+Track A done (2026-10-02). Verified: `cargo test --workspace --offline` 580 passed, 0
+failed (symdev-sdk: 97); `cargo clippy --workspace --all-targets --offline` no warnings;
+`rustfmt --edition 2024 --check` clean on every created file; `cargo fmt --all --check`
+fails only on `symbian-rs/crates/symbian-std/src/fs/file.rs` (Track F). Next: merge into
+`toolchain-manager` beside Track B (keep both tracks' `mod`/`pub use` lines in `lib.rs`).
+
+## For Track D
+
+- Build `builtin_source()` with `SourceSpec::new("public", BUILTIN_SOURCE, Auth::None)`.
+- `SdkHome::install` re-checks `installed` under the lock and returns the existing
+  receipt, but D2 should still check `installed` first so no index is fetched.
+- `SdkHome` prints nothing; the progress line is D2's. `install` needs `&dyn Fetch`;
+  sharing one fetcher across threads needs it `Sync`.
+- `TarGz` refuses PAX global headers and sparse entries: archives must be packed by
+  `ReproducibleTarGz` (or GNU-format tar without them); `git archive` output is refused.
+- `Host` implements `Display` for the "{id} has no archive for {host}" message.
+- No `SdkError` variants were added.
