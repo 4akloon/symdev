@@ -41,6 +41,37 @@ Branch: `rust-lld-spike` (worktree `~/worktrees/symdev/rust-lld-spike`). No prod
   dynamic reloc vs undefined sym, slot MUST be inside code (else `TODO ... outside code`), slot word
   read as addend (`addend<<16|ordinal`); local relocs only ABS32/GLOB_DAT/RELATIVE, else TODO error.
 
+- lld 23.1.1 (rust-lld of nightly-2026-09-19). Adaptations found so far, each forced by an error:
+  1. drop `--default-symver` (lld: unknown argument; EXE has no exports, verdef unused).
+  2. SDK DSOs: lld refuses `SHT_STRTAB ... non-null terminated` -- 438/570 DSOs pad .strtab
+     with 1-3 spaces after the last NUL. Scratch copies with padding zeroed (`fix-dso.py`,
+     `dso-fixed/`), same size/offsets.
+  3. `-z notext` (ABS32 vs local in .text: GCCE/RVCT code is non-PIC; GNU emits TEXTREL too).
+  4. linker script `symbian-lld.ld` (PHDRS: RX text = .text .emb_text .plt .got .rodata
+     .constdata .init_array .ARM.extab .ARM.exidx; RW data at -Tdata; dynamic tables in a 3rd R
+     PT_LOAD at 0x10000000 that elf2e32 ignores) + hidden `Image$$ER_RO$$Base/Limit`,
+     `.ARM.exidx$$Base/Limit`, `SHT$$INIT_ARRAY$$Base/Limit` (eexe.lib needs them; GNU's
+     symbianelf script defines them).
+  5. `--target2=abs` (lld default got-rel; GNU symbianelf + libsupc++ `__symbian__` personality
+     read the extab typeinfo word as an absolute pointer). AND lld cannot emit a dynamic reloc
+     for TARGET2 vs an imported symbol (`getDynRel` maps only ABS32/TARGET1) -> rewrite
+     R_ARM_TARGET2 -> R_ARM_ABS32 in input objects (`fix-target2.py`): usrt2_2.lib
+     (callfirstprocessfn.o, 1), our libsymrs.a (each TRAP's catch). libsupc++.a has none.
+  6. `-Bsymbolic`: else calls to the image's own global functions (libcalls `__atomic_*`) go
+     through PLT/JUMP_SLOT (GNU symbianelf binds them locally).
+- lld PLT is GOT-based: 32-byte PLT0 + 16 B/entry + .got.plt slot (R_ARM_JUMP_SLOT), slot
+  initialised to PLT0's address (lazy binding). GNU: 8 B/entry `ldr pc,[pc,#-4]` + GLOB_DAT.
+- Native elf2e32 refusals / hazards on the lld ELF (product code unchanged):
+  a. JUMP_SLOT import slot word = PLT0 address -> taken as import addend: SILENTLY WRONG
+     (spike wrapper zeroes the words).
+  b. `TODO: ELF without a writable PT_LOAD` -- lld drops zero-size PT_LOADs (wrapper appends an
+     empty RW PT_LOAD at -Tdata, like GNU's).
+  c. `TODO: ELF without Symbian$$CPP$$Exception$$Descriptor` -- GNU 2.29.1 copies HIDDEN
+     symbols into .dynsym as LOCAL; lld never does. Spike: eexe.lib copy with the symbol made
+     STV_DEFAULT (`fix-visibility.py`).
+  d. `relocation at 0x8154 targets 0x0` -- lld RELATIVE relocs have symbol 0; elf2e32 takes the
+     target (code vs data reloc kind) from the symbol value (GNU always names a section sym).
+
 ## Dead ends
 
 ## Next step
