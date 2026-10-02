@@ -31,9 +31,10 @@ impl Gcce {
         for path in [gcce.gxx(), gcce.ld(), gcce.gcc_lib(), gcce.gcc_target_lib()] {
             if !path.exists() {
                 return Err(SdkError::Other(format!(
-                    "{} is missing from installed {id}; run `symdev sdk uninstall {id} && \
-                     symdev sdk install {id}`",
-                    path.display()
+                    "{} is missing from installed {id}; run `symdev sdk uninstall {word} && \
+                     symdev sdk install {word}`",
+                    path.display(),
+                    word = id.shell_word()
                 )));
             }
         }
@@ -122,8 +123,8 @@ mod tests {
         assert_eq!(
             e,
             format!(
-                "{} is missing from installed gcce;12.1.0; run `symdev sdk uninstall gcce;12.1.0 \
-                 && symdev sdk install gcce;12.1.0`",
+                "{} is missing from installed gcce;12.1.0; run `symdev sdk uninstall 'gcce;12.1.0' \
+                 && symdev sdk install 'gcce;12.1.0'`",
                 gxx.display()
             )
         );

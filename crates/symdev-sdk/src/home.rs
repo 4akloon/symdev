@@ -39,10 +39,11 @@ impl SdkHome {
         let dir = self.package_dir(id);
         match Receipt::read(&dir)? {
             Some(r) if &r.id != id => Err(SdkError::Other(format!(
-                "{}: the receipt names {} instead of {id}; run `symdev sdk uninstall {id} && \
-                 symdev sdk install {id}`",
+                "{}: the receipt names {} instead of {id}; run `symdev sdk uninstall {word} && \
+                 symdev sdk install {word}`",
                 dir.display(),
-                r.id
+                r.id,
+                word = id.shell_word()
             ))),
             receipt => Ok(receipt),
         }

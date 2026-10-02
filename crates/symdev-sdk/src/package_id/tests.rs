@@ -97,3 +97,13 @@ fn deserializing_an_invalid_id_fails_with_the_reason() {
         "{e}"
     );
 }
+
+#[test]
+fn quotes_itself_as_one_shell_word() {
+    // `;` separates shell commands: an unquoted id in a suggested command would run
+    // `symdev sdk install gcce` and then `12.1.0`.
+    let id = PackageId::parse("gcce;12.1.0").unwrap();
+    assert_eq!(id.shell_word(), "'gcce;12.1.0'");
+    let quote = PackageId::parse("x;it's").unwrap();
+    assert_eq!(quote.shell_word(), r"'x;it'\''s'");
+}

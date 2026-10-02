@@ -270,3 +270,18 @@ fn list_returns_the_receipts_sorted_by_id() {
     let ids: Vec<_> = home.list().unwrap().into_iter().map(|r| r.id).collect();
     assert_eq!(ids, [earlier, w.id.clone(), later]);
 }
+
+#[test]
+fn a_receipt_for_another_id_names_the_quoted_repair_commands() {
+    let w = World::new();
+    let home = w.home();
+    home.install(&w.id, &w.source, &FileFetch, &w.entry)
+        .unwrap();
+    let other = PackageId::parse("gcce;12.2.0").unwrap();
+    fs::rename(home.package_dir(&w.id), home.package_dir(&other)).unwrap();
+    let e = home.installed(&other).unwrap_err().to_string();
+    assert!(
+        e.contains("symdev sdk uninstall 'gcce;12.2.0' && symdev sdk install 'gcce;12.2.0'"),
+        "{e}"
+    );
+}
