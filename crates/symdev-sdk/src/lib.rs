@@ -4,11 +4,13 @@
 mod amz_date;
 mod error;
 mod fetch;
+mod http_fetch;
 mod keys;
 mod sigv4;
 
 pub use amz_date::AmzDate;
 pub use error::{Result, SdkError};
 pub use fetch::Fetch;
+pub use http_fetch::HttpFetch;
 pub use keys::S3Keys;
 pub use sigv4::SigV4;
