@@ -19,6 +19,8 @@ fn sdk_in(dir: &Path) -> RustSdk {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, "\n").unwrap();
     }
+    let workspace = "[workspace]\nmembers = [\"crates/symbian-core\", \"crates/symbian-std\"]\n";
+    fs::write(dir.join("symbian-rs/Cargo.toml"), workspace).unwrap();
     RustSdk::at(&dir.join("symbian-rs")).unwrap()
 }
 

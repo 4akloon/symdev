@@ -147,6 +147,8 @@ fn the_variable_wins_over_the_checkout() {
     }
     let sdk = clone.join(RustSdkPackage::SDK_DIR);
     fs::write(sdk.join("rust-toolchain.toml"), common::SDK_TOOLCHAIN).unwrap();
+    let workspace = "[workspace]\nmembers = []\n";
+    fs::write(sdk.join("Cargo.toml"), workspace).unwrap();
     w.bin()
         .current_dir(w.tmp.path())
         .args(["new", "app", "--lang", "rust"])

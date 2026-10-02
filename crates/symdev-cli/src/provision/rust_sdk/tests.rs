@@ -103,7 +103,9 @@ fn sdk_tree(root: &Path) -> PathBuf {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, b"{}").unwrap();
     }
-    root.join(RustSdkPackage::SDK_DIR)
+    let sdk = root.join(RustSdkPackage::SDK_DIR);
+    fs::write(sdk.join("Cargo.toml"), "[workspace]\nmembers = []\n").unwrap();
+    sdk
 }
 
 /// The directory of the SDK `p` resolves, from its target spec.

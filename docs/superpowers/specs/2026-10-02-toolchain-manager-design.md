@@ -420,7 +420,13 @@ Rust for a C++ project.
   `symbian-rs` — because `symbian-macros` depends on `../../../crates/symdev-locale`, which
   takes its version and edition from the root `[workspace.package]` (found 2026-10-02); the
   SDK proper is `<package>/symbian-rs`. Both MIT, both in the public bucket, `<ver>` = the workspace version of the tagged
-  release. `Pins::rust_sdk()` pins `rust-sdk;<this symdev's version>`.
+  release. `Pins::rust_sdk()` pins `rust-sdk;<this symdev's version>`. An installed
+  package (and any SDK `RustSdk::at` accepts) must hold the target spec, `rust-toolchain.toml`,
+  `symbian-rs/Cargo.toml`, the two files outside `symbian-rs`, and the `Cargo.toml` of
+  every member that workspace manifest names (`RustSdkWorkspace`, 0.2.0): the libcalls
+  build of every Rust application runs in the SDK's workspace, and cargo loads all of its
+  members first, so a package without `symbian-rs/examples` is refused with the reinstall
+  command instead of failing inside cargo.
 - **Finding the Rust SDK.** `SYMDEV_RUST_SDK` first; then the source checkout symdev was built
   from, if it still exists (a developer working on the SDK keeps using their tree); else the
   installed `rust-sdk` package, auto-installed like GCCE. Today's compile-time path alone

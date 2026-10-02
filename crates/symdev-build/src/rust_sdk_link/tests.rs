@@ -17,6 +17,8 @@ fn sdk_tree(dir: &Path, sdk_dir: &str) -> RustSdk {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, "\n").unwrap();
     }
+    let workspace = "[workspace]\nmembers = []\n";
+    fs::write(dir.join(sdk_dir).join("Cargo.toml"), workspace).unwrap();
     RustSdk::at(&dir.join(sdk_dir)).unwrap()
 }
 

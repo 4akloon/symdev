@@ -2,6 +2,7 @@
 use std::path::{Path, PathBuf};
 
 use symdev_core::{Error, Result};
+use symdev_sdk::RustSdkWorkspace;
 
 use crate::rust_toolchain_file::RustToolchainFile;
 
@@ -89,14 +90,16 @@ impl RustSdk {
     ];
 
     /// What [`Self::at`] requires, relative to the SDK root: the target JSON, the
-    /// `rust-toolchain.toml` a project's nightly is checked against, and what the tree
-    /// reaches outside itself — `symbian-macros` reads locales files with the host
-    /// crate `symdev-locale` (`../../../crates/symdev-locale`), which inherits its
-    /// version and edition from the root `Cargo.toml`. A checkout has both; so does the
-    /// `rust-sdk` package, which keeps the repository's layout.
+    /// `rust-toolchain.toml` a project's nightly is checked against, the SDK's workspace
+    /// manifest (and, beyond this list, every member it names: [`RustSdkWorkspace`]), and
+    /// what the tree reaches outside itself — `symbian-macros` reads locales files with the
+    /// host crate `symdev-locale` (`../../../crates/symdev-locale`), which inherits its
+    /// version and edition from the root `Cargo.toml`. A checkout has all of them; so does
+    /// the `rust-sdk` package, which keeps the repository's layout.
     pub const REQUIRED: &'static [&'static str] = &[
         "targets/arm-symbian-e32.json",
         "rust-toolchain.toml",
+        "Cargo.toml",
         "../crates/symdev-locale/Cargo.toml",
         "../Cargo.toml",
     ];
@@ -108,14 +111,21 @@ impl RustSdk {
         let root = root
             .canonicalize()
             .map_err(|e| Error::Other(format!("Rust SDK not found at {} ({e})", root.display())))?;
+        let no_sdk = |what: &str| {
+            Error::Other(format!(
+                "Rust SDK at {} has no {what}: it is the symbian-rs directory of a symdev \
+                 checkout or of the rust-sdk package",
+                root.display()
+            ))
+        };
         for file in Self::REQUIRED {
             if !root.join(file).is_file() {
-                return Err(Error::Other(format!(
-                    "Rust SDK at {} has no {file}: it is the symbian-rs directory of a symdev \
-                     checkout or of the rust-sdk package",
-                    root.display()
-                )));
+                return Err(no_sdk(file));
             }
+        }
+        let workspace = RustSdkWorkspace::read(&root)?;
+        if let Some(manifest) = workspace.missing_member(&root) {
+            return Err(no_sdk(&format!("{manifest}, a member of its workspace")));
         }
         Ok(Self { root })
     }

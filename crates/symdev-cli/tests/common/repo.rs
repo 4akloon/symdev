@@ -124,6 +124,7 @@ impl World {
                     super::SDK_TOOLCHAIN,
                     false,
                 ),
+                ("symbian-rs/Cargo.toml", super::SDK_WORKSPACE, false),
                 ("symbian-rs/crates/symbian-std/Cargo.toml", "", false),
                 ("symbian-rs/crates/symbian-core/Cargo.toml", "", false),
             ],

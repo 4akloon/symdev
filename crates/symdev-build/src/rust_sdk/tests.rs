@@ -23,13 +23,22 @@ fn a_release_build_has_no_checkout() {
     assert_eq!(RustSdk::checkout(Some(""), tree), Some(tree));
 }
 
-/// A tree holding `files` (relative paths), as an installed package would.
+/// A tree holding `files` (relative paths), as an installed package would. Among them,
+/// `symbian-rs/Cargo.toml` is a workspace with one member, `examples/hello`, which is
+/// there too.
 fn tree_with(files: &[&str]) -> tempfile::TempDir {
     let tmp = tempfile::tempdir().unwrap();
     for file in files {
         let path = tmp.path().join(file);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, b"{}").unwrap();
+    }
+    if files.contains(&"symbian-rs/Cargo.toml") {
+        let workspace = "[workspace]\nmembers = [\"examples/hello\"]\n";
+        std::fs::write(tmp.path().join("symbian-rs/Cargo.toml"), workspace).unwrap();
+        let hello = tmp.path().join("symbian-rs/examples/hello");
+        std::fs::create_dir_all(&hello).unwrap();
+        std::fs::write(hello.join("Cargo.toml"), "").unwrap();
     }
     tmp
 }
@@ -50,11 +59,25 @@ fn the_installed_package_checks_what_at_requires() {
     }
 }
 
+/// Any cargo build in the SDK's workspace — the libcalls build — loads every member.
+#[test]
+fn an_sdk_missing_a_member_of_its_workspace_is_no_sdk() {
+    let tree = tree_with(RustSdkPackage::REQUIRED);
+    let sdk = tree.path().join(RustSdkPackage::SDK_DIR);
+    std::fs::remove_file(sdk.join("examples/hello/Cargo.toml")).unwrap();
+    let err = RustSdk::at(&sdk).unwrap_err().to_string();
+    assert!(
+        err.contains("has no examples/hello/Cargo.toml, a member of its workspace"),
+        "{err}"
+    );
+}
+
 #[test]
 fn a_symbian_rs_without_symdev_locale_beside_it_is_no_sdk() {
     let alone = tree_with(&[
         "symbian-rs/targets/arm-symbian-e32.json",
         "symbian-rs/rust-toolchain.toml",
+        "symbian-rs/Cargo.toml",
     ]);
     let err = RustSdk::at(&alone.path().join("symbian-rs"))
         .unwrap_err()
