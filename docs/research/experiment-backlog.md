@@ -3262,3 +3262,288 @@ headers (and, as before, GCC's runtime-exception libraries) — the owner's call
 `work/{build-examples.sh,compare-examples.py,compare-archives.py,compare-headers.sh,
 compare-trees.py,diag-member.py}`, `work/{baseline,baseline2,P,e2e,relocated}/`. Recipe
 commits in `~/projects/symdev-packages` (branch `gcce-own`).
+
+## 109. A Rust application with no GCCE: the shims and the GCC runtime prebuilt, the link done by `rust-lld` (spike, Rust SDK)
+
+**Requires:** `SYMDEV_EPOCROOT`, the GCCE of experiment 107 for the GNU baseline and for the
+one-time shim build, `rust-lld` of the pinned nightly (`nightly-2026-09-19`, LLD 23.1.1, in
+`~/.rustup/toolchains/…/lib/rustlib/x86_64-unknown-linux-gnu/bin/`), `SYMDEV_EKA2L1`,
+`bwrap`, `strace`. Spike: no product code changed; everything run lives in
+`~/src/rust-lld-spike/` (outside git).
+
+**Question.** Can a Rust application be built on a machine with no GCCE at all — the C++
+shims (`symbian-rs/shims/**`) and the GCC runtime members they need compiled once and
+shipped as archives, the final link done by `rust-lld` (which rustup installs) instead of
+GNU `arm-none-symbianelf-ld` 2.29.1 — and does the result still post-link, install, run,
+and catch a leave?
+
+**Setup.** `symdev` built from this branch (= `main` `c7b4fec`). Four projects under
+`work/`: `hello` from `symdev new hello --lang rust`; `ui` = a copy of `examples/ui` (GUI,
+Avkon shim; `symdev new --lang rust --template gui` refuses: "TODO: --language rust
+supports only --template console"); `async` = `examples/async` (active objects, the TRAP
+around `CActiveScheduler::Start`); the **leave probe** `shim` = `examples/shim` with
+`shim::leave_if_error(-1)`, i.e. `User::LeaveIfError(-1)` inside the `TRAPD` of
+`symrs_leave.cpp`, reporting `trapped=<code>` and then `alive` through `User::InfoPrint`.
+`SYMDEV_LD` pointed at a wrapper that logs the argv and execs the real `ld` (it needs
+`SYMDEV_AR` set: the archiver is otherwise found by the linker's name); a second wrapper
+`bin/ld-lld` turns the same argv into the lld line below.
+
+**The link line symdev uses** (captured, `hello`; GUI adds `-u symrs_app_create` after
+`-u _Z7E32Mainv` and `-l:apparc.dso -l:cone.dso -l:eikcore.dso -l:avkon.dso -l:gdi.dso`
+after `-l:drtrvct2_2.dso`):
+
+```
+-L<gcc_lib>/ -L <gcc_target_lib> --target1-abs --no-undefined -nostdlib -shared
+-Ttext 0x8000 -Tdata 0x400000 --default-symver -soname hello{000a0000}[ef9f2cab].exe
+--target1-abs --no-undefined -nostdlib --strip-debug --entry _E32Startup -u _E32Startup
+--gc-sections -u _Z7E32Mainv -L<sdk>/urel -l:eexe.lib -o hello.elf -Map hello.exe.map
+-L<sdk>/lib -l:euser.dso -l:drtaeabi.dso libhello.a build/shims/libsymrs.a
+libsymbian_libcalls.rlib -( -l:usrt2_2.lib -) -L<gcc_target_lib> -L<sdk>/lib
+-l:euser.dso -l:dfpaeabi.dso -l:dfprvct2_2.dso -l:drtaeabi.dso -l:scppnwdl.dso
+-l:drtrvct2_2.dso --as-needed -l:efsrv.dso -l:bafl.dso -l:esock.dso -l:insock.dso
+-l:eikcoctl.dso -l:eikctl.dso --no-as-needed -lsupc++ -lgcc
+```
+
+### 1. What the link takes from GCCE
+
+From the GNU `-Map` ("Archive member included…") of each application, and for the whole
+shim set by linking all ten shim objects `--whole-archive` with lld `--why-extract`:
+
+| | `libsymrs.a` (ours) | `libsupc++.a` | `libgcc.a` |
+|---|---|---|---|
+| `hello` | `symrs_cleanup.o` | — | — |
+| `async` | `symrs_active.o`, `symrs_cleanup.o` | `del_ops.o`, `eh_personality.o` | `pr-support.o` |
+| `shim` | `symrs_cleanup.o`, `symrs_f32.o`, `symrs_leave.o` | `eh_personality.o` | `pr-support.o` |
+| `ui` | `symrs_avkon.o` | `del_ops.o`, `eh_personality.o` | `pr-support.o` |
+| all 10 shims | — | `del_ops.o` (`operator delete(void*, unsigned)`), `eh_personality.o` (`__gxx_personality_v0`, for every `TRAP`) | `pr-support.o` (`__gnu_unwind_frame`, from the personality), `_thumb1_case_uqi.o` (a Thumb `switch` in `symrs_note.o`) |
+
+Everything else on the line is the SDK's (`eexe.lib`: `uc_exe_.o`, `uc_exe.o`;
+`usrt2_2.lib`: `callfirstprocessfn.o`, `dllexp.o`, `ucppinit_aeabi.o`; the DSOs) or Rust's.
+`_Unwind_*` and `__cxa_*` come from `drtaeabi.dso`. **The common shim objects are
+project-independent**: all six are byte-identical across the four projects, the GUI
+build's `-DSYMRS_UID3` included. Only `symrs_avkon.cpp` uses that macro, for
+`AppDllUid()`; compiled once with `extern "C" char symrs_uid3[]` in its place and linked
+with `--defsym=symrs_uid3=0x<uid3>`, it gives the same literal word and a byte-identical
+`.exe` (below). `list`/`note`/`query` objects are identical to the per-application ones.
+
+**The fixed set** (`prebuilt/lib`, archives `ar crD`, runtime members `--strip-debug`):
+`libsymrs.a` 19 322 B, `libsymrs_ui.a` 59 362 B, `libsupc++.a` 7 736 B (2 members),
+`libgcc.a` 4 172 B (2 members) — **90 592 B, 23 619 B as `.tar.gz`**; the full GCCE
+`libsupc++.a`/`libgcc.a` are 244 096 / 9 754 506 B. Licences: `pr-support.c` and
+`eh_personality.cc` are GPL-3.0-or-later with the GCC Runtime Library Exception 3.1 (their
+headers, lines 7–8 and 15–21): an application linked with them may be conveyed under any
+terms (`COPYING.RUNTIME` §1) as long as all its target code comes from "Eligible"
+compilation processes (§0, lines 53–57) — GCC for the shims, rustc/LLVM, which is done
+"without using any work based on GCC", for the rest — and shipping the members themselves is GPLv3 object code whose source is
+the GCC 12.1.0 tarball the `gcce` package already carries. The shims are MIT, **but their
+objects contain code generated from the S60 SDK headers** (inline members, the `TRAP`
+expansion, `XLeaveException`'s typeinfo, Avkon class layouts): whether that may go into the
+public `rust-sdk` package or belongs with the SDK in the private bucket is the owner's call.
+
+### 2. Linking with `rust-lld -flavor gnu`
+
+Replayed with only these changes, each forced by an lld error or a wrong result:
+
+| # | change | why |
+|---|---|---|
+| 1 | drop `--default-symver` | lld: "unknown argument". An EXE exports nothing (`Elf2E32::exports` returns `None`), so the VERDEF it fed is unused. |
+| 2 | the SDK DSOs through copies with the `.strtab` padding zeroed | lld: "SHT_STRTAB string table section [index 6] is non-null terminated". 428 of the 570 SDK `.dso` pad `.strtab` with 1–3 spaces after the last NUL; zeroing them changes no size or offset. |
+| 3 | `-z notext` | "relocation R_ARM_ABS32 cannot be used against local symbol; recompile with -fPIC": GCCE, RVCT and rustc code here is not PIC. GNU writes `DT_TEXTREL` too. |
+| 4 | `-T symbian-lld.ld` (31 lines, ours) | lld's default layout splits read-only data into its own non-executable segment, which elf2e32 (code = the first `PF_X` `PT_LOAD`) would drop, and `eexe.lib` needs `Image$$ER_RO$$Base/Limit`, `.ARM.exidx$$Base/Limit` (and `SHT$$INIT_ARRAY$$Base/Limit`), which GNU's built-in symbianelf script defines. The script: `PHDRS` text RX / data RW / dyn R; `.text .emb_text .plt .got .rodata .constdata .init_array .ARM.extab .ARM.exidx` in text at `-Ttext`; `.data .bss` at `-Tdata`; `.dynsym … .dynamic` in a third read-only `PT_LOAD` at 0x10000000 that elf2e32 never copies; the six symbols `PROVIDE_HIDDEN`. lld honours `-Ttext`/`-Tdata` with it. |
+| 5 | `--target2=abs` **and** `R_ARM_TARGET2` → `R_ARM_ABS32` in the input objects | lld's default is GOT-relative; GNU's symbianelf writes an absolute word with a dynamic `R_ARM_ABS32`, and libsupc++'s personality, built for `__symbian__`, reads the catch typeinfo word as an absolute pointer. With `--target2=abs` alone lld refuses "relocation R_ARM_TARGET2 cannot be used against symbol 'typeinfo for XLeaveException'": it can emit a dynamic relocation only for `R_ARM_ABS32` and `R_ARM_TARGET1`. The type byte is rewritten in place (`fix-target2.py`): `usrt2_2.lib` 1 (`callfirstprocessfn.o`), `libsymrs.a` 3, `libsymrs_ui.a` 7; `libsupc++.a`/`libgcc.a` have none. |
+| 6 | `-Bsymbolic` | otherwise the image's own global functions (`symbian-libcalls`' `__atomic_*`, the `symrs_app_*` the shim calls) go through PLT slots with `R_ARM_JUMP_SLOT` against defined symbols, which elf2e32 refuses (type 22, "not observed"). |
+| 7 | GUI only: `--defsym=symrs_uid3=0x<uid3>` | the prebuilt Avkon shim (section 1). |
+
+Everything else — `--target1-abs`, `--no-undefined`, `-nostdlib`, `-shared`,
+`-Ttext`/`-Tdata`, `-soname`, `--strip-debug`, `--entry`, `-u`, `--gc-sections`, `-l:`,
+`-( -)`, `--as-needed`, `-Map`, `-lsupc++ -lgcc` — is accepted as is. **All four link.**
+
+**The ELF against GNU's** (`readelf -a`, `~/src/rust-lld-spike/readelf/`):
+
+| | `hello` GNU / lld | `async` | `shim` | `ui` |
+|---|---|---|---|---|
+| `DT_NEEDED` | identical (6 DLLs) | identical (7) | identical (8) | identical (13) |
+| undefined `.dynsym` | 19 / 19 | 66 / 66 | 35 / 35 | 213+1 weak / 213+1 weak |
+| dynamic relocs | 10 RELATIVE, 1 ABS32, 16 GLOB_DAT / 10 RELATIVE, 1 ABS32, 16 JUMP_SLOT | 243, 14, 69 GLOB_DAT / 254, 3, 61 JUMP_SLOT | 34, 4, 32 / 37, 1, 32 | 80, 186, 80 / 119, 147, 71 |
+| `.plt` (+ `.got`) | 128 / 288 + 76 | 552 / 1 008 + 256 | 256 / 544 + 140 | 640 / 1 168 + 296 |
+| file | 16 456 / 79 624 | 79 404 / 238 748 | 27 032 / 84 068 | 76 692 / 117 680 |
+
+The rest of the loaded bytes are the same size: `.text`+`.emb_text`, `.rodata`+`.constdata`,
+`.ARM.extab`, `.data`, `.bss`; `.ARM.exidx` is 8–32 B longer. The differences are the
+linkers' conventions, not the program: GNU's symbianelf makes an 8-byte PLT entry
+(`ldr pc, [pc, #-4]` + a word with `R_ARM_GLOB_DAT`), puts the dynamic tables in
+non-allocated sections (address 0, `DT_*` holding file offsets), copies hidden symbols into
+`.dynsym` as `LOCAL`, names a section symbol in every `R_ARM_RELATIVE`, always emits an
+(empty) RW `PT_LOAD` at `-Tdata`, and for the image's own globals called from the shim
+(`symrs_app_*`, `_ZdlPvj`) makes PLT entries with `R_ARM_ABS32` (the 9 fewer relocations
+of `ui`, 8 of `async`). lld: a GOT-based PLT (32-byte PLT0, 16-byte entries, a 4-byte
+`.got.plt` slot each, `R_ARM_JUMP_SLOT`, the slot **initialised to PLT0's address** for
+lazy binding), allocated dynamic tables, no hidden symbols in `.dynsym`, symbol-less
+`R_ARM_RELATIVE`, no zero-sized `PT_LOAD`; with `-Bsymbolic` the shim calls Rust directly.
+The file is larger only by 64 KiB page alignment. The `XLeaveException` typeinfo the
+`TRAP`s catch binds to the shim's own COMDAT copy in both (GNU: `ABS32` against its local
+`.dynsym` entry; lld: `RELATIVE`); its vtable `_ZTVN10__cxxabiv117__class_type_infoE` is
+imported from `drtaeabi` in both.
+
+### 3. The native elf2e32 on the lld ELF
+
+**Not as is.** Four refusals and one silent error:
+
+| | what | native elf2e32 |
+|---|---|---|
+| a | import slot word = PLT0's address (lazy-binding initial value of `.got.plt`) | **silently wrong**: the word is read as the import's addend, `addend << 16 \| ordinal` |
+| b | no writable `PT_LOAD` when the program has no data | "TODO: ELF without a writable PT_LOAD (not observed)" |
+| c | `Symbian$$CPP$$Exception$$Descriptor` hidden, so only in `.symtab` | "TODO: ELF without Symbian$$CPP$$Exception$$Descriptor (not observed)" |
+| d | `R_ARM_RELATIVE` with symbol 0 | "relocation at 0x8154 targets 0x0 outside code and data" (the target, which picks code vs data relocation, is read from the symbol) |
+| e | a `RELATIVE` word pointing one past the code (`.ARM.exidx$$Limit` in the exception descriptor) | "relocation at 0x8258 targets 0x84e0 outside code and data" |
+
+A scratch copy of `symdev-elf2e32` (+ `symdev-core`, `symdev-uidcrc`) with five changes,
+each marked `SPIKE 109`, fixes them: (a) an import keeps its in-place addend only for
+`R_ARM_ABS32` — `GLOB_DAT`/`JUMP_SLOT` resolve to `S`, the meaning `ElfLocalReloc` already
+gives `GLOB_DAT`; (b) no writable `PT_LOAD` = empty data at 0x400000; (c) the descriptor
+is looked up in `.symtab` when `.dynsym` lacks it; (d) a symbol-less `RELATIVE` targets the
+word as linked; (e) a target equal to the end of code counts as code. Its 42 unit tests
+pass, and on the four **GNU** ELFs it writes `.exe` files identical to the product's
+(masking CRC 0x14–0x17 and time 0x24–0x2B), so the changes are invisible to GNU input. It
+ran through `symdev build` as `SYMDEV_ELF2E32`; `e2e.sh` replays symdev's EXE argv and
+reproduces symdev's own `.exe` exactly.
+
+**E32, GNU against lld** (product elf2e32 on the GNU ELF, the fork on the lld ELF):
+
+| | `hello` | `async` | `shim` | `ui` |
+|---|---:|---:|---:|---:|
+| `.exe` GNU / lld | 968 / 1 044 | 18 431 / 18 577 | 4 452 / 4 572 | 10 315 / 10 511 |
+| uncompressed | 1 340 / 1 584 | 33 948 / 34 684 | 7 092 / 7 552 | 17 092 / 17 936 |
+| code size | 0x3ec / 0x4e0 | 0x7fec / 0x82d4 | 0x199c / 0x1b68 | 0x3c40 / 0x3fa0 |
+| import section | 144 = 144 B | 400 = 400 B | 280 = 280 B | 1 208 = 1 208 B |
+| import words (`addend<<16\|ordinal`) per DLL | identical | identical | identical | identical |
+| code relocations (text/data/inferred) | 10 = 10 | 211+51 / 203+51 | 37 = 37 | 124+4+1 / 115+4+1 |
+| data section | — | 40 B identical | — | — |
+
+Every other header field is equal — UIDs, flags 0x1200002a, heap, stack, BSS, code and data
+base, DLL count, secure id, capabilities, export description — except the offsets that
+follow the larger code, CRC and time, and in `shim` and `ui` the entry point and exception
+descriptor, 4 bytes lower (where `.emb_text` lands inside lld's `.text`; same total size). **The cost is the PLT: 20 bytes per imported function instead
+of 8, plus 44 fixed** — +76, +146, +120, +196 bytes of `.exe` (+7.9 % for `hello`, +1.9 %
+for `ui`). lld has no option for an 8-byte Symbian PLT.
+
+### 4. In EKA2L1
+
+`symdev package` + `symdev run` (scratch signing password, keys generated into the scratch
+`build/`), a PID-bound screenshot (`runshot.py`, the old log deleted first so a stale run
+cannot answer), `kill -9` of that PID only; the same steps for the GNU build of the same
+tree (ELFs equal to the saved baselines).
+
+| | GNU | lld |
+|---|---|---|
+| `hello` | log `Trying to display: Hello from Rust SDK (19 chars)` | the same |
+| leave probe | `lld109 mkdirall=0 trapped=-1 bad=0 ensured=0 sign=-42 alive` | **the same: the leave is raised, caught by the shim's `TRAP`, -1 returned, the process goes on** |
+| `ui` | title "Bars", three bars, `bars=3 keys=0 cmd=0`; F1, F1 (Options → "More bars") → `bars=4 keys=0 cmd=1` | the same; the menu shows the Rust items (More bars, Fewer bars, Reset, Exit) |
+| `async` | `symdev test --emulator`: 15 passed | 15 passed |
+
+Screenshots: `~/src/rust-lld-spike/shots/{gnu,lld}-ui-cmd-{1,2}.png` (before / after the
+command), `lld-ui-2.png` (menu open), `{gnu,lld}-{hello,shim}-1.png` (a console program
+draws nothing: black). GNU against lld differs in 46 pixels, all in a 7×9 box at (548,157):
+the status-pane clock's minute.
+
+**Negative control.** The leave probe linked by lld with the default `--target2=got-rel` and
+the shim archive not rewritten: no `InfoPrint`; the log says `Access violation reading
+address 0xFFFFFF0C in thread Main` and dumps the CPU context, and the emulator is gone
+before the first poll — the personality took the extab's GOT offset (`0xffffff34`) for a
+typeinfo pointer. So `trapped=-1` above really depends on the exception tables being
+right (`lld-neg/eka2l1.log`).
+
+### 5. Without GCCE
+
+`nogcce-link.py`: symdev's GNU argv with every GCCE path remapped to the prebuilt set,
+rust-lld run inside `bwrap --dev-bind / / --tmpfs ~/gcc-builds` under `strace -e
+trace=%file`. **All four link, with zero accesses to `~/gcc-builds`**; the files opened are
+the SDK copies, `prebuilt/lib`, the script, the two Rust archives and rust-lld's own
+libraries. Post-linked by the fork, the four `.exe` are **identical** (masking CRC and time)
+to the lld builds made with per-application shims — including `ui`, whose Avkon shim now
+takes its UID from `--defsym` — so the emulator results above hold for them byte for byte.
+
+### 6. The other fifteen examples
+
+`batch.sh`: every remaining member of the `symbian-rs` workspace, copied out as in the
+setup, built twice in the same directory — GNU ld, then the lld wrapper with the forked
+elf2e32 — and compared (`.exe` bytes; `e32cmp.py` on `--uncompressed` images; `DT_NEEDED`).
+**All fifteen link and post-link; the import words are identical per DLL in every one.**
+
+| example | GNU | lld | Δ |
+|---|---:|---:|---:|
+| `hello-raw` | 805 | 867 | +62 |
+| `alloc` | 3 765 | 3 848 | +83 |
+| `spawnee` | 2 606 | 2 690 | +84 |
+| `files` | 8 288 | 8 444 | +156 |
+| `cleanup` | 4 265 | 4 368 | +103 |
+| `atomics` | 8 837 | 8 949 | +112 |
+| `time` | 10 146 | 10 220 | +74 |
+| `net` | 10 506 | 10 734 | +228 |
+| `tls` | 13 978 | 14 079 | +101 |
+| `ui-list` | 11 194 | 11 452 | +258 |
+| `notes` | 11 465 | 11 699 | +234 |
+| `query` | 12 673 | 12 854 | +181 |
+| `panic` | 2 018 | 2 125 | +107 |
+| `fmt` | 107 777 | 107 744 | -33 |
+| `locale` | 8 122 | 8 250 | +128 |
+
+`DT_NEEDED` is identical except `notes` and `query`, where GNU keeps `eikcoctl` and lld does
+not: GNU decides `--as-needed` before `--gc-sections` removes the reference (the effect
+`RustBuild::sdk_libraries` documents), lld after it. Neither E32 imports anything from
+`eikcoctl`; the import sections are the same 8 DLLs and 1 184 / 1 164 bytes. `fmt` comes out
+33 bytes *smaller* only after compression: uncompressed it is 416 bytes larger (262 416 →
+262 832, the PLT and GOT), and deflate over its 256 KB of code lands differently. Only the four applications of sections 4–5 and `ui-list` (a list box
+drawn, `Down` moves the highlight, `shots/lld-uilist-{1,2}.png`) were run in the emulator.
+
+### Conclusion
+
+**Feasible.** With seven link-line changes, two in-place fixes to SDK files on the
+developer's machine (DSO `.strtab` padding; one `R_ARM_TARGET2` in `usrt2_2.lib`), a fixed
+90 KB archive set and five rules in elf2e32, a Rust application builds with no GCCE: same
+imports, same DLLs, same data, same behaviour in the emulator including a caught leave. The
+price is the PLT, 12 bytes per imported function plus 44 (+2–8 % `.exe`), and the elf2e32
+rules are taken from the ABI and lld's documented behaviour, not observed from the original
+tool, which never saw such an ELF — the emulator, not a byte golden, is their evidence.
+
+### Effort to productise
+
+* **(a) Prebuilt shims and runtime in `rust-sdk`, ~1.5–2 days.** A `symdev-packages` recipe
+  step: compile the ten shim sources with the recorded GCCE line (needs the `gcce` package
+  and **the S60 SDK headers, i.e. the private bucket's credentials in CI**, or a local build
+  by the owner), `ar crD` into `libsymrs.a`/`libsymrs_ui.a`, the `TARGET2` rewrite (a
+  30-line tool), the runtime closure (`--why-extract` over all shims, checked by the recipe
+  so a new shim cannot silently need a member that is not shipped), `--strip-debug`,
+  licence metadata for the two halves (MIT shims; GPL-3.0-or-later WITH
+  GCC-exception-3.1 runtime, source = the GCC tarball). `symrs_avkon.cpp` reads the UID from
+  a symbol (or a Rust `#[no_mangle] static` fed by the `SYMDEV_UID3` cargo already gets).
+  Open owner decision: public or private package (section 1).
+* **(b) symdev links Rust with rust-lld, ~3–4 days.** `Toolchain`: a Rust build stops
+  requiring `SYMDEV_GXX`/`LD`/`GCC_LIB`/`GCC_TARGET_LIB`/`AR`; rust-lld is found in the
+  pinned nightly's sysroot (`rustc --print sysroot`, override `SYMDEV_RUST_LLD`).
+  `RustBuild::link_args` builds the lld line from the table in section 2 (the linker script
+  ships in `rust-sdk`, MIT); `build_shims` and the case-fold overlay go away for Rust.
+  The SDK fixes are made once, locally, into a cache under `SYMDEV_HOME` at `symdev sdk
+  install` (never shipped — they are SDK bytes). elf2e32 gets the five rules with tests and
+  an lld-linked ELF hex golden (`counter.elf.hex` is the precedent). Acceptance: every
+  example GNU vs lld (import words, `DT_NEEDED`), the GUI/async/leave runs in EKA2L1.
+  **C++ projects keep GNU ld**: their line is byte-verified against the SDK's own, and an
+  MMP project needs GCCE to compile anyway. +1–2 days if the PLT cost must go (a generated
+  8-byte stub per import behind `--wrap`; not tried).
+* **(c) Impossible without GCCE:** compiling any C++ — an MMP project, user C++ inside a
+  Rust project, a new or changed shim (each needs a `rust-sdk` release), a shim for another
+  SDK than S60 3rd FP2; a per-application compile-time C++ setting other than the UID;
+  libsupc++/libgcc members outside the shipped closure. Still needed and not GCCE: the
+  host's own C linker `cc` for build scripts and the SDK's proc macros (`bf03b11`). Not
+  tried here: a Rust DLL
+  (`edll.lib`, exports), `std` examples, a device.
+
+**Evidence.** 2026-10-02, this host. Outside git, `~/src/rust-lld-spike/`: `env.sh`,
+`bin/{ld-log,ld-lld,gxx-log}`, `symbian-lld.ld`, `fix-dso.py`, `fix-target2.py`,
+`fix-visibility.py` (an earlier attempt for (c), superseded by the `.symtab` lookup),
+`copy-example.sh`, `replay.py`, `nogcce-link.py`, `e2e.sh`, `e32dump.py`, `e32cmp.py`,
+`relocmap.py`, `runshot.py`, `batch.sh`; `logs/` (every argv, build log, `batch.txt`),
+`gnu/`, `lld/`, `lld-neg/`, `nogcce/`, `e32/`, `readelf/`, `shots/`, `closure/why.txt`,
+`prebuilt/{lib,obj,rt}`, `prebuilt-src/` (the UID-free `symrs_avkon.cpp`),
+`elf2e32-fork/` (grep `SPIKE 109`), `dso-fixed/` and `sdk-fixed/` (SDK copies, never to
+be committed). Projects in `work/`.
