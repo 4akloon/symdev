@@ -23,7 +23,7 @@ impl Fetch for Slow {
         FileFetch.text(url)
     }
 
-    fn download(&self, url: &str, dest: &Path) -> Result<u64> {
+    fn download(&self, url: &str, dest: &Path, _limit: u64) -> Result<u64> {
         self.downloads.fetch_add(1, Ordering::SeqCst);
         let path = url.trim_start_matches("file://");
         let bytes = fs::read(path).map_err(|e| SdkError::Other(e.to_string()))?;

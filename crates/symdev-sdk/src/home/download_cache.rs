@@ -88,7 +88,7 @@ impl DownloadCache {
         entry: &ArchiveEntry,
         part: &Path,
     ) -> Result<File> {
-        fetch.download(url, part)?;
+        fetch.download(url, part, entry.size)?;
         let mut file = File::open(part).map_err(io_at(part))?;
         let (actual, actual_size) = Self::digest(&mut file, part)?;
         if actual != entry.sha256 || actual_size != entry.size {

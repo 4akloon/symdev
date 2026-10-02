@@ -6,6 +6,7 @@ use super::SdkHome;
 use crate::{ArchiveEntry, Auth, Fetch, FileFetch, Host, PackageId, ReproducibleTarGz};
 use crate::{Result, SdkError, SourceSpec};
 
+mod limits;
 mod own_receipt;
 mod placement;
 mod receipts;
@@ -21,9 +22,9 @@ impl Fetch for Counting {
         FileFetch.text(url)
     }
 
-    fn download(&self, url: &str, dest: &Path) -> Result<u64> {
+    fn download(&self, url: &str, dest: &Path, limit: u64) -> Result<u64> {
         self.downloads.fetch_add(1, Ordering::SeqCst);
-        FileFetch.download(url, dest)
+        FileFetch.download(url, dest, limit)
     }
 }
 
