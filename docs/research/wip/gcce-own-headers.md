@@ -89,7 +89,25 @@ builds' logs/config.log, reference toolchain's GCC output (c++config.h, objects,
 - Comparator negative test: one flipped `.text` byte in a copy of the reference
   libsupc++.a is reported (`DIFFER in array_type_info.o`).
 
+- **Build P done** (333 s, exit 0, prefix 208 908 363 bytes). Against `~/gcc-builds`:
+  - archives (107's method: disassembly, non-debug section bytes, non-debug relocations,
+    symbols): all 11 archives, 7336 members identical; 391 members byte-identical. 9
+    members (eh_ptr.o, fundamental_type_info.o, pbase_type_info.o in the 3 libsupc++.a)
+    differ only in COMDAT `.group` lists: the reference's gas 2.35 also lists the `.rel`
+    section, our gas 2.29.1 does not (107's documented assembler difference). Proof it is
+    the assembler: all 192 libsupc++ members of P are byte-identical to 107's `prefix-b`
+    (GCC4Symbian files + gas 2.29.1; archives compared, nothing else opened there), and
+    compare-archives P vs prefix-b reports no `.group` difference.
+  - all four `c++config.h` copies byte-identical; header trees: same 84 files, 82
+    identical, `install-tools/mkheaders.conf` differs only in the prefix path,
+    `include-fixed/stdio.h` present on both sides (not compared, by rule).
+  - examples (`work/P` vs `work/baseline`): `.elf` identical ×3, `.exe` identical outside
+    0x14-0x17/0x24-0x2B ×3. A bogus SYMDEV_GXX makes symdev fail, so the env is used.
+- Packages commit `73e2d78` (variant P in the recipe; build.yml packs the recipe dir).
+
 ## Dead ends
 
 ## Next step
-Read libstdc++/gcc configure for what stdio.h/stdint.h must provide; write headers; build.
+Build D running (`run-variant.sh D`). Then: P vs D byte comparison (which changes fewer
+bytes), DW_AT_producer check for -D, choose; relocation (proof 3); build.sh end to end
+from an empty dir with downloads (proof 4); experiment 108 in the backlog.
