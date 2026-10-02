@@ -318,3 +318,14 @@ recipe in symdev-packages; `install.sh` in the public bucket). Awaiting approval
   binary had linked the host's libz), `SYMDEV_RELEASE=1` in the recipe build, `tests.yml` CI.
   The lead added musl 1.2.5's COPYRIGHT from the signed release tarball (sha a9a118bb…,
   key 8364…450F) → "Entries without a licence file: none" (ea529fe).
+
+## Release (2026-10-02, ~19:05 UTC)
+
+- Final review fixes merged (76c35ee; 714 tests, clippy 0, fmt clean). `toolchain-manager`
+  merged into main (9377fe1), tag `v0.1.0`, both pushed. symdev CI on main: `check` green,
+  `examples` red as expected — `gcce;12.1.0` not yet in the public index (404).
+- symdev-packages: `publish` now depends on symdev-sdk at tag v0.1.0 (3214021), pushed.
+  GitHub registers a workflow only when an event first triggers it (workflow_dispatch gave
+  404 before) → triggered by legit recipe edits: symdev.yml run 37052134487 (80b534a),
+  publish.yml (GCCE) run 37052194350 (805cf16). `tests` workflow green on the first push.
+- Next: when both publish runs are green → re-run symdev CI `examples`, then acceptance R5.
