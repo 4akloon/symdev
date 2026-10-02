@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use sha2::{Digest, Sha256};
 
-use crate::resolve_url;
 use crate::{ArchiveEntry, Fetch, PackageId, Receipt, Result, SdkError, SourceSpec, TarGz};
 
 /// How deep `list` looks for receipts: ids of up to this many segments.
@@ -103,7 +102,7 @@ impl SdkHome {
         // Holding the lock, no other install is running: anything staged is left over.
         let staging_root = self.root.join(".staging");
         remove_dir_if_exists(&staging_root)?;
-        let url = resolve_url(&source.base, &entry.url)?;
+        let url = source.resolve(&entry.url)?;
         let archive = self.download(id, &url, fetch, entry)?;
         let n = STAGED.fetch_add(1, Ordering::Relaxed);
         let staging = staging_root.join(format!("{}-{n}", std::process::id()));

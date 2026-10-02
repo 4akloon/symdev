@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use symdev_build::{Epocroot, RustSdk, Toolchain, ToolchainOverrides};
 use symdev_core::Error;
 use symdev_manifest::{Device, Language};
-use symdev_sdk::{Auth, SourceSpec, Sources, builtin_source};
+use symdev_sdk::{Auth, SourceSpec, Sources};
 use symdev_sdk::{Gcce, PackageId, Pins, PlatformSdk, S3Keys, SdkHome, SdkManager};
 
 /// The installed packages and the sources, as this process's environment places them;
@@ -161,7 +161,7 @@ impl Provision {
             Err(e) => return Err(Error::Other(format!("{}: {e}", path.display()))),
         };
         let path = path.display().to_string();
-        let sources = Sources::parse(text.as_deref(), &path, builtin_source().as_ref())?;
+        let sources = Sources::parse(text.as_deref(), &path, SourceSpec::builtin().as_ref())?;
         let keys = self.keys(&sources.list)?;
         Ok(SdkManager::new(
             self.home()?,

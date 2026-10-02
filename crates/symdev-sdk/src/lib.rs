@@ -2,7 +2,8 @@
 //! packages under `SYMDEV_HOME` (design: `docs/superpowers/specs/2026-10-02-toolchain-manager-design.md`).
 
 mod amz_date;
-mod builtin;
+mod archive_entry;
+mod auth;
 mod catalog;
 mod error;
 mod fetch;
@@ -25,10 +26,10 @@ mod sigv4;
 mod source;
 mod sources;
 mod tar_gz;
-mod url;
 
 pub use amz_date::AmzDate;
-pub use builtin::{BUILTIN_SOURCE, builtin_source};
+pub use archive_entry::ArchiveEntry;
+pub use auth::Auth;
 pub use error::{Result, SdkError};
 pub use fetch::Fetch;
 pub use file_fetch::FileFetch;
@@ -37,7 +38,7 @@ pub use home::SdkHome;
 pub use host::Host;
 pub use http_fetch::HttpFetch;
 pub use index::Index;
-pub use index_package::{ArchiveEntry, IndexPackage};
+pub use index_package::IndexPackage;
 pub use keys::S3Keys;
 pub use manager::SdkManager;
 pub use package_id::PackageId;
@@ -47,7 +48,6 @@ pub use receipt::Receipt;
 pub use reproducible::ReproducibleTarGz;
 pub use rust_sdk_package::RustSdkPackage;
 pub use sigv4::SigV4;
-pub use source::{Auth, SourceSpec};
+pub use source::SourceSpec;
 pub use sources::Sources;
 pub use tar_gz::TarGz;
-pub use url::resolve_url;

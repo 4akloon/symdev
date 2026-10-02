@@ -1,13 +1,10 @@
-use crate::{Result, SdkError};
+use crate::{Auth, Result, SdkError};
 
-/// How requests to a source are authenticated.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Auth {
-    #[default]
-    None,
-    S3,
-}
+/// The public bucket's base URL, searched before every configured source: the owner's
+/// `symdev-public` R2 bucket on its `r2.dev` address (a custom domain may come later; this
+/// address stays enabled so releases that carry it keep working). `None` would mean no
+/// built-in source.
+const BUILTIN_URL: Option<&str> = Some("https://pub-15670d2771364287b9982e497c29f586.r2.dev/");
 
 /// One place packages come from: an `index.toml` and the archives beside it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -52,6 +49,12 @@ impl SourceSpec {
         Ok(spec)
     }
 
+    /// The built-in source, named `public`, without authentication. The URL is a constant
+    /// that this module's test checks, so a malformed one cannot ship.
+    pub fn builtin() -> Option<SourceSpec> {
+        BUILTIN_URL.and_then(|url| SourceSpec::new("public", url, Auth::None).ok())
+    }
+
     fn url_problem(url: &str) -> Option<&'static str> {
         if url.chars().any(|c| c.is_whitespace() || c.is_control()) {
             return Some("has whitespace or a control character");
@@ -84,6 +87,51 @@ impl SourceSpec {
         format!("{}index.toml", self.base)
     }
 
+    /// Resolves a URL from the source's index against the index's directory. `relative`
+    /// must stay under it: not empty or absolute, no scheme (`://`), no `.`, `..` or empty
+    /// segment, no `\`, query, fragment, whitespace or control character. So moving a
+    /// bucket to another domain changes no byte of its index, and an index cannot point a
+    /// download anywhere else.
+    pub fn resolve(&self, relative: &str) -> Result<String> {
+        if !self.base.ends_with('/') {
+            return Err(SdkError::Other(format!(
+                "source URL `{}` must end with `/` to resolve `{relative}` against it",
+                self.base
+            )));
+        }
+        if let Some(reason) = Self::relative_problem(relative) {
+            return Err(SdkError::Other(format!(
+                "URL `{relative}` {reason}; an index may only name paths under its own directory"
+            )));
+        }
+        Ok(format!("{}{relative}", self.base))
+    }
+
+    /// Why `relative` may not be resolved against an index directory, if it may not.
+    pub(crate) fn relative_problem(relative: &str) -> Option<&'static str> {
+        if relative.is_empty() {
+            Some("is empty")
+        } else if relative.starts_with('/') {
+            Some("is absolute")
+        } else if relative.contains("://") {
+            Some("has a scheme")
+        } else if relative.contains(['\\', '?', '#']) {
+            Some("has a `\\`, `?` or `#`")
+        } else if relative
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control())
+        {
+            Some("has whitespace or a control character")
+        } else if relative
+            .split('/')
+            .any(|s| s.is_empty() || s == "." || s == "..")
+        {
+            Some("has an empty, `.` or `..` segment")
+        } else {
+            None
+        }
+    }
+
     /// Whether the source is a local directory (`file://`).
     pub fn is_file(&self) -> bool {
         self.base.starts_with("file://")
@@ -91,25 +139,4 @@ impl SourceSpec {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{Auth, SourceSpec};
-
-    #[test]
-    fn adds_the_trailing_slash_and_names_the_index() {
-        let s = SourceSpec::new("public", "https://pub-1.r2.dev", Auth::None).unwrap();
-        assert_eq!(s.base, "https://pub-1.r2.dev/");
-        assert_eq!(s.index_url(), "https://pub-1.r2.dev/index.toml");
-        assert!(!s.is_file());
-        let f = SourceSpec::new("m", "file:///srv/m/", Auth::None).unwrap();
-        assert_eq!(f.index_url(), "file:///srv/m/index.toml");
-        assert!(f.is_file());
-    }
-
-    #[test]
-    fn an_invalid_name_or_url_names_itself() {
-        let e = SourceSpec::new("Bad", "file:///x", Auth::None).unwrap_err();
-        assert!(e.to_string().contains("`Bad`"), "{e}");
-        let e = SourceSpec::new("m", "ftp://x/", Auth::None).unwrap_err();
-        assert!(e.to_string().contains("ftp://x/"), "{e}");
-    }
-}
+mod tests;

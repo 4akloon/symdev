@@ -379,6 +379,7 @@ changed; every behaviour fix starts with a failing test. Baseline `cargo test --
 
 | # | Finding | Verified | State |
 |---|---|---|---|
+| M4 | two types per file; free `pub fn`s | yes: `index_package.rs` (`ArchiveEntry`, `IndexPackage`), `source.rs` (`Auth`, `SourceSpec`); `resolve_url`, `builtin_source` | fixed: `archive_entry.rs`, `auth.rs`; `SourceSpec::resolve(&self, relative)`, `SourceSpec::builtin()` (the URL is a private const of `source.rs`), crate-private `SourceSpec::relative_problem` for `Index`; `url.rs`, `builtin.rs` and the `BUILTIN_SOURCE` export deleted. Crate-root re-exports of `Auth`, `ArchiveEntry`, `IndexPackage` unchanged |
 
 Facts found on the way:
 
@@ -387,3 +388,9 @@ Facts found on the way:
   `--cfg foo` with `RUSTFLAGS` unset, and not with `RUSTFLAGS=""` nor `RUSTFLAGS="-D
   warnings"`. So the review's `RUSTFLAGS: ""` on the examples job would not help; the
   workflow-level `RUSTFLAGS` moves to the `check` job instead, and the examples job has none.
+
+symdev-packages call sites (not edited; that repository builds against this crate by path):
+
+- M4: `publish/src/bucket.rs:4-5` imports `resolve_url` (drop it from the `use`);
+  `publish/src/bucket.rs:46` `resolve_url(&self.spec.base, key)` becomes
+  `self.spec.resolve(key)`. No call of `builtin_source`/`BUILTIN_SOURCE` there.
