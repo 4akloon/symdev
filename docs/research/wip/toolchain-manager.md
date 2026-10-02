@@ -218,6 +218,15 @@ Progress:
   RVCT `.lib` import libraries (77.5 MB) left out. ≈5.5 MB compressed vs 9.9 MB.
 - Wave 2 dispatched: D in `tm-cli`; E in `~/worktrees/symdev-packages/publish` (branch
   `publish` of the local packages repo; C commits gcce recipe on its `main`).
+- E done on packages branch `publish` (f7a88f7, 43e0094, d3fc876), not merged (C still
+  commits on packages `main`). SDK package: sha256 cbec6da8…2a5f, 4 941 155 bytes, 2 697
+  files, 31 MB unpacked, reproducible. hello, gui, Rust hello and a DLL (rebuilt per
+  experiments 52/53 in scratch) are byte-identical subset vs full SDK. `usrt2_2.lib` is in
+  `urel`, not `lib` (spec/plan fixed, 394f12d). E3 workflows written; the Debian 11 apt
+  install is a failing TODO until experiment 107 records the list; CI needs the git-tag
+  dependency (R4). New owner-side settings E introduced: repo variable `PUBLIC_READ_URL`,
+  env `publish` variable `PUBLISH_PUBLIC_URL` (both non-secret — the lead can set them).
+  GCCE dry-run pack of C's prefix: 72 365 105 bytes.
 - C still running.
 
 ## Next step
