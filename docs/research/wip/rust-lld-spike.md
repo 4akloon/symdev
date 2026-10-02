@@ -90,6 +90,18 @@ Branch: `rust-lld-spike` (worktree `~/worktrees/symdev/rust-lld-spike`). No prod
 - Tools: `e32dump.py`, `e32cmp.py`, `relocmap.py`, `e2e.sh` (symdev's EXE elf2e32 argv; rerun
   reproduces symdev's .exe exactly). Outputs in `e32/`, `gnu/`, `lld/`.
 
+- EKA2L1, lld builds (symdev package + run, own PID, kill -9 own PID only; scratch signing
+  password `SYMDEV_SIGN_PASSWORD=spike109`, keys generated in scratch build/):
+  - hello: log `Trying to display: Hello from Rust SDK (19 chars)`; screen black (console app,
+    notifier not drawn) `shots/lld-hello-1.png`.
+  - leave probe (shim, `User::LeaveIfError(-1)` in symrs_leave.cpp TRAP): log
+    `lld109 mkdirall=0 trapped=-1 bad=0 ensured=0 sign=-42 alive` -> leave thrown, caught, -1
+    returned, process continued.
+  - ui: `shots/lld-ui-1.png` title Bars, 3 bars, `bars=3 keys=0 cmd=0`, Options/Exit; F1 via
+    XSendEvent -> `shots/lld-ui-2.png` Options menu with Rust items (More bars, Fewer bars,
+    Reset, Exit) -> DynInitMenuPaneL + trapped AddMenuItemL work.
+  - async: `symdev test --emulator` -> 15 passed (CActiveScheduler::Start TRAP, timers).
+
 ## Dead ends
 
 ## Next step
