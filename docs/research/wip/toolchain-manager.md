@@ -255,3 +255,23 @@ musl build can only be proven in CI; `RustSdk::from_env` falls back to a compile
 prebuilt binary cannot find the Rust SDK → it must become a package too. Design proposed to
 the owner in chat (packages `symdev;<ver>` + `rust-sdk;<ver>` built from a symdev tag by a
 recipe in symdev-packages; `install.sh` in the public bucket). Awaiting approval.
+
+## Wave 3 progress (2026-10-02)
+
+- Owner ran the R2 wizard (`scratchpad/symdev-r2-setup.sh`): `~/.config/symdev/keys.env`
+  (600, loaded from `~/.profile` — login shells only; the lead's tool shells must
+  `set -a; . ~/.config/symdev/keys.env; set +a`), `sources.toml` with the private source.
+  GitHub **secrets were not set** (stage 5 skipped or failed) — owner to re-run the wizard
+  and answer y at stage 5. The lead set the non-secret variables: `SYMDEV_PRIVATE_SOURCE_URL`
+  (symdev), `PUBLIC_READ_URL` (packages), `PUBLISH_PUBLIC_URL` (packages env `publish`).
+- R2 done: `publish private 'sdk;s60-3rd-fp2;1.1'` uploaded the 4 941 155-byte archive and
+  the private index; `symdev sdk install` with only the reader key into an empty
+  SYMDEV_HOME installed it (2 697 files + receipt, sha cbec6da8…).
+- R1 done (06a8a0b): built-in source = `https://pub-15670d2771364287b9982e497c29f586.r2.dev/`
+  (public bucket still empty — its index 404s and the source is skipped until GCCE is out).
+- Owner approved §12 (prebuilt symdev + rust-sdk packages, musl first, Debian 11 fallback,
+  install.sh); spec amended (4217a16). Packages side dispatched (worktree
+  `~/worktrees/symdev-packages/prebuilt`); symdev side (RustSdk from package, Pins) waits for
+  the review-fixes branch to land (both touch provision.rs/build_cmd.rs).
+- Do NOT push symdev-packages before own GCC4Symbian replacements (experiment 108) land and
+  R4 switches publish to a git tag: publish.yml would otherwise try to publish GCCE.
