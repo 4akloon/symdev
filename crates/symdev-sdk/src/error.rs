@@ -11,6 +11,9 @@ pub enum SdkError {
     UnknownSchema { source_name: String, found: u32 },
     #[error("source `{source_name}`: bad index: {detail}")]
     BadIndex { source_name: String, detail: String },
+    /// An index that a source's `key` requires to be signed, and that is not signed by it.
+    #[error("{url}: {detail}")]
+    UntrustedIndex { url: String, detail: String },
     #[error("bad sources file {path}: {detail}")]
     BadSources { path: String, detail: String },
     #[error("{url}: {detail}")]

@@ -17,6 +17,10 @@ hmac = "0.12"
 flate2 = "1"
 tar = "0.4"
 ureq = { version = "3", default-features = false, features = ["rustls"] }
+# Index signatures: verification only needs `std`; `zeroize` wipes a signing key on drop.
+ed25519-dalek = { version = "2", default-features = false, features = ["std", "zeroize"] }
+base64 = "0.23"
+zeroize = "1"
 
 [dev-dependencies]
 tempfile = "3"
