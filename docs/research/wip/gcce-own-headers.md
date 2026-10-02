@@ -139,5 +139,7 @@ builds' logs/config.log, reference toolchain's GCC output (c++config.h, objects,
 ## Dead ends
 
 ## Next step
-Write experiment 108 in experiment-backlog.md; point the spec (§6 GCCE recipe bullet) and
-pipeline-and-tools.md at it.
+Done: recorded as experiment 108 (`4ba5b56`), spec and pipeline-and-tools.md point at it;
+`cargo test --workspace --offline` 652 passed / 0 failed, clippy clean (docs-only change).
+Open for the owner: the package's SPDX `license` (still `GPL-3.0-or-later`; the prefix now
+also holds our MIT headers). Delete this note when the branch is merged.
