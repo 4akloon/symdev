@@ -4,6 +4,7 @@ use std::fs;
 use super::SdkManager;
 use crate::{Auth, Host, PackageId, SdkHome, SourceSpec, Sources};
 
+mod http;
 mod lookup;
 mod repo;
 use repo::Repo;

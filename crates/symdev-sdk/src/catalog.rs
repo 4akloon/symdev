@@ -11,6 +11,9 @@ pub(crate) struct Catalog {
     keys: BTreeMap<String, S3Keys>,
     /// By source name: the parsed index, or why it could not be read.
     indexes: BTreeMap<String, std::result::Result<Index, String>>,
+    /// Makes the adapter of an HTTP(S) source: [`HttpFetch::new`], or in tests one that
+    /// ignores the environment's proxy.
+    http: fn(&SourceSpec, Option<SigV4>) -> HttpFetch,
 }
 
 impl Catalog {
@@ -19,7 +22,16 @@ impl Catalog {
             sources,
             keys,
             indexes: BTreeMap::new(),
+            http: HttpFetch::new,
         }
+    }
+
+    /// The same catalog reaching HTTP sources without the environment's proxy, so a test
+    /// served on 127.0.0.1 works whatever `HTTP_PROXY` holds.
+    #[cfg(test)]
+    pub(crate) fn direct_http(mut self) -> Catalog {
+        self.http = HttpFetch::direct_for;
+        self
     }
 
     /// The adapter that reads `source`, or `None` for an `s3` source without keys.
@@ -31,7 +43,7 @@ impl Catalog {
             Auth::None => None,
             Auth::S3 => Some(SigV4::s3(self.keys.get(&source.name)?.clone(), "auto")),
         };
-        Some(Box::new(HttpFetch::new(source, signer)))
+        Some(Box::new((self.http)(source, signer)))
     }
 
     /// The first source that lists `id`, its package entry and the archive for `host`.
