@@ -28,7 +28,7 @@ Do not invent further commands from these URLs. Later runbook work may copy docu
 
 There is no `darwin*` GCC branch (Verified per research prompt). A `linux*` branch exists.
 
-Exact clone commit and build/install flags of this host's GCC 12.1.0 and binutils 2.29.1: recovered in experiment 107 (GCC4Symbian `fe1b15a`, one patched libgcc file, two sys-include headers, gas 2.35 inside the GCC prefix), which also rebuilds them from official tarballs with identical example executables. The SourceForge GCC 14.2.0 tarball: not tried.
+Exact clone commit and build/install flags of this host's GCC 12.1.0 and binutils 2.29.1: recovered in experiment 107 (GCC4Symbian `fe1b15a`, one patched libgcc file, two sys-include headers, gas 2.35 inside the GCC prefix), which also rebuilds them from official tarballs with identical example executables; experiment 108 replaces the three GCC4Symbian files with our own (clean-room) and gets the same target libraries and executables. The SourceForge GCC 14.2.0 tarball: not tried.
 
 ## Compile flags (Verified)
 

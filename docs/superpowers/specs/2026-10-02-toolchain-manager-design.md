@@ -231,12 +231,16 @@ publish/                           # Rust binary; symdev-sdk as a git dependency
   --disable-option-checking --disable-threads --disable-nls --disable-win32-registry
   --disable-libssp --disable-libquadmath`.
 - Verified in experiment 107: `~/gcc-builds` also used GCC4Symbian's libgcov fix and two
-  sys-include headers (each needed) and in-tree gmp/mpfr/mpc/isl, so the recipe pins those
-  sources too; binutils' flags are GCC4Symbian's binutils step. Examples built with the
-  relocated result are byte-identical.
+  sys-include headers (each needed) and in-tree gmp/mpfr/mpc/isl, so the recipe pins the
+  prerequisites too; binutils' flags are GCC4Symbian's binutils step. Examples built with
+  the relocated result are byte-identical. Experiment 108 replaced the three GCC4Symbian
+  files (unclear licence) with our own, written clean-room — two sys-include headers and a
+  `-D__INTPTR_TYPE__=int` in `CFLAGS_FOR_TARGET` — with the same target libraries,
+  `c++config.h` and examples; the recipe pins only official GNU tarballs.
 - Built in a Debian 11 container (glibc 2.31), so it runs on Ubuntu 20.04+ / Debian 11+.
   The current host build needs glibc 2.38 and would not.
-- The GPL source archive (tarballs, patches, `build.sh`) is published beside the package.
+- The GPL source archive (tarballs and the recipe directory: `recipe.toml`, `build.sh`, our
+  headers) is published beside the package.
 - Acceptance: §8, item 1.
 
 **SDK recipe.** The owner runs the publisher locally with the publisher key:
