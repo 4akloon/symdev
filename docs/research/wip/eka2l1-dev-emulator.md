@@ -74,7 +74,83 @@ work continues in parallel (agents C, D, E running; see `toolchain-manager.md` o
 - Agent's effort read: control API medium (primitives exist: pause/reset/install/launch,
   input queue, screen read-back, device install; missing: thread-safe command queue on the OS
   thread, app-exit and log event streams, an RPC server).
-## Pending
+## Peripherals, services, control (survey, 2026-10-02)
 
-- Peripherals/control survey (agent): HLE services list, LDD/drivers, input/screenshot
-  paths, scripting/gdbstub, capability table vs Android Emulator / iOS Simulator.
+- HLE servers (`services/src/init.cpp`). Substantial: window (~300 ops), fbs, file, esock
+  (154), central repository, applist, SIS registry, MMF audio, messaging (SQLite, many TODOs),
+  UI servers. Partial: ETel (phone/line only, fixed battery 10 / signal 50, notifications
+  parked and never completed, no calls), Bluetooth (L2CAP/RFCOMM/SDP over IP netplay),
+  connection management (fake "Host network" IAP), HWRM (light, vibration, fixed battery),
+  sensor server (8 ops), DRM, TZ, accessory, RemCon, notifier, feature manager.
+  Stub: serial C32 (every op unimplemented), alarm, EKA1 camera, SMS send (moves to Sent).
+  Absent: **USB (nothing at all)**, location/LBS/NMEA, EKA2 camera server (a replacement
+  guest DLL calls host code instead), guest SWI (install runs on the host), MMS, IrDA.
+- Host drivers: OpenGL, audio backends, camera (Qt/Android/iOS/null), vibration, SDL2 game
+  controllers, sensors (Android/iOS; desktop always null), TLS, ffmpeg video. No RTC, USB,
+  serial, BT hardware, GPS. LDDs: memory card, display HAL, video, stubs for comm and
+  keyboard; PDD names ignored.
+- Five ways a new peripheral plugs in on the guest side: an HLE server; an LDD
+  factory/channel; a replacement guest DLL + host dispatch functions (how ECam, audio, video,
+  TLS are done); Publish & Subscribe properties (battery, signal, USB personality); a new
+  socket protocol. Host side: a driver interface + backend + a `system` setter + frontend
+  wiring.
+- I/O a controller needs, all present inside: key/touch injection
+  (`window_server::queue_input_from_driver`, raw scan codes too); framebuffer read-back
+  (Android already writes PNG screenshots); per-frame redraw callbacks (video hook); guest
+  `RDebug` output goes to the log but the default filter turns it **off**; drives C/D/E are
+  host directories (push/pull = file copy).
+- Control surfaces today: startup-only CLI flags; LuaJIT scripting with hot reload (events,
+  kernel/process/thread/memory/IPC hooks — cannot inject input, screenshot or launch);
+  gdbstub (breakpoints, watchpoints, threads; advertises but lacks the library list);
+  **no socket/RPC control server anywhere**. The iOS bridge is the closest facade (launch by
+  UID, close app, install SIS, pointer/raw key, pause/resume, rotation, config snapshot,
+  icon PNG).
+- Networking: guest TCP/UDP map 1:1 onto host libuv sockets; host-overrides already redirect
+  a guest hostname/port to a fake host server; instances can talk over localhost or emulated
+  BT; no network-condition shaping.
+- Capability matrix vs Android Emulator / iOS Simulator: no control server, video
+  recording, audio capture, GPS, network shaping, snapshots, push, headless, USB, serial;
+  partial install/launch/terminate/uninstall (startup-only or iOS-only), logcat (off by
+  default), push/pull, screenshot (Android only), input injection (internal only), sensors
+  (no desktop backend), battery/status bar (fixed values), telephony/SMS (stubs), rotation,
+  clock, erase, camera (desktop: Qt camera only); present: fake backend server, debugger.
+- Agent's read — most value for least work: (1) control server over the existing primitives,
+  (2) guest log stream, (3) controllable desktop sensor backend, (4) settable battery/signal/
+  status values + completing ETel notifications, (5) push/pull/erase/fake-server commands.
+  Large: real USB, snapshots, calls/SMS done properly, location stack, headless rendering,
+  video/audio recording (audio needs a mixer first). Network shaping: medium.
+
+## Recommendation (spike answer, 2026-10-02)
+
+Feasible — as a **thin development fork plus a host-side manager**, the Android Emulator's
+shape, not as "take the core and write our own emulator":
+
+1. **One emulator process per instance.** N instances in one process is large (CWD as data
+   folder, process-wide globals); one per process is medium: a `--data-dir` that replaces the
+   CWD, per-instance ports, the triplicated boot code moved into a core session class.
+2. **A control server in the emulator** (local JSON-RPC: launch/kill/install/uninstall,
+   key/touch, screenshot, log and app-exit event streams, pause/resume, set sensor/battery/
+   signal values). The primitives exist; the server, a command queue on the OS thread and
+   the event streams are new. This also retires our X11 XSendEvent/XGetImage workarounds
+   (eka2l1-host skill) and works under Wayland, headless and on every OS.
+3. **The manager and the MCP server live in symdev (MIT)**, across the process boundary:
+   `symdev device create/boot/list/erase/snapshot` (avdmanager/simctl), commands mapped onto
+   the protocol, MCP tools over the same calls. This is the toolchain manager's phase 2
+   (`emulator;…`, `firmware;…` packages, `symdev device create`).
+4. **Upstream strategy:** upstream is very active (one maintainer, ~6 commits a day, focus on
+   compatibility). Offer the generic pieces upstream (data dir, session class, headless,
+   control server); keep only developer peripherals in the fork; rebase often. An
+   independent hard fork would drift from a fast upstream within weeks.
+5. **Order:** MVP = items 1–3 with screenshot/input/launch/install/logs (headless on Linux via
+   Xvfb as a labelled stopgap); then virtual peripherals (sensors, battery/signal, SMS inject,
+   network shaping, GPS), cold snapshots (copy the stopped instance's folder), video capture;
+   then real headless rendering (EGL surfaceless/pbuffer), serial (PTY/TCP), USB (start with
+   mass storage re-exporting E:), calls. Real save-states: not planned (very large).
+
+Decisions that are the owner's: thin fork + upstream PRs vs independent fork; whether to
+talk to upstream's maintainer first; when to start relative to the toolchain manager.
+
+## Next step
+
+Present to the owner; if they go ahead, this becomes an architectural project with its own
+brainstorm → spec → plan.
