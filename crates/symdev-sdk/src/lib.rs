@@ -4,7 +4,9 @@
 mod error;
 mod fetch;
 mod keys;
+mod package_id;
 
 pub use error::{Result, SdkError};
 pub use fetch::Fetch;
 pub use keys::S3Keys;
+pub use package_id::PackageId;
