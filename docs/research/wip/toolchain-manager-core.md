@@ -11,7 +11,7 @@ Track B (sigv4, amz_date, http_fetch) runs in parallel in `tm-net`; do not touch
 | A1 PackageId | done | d9a7cb7 |
 | A2 Index / IndexPackage / Host / resolve_url | done | see `git log` |
 | A3 SourceSpec / Sources | done | see `git log` |
-| A4 TarGz / ReproducibleTarGz | todo | |
+| A4 TarGz / ReproducibleTarGz | done | see `git log` |
 | A5 SdkHome / Receipt / FileFetch | todo | |
 | A6 Gcce / PlatformSdk / Pins | todo | |
 
@@ -49,9 +49,25 @@ Track B (sigv4, amz_date, http_fetch) runs in parallel in `tm-net`; do not touch
 - A3: `sources.toml` and its `[[source]]` tables deny unknown keys (`auht = "s3"` would
   otherwise silently disable signing). A user source named like the built-in one is a
   duplicate while the built-in is enabled.
+- A4: a lexical check of symlink targets is **not enough**: with `a/b/c/s -> ../../..`
+  (the package root, fine) a later `a/b/c/t -> s/..` reads as `a/b/c` but the kernel
+  resolves it to the root's parent. `TarGz::extract` therefore (1) writes files and dirs
+  first, creating every directory one component at a time and refusing to pass through
+  anything that is not a real directory, (2) creates links after that, never through a
+  symlinked directory, (3) then follows every symlink component by component like the
+  kernel (`TarGz::link_problem`, ≤ 40 hops) and refuses any walk above the root. On error
+  the partly filled `into` is left for the caller (SdkHome's staging dir) to remove.
+- A4: accepted entry types: regular/continuous, directory, symlink, hard link. Char,
+  block, fifo → "is a device or a fifo"; anything else (sparse, PAX global header) →
+  "has an unsupported type". Hard link targets must be regular files reached through real
+  dirs. Extracted files are 0o755 if any x bit was set, else 0o644 (before umask).
+- A4: `ReproducibleTarGz::pack` also accepts `"."` (the whole root, for a GCCE prefix),
+  stores the ancestors of a listed dir as dir entries, refuses `..`/absolute includes,
+  uses the same `link_problem` on the source tree, GNU headers (long names via the tar
+  crate's `././@LongLink`, itself mtime 0), gzip OS byte 255.
 
 ## Dead ends
 
 ## Next step
 
-A4: tests for `TarGz` / `ReproducibleTarGz` (archives built in the test), then implement.
+A5: tests for `SdkHome` / `Receipt` / `FileFetch` (file:// source packed by `ReproducibleTarGz`), then implement.
