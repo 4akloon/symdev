@@ -1,4 +1,4 @@
-use crate::{Auth, Result, SdkError, SourceSpec};
+use crate::{Auth, Result, SdkError, SourceSpec, TrustedKeys};
 
 /// Every source, in the order an id is looked up: the built-in source first (unless
 /// `sources.toml` says `builtin = false`), then the listed ones in file order.
@@ -26,6 +26,8 @@ struct SourceEntry {
     url: String,
     #[serde(default)]
     auth: Auth,
+    /// `"builtin"` or a base64 Ed25519 public key: the index must be signed by it.
+    key: Option<String>,
 }
 
 impl Sources {
@@ -49,8 +51,13 @@ impl Sources {
             list.extend(builtin.cloned());
         }
         for entry in file.sources {
-            let spec = SourceSpec::new(&entry.name, &entry.url, entry.auth)
+            let mut spec = SourceSpec::new(&entry.name, &entry.url, entry.auth)
                 .map_err(|e| bad(e.to_string()))?;
+            if let Some(key) = &entry.key {
+                let keys = TrustedKeys::parse(key)
+                    .map_err(|e| bad(format!("source `{}`: {e}", entry.name)))?;
+                spec = spec.with_key(keys);
+            }
             if list.iter().any(|s| s.name == spec.name) {
                 return Err(bad(format!(
                     "source `{}` is listed twice; names must be unique",

@@ -5,12 +5,15 @@ use crate::{PackageId, Result, S3Keys, SdkError, SigV4, SourceSpec, Sources};
 
 /// The configured sources and their indexes, each fetched at most once and only when
 /// something must be looked up. An `s3` source without keys is skipped, and so is one
-/// whose index cannot be read; both are reported only if the id is found nowhere.
+/// whose index cannot be read; both are reported only if the id is found nowhere, except
+/// an index refused for its signature, which [`Catalog::take_untrusted`] hands out anyway.
 pub(crate) struct Catalog {
     sources: Sources,
     keys: BTreeMap<String, S3Keys>,
     /// By source name: the parsed index, or why it could not be read.
     indexes: BTreeMap<String, std::result::Result<Index, String>>,
+    /// Why indexes were refused for their signature (a sign of tampering), not yet taken.
+    untrusted: Vec<String>,
     /// Makes the adapter of an HTTP(S) source: [`HttpFetch::new`], or in tests one that
     /// ignores the environment's proxy.
     http: fn(&SourceSpec, Option<SigV4>) -> HttpFetch,
@@ -22,6 +25,7 @@ impl Catalog {
             sources,
             keys,
             indexes: BTreeMap::new(),
+            untrusted: Vec::new(),
             http: HttpFetch::new,
         }
     }
@@ -143,16 +147,26 @@ impl Catalog {
         hint
     }
 
+    /// The sources whose index was refused for its signature since the last call, as
+    /// warnings: worth saying even when another source provided the package.
+    pub(crate) fn take_untrusted(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.untrusted)
+    }
+
     /// The index of `source`, fetched on first use.
     fn index(&mut self, source: &SourceSpec) -> std::result::Result<&Index, String> {
         if !self.indexes.contains_key(&source.name) {
             let fetched = match self.fetcher(source) {
                 Some(fetch) => fetch
                     .text(&source.index_url())
-                    .and_then(|text| Index::parse(&text, &source.name))
-                    .map_err(|e| e.to_string()),
-                None => Err("its keys are not set".to_string()),
+                    .and_then(|text| source.parse_index(&text)),
+                None => Err(SdkError::Other("its keys are not set".into())),
             };
+            if let Err(e @ SdkError::UntrustedIndex { .. }) = &fetched {
+                let why = format!("source `{}` could not be read: {e}", source.name);
+                self.untrusted.push(why);
+            }
+            let fetched = fetched.map_err(|e| e.to_string());
             self.indexes.insert(source.name.clone(), fetched);
         }
         match self.indexes.get(&source.name) {

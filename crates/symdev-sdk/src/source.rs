@@ -1,4 +1,4 @@
-use crate::{Auth, Result, SdkError};
+use crate::{Auth, Index, Result, SdkError, SignedIndex, TrustedKeys};
 
 /// The public bucket's base URL, searched before every configured source: the owner's
 /// `symdev-public` R2 bucket on its `r2.dev` address (a custom domain may come later; this
@@ -13,6 +13,9 @@ pub struct SourceSpec {
     /// Always ends with `/`.
     pub base: String,
     pub auth: Auth,
+    /// The keys its `index.toml` must be signed by; `None` reads it unverified, as symdev
+    /// 0.1.0 did. The built-in source always has symdev's own keys.
+    pub key: Option<TrustedKeys>,
 }
 
 impl SourceSpec {
@@ -40,6 +43,7 @@ impl SourceSpec {
             name: name.to_string(),
             base,
             auth,
+            key: None,
         };
         if spec.is_file() && auth == Auth::S3 {
             return Err(SdkError::Other(format!(
@@ -49,10 +53,34 @@ impl SourceSpec {
         Ok(spec)
     }
 
-    /// The built-in source, named `public`, without authentication. The URL is a constant
-    /// that this module's test checks, so a malformed one cannot ship.
+    /// The built-in source, named `public`, without authentication, whose index must be
+    /// signed by symdev's own keys. The URL is a constant that this module's test checks,
+    /// so a malformed one cannot ship.
     pub fn builtin() -> Option<SourceSpec> {
-        BUILTIN_URL.and_then(|url| SourceSpec::new("public", url, Auth::None).ok())
+        BUILTIN_URL.and_then(|url| {
+            SourceSpec::new("public", url, Auth::None)
+                .ok()
+                .map(|spec| spec.with_key(TrustedKeys::builtin()))
+        })
+    }
+
+    /// The same source, accepting only an index that one of `keys` signed.
+    pub fn with_key(mut self, keys: TrustedKeys) -> SourceSpec {
+        self.key = Some(keys);
+        self
+    }
+
+    /// The index in `text`, which this source served: with a `key`, only once a signature
+    /// by one of its keys is verified (otherwise an error naming [`Self::index_url`]),
+    /// and then only the signed bytes are read.
+    pub fn parse_index(&self, text: &str) -> Result<Index> {
+        match &self.key {
+            None => Index::parse(text, &self.name),
+            Some(keys) => {
+                let signed = SignedIndex::split(text);
+                Index::parse(signed.verify(keys, &self.index_url())?, &self.name)
+            }
+        }
     }
 
     fn url_problem(url: &str) -> Option<&'static str> {
@@ -140,3 +168,6 @@ impl SourceSpec {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod signature_tests;

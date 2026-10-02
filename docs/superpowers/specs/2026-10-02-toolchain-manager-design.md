@@ -94,7 +94,8 @@ size = 61234567
 
 URLs are relative to the index, so moving a bucket to another domain changes no byte of the
 index. An unknown `schema` is an error that tells the user to update symdev. The index is
-uploaded with `Cache-Control: no-cache`; archives with `immutable`.
+uploaded with `Cache-Control: no-cache`; archives with `immutable`. Since 0.2.0 its first line
+is the Ed25519 signature of the rest (§15).
 
 **Sources.** symdev has one built-in source: the public bucket's `index.toml` on its
 `*.r2.dev` URL (no custom domain yet; the r2.dev URL stays enabled after one is added, so
@@ -108,6 +109,7 @@ builtin = true          # false disables the built-in source (tests set this)
 name = "private"
 url = "https://<account-id>.r2.cloudflarestorage.com/symdev-private/"
 auth = "s3"
+key = "builtin"         # the index must be signed by symdev's own key (§15; 0.2.0+)
 ```
 
 Keys come **only from the environment**:
@@ -224,6 +226,7 @@ Every error names what failed and the fix (`CLAUDE.md`):
 | unknown index `schema` | source, schema number, "update symdev" |
 | archive entry escapes the package | archive URL and the entry |
 | HTTP 403 from an `s3` source | the source and "check the key's bucket permissions" |
+| index unsigned, with a malformed signature line, or not verifying, where the source requires a signature (§15) | the index URL, which of the three, the trusted keys' fingerprints, and that it may have been tampered with; the source counts as unreadable |
 
 ## 6. The packages repository
 
@@ -281,6 +284,8 @@ that differs from the recipe.
 - `publish` refuses an id that is already in the index: no overwrite.
 - It reads the index, adds the entry, uploads archive (and source archive) first, index
   last. `concurrency: publish` in Actions serialises public publishes.
+- Every index it writes is signed, and it extends only an index whose signature verifies
+  (§15).
 - For built packages the bucket index is the record of hashes (a GCC build is not
   reproducible, so git cannot know the hash beforehand); git records the recipes. No bot
   commits back into the repository.
@@ -341,6 +346,7 @@ the SDK, so without this entry the key is never used:
 name = "private"
 url = "https://<account-id>.r2.cloudflarestorage.com/symdev-private/"
 auth = "s3"
+key = "builtin"   # since 0.2.0 (§15); symdev 0.1.0 refuses the unknown key
 ```
 
 Then `curl -fsSL <public bucket>/install.sh | sh`, and the first `symdev build` of any
@@ -402,8 +408,7 @@ Each step is placed in the implementation plan right before the step that needs 
 Licence acceptance, `symdev device create`, emulator and firmware packages, the EKA2L1 fork,
 `symdev self update` (re-running `install.sh` updates), release channels, macOS/Windows hosts,
 a per-project
-toolchain pin, index signing (proposed for phase 2: an ed25519 key kept offline, public key
-in symdev, so a leaked publisher key cannot swap the compiler).
+toolchain pin. (Index signing, proposed here for phase 2, came in 0.2.0: §15.)
 
 ## 12. Prebuilt symdev and the Rust SDK (added 2026-10-02)
 
@@ -466,7 +471,7 @@ or podman exists on the host, so the container variant was not run, and the CI r
 Found during acceptance: a Rust project needs a host C linker `cc` (build scripts, the SDK's
 proc macros, `-Zbuild-std`'s `compiler_builtins`), as any Rust project does — now in the
 README and §8. Open follow-ups: the scaffold's absolute `rust-sdk/<ver>` paths (§12); building
-Rust applications without GCCE (spike, experiment 109); index signing (§11).
+Rust applications without GCCE (spike, experiment 109); index signing (§11; done in 0.2.0, §15).
 
 ## 14. As built: decisions and findings not obvious from the code
 
@@ -647,3 +652,101 @@ and M1–M10 are the whole-branch review of 669dae1, as elsewhere in this spec.
   review I3, changing an affected example by 24 bytes; symdev neither warns nor merges them.
 - `RustSdkPackage::REQUIRED` could also require a `symbian-rs/examples` member, so a package
   without them fails at install rather than inside cargo.
+
+## 15. Signed indexes (added 2026-10-03, symdev 0.2.0)
+
+The owner asked to close the gap §11 left: with only HTTPS and the index's SHA-256s, whoever
+can write a bucket (a leaked R2 publisher key) can swap the compiler for every user. Now the
+index is signed with a key that is not an R2 credential.
+
+**Format.** The first line of `index.toml` is
+
+```
+# symdev-signature: ed25519 <base64 of the 64-byte Ed25519 signature>
+```
+
+ending in `\n`, and the signature covers exactly the bytes after that `\n`. To TOML the line is
+a comment, so symdev 0.1.0 and the 0.1.0 `install.sh` keep reading a signed index; index and
+signature are one object, so no upload leaves them disagreeing. Only the first line can hold a
+signature. The signature is plain RFC 8032 Ed25519 (`ed25519-dalek` 2 in symdev, verified with
+`verify_strict`; OpenSSL 3's `pkeyutl -rawin` makes and checks the same bytes, which a test
+pins). symdev-sdk's `SignedIndex` (`split`, `sign`, `verify`), `TrustedKeys` and
+`IndexSigningKey` are the one implementation both symdev and the publisher use.
+
+**Keys.** One project key pair, generated with `openssl genpkey -algorithm ed25519` on
+2026-10-03. The private half exists only as its 32-byte seed, base64, in the owner's
+`~/.config/symdev/keys.env` (`PUBLISH_SIGNING_KEY`, mode 600) and in the GitHub secret of the
+same name in `symdev-packages`' environment `publish`. The public half is built into symdev
+(`TrustedKeys::builtin`, a list, so a rotation ships a symdev with both keys before the indexes
+are re-signed) and into `install.sh`:
+
+| | |
+|---|---|
+| public key (raw 32 bytes, base64) | `C1yh60B72Qa4YE4rZOgoPJZmTYKbh/uzHjupoVwqfLU=` |
+| fingerprint (SHA-256 of the raw 32 bytes, hex) | `bdf5345cc3ca8c30661dbc53b2cbd16983d081bf26913d0c3ebe7480ca334d44` |
+| PEM body, as `install.sh` builds it | `MCowBQYDK2VwAyEAC1yh60B72Qa4YE4rZOgoPJZmTYKbh/uzHjupoVwqfLU=` |
+
+A new key (a rotation, or a mirror's own): the seed is the last 32 bytes of the 48-byte PKCS#8
+DER that `openssl genpkey -algorithm ed25519 -outform DER` writes, base64; the public half is
+the last 32 bytes of `openssl pkey -pubout -outform DER` of the same key, base64.
+
+**Verification in symdev.** The built-in source must carry a valid signature by a built-in key:
+an index that is unsigned, has a malformed signature line or does not verify makes the source
+unreadable, with an error naming the URL and which of the three it is. A source in
+`sources.toml` may set `key = "builtin"` (the built-in keys) or `key = "<base64 Ed25519 public
+key>"`; then the same rule holds for it. Without `key` a source's index is read unverified, as
+in 0.1.0 (the tests' `file://` sources stay unsigned unless a test opts in). Only the verified
+bytes are parsed. An index refused for its signature is a warning on stderr even when a later
+source provides the package (a sign of tampering is never silent). A `key` that is not a valid
+or is a weak (small-order) Ed25519 key is refused when `sources.toml` is read. The owner's
+private source uses `key = "builtin"` once 0.2.0 is installed (0.1.0's `sources.toml` parser
+refuses unknown keys).
+
+**Signing in the publisher.** `publish public|private` signs every index it writes with
+`PUBLISH_SIGNING_KEY`, which an upload requires and which must be one of symdev's built-in
+keys (a stale or mistyped key would sign an index every client refuses, and the right key
+could then not even re-sign it; review, 2026-10-03); the upload names the signer's
+fingerprint. A `--dry-run` signs with it when it is set and says when it is not, or when
+symdev would not trust it. It extends only an index whose signature verifies with a built-in key or
+the signing key's own public half: a bad signature is refused (the bucket was written by
+someone else), and an unsigned index is refused by an upload and only warned about in a dry
+run. This check was added to the lead's design (2026-10-03) because without it the next CI
+publish would sign whatever a leaked R2 key had written, which is the attack the signature
+exists to stop. `publish sign-index --bucket public|private [--accept-unsigned <sha256>]
+[--dry-run]` re-signs the existing index as it is: it reads it, checks that a signature it has
+verifies and that it parses, lists its archives, signs the same body and uploads it with
+`no-cache` (nothing when no byte would change). It is how the indexes published before 0.2.0
+get their signature, and the one way to accept an unsigned index. After that migration an
+unsigned index means someone else wrote the bucket, so an unsigned index is signed only with
+`--accept-unsigned` and the SHA-256 that the dry run printed for it: exactly the bytes the
+owner checked, never a later swap (review, 2026-10-03).
+
+**install.sh** verifies the index when `openssl version` reports OpenSSL 3 or newer
+(`openssl pkeyutl -verify -pubin -inkey <pem> -rawin -in <body> -sigfile <sig>`), with the
+public key in the script: a missing or bad signature is then a hard error. Without OpenSSL 3 it
+warns that the index could not be verified and goes on (HTTPS and SHA-256 still apply).
+`SYMDEV_INSTALL_PUBKEY` replaces the key (base64 public keys, space-separated) for tests and
+for mirrors signed with their own key.
+
+**CI.** `publish.yml` and `symdev.yml` give `secrets.PUBLISH_SIGNING_KEY` only to the steps
+that upload an index; the install.sh upload and the pull-request dry runs do not see it.
+
+**Limits** (recorded, not solved here). The signing key sits beside the R2 publisher key, in
+the `publish` environment and in `keys.env`, so the signature protects against a leak of the R2
+key alone (or of a bucket token), not of both; §11's original proposal kept the key offline.
+`install.sh` is served from the same public bucket, so whoever can write the bucket can replace
+the script a first `curl … | sh` runs; the signature protects every later `symdev` download
+and re-runs of a saved script. The signature binds no source name, date or version, so an
+older validly signed index can be served again (a rollback to packages that were good when
+published).
+
+**Owner steps.** (1) Add the secret: `set -a; . ~/.config/symdev/keys.env; set +a; printf
+'%s' "$PUBLISH_SIGNING_KEY" | gh secret set PUBLISH_SIGNING_KEY --repo 4akloon/symdev-packages
+--env publish`. (2) Re-sign the live indexes once, from the packages repository with
+`keys.env` loaded: `cargo run -p publish -- sign-index --bucket public --dry-run`, check every
+archive it lists against §13 and the recorded hashes, then run it without `--dry-run` and
+with `--accept-unsigned <the SHA-256 it printed>`; then both again with `--bucket
+private`. (3) Only
+then upload the new `install.sh` (it refuses an unsigned index) and release symdev 0.2.0 (its
+built-in source must be signed). (4) After installing 0.2.0, add `key = "builtin"` to the
+private source in `sources.toml`.
