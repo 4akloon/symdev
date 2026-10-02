@@ -311,3 +311,10 @@ recipe in symdev-packages; `install.sh` in the public bucket). Awaiting approval
   fallback in release builds (`SYMDEV_RELEASE`). All dispatched to `tm-final-fixes`;
   release-prep agent told to set `SYMDEV_RELEASE=1` in the symdev recipe's build.
   The `examples` job has never run (secrets were set after the last push) — nothing leaked.
+- Release prep merged into packages `main`: `publish file` (install.sh → bucket root,
+  `text/plain; charset=utf-8`, no-cache), `tools/third_party_notices.py` (117 crates + zlib,
+  ring's BoringSSL/fiat, Rust std, LLVM runtime, musl) shipped as
+  `share/doc/symdev/THIRD-PARTY-NOTICES.txt`, `LIBZ_SYS_STATIC=1` (the earlier local musl
+  binary had linked the host's libz), `SYMDEV_RELEASE=1` in the recipe build, `tests.yml` CI.
+  The lead added musl 1.2.5's COPYRIGHT from the signed release tarball (sha a9a118bb…,
+  key 8364…450F) → "Entries without a licence file: none" (ea529fe).
