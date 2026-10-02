@@ -30,6 +30,11 @@ impl PackageId {
         Ok(PackageId(s.to_string()))
     }
 
+    /// An id written in the code (`Pins`); `Pins`'s tests check that each one parses.
+    pub(crate) fn pinned(id: &'static str) -> Self {
+        PackageId(id.to_string())
+    }
+
     fn segment_problem(segment: &str) -> Option<&'static str> {
         if segment.is_empty() {
             Some("has an empty segment")

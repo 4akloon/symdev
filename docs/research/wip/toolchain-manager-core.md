@@ -13,7 +13,7 @@ Track B (sigv4, amz_date, http_fetch) runs in parallel in `tm-net`; do not touch
 | A3 SourceSpec / Sources | done | see `git log` |
 | A4 TarGz / ReproducibleTarGz | done | see `git log` |
 | A5 SdkHome / Receipt / FileFetch | done | see `git log` |
-| A6 Gcce / PlatformSdk / Pins | todo | |
+| A6 Gcce / PlatformSdk / Pins | done | see `git log` |
 
 ## Facts
 
@@ -83,9 +83,17 @@ Track B (sigv4, amz_date, http_fetch) runs in parallel in `tm-net`; do not touch
   test fails (2 downloads) 3/3; with it, 20/20 runs pass.
 - `FileFetch` takes the path after `file://` literally (no percent-decoding); a missing
   file is `SdkError::Fetch { url, detail }`.
+- A6: observed layout of `~/gcc-builds/gcc-12.1.0`: `bin/arm-none-symbianelf-{g++,ld,ar}`,
+  `lib/gcc/arm-none-symbianelf/12.1.0`, `arm-none-symbianelf/lib` (`ldscripts`,
+  `libsupc++.a`) — matches the spec §3 table.
+- A6: `Gcce::at` checks all four paths it hands out (gxx, ld, gcc_lib, gcc_target_lib),
+  not only gxx and ld, and refuses an id that is not exactly `gcce;<version>`.
+  `PlatformSdk::at` refuses an id whose kind is not `sdk`.
+- A6: `Pins` builds its ids with the crate-private `PackageId::pinned` (no parse, so no
+  `unwrap` in library code); a test checks every pin parses.
 
 ## Dead ends
 
 ## Next step
 
-A6: tests for `Gcce` / `PlatformSdk` / `Pins`, then implement.
+Track A done. Final checks: workspace test + clippy, rustfmt on every created file, report.
