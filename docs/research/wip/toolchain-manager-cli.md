@@ -161,3 +161,25 @@ and the real `sources.toml` path, and creates nothing.
 
 Left for the lead: the `http_fetch` tests' proxy exposure (row 3); `bin()` strips every
 `SYMDEV_*`, not only the toolchain and key variables (a test sets what it needs after it).
+
+## Rust SDK package (branch `tm-rust-sdk`, 2026-10-02)
+
+Spec §12, symdev side, plus the `http_fetch` proxy exposure left above (row 3).
+
+| Task | State |
+|---|---|
+| 1 `Pins::rust_sdk`, `RustSdkPackage` | in progress |
+| 2 resolution order in `Provision` (env → checkout → package) | todo |
+| 3 scaffold: how a new project names the SDK; proposal | todo |
+| 4 `http_fetch` tests immune to `HTTP_PROXY`/`ALL_PROXY` | todo |
+| 5 README / examples README: the prebuilt route | todo |
+
+Facts (before the change, commit 553fb0f):
+
+- `RustSdk::from_env` (symdev-build) read `SYMDEV_RUST_SDK`, else the compile-time
+  `CARGO_MANIFEST_DIR/../../symbian-rs`; callers: `build_cmd.rs` (before the toolchain,
+  review fix 6), `scaffold_rust.rs`, and tests in `rust_sdk.rs`, `driver/tests/rust_build.rs`,
+  `scaffold_rust.rs`. `RustSdk::at` checks only `targets/arm-symbian-e32.json`.
+- ureq 3.4.2: `Agent::config_builder()` starts from `Config::default()`, whose `proxy` is
+  `Proxy::try_from_env()` (`ALL_PROXY`, `HTTPS_PROXY`, `HTTP_PROXY`, lower-case too, and
+  `NO_PROXY`); `ConfigBuilder::proxy(None)` turns it off.
