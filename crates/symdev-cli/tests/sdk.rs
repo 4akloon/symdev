@@ -253,3 +253,22 @@ fn a_set_variable_that_does_not_exist_names_itself() {
             "SYMDEV_GXX is set to /nonexistent/symdev/g++, which does not exist",
         ));
 }
+
+/// A partial id names a directory that holds a package; uninstalling it removes nothing.
+#[test]
+fn uninstall_of_a_partial_id_keeps_the_package_it_holds() {
+    let mut w = World::new();
+    w.add_stub_sdk();
+    w.bin()
+        .args(["sdk", "install", "sdk;s60-3rd-fp2;1.1"])
+        .assert()
+        .success();
+    w.bin()
+        .args(["sdk", "uninstall", "sdk;s60-3rd-fp2"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "its directory holds the installed package sdk;s60-3rd-fp2;1.1",
+        ));
+    assert!(w.package_dir("sdk;s60-3rd-fp2;1.1").join("epoc32").is_dir());
+}

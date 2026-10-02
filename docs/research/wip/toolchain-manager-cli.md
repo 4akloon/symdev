@@ -380,6 +380,7 @@ changed; every behaviour fix starts with a failing test. Baseline `cargo test --
 | # | Finding | Verified | State |
 |---|---|---|---|
 | M4 | two types per file; free `pub fn`s | yes: `index_package.rs` (`ArchiveEntry`, `IndexPackage`), `source.rs` (`Auth`, `SourceSpec`); `resolve_url`, `builtin_source` | fixed: `archive_entry.rs`, `auth.rs`; `SourceSpec::resolve(&self, relative)`, `SourceSpec::builtin()` (the URL is a private const of `source.rs`), crate-private `SourceSpec::relative_problem` for `Index`; `url.rs`, `builtin.rs` and the `BUILTIN_SOURCE` export deleted. Crate-root re-exports of `Auth`, `ArchiveEntry`, `IndexPackage` unchanged |
+| I1 | `sdk uninstall` deletes whatever a valid id points at | yes: `uninstall` did `remove_dir_all(package_dir(id))` with no receipt check; `install` did `remove_dir_if_exists` on a receipt-less dir, wiping packages below it | fixed: `home/placement.rs` — a dir is a package iff it holds a receipt file; `uninstall` refuses an id inside a package or a receipt-less dir that holds one (error names the package and its uninstall command), and still finishes an unfinished package; `install` checks placement under the lock before announcing or downloading. Tests: 5 unit (partial id, inside, install inside, install above, unfinished) + 1 CLI; RED seen for the 4 refusals and the CLI test |
 
 Facts found on the way:
 

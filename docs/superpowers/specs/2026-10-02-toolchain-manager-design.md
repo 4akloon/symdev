@@ -133,6 +133,10 @@ order wins (built-in first). SHA-256 and size are always checked before extracti
 6. write the receipt `.symdev-package.toml` (id, sha256, source name, archive URL) **last**.
 
 A package directory without a receipt is unfinished and is replaced on the next install.
+A package never sits inside another or above one: `install` refuses such an id (naming
+both), and `uninstall` removes a directory only if it holds a receipt, or if it is an
+unfinished package that neither lies inside a package nor holds one — so a partial id
+(`sdk;s60-3rd-fp2`) or an id inside a package (`gcce;12.1.0;bin`) removes nothing.
 
 **Layouts are types.** `Gcce` knows its files, `PlatformSdk` its root:
 

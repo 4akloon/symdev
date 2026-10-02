@@ -6,6 +6,7 @@ use super::SdkHome;
 use crate::{ArchiveEntry, Auth, Fetch, FileFetch, Host, PackageId, ReproducibleTarGz};
 use crate::{Result, SdkError, SourceSpec};
 
+mod placement;
 mod receipts;
 
 /// Counts downloads, so a test can tell a cache hit from a fetch.

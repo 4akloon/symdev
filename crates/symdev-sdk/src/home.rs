@@ -98,6 +98,7 @@ impl SdkHome {
         if let Some(receipt) = self.installed(id)? {
             return Ok(receipt);
         }
+        self.check_placement(id)?;
         starting();
         // Holding the lock, no other install is running: anything staged is left over.
         let staging_root = self.root.join(".staging");
@@ -176,27 +177,6 @@ impl SdkHome {
         Ok(cached)
     }
 
-    /// Removes `id` under the lock; `false` if it was not there. The receipt goes first,
-    /// so an interrupted removal leaves an unfinished package that an install replaces.
-    pub fn uninstall(&self, id: &PackageId) -> Result<bool> {
-        let _lock = self.lock()?;
-        let dir = self.package_dir(id);
-        if fs::symlink_metadata(&dir).is_err() {
-            return Ok(false);
-        }
-        remove_file_if_exists(&dir.join(Receipt::FILE))?;
-        fs::remove_dir_all(&dir).map_err(io_at(&dir))?;
-        // Drop the now empty `gcce/` and the like; stop at the first non-empty one.
-        let mut parent = dir.parent();
-        while let Some(p) = parent
-            && p != self.root
-            && fs::remove_dir(p).is_ok()
-        {
-            parent = p.parent();
-        }
-        Ok(true)
-    }
-
     /// `root/.lock`, held until the returned file is dropped.
     fn lock(&self) -> Result<File> {
         fs::create_dir_all(&self.root).map_err(io_at(&self.root))?;
@@ -238,5 +218,6 @@ fn io_at(path: &Path) -> impl FnOnce(io::Error) -> SdkError + use<> {
     move |source| SdkError::Io { path, source }
 }
 
+mod placement;
 #[cfg(test)]
 mod tests;
