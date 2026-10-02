@@ -292,3 +292,13 @@ recipe in symdev-packages; `install.sh` in the public bucket). Awaiting approval
 - Next: review fixes → merge to main + push + tag v0.1.0 → switch publish's symdev-sdk dep to
   the tag → merge prebuilt branch → push symdev-packages → CI publishes gcce, symdev, rust-sdk
   → install.sh at bucket root → acceptance R5.
+- Packages side of §12 merged into packages `main` (da61f8a): multi-package recipes + git
+  source in `publish`; `recipes/symdev/0.1.0` (musl static build, rust-sdk = repo layout
+  incl. `symbian-rs/examples`, which are SDK workspace members the libcalls build loads);
+  `.github/workflows/symdev.yml` (rust-sdk published before symdev); `install.sh` + 40-check
+  test (dash/bash/busybox). Local musl build blocked only by a missing musl C compiler
+  (libz-sys, ring); with host gcc as CC it links static-pie and reaches r2.dev over TLS.
+  Open before release: upload `install.sh` to the bucket root (`no-cache`); bundle
+  third-party licence notices of the crates in the binary; run the install test in CI;
+  `RustSdkPackage::REQUIRED` could also require an examples member.
+- GitHub secrets still not set (checked 2026-10-02 evening).
