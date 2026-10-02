@@ -106,6 +106,12 @@ fn sdk_tree(root: &Path) -> PathBuf {
     root.join(RustSdkPackage::SDK_DIR)
 }
 
+/// The directory of the SDK `p` resolves, from its target spec.
+fn root(p: &Provision) -> PathBuf {
+    let spec = p.rust_sdk().unwrap().target_spec();
+    spec.parent().unwrap().parent().unwrap().to_path_buf()
+}
+
 fn canonical(path: &Path) -> PathBuf {
     path.canonicalize().unwrap()
 }
@@ -115,7 +121,7 @@ fn the_variable_wins_over_the_checkout() {
     let w = World::new();
     let (set, checkout) = (sdk_tree(&w.path("set")), sdk_tree(&w.path("checkout")));
     let p = w.provision(false, Some(&checkout), &[("SYMDEV_RUST_SDK", &set)]);
-    assert_eq!(p.rust_sdk().unwrap().root(), canonical(&set));
+    assert_eq!(root(&p), canonical(&set));
     assert!(p.needed_rust_sdk().is_none());
 }
 
@@ -139,7 +145,7 @@ fn the_checkout_is_used_while_it_is_an_sdk() {
     let w = World::new();
     let checkout = sdk_tree(&w.path("checkout"));
     let p = w.provision(false, Some(&checkout), &[]);
-    assert_eq!(p.rust_sdk().unwrap().root(), canonical(&checkout));
+    assert_eq!(root(&p), canonical(&checkout));
     assert!(p.needed_rust_sdk().is_none());
     assert!(!w.path("home").exists());
 }
@@ -149,7 +155,7 @@ fn without_a_checkout_the_package_is_installed() {
     let w = World::new();
     let p = w.provision(false, None, &[]);
     assert_eq!(p.needed_rust_sdk(), Some(Pins::rust_sdk()));
-    assert_eq!(p.rust_sdk().unwrap().root(), w.package_sdk());
+    assert_eq!(root(&p), w.package_sdk());
     assert!(w.package_dir().join(".symdev-package.toml").is_file());
 }
 
@@ -158,11 +164,11 @@ fn a_checkout_that_is_gone_or_no_sdk_falls_back_to_the_package() {
     let w = World::new();
     let gone = w.path("gone");
     let p = w.provision(false, Some(&gone), &[]);
-    assert_eq!(p.rust_sdk().unwrap().root(), w.package_sdk());
+    assert_eq!(root(&p), w.package_sdk());
     let empty = w.path("empty");
     fs::create_dir_all(&empty).unwrap();
     let p = w.provision(false, Some(&empty), &[]);
-    assert_eq!(p.rust_sdk().unwrap().root(), w.package_sdk());
+    assert_eq!(root(&p), w.package_sdk());
 }
 
 /// Installed, the package needs no source: a broken `sources.toml` cannot stop a build.
@@ -172,7 +178,7 @@ fn an_installed_package_reads_no_source() {
     w.provision(false, None, &[]).rust_sdk().unwrap();
     w.sources("builtin = maybe\n");
     let p = w.provision(true, None, &[]);
-    assert_eq!(p.rust_sdk().unwrap().root(), w.package_sdk());
+    assert_eq!(root(&p), w.package_sdk());
 }
 
 #[test]

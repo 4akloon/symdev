@@ -103,11 +103,6 @@ impl RustSdk {
         Ok(Self { root })
     }
 
-    /// The `symbian-rs/` directory, canonical.
-    pub fn root(&self) -> &Path {
-        &self.root
-    }
-
     pub fn target_spec(&self) -> PathBuf {
         self.root
             .join("targets")

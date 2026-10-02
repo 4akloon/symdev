@@ -348,3 +348,21 @@ reads it).
   `…/home/rust-sdk/0.1.0/symbian-rs/crates/…` into `Cargo.toml`; `symdev build` produced
   `hello.exe` equal to the dev route's except the same eight header bytes; `symdev package`
   → `hello.sisx` (2 304 bytes).
+
+### Checked at the end (2026-10-02)
+
+`cargo test --workspace --offline`: 690 passed, 0 failed (665 recorded before this branch: +4
+`RustSdkPackage`, +1 pin, +3 `RustSdk`, +9 `Provision::rust_sdk`, +7 CLI `tests/rust_sdk.rs`, +1
+proxy). `cargo clippy --workspace --all-targets --offline`: no warning. `cargo fmt --all
+--check`: clean. Every tracked `.rs` file ≤ 300 lines. `RustSdk::root()` was dropped again
+(only tests read it; they use `target_spec()`). The prebuilt copy is an 88 MB file per run of
+the `rust_sdk` test binary, in that process's test home, swept like the homes.
+
+## Next step (Rust SDK package)
+
+For the lead: (1) align the packages track's `rust-sdk` archive with the repository layout
+above (`Cargo.toml`, `crates/symdev-locale`, `symbian-rs`), or decide to move
+`symdev-locale`; spec §2/§12 say "the symbian-rs tree"; (2) reword spec §8 item 5 (in-tree
+Rust examples cannot be built outside the clone; use `symdev new hello --lang rust`); (3) the
+task-3 proposal (`build/rust-sdk` link) if wanted. Nothing pushed or merged.
+
