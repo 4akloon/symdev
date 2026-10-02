@@ -9,7 +9,8 @@ repository was prepared for publication. Every crate declares `license.workspace
 
 ## Never bundle
 
-Never commit, COPY, curl, scrape, or otherwise bundle:
+Never commit, COPY into an image, scrape, or otherwise bundle into this repository, and never
+link to a third-party copy of:
 
 - S60 SDK
 - WTK
@@ -17,7 +18,12 @@ Never commit, COPY, curl, scrape, or otherwise bundle:
 - certificates (`.cer`)
 - private keys (`.key`)
 
-SDK, WTK, and ROM stay on the operator’s machine. They are user-supplied paths, never downloaded by this repository.
+The SDK and firmware are either user-supplied paths or packages the toolchain manager downloads
+from a source the operator configured with their own credentials — for the owner, a private
+bucket holding the owner's own copies. symdev's built-in public source carries only GPL/MIT
+packages and their corresponding source. Changed by the repository owner on 2026-10-02 with the
+toolchain manager design ([2026-10-02-toolchain-manager-design.md](../superpowers/specs/2026-10-02-toolchain-manager-design.md) §1);
+before that the rule was "never downloaded by this repository".
 
 ## EKA2L1
 

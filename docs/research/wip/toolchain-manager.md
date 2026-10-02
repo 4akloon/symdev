@@ -195,7 +195,11 @@ Written on branch `toolchain-manager` (worktree `~/worktrees/symdev/toolchain-ma
 wording for the "never download SDK/ROM" rule in `CLAUDE.md` and `licensing.md` (§1) —
 the owner must approve that explicitly; neither file is edited yet.
 
+Owner approved the spec as written, including the §1 rule wording ("Все ок, можеш
+продовжувати", 2026-10-02); `CLAUDE.md` and `licensing.md` updated on this branch.
+Owner then asked: "Роби все і паралельно" — do everything, in parallel.
+
 ## Next step
 
-Owner reviews the spec. On approval: edit the rule in `CLAUDE.md` + `licensing.md` as
-approved, then invoke superpowers:writing-plans for the implementation plan.
+Write the implementation plan (superpowers:writing-plans), then dispatch independent
+tracks in parallel.
