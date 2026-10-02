@@ -478,9 +478,20 @@ Flow: parse recipe (`id`, `license`, `host`, `include` for SDK, `sha256` optiona
 
 ### Task E2: SDK recipe, verified against the real SDK (no upload)
 
-- [ ] `recipes/sdk/s60-3rd-fp2/1.1/recipe.toml`: `id`, `license = "LicenseRef-Nokia-S60-SDK-EULA"`, `host = "any"`, `include = ["epoc32/include", "epoc32/release/armv5/lib", "epoc32/release/armv5/urel"]`.
+- [ ] `recipes/sdk/s60-3rd-fp2/1.1/recipe.toml`: `id`, `license = "LicenseRef-Nokia-S60-SDK-EULA"`, `host = "any"`, and an `include` list of paths relative to the SDK root, where a `*` may appear only in the last segment:
+```toml
+include = [
+  "epoc32/include",
+  "epoc32/release/armv5/lib/*.dso",
+  "epoc32/release/armv5/lib/usrt2_2.lib",
+  "epoc32/release/armv5/urel/eexe.lib",
+  "epoc32/release/armv5/urel/edll.lib",
+  "epoc32/tools/variant/variant.cfg",
+]
+```
+  `publish` copies the matching files into a staging tree (byte copies, same relative paths), then `ReproducibleTarGz::pack(staging, &["epoc32"], out)`. A pattern that matches nothing is an error naming it. The RVCT `.lib` import libraries beside the `.dso` files are deliberately left out (spec §2).
 - [ ] Run `publish private 'sdk;s60-3rd-fp2;1.1' --from ~/sdk/S60_3rd_FP2 --recipe … --dry-run` twice → same sha both times; record `sha256` in the recipe; record archive size.
-- [ ] Prove the subset is enough: extract the archive into a temp dir, point `SYMDEV_EPOCROOT` at it and build `examples/hello` and `examples/gui`; `cmp` the `.exe` against a build with the full SDK. If a file is missing, extend `include` with the observed path only.
+- [ ] Prove the subset is enough: extract the archive into a temp dir, point `SYMDEV_EPOCROOT` at it and build `examples/hello`, `examples/gui`, a Rust example, and a DLL project (find one among the repo's tests/fixtures; a DLL links `edll.lib`); `cmp` every output against a build with the full SDK. If a file is missing, extend `include` with the observed path only, and record it.
 - [ ] Commit in the packages repo; note sizes in the wip file.
 
 ### Task E3: workflows (written, not pushed)

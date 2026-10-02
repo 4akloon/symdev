@@ -49,11 +49,17 @@ in-place `ndk-bundle` to side-by-side `ndk;<version>` for exactly this reason.)
 | Id | Contents | Host |
 |---|---|---|
 | `gcce;12.1.0` | GCC 12.1.0 and binutils 2.29.1 in one prefix | `x86_64-linux` |
-| `sdk;s60-3rd-fp2;1.1` | `epoc32/include`, `epoc32/release/armv5/{lib,urel}` | `any` |
+| `sdk;s60-3rd-fp2;1.1` | headers, `.dso` import stubs, three static libraries, `variant.cfg` | `any` |
 | `emulator;…`, `firmware;rm-469;…` | phase 2 | — |
 
-The SDK package is the subset the build reads (≈112 MB of the 466 MB SDK before
-compression): the include tree, the `.dso`/`.lib` directory and `urel` (`eexe.lib`).
+The SDK package is only what a GCCE build reads, measured on 2026-10-02: `epoc32/include`
+(2 123 files, 24 MB), the 570 `.dso` import stubs in `epoc32/release/armv5/lib` (6.3 MB), the
+static libraries the link line names (`usrt2_2.lib` there, `eexe.lib` and `edll.lib` in
+`urel`) and `epoc32/tools/variant/variant.cfg`, which names the variant header for `bld.inf`
+preprocessing. Left out: the 570 RVCT `.lib` import libraries beside the `.dso` files
+(77.5 MB; GCCE links the `.dso`), and everything else in the 466 MB SDK. Compressed, the
+include tree is 3.8 MB and the `.dso` files 1.5 MB; the whole earlier directory-level subset
+was 9.9 MB.
 
 **Ids are validated**: segments are non-empty, are not `.` or `..`, and contain no `/`, `\`
 or NUL. The id maps
