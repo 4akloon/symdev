@@ -45,7 +45,7 @@ impl Provision {
     /// The toolchain for a build: installs what the set variables leave to the packages.
     pub fn toolchain(&self, device: Device) -> Result<Toolchain, Error> {
         let o = Self::overrides()?;
-        let needed = self.needed_by(&o, device);
+        let needed = Self::needed_by(&o, device);
         if needed.is_empty() {
             return Toolchain::resolve(&o, None, None);
         }
@@ -53,17 +53,14 @@ impl Provision {
         let mut manager = self.manager(&mut stderr)?;
         manager.ensure(&needed)?;
         let home = manager.home();
-        let gcce = Pins::gcce();
-        let gcce = match o.needs_gcce() {
-            true => Some(Gcce::at(home.package_dir(&gcce), &gcce)?),
-            false => None,
-        };
-        let sdk = Pins::platform_sdk(device);
-        let sdk = match o.needs_sdk() {
-            true => Some(PlatformSdk::at(home.package_dir(&sdk), &sdk)?),
-            false => None,
-        };
-        Toolchain::resolve(&o, gcce.as_ref(), sdk.as_ref())
+        let (gcce_id, sdk_id) = (Pins::gcce(), Pins::platform_sdk(device));
+        let gcce = o
+            .needs_gcce()
+            .then(|| Gcce::at(home.package_dir(&gcce_id), &gcce_id));
+        let sdk = o
+            .needs_sdk()
+            .then(|| PlatformSdk::at(home.package_dir(&sdk_id), &sdk_id));
+        Toolchain::resolve(&o, gcce.transpose()?.as_ref(), sdk.transpose()?.as_ref())
     }
 
     /// The EPOCROOT for reading a `bld.inf`, installing the SDK if it is missing. The
@@ -108,10 +105,10 @@ impl Provision {
     /// The packages a build for `device` needs under the current environment: none for
     /// a part whose every field a `SYMDEV_*` variable sets.
     pub fn needed(&self, device: Device) -> Vec<PackageId> {
-        self.needed_by(&ToolchainOverrides::from_env(), device)
+        Self::needed_by(&ToolchainOverrides::from_env(), device)
     }
 
-    fn needed_by(&self, o: &ToolchainOverrides, device: Device) -> Vec<PackageId> {
+    fn needed_by(o: &ToolchainOverrides, device: Device) -> Vec<PackageId> {
         let gcce = o.needs_gcce().then(Pins::gcce);
         let sdk = o.needs_sdk().then(|| Pins::platform_sdk(device));
         gcce.into_iter().chain(sdk).collect()
