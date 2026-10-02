@@ -244,3 +244,14 @@ Progress:
 
 On D/E/C reports: review, merge (D into toolchain-manager; E's `publish` into packages
 `main`), then wave 3 once the owner's R2 URL and account id arrive.
+
+## New request (owner, 2026-10-02): host our own prebuilt binaries in the store
+
+"Also I'd like the storage to hold ready binaries of our toolchain" — i.e. a prebuilt
+`symdev` (phase 2 in the spec) moves into phase 1. Facts: the debug `symdev` links only
+libc/libgcc_s (glibc); no musl tooling on this host (no musl-gcc/zig, no sudo) — a static
+musl build can only be proven in CI; `RustSdk::from_env` falls back to a compile-time path
+(`crates/symdev-build/src/rust_sdk.rs:73`, `CARGO_MANIFEST_DIR/../../symbian-rs`), so a
+prebuilt binary cannot find the Rust SDK → it must become a package too. Design proposed to
+the owner in chat (packages `symdev;<ver>` + `rust-sdk;<ver>` built from a symdev tag by a
+recipe in symdev-packages; `install.sh` in the public bucket). Awaiting approval.
