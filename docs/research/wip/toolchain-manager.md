@@ -209,7 +209,18 @@ A sdk-core (`tm-core`), B sigv4/http (`tm-net`), C GCCE recipe (`tm-gcce` +
 main). Owner asked for O1 (Cloudflare setup). No docker/podman on host: clean-env acceptance
 = fresh HOME on host + CI runner (plan R5).
 
+Progress:
+- F done: `2f38ed6` on main, pushed with the owner's OK; CI on main green (run 37037648126).
+- B done and merged (e4d1043); lead raised the HTTP global timeout 10 min → 1 h (8a536eb).
+- A done and merged (fd8ce92); workspace: 610 tests pass, clippy 0, fmt clean.
+- SDK subset narrowed after the owner's question (14a6f2a): headers + 570 `.dso` + usrt2_2/
+  eexe/edll `.lib` + `epoc32/tools/variant/variant.cfg` (the old directory list missed it);
+  RVCT `.lib` import libraries (77.5 MB) left out. ≈5.5 MB compressed vs 9.9 MB.
+- Wave 2 dispatched: D in `tm-cli`; E in `~/worktrees/symdev-packages/publish` (branch
+  `publish` of the local packages repo; C commits gcce recipe on its `main`).
+- C still running.
+
 ## Next step
 
-On each agent report: review, merge its branch into `toolchain-manager` (F into main),
-then dispatch D and E.
+On D/E/C reports: review, merge (D into toolchain-manager; E's `publish` into packages
+`main`), then wave 3 once the owner's R2 URL and account id arrive.
