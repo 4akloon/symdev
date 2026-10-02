@@ -149,7 +149,7 @@ impl Catalog {
             let fetched = match self.fetcher(source) {
                 Some(fetch) => fetch
                     .text(&source.index_url())
-                    .and_then(|text| Index::parse(&text, &source.name))
+                    .and_then(|text| source.parse_index(&text))
                     .map_err(|e| e.to_string()),
                 None => Err("its keys are not set".to_string()),
             };

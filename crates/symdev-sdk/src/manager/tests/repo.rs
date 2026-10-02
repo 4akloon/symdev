@@ -5,11 +5,13 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::{ArchiveEntry, Auth, Host, Index, IndexPackage, PackageId, ReproducibleTarGz};
-use crate::{SdkHome, SourceSpec};
+use crate::{IndexSigningKey, SdkHome, SignedIndex, SourceSpec};
 
 pub struct Repo {
     dir: PathBuf,
     index: Index,
+    /// Signs every `index.toml` written from now on; unsigned without it.
+    signer: Option<IndexSigningKey>,
 }
 
 impl Repo {
@@ -18,6 +20,7 @@ impl Repo {
         Repo {
             dir,
             index: Index::empty(),
+            signer: None,
         }
     }
 
@@ -56,8 +59,20 @@ impl Repo {
         self
     }
 
+    /// Signs the index with `key`, now and on every later write.
+    pub fn sign_with(&mut self, key: IndexSigningKey) -> &mut Repo {
+        self.signer = Some(key);
+        self.write_index();
+        self
+    }
+
     pub fn write_index(&self) {
-        fs::write(self.index_path(), self.index.to_toml().unwrap()).unwrap();
+        let body = self.index.to_toml().unwrap();
+        let text = match &self.signer {
+            Some(key) => SignedIndex::sign(&body, key).to_text(),
+            None => body,
+        };
+        fs::write(self.index_path(), text).unwrap();
     }
 
     pub fn index_path(&self) -> PathBuf {

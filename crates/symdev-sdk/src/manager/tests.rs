@@ -7,6 +7,7 @@ use crate::{Auth, Host, PackageId, SdkHome, SourceSpec, Sources};
 mod http;
 mod lookup;
 mod repo;
+mod signed;
 use repo::Repo;
 
 fn id(s: &str) -> PackageId {

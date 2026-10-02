@@ -1,5 +1,5 @@
 use super::Sources;
-use crate::{Auth, SdkError, SourceSpec};
+use crate::{Auth, SdkError, SourceSpec, TrustedKeys};
 
 const PATH: &str = "/home/u/.config/symdev/sources.toml";
 
@@ -123,4 +123,38 @@ fn an_unknown_auth_or_key_is_refused() {
 #[test]
 fn a_toml_syntax_error_names_the_file() {
     bad("[[source]\n");
+}
+
+/// The public key of the seed of 32 bytes 0x07.
+const KEY_7: &str = "6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=";
+
+#[test]
+fn a_source_key_makes_its_signature_mandatory() {
+    let text = format!(
+        "[[source]]\nname = \"private\"\nurl = \"https://acct.r2.cloudflarestorage.com/p/\"\n\
+         auth = \"s3\"\nkey = \"builtin\"\n\n[[source]]\nname = \"mirror\"\n\
+         url = \"file:///srv/mirror/\"\nkey = \"{KEY_7}\"\n"
+    );
+    let sources = Sources::parse(Some(&text), PATH, Some(&public())).unwrap();
+    assert_eq!(sources.list[0].key, None, "the test's built-in has no key");
+    assert_eq!(sources.list[1].key, Some(TrustedKeys::builtin()));
+    assert_eq!(
+        sources.list[2].key,
+        Some(TrustedKeys::parse(KEY_7).unwrap())
+    );
+}
+
+#[test]
+fn a_source_without_a_key_is_not_verified() {
+    let sources = Sources::parse(Some(PRIVATE), PATH, None).unwrap();
+    assert!(sources.list.iter().all(|s| s.key.is_none()));
+}
+
+#[test]
+fn a_bad_key_names_its_source_and_both_forms() {
+    let e = bad("[[source]]\nname = \"m\"\nurl = \"file:///x/\"\nkey = \"AAAA\"\n");
+    assert!(
+        e.contains("`m`") && e.contains("`AAAA`") && e.contains("\"builtin\""),
+        "{e}"
+    );
 }
