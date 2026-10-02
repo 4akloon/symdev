@@ -58,3 +58,86 @@ jobs:
 
       - name: Test
         run: cargo test --workspace --offline --locked
+
+  # The examples job needs the reader key of the owner's private bucket, which holds the
+  # S60 SDK. Secrets cannot gate a job directly and forks and dependabot get none, so this
+  # job looks for the key and the examples job is skipped, not failed, without it.
+  examples-key:
+    runs-on: ubuntu-24.04
+    outputs:
+      ok: ${{ steps.key.outputs.ok }}
+    steps:
+      - id: key
+        env:
+          KEY: ${{ secrets.SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID }}
+        run: |
+          if [ -n "$KEY" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No reader key (a fork or dependabot): the examples job is skipped."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Builds and packages the examples on a clean runner the way a new machine does: symdev
+  # installs GCCE and the S60 SDK itself (docs/superpowers/specs/2026-10-02-toolchain-manager-design.md §7).
+  examples:
+    needs: examples-key
+    if: needs.examples-key.outputs.ok == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID: ${{ secrets.SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID }}
+      SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY: ${{ secrets.SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY }}
+      # The self-signed key is generated per run and thrown away with the runner.
+      SYMDEV_SIGN_PASSWORD: ci-throwaway
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust 1.98.1 and the Rust SDK's nightly
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
+          rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"/\1/p' symbian-rs/rust-toolchain.toml)" \
+            --profile minimal --component rust-src
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-release-1.98.1-${{ hashFiles('**/Cargo.lock') }}
+
+      # Keyed on the pinned package ids: an unchanged pin installs nothing from the bucket.
+      - name: Cache installed toolchain packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.local/share/symdev
+          key: symdev-packages-${{ hashFiles('crates/symdev-sdk/src/pins.rs') }}
+
+      - name: Configure the private source
+        env:
+          URL: ${{ vars.SYMDEV_PRIVATE_SOURCE_URL }}
+        run: |
+          mkdir -p ~/.config/symdev
+          printf '[[source]]\nname = "private"\nurl = "%s"\nauth = "s3"\n' "$URL" \
+            > ~/.config/symdev/sources.toml
+
+      - name: Build symdev
+        run: cargo build --release -p symdev-cli --locked
+
+      - name: Build and package the examples
+        run: |
+          export PATH="$PWD/target/release:$PATH"
+          for dir in examples/hello examples/gui symbian-rs/examples/hello; do
+            (cd "$dir" && symdev build && symdev package)
+          done
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: examples-sisx
+          path: |
+            examples/*/build/*.sisx
+            symbian-rs/examples/hello/build/*.sisx
+          if-no-files-found: error
