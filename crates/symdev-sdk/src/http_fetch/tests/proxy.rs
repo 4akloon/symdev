@@ -8,8 +8,8 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use super::server::{response, serve};
-use crate::Fetch;
 use crate::http_fetch::HttpFetch;
+use crate::{Auth, Fetch, SourceSpec};
 
 /// Set in the child; the child's proxy variables name the parent's proxy.
 const CHILD: &str = "SYMDEV_TEST_PROXY_CHILD";
@@ -57,7 +57,8 @@ fn only_production_goes_through_the_proxy_variables() {
 fn in_the_child() {
     let (server, _requests) = serve(vec![response("200 OK", b"from the server")]);
     let url = format!("{server}index.toml");
-    let proxied = HttpFetch::new("public", None).text(&url).unwrap();
+    let source = SourceSpec::new("public", &server, Auth::None).unwrap();
+    let proxied = HttpFetch::new(&source, None).text(&url).unwrap();
     assert_eq!(proxied, "via the proxy");
     let direct = HttpFetch::direct("public", None).text(&url).unwrap();
     assert_eq!(direct, "from the server");

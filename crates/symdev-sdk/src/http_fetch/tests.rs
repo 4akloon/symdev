@@ -3,6 +3,7 @@
 
 mod limits;
 mod proxy;
+mod redirects;
 mod server;
 
 use std::net::TcpListener;

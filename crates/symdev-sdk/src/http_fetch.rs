@@ -7,7 +7,7 @@ use std::time::Duration;
 use ureq::http::Response;
 use ureq::{Agent, Body, Proxy};
 
-use crate::{AmzDate, Fetch, Result, SdkError, SigV4};
+use crate::{AmzDate, Fetch, Result, SdkError, SigV4, SourceSpec};
 
 /// SHA-256 of an empty body, the payload hash of every GET.
 const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
@@ -24,9 +24,11 @@ const RESPONSE_WAIT: Duration = Duration::from_secs(60);
 /// headers) 60 s, and a whole request an hour: a 60 MB archive then still arrives over a
 /// 20 KB/s link, while a stalled one does not hang a build for ever (ureq has no idle
 /// timeout to use instead). A download stops as soon as it passes its limit, the index's
-/// `size`. A non-2xx
-/// answer is `SdkError::Forbidden` for 403 and otherwise `SdkError::Fetch` whose `detail` is
-/// exactly `HTTP <code>`, so a caller can tell a missing object (`HTTP 404`) apart.
+/// `size`. An `https` source sends no plain-HTTP request, so no redirect can downgrade it
+/// (the index is checked by nothing but TLS), and a signed request follows no redirect at
+/// all. A non-2xx answer (a redirect not followed too) is `SdkError::Forbidden` for 403
+/// and otherwise `SdkError::Fetch` whose `detail` is exactly `HTTP <code>`, so a caller can
+/// tell a missing object (`HTTP 404`) apart.
 pub struct HttpFetch {
     agent: Agent,
     signer: Option<SigV4>,
@@ -34,34 +36,54 @@ pub struct HttpFetch {
 }
 
 impl HttpFetch {
-    /// `source_name` appears in errors; `signer` signs every request when present. The
-    /// proxy is the environment's.
-    pub fn new(source_name: &str, signer: Option<SigV4>) -> HttpFetch {
-        Self::with(source_name, signer, Proxy::try_from_env(), RESPONSE_WAIT)
+    /// The adapter for `source`, whose name appears in errors; `signer` signs every
+    /// request when present. The proxy is the environment's.
+    pub fn new(source: &SourceSpec, signer: Option<SigV4>) -> HttpFetch {
+        let https = source.base.starts_with("https://");
+        Self::with(
+            &source.name,
+            https,
+            signer,
+            Proxy::try_from_env(),
+            RESPONSE_WAIT,
+        )
     }
 
-    /// The same without any proxy, whatever the environment holds: the tests' servers
-    /// listen on 127.0.0.1, and a developer's `HTTP_PROXY` must not take their requests.
+    /// For a plain-`http` test source named `source_name`, without any proxy whatever the
+    /// environment holds: the tests' servers listen on 127.0.0.1, and a developer's
+    /// `HTTP_PROXY` must not take their requests.
     #[cfg(test)]
     pub(crate) fn direct(source_name: &str, signer: Option<SigV4>) -> HttpFetch {
-        Self::with(source_name, signer, None, RESPONSE_WAIT)
+        Self::with(source_name, false, signer, None, RESPONSE_WAIT)
+    }
+
+    /// [`Self::new`] without any proxy, for the tests' servers on 127.0.0.1.
+    #[cfg(test)]
+    pub(crate) fn direct_for(source: &SourceSpec, signer: Option<SigV4>) -> HttpFetch {
+        let https = source.base.starts_with("https://");
+        Self::with(&source.name, https, signer, None, RESPONSE_WAIT)
     }
 
     /// [`Self::direct`] waiting only `wait` for a response, so a test of a silent server
     /// ends in a moment.
     #[cfg(test)]
     pub(crate) fn impatient(source_name: &str, signer: Option<SigV4>, wait: Duration) -> HttpFetch {
-        Self::with(source_name, signer, None, wait)
+        Self::with(source_name, false, signer, None, wait)
     }
 
     fn with(
         source_name: &str,
+        https_only: bool,
         signer: Option<SigV4>,
         proxy: Option<Proxy>,
         response_wait: Duration,
     ) -> HttpFetch {
+        // ureq checks `https_only` on every call, a redirected one too.
+        let redirects = if signer.is_some() { 0 } else { 10 };
         let config = Agent::config_builder()
             .proxy(proxy)
+            .https_only(https_only)
+            .max_redirects(redirects)
             .http_status_as_error(false)
             .timeout_connect(Some(Duration::from_secs(30)))
             .timeout_recv_response(Some(response_wait))

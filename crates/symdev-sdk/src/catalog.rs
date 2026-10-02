@@ -31,7 +31,7 @@ impl Catalog {
             Auth::None => None,
             Auth::S3 => Some(SigV4::s3(self.keys.get(&source.name)?.clone(), "auto")),
         };
-        Some(Box::new(HttpFetch::new(&source.name, signer)))
+        Some(Box::new(HttpFetch::new(source, signer)))
     }
 
     /// The first source that lists `id`, its package entry and the archive for `host`.

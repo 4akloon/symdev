@@ -201,7 +201,11 @@ nothing.
 There is no `update`: ids are immutable. When a symdev release pins `gcce;14.2.0`, the next
 build installs it beside `gcce;12.1.0`, which stays until uninstalled.
 
-**Network.** `ureq` with rustls, timeouts, proxy from the environment. Sources with
+**Network.** `ureq` with rustls, proxy from the environment, and timeouts: 30 s to connect,
+60 s for the server's answer, an hour per request. A download stops one byte past the
+index's `size`. An `https` source sends no plain-HTTP request, a redirect included (the
+index has no hash of its own to check), and a signed request follows no redirect (review
+M1, M2, 2026-10-02). Sources with
 `auth = "s3"` sign requests with AWS Signature V4 (region `auto` for R2). The signer is our
 own, GET and PUT only (PUT is for `publish`, §6), built on the workspace's `hmac` and
 `sha2`, and tested against AWS's published SigV4 examples. No S3 client crate.
