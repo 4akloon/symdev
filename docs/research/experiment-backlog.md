@@ -2991,3 +2991,274 @@ Not run on an E52.
 Measurement scripts outside git, in `~/.cache/avkon-glue-agent/` (`measure.sh`,
 `runall.sh`, `cat.py`, `res-*.txt` and `nm-*/` for every step and probe, the run logs and
 result JSON in `run-final/`, the screenshots in `shots/`).
+
+## 107. GCCE from official tarballs: what the host's GCC 12.1.0 was, and a relocatable rebuild with identical executables (toolchain manager, `gcce;12.1.0`)
+
+**Requires:** network (ftp.gnu.org, gcc.gnu.org, raw.githubusercontent.com), `SYMDEV_EPOCROOT`.
+No Wine, no container (none on this host).
+
+**Why.** The toolchain manager publishes GCCE as a package built from source (design spec
+§6), and §8 item 1 accepts it only if the examples built with it are byte-identical to
+those built with `~/gcc-builds`. Nobody had recorded how `~/gcc-builds` was made
+(`pipeline-and-tools.md`: "Unknown"); `g++ -v` gave GCC's configure line and nothing else.
+
+**What the host's toolchain was** (all read from the build trees, not assumed):
+
+* `~/gcc-builds/gcc-12.1.0` was installed by `~/src/GCC4Symbian/build-toolchain.sh`
+  (fedor4ever/GCC4Symbian at `fe1b15a`, 2022-06-15; markers and `experiment-2-build.log`
+  dated 2026-09-17). On Linux it builds **binutils 2.35 into the same prefix first**, so
+  GCC's `AS_FOR_TARGET`/`LD_FOR_TARGET` (`build-gcc/Makefile`) and the `as` that `g++`
+  runs today are gas **2.35**; only the link uses ld 2.29.1 (`SYMDEV_LD`), because ld 2.35
+  rejects the SDK's `euser.dso` (experiment 5). gdb 10.2's install failed; no gdb.
+* GCC's tree is the official `gcc-12.1.0.tar.xz` (same SHA-256) with **one file
+  changed**: `libgcc/libgcov-driver.c` is overwritten by GCC4Symbian's copy, which adds
+  eight lines defining `__INTPTR_TYPE__` as `int` when undefined. `arm*-*-symbianelf*`
+  in `config.gcc` adds no `*-stdint.h`, so the compiler predefines no `__INTPTR_TYPE__`
+  and installs no `stdint.h` (`use_gcc_stdint=none`).
+* GCC4Symbian's `sys-include/stdint.h` and `stdio.h` are copied to
+  `$prefix/arm-none-symbianelf/sys-include` before GCC is configured; fixincludes turns
+  stdio.h into `include-fixed/stdio.h`. symdev compiles with `-nostdinc` and only
+  `-I $SYMDEV_GCC_LIB/include`, so user code never reads either.
+* gmp 6.1.0, mpfr 4.1.0, mpc 1.2.1 and isl 0.16.1 are unpacked **into** the GCC tree, so
+  cc1/cc1plus link them statically (`ldd`: libc and libm only). In-tree mpfr inherits
+  `--enable-lto`, builds itself with `-flto` and checks that `ar` (or `gcc-ar`) can archive
+  LTO objects.
+* `build-gcc/config.status`: the configure flags of spec §6 exactly, env `CFLAGS=-pipe`;
+  `make -j6 -k -l6`, `make -k install-strip`. Its logs have no failure but libstdc++'s
+  ignored `largefile-config.h` rule.
+* binutils 2.29.1 (`~/src/binutils-2.29.1-build/build-binutils/config.log`): GCC4Symbian's
+  binutils flags with another version and prefix — `--target=arm-none-symbianelf
+  --disable-option-checking --enable-ld --enable-gold --enable-lto --enable-vtable-verify
+  --enable-werror=no --without-headers --disable-nls --disable-shared
+  --disable-libquadmath --enable-plugins --enable-multilib`, env `CFLAGS='-pipe -Bstatic'`,
+  `make install-strip`; source = the official tarball (`diff -rq` empty). No `ld.gold`
+  results despite `--enable-gold`.
+* Host tools: `~/.local/bin` wrappers around Ubuntu's GCC 15.2.0 debs unpacked into
+  `~/.local/native-cc` (no sudo): gcc, g++, make, m4, gawk (flex, bison found, never run).
+  The `make` wrapper exports `CPATH`, `CPLUS_INCLUDE_PATH` (host libstdc++ 15 headers),
+  `LIBRARY_PATH`, `GCC_EXEC_PREFIX` into the whole build: 55 lines of
+  `build-gcc/arm-none-symbianelf/libstdc++-v3/config.log` show the *cross* compiler
+  reading host headers (each such test then failed on `features.h`).
+
+**Each GCC4Symbian change is needed** (the recipe's `build.sh` with one change removed,
+same host, `make` without `-k`):
+
+| removed | result |
+|---|---|
+| the libgcov file (pristine GCC) | `libgcov-driver.c:457:56: error: '__INTPTR_TYPE__' undeclared`, exit 2 |
+| both sys-include headers | `libsupc++/new_opa.cc:28:10: fatal error: stdint.h: No such file or directory`, exit 2 |
+| stdio.h only | builds; same code in every target library, but the installed `c++config.h` loses `_GLIBCXX_HAVE_FLOAT_H`, `STDALIGN_H`, `STDBOOL_H`, `STDINT_H` (libstdc++'s header checks include `<stdio.h>` first) |
+
+**The recipe** (`~/projects/symdev-packages/recipes/gcce/12.1.0/`, local repository, not
+pushed). `recipe.toml` pins nine sources by SHA-256; `build.sh <prefix>` runs in the
+current directory, fetches whatever is missing (curl or wget), checks every hash, unpacks
+the four prerequisites into the GCC tree, copies the libgcov file, builds binutils 2.29.1
+(flags above, `make -j$(nproc)`, `make install-strip`), copies the two headers into
+`sys-include`, and builds GCC (spec §6 flags in the original order, `make -j$(nproc)`,
+`make install-strip`). It unsets `CFLAGS CXXFLAGS CPPFLAGS LDFLAGS CPATH C_INCLUDE_PATH
+CPLUS_INCLUDE_PATH LIBRARY_PATH GCC_EXEC_PREFIX` first so no host path reaches the target
+libraries. Differences from the original, on purpose: binutils 2.29.1 instead of 2.35
+(spec §6: one binutils, whose ld works), no gdb, no `-k`.
+
+| source | SHA-256 | checked |
+|---|---|---|
+| `ftp.gnu.org/gnu/gcc/gcc-12.1.0/gcc-12.1.0.tar.xz` | `62fd634889f31c02b64af2c468f064b47ad1ca78411c45abe6ac4b5f8dd19c7b` | GNU signature (Jakub Jelinek) |
+| `ftp.gnu.org/gnu/binutils/binutils-2.29.1.tar.xz` | `e7010a46969f9d3e53b650a518663f98a5dde3c3ae21b7d71e5e6803bc36b577` | GNU signature (Nick Clifton) |
+| `ftp.gnu.org/gnu/gmp/gmp-6.1.0.tar.bz2` | `498449a994efeba527885c10405993427995d3f86b8768d8cdf8d9dd7c6b73e8` | signature (Niels Möller) |
+| `ftp.gnu.org/gnu/mpfr/mpfr-4.1.0.tar.bz2` | `feced2d430dd5a97805fa289fed3fc8ff2b094c02d05287fd6133e7f1f0ec926` | signature (Vincent Lefevre) |
+| `ftp.gnu.org/gnu/mpc/mpc-1.2.1.tar.gz` | `17503d2c395dfcf106b622dc142683c1199431d095367c6aacba6eec30340459` | signature (Andreas Enge) |
+| `gcc.gnu.org/pub/gcc/infrastructure/isl-0.16.1.tar.bz2` | `412538bb65c799ac98e17e8cfcdacbb257a57362acfaaff254b0fcae970126d2` | none; equals GCC4Symbian's copy |
+| GCC4Symbian `fe1b15a` `build-data/GCC-12.1.0/libgcov-driver.c` | `3178078259108b36b0789c71a638c2c7ab1348594a768598342b36eeaece7011` | equals the local clone |
+| GCC4Symbian `fe1b15a` `sys-include/stdint.h` | `1456147206d28254d03b8e51244fa4c33795f1095c771188995f5a7f79e02848` | equals the clone and the installed file |
+| GCC4Symbian `fe1b15a` `sys-include/stdio.h` | `968ac4b1dd3d480f066ef97754e971a4c2683e9fde8d252ee9edae7fa3275a37` | equals the clone and the installed file |
+
+The GNU signatures were checked with `gpgv --keyring gnu-keyring.gpg` (the keyring from
+ftp.gnu.org). The prerequisites on gcc.gnu.org (the URLs GCC4Symbian used) have the same
+hashes as on ftp.gnu.org. **Owner's call before publishing:** GCC4Symbian has no LICENSE
+file and its scripts say "Attribution-NonCommercial 4.0"; the libgcov file is GCC's own
+(GPL-3.0+ with the runtime exception) plus eight lines, and the two headers carry no
+notice. They would ship in the public package and its source archive.
+
+**Build.** `env -i HOME PATH=<GNU make>:~/.local/bin:~/.local/native-cc/usr/bin:/usr/bin:/bin
+build.sh ~/src/gcce-recipe/prefix-a`, 16 cores: **291 s** wall, exit 0, **201 MiB**
+installed (208 986 024 bytes), ~3.3 GB of build tree. `g++ -v`: the original's configure
+line but the prefix, `Supported LTO compression algorithms: zlib` (as before). A first
+attempt failed in in-tree mpfr's LTO check, because with `/usr/bin` before
+`~/.local/native-cc/usr/bin` the host `ar` had no LTO plugin and no `gcc-ar` was on
+`PATH`; the original's `make` wrapper had put native-cc's `ar` first. The final recipe
+(`380d28a`) run end to end from an empty directory into `prefix-b`, fetching all nine
+sources: every hash `OK`, exit 0, **393 s** with the downloads, the same 208 986 024 bytes.
+Against `prefix-a` it differs in 78 of 665 files (prefix and build paths, archive
+timestamps) — same file list, same headers but the path comments, same code in every
+target-archive member; a relocated copy of it builds the same identical examples.
+
+**Links.** Symlinks: 6, all relative and inside the prefix (`lib/libcc1.so*`,
+`lib/gcc/…/plugin/libc{c1,p1}plugin.so*`). Hard links: 11 groups — each binutils program
+in `bin/arm-none-symbianelf-X` and `arm-none-symbianelf/bin/X`, `ld` ×4 with `ld.bfd`,
+`g++`/`c++`, `gcc`/`gcc-12.1.0`, as in `~/gcc-builds`. A packer that stores hard links as
+files adds 20 266 720 bytes before compression.
+
+**Relocation and acceptance.** `cp -a prefix-a moved`, then `prefix-a` renamed away, and
+`hello`, `gui` and `symbian-rs/examples/hello` built by the current `symdev` from fresh
+copies of the tree at one fixed path (rustc embeds source paths), `SYMDEV_GXX`, `SYMDEV_LD`,
+`SYMDEV_GCC_LIB`, `SYMDEV_GCC_TARGET_LIB` all inside `moved`. `symdev-elf2e32` stamps
+`SystemTime::now()` into the E32 header (two baseline builds differ in bytes 21–24,
+`iHeaderCrc`, and 37–40, `iTimeLo`), so both sides ran under an `LD_PRELOAD` shim that pins
+`CLOCK_REALTIME` (outside git); two baseline builds are then identical. Without the shim
+the new prefix's `.exe` differ from the baseline's only at 0x14–0x17 (`iHeaderCrc`) and
+0x24–0x27 (`iTimeLo`); with 0x14–0x17 and 0x24–0x2B masked they are equal, and the
+`.elf` files are equal byte for byte. Assembler on each side: baseline gas **2.35** (the
+one inside `~/gcc-builds/gcc-12.1.0`) with ld/ar 2.29.1; new prefix gas, ld and ar
+**2.29.1**.
+
+| example | `.exe` | `.elf` |
+|---|---|---|
+| `examples/hello` | **identical** (3 588 bytes) | identical (24 244) |
+| `examples/gui` | **identical** (5 061) | identical (58 532) |
+| `symbian-rs/examples/hello` | **identical** (968) | identical (16 456) |
+
+`g++ -v` of the moved compiler runs its own `cc1plus` and `as`. Five of the eight objects
+differ from the baseline — exactly the five with COMDAT groups, because gas 2.35 also
+lists a member's `.rel` section in `.group` (`objdump -dr` identical) — and all eight are
+byte-identical to the *old* g++ assembling with gas 2.29.1 (`-B`), so the new compiler
+emits the same assembly. In the installed tree, every member of all eleven target
+archives (libgcc, libgcov, libsupc++, four multilibs) has the same disassembly,
+allocated bytes and non-debug relocations; headers are identical but for a path comment
+in `include-fixed/stdio.h`; GCC's assembler probes differ only in
+`HAVE_AS_DWARF2_DEBUG_VIEW` (`-g` only), `HAVE_GAS_ARM_EXTENDED_ARCH` (only rewrites
+`-march=…+ext` for gas) and `HAVE_GAS_SECTION_LINK_ORDER` (only
+`-fpatchable-function-entry`) — all gas 2.29.1 against 2.35.
+
+**Debian 11 build dependencies (derived from this host's build, not run in a container):**
+`build-essential` (gcc, g++, make, libc6-dev; dpkg-dev brings perl, whose `pod2man` the
+GCC build runs for its man pages; `gcc` brings `gcc-ar`, which in-tree mpfr's LTO check
+falls back to), `m4` (GMP's configure and its `.asm` files), `gawk` (what configure picked
+here; Debian's default mawk is untested), `xz-utils`, `bzip2`, `curl`, `ca-certificates`.
+Not needed: flex, bison (found by configure, never run: the tarballs carry the generated
+parsers), texinfo (absent here; `missing` skips the info files), libgmp/libmpfr/libmpc/
+libisl `-dev` (in-tree), zlib1g-dev (bundled zlib). **Must not** be installed:
+`libzstd-dev` — GCC would gain zstd LTO compression, which the original lacks.
+
+**Not done here.** A Debian 11 container run (no docker/podman; installing them needs
+sudo); the binaries built here need GLIBC_2.38 like the originals. GCC compiled by
+Debian's GCC 10 instead of GCC 15 is untested: spec §8 item 1 must be repeated with the
+published package (plan R5).
+
+**Evidence.** Outside git, in `~/src/gcce-recipe/`: tarballs and `.sig`s, `build-a.log`,
+`build-b.log`, `build-nogcov.log`, `build-nosysinc.log`, `build-nostdio.log`,
+`variants/build-variant.sh`, `prefix-a`, `moved`, `work/build-examples.sh`,
+`work/fixtime.c`, `work/compare-prefix.sh`, `work/compare-prefix-a.txt`,
+`work/compare-nostdio.txt`, `work/{baseline,baseline2,moved,as2291}/`. Recipe commits in
+`~/projects/symdev-packages`.
+
+## 108. GCCE without GCC4Symbian's files: our own sys-include headers and a `-D` for libgcov, written clean-room, with the same toolchain (toolchain manager, `gcce;12.1.0`)
+
+**Requires:** network (ftp.gnu.org, gcc.gnu.org), `SYMDEV_EPOCROOT`, `~/gcc-builds` as the
+reference. No Wine, no container.
+
+**Why.** Experiment 107's recipe fetched three files from GCC4Symbian, whose licence is
+unclear (its scripts say "Attribution-NonCommercial 4.0"; no LICENSE file), and they would
+ship in the public package and its source archive. The owner chose to replace them with
+our own, written **clean-room**: nothing under `~/src/GCC4Symbian/`, no `sys-include/` of
+`~/gcc-builds` or `~/src/gcce-recipe`, no non-pristine `libgcov-driver.c`, no
+`~/src/gcce-recipe/{work,variants,gcc4symbian}/`, no `include-fixed/stdio.h` of a prefix
+built with their stdio.h (fixincludes' copy of it) and none of their URLs were opened.
+What the three files are for came from experiment 107's table; everything else from
+GCC's official tarball, our own builds and the reference toolchain's GCC output.
+
+**What GCC needs, and the evidence for each file.**
+
+* **libgcov's `__INTPTR_TYPE__`.** Pristine `libgcc/libgcov-driver.c` casts a
+  `gcov_type` to a pointer through `(__INTPTR_TYPE__)` at lines 457 and 476
+  (`write_topn_counters`). `config.gcc` gives `arm*-*-eabi*` `newlib-stdint.h` but
+  `arm*-*-symbianelf*` no `*-stdint.h`, so the compiler predefines no `__INTPTR_TYPE__`
+  (reference `g++ -dM -E`: `__PTRDIFF_TYPE__ int`, `__SIZE_TYPE__ unsigned int`, no
+  `__INT*_TYPE__`). `gcc/config/newlib-stdint.h` makes `INTPTR_TYPE` the `PTRDIFF_TYPE`,
+  i.e. `int` on ARM. In libgcc and libstdc++ only libgcov reads `__INTPTR_TYPE__` (grep);
+  libgcov uses no `__LINE__`/`__FILE__`.
+* **`sys-include/stdint.h`.** Only `libsupc++/new_opa.cc` includes it (line 28); it uses
+  `uintptr_t` only in the `aligned_alloc` fallback for targets without memalign, and
+  libstdc++'s newlib cross config hardcodes `_GLIBCXX_HAVE_MEMALIGN`. libgcc includes
+  `<stdint.h>` only under `!inhibit_libc` or for decimal float; `GCC_HEADER_STDINT`
+  (`config/stdint.m4`) runs only when hosted. The reference `c++config.h` (GCC output; its
+  four multilib copies are identical) has `_GLIBCXX_HAVE_STDINT_H 1` but **no**
+  `_GLIBCXX_USE_C99_STDINT_TR1`: the reference header fails `acinclude.m4`'s TR1 test (a
+  C++98 compile of every exact/least/fast/max/pointer type and its limits). So ours must
+  exist and must *not* be a complete C99 `<stdint.h>`. fixincludes' only stdint.h fix
+  (`glibc_stdint`, select "GNU C Library") must not match: the reference has no
+  `include-fixed/stdint.h`.
+* **`sys-include/stdio.h`.** No source GCC compiles for this target uses it (libgcc's
+  `L_eprintf` is `!inhibit_libc`; `vterminate.cc`, `pure.cc` are `_GLIBCXX_HOSTED`).
+  autoconf's default includes begin with `#include <stdio.h>`, hence 107's four lost
+  `_GLIBCXX_HAVE_*_H`. Its content must also keep every content-dependent check where the
+  reference `c++config.h` has it: no `_GLIBCXX_USE_TMPNAM`, `HAVE_GETS`,
+  `_GLIBCXX{98,11}_USE_C99_STDIO` (so no `tmpnam`, `gets` or C99 `vfscanf`/`vscanf`/
+  `vsnprintf`/`vsscanf`/`snprintf`+`stderr`), no `__UCLIBC__`/`__BIONIC__`; the EOF/SEEK
+  constants are computed only when hosted. gcc/configure reads `$target_header_dir/stdio.h`
+  only for `inhibit_libc`, which `--without-headers` forces anyway. fixincludes'
+  `stdio_stdarg_h` wraps every stdio.h that does not include stdarg.h, so an
+  `include-fixed/stdio.h` appears on both sides (reference: names listed only).
+
+**Our files** (`symdev-packages`, `recipes/gcce/12.1.0/`):
+
+| file | lines | bytes | content | licence |
+|---|---|---|---|---|
+| `sys-include/stdint.h` | 47 | 2 416 | `typedef __PTRDIFF_TYPE__ intptr_t; typedef __SIZE_TYPE__ uintptr_t;` and a guard | MIT |
+| `sys-include/stdio.h` | 42 | 2 227 | an include guard only | MIT |
+| `build.sh` (gcc step) | +6 | — | `CFLAGS_FOR_TARGET="-g -O2 -D__INTPTR_TYPE__=int"` | the repository's (MIT) |
+
+Each header's comment says it was written for symdev from GCC's requirements, why it
+exists, and why it declares no more. MIT, not GPL with the runtime exception: the files
+contain no GCC code, they are installed into the target's `sys-include` where code
+compiled for the target may include them, and MIT puts no condition on such code (the
+packages repository is MIT too). Neither contains a fixincludes trigger (`va_list`,
+`stdarg.h` after `include`, "GNU C Library"). `recipe.toml` now pins only the six official
+GNU tarballs.
+
+**`-D` or a patch for libgcov.** Both were built, one after the other, in the same
+directory into the same prefix path (`~/src/gcce-own/run-variant.sh`): **P** applied a
+4-line patch (`#ifndef __INTPTR_TYPE__` / `#define __INTPTR_TYPE__ int` / `#endif` + a
+blank line after `#define MAX`), **D** set `CFLAGS_FOR_TARGET` as above (the cross
+default `-g -O2`, `configure.ac:2548`, plus the define). Whole prefixes compared, archives
+member by member (`ar` headers hold timestamps): the same 671 entries; every libgcc
+(4 × 1 758) and libsupc++ (3 × 64, including the C-compiled `cp-demangle.o`) member
+byte-identical; `c++config.h` identical. Only two things differ: `_gcov_info_to_gcda.o` in
+the four `libgcov.a`, in `.debug_info`/`.debug_line` only (40 bytes, the patch's line
+shift), and the **host** `bin/arm-none-symbianelf-gcov-tool` (21 bytes: it `#include`s
+`libgcov-driver.c`, and host asserts embed `__LINE__`). `DW_AT_producer` is the same:
+GCC leaves `-D` out of it. D's bytes are what GCC's unchanged source gives, so the recipe
+uses **D** — no GCC file changes, no `patch` in the build dependencies.
+
+**Proofs**, on the prefix of proof 4 (`prefix-e2e`) against `~/gcc-builds/gcc-12.1.0`:
+
+| # | check | result |
+|---|---|---|
+| 4 | final `build.sh` in an empty directory (`env -i HOME PATH=<GNU make>:~/.local/bin:~/.local/native-cc/usr/bin:/usr/bin:/bin`) | fetched the six tarballs, every hash `OK`, exit 0, **369 s** with the downloads, 208 912 547 bytes installed; `g++ -v` identical to the reference's but the prefix |
+| 1 | 11 target archives, 7 336 members: disassembly, non-debug section bytes and headers, non-debug relocations, symbols (own `compare-archives.py`, 107's method plus symbols and `.group`) | **identical**; 391 members byte-identical, the rest differ in debug sections (build paths) |
+| 1 | `.group` of COMDAT sections | 9 members (`eh_ptr.o`, `fundamental_type_info.o`, `pbase_type_info.o` × 3 libsupc++) list no `.rel` section where the reference's gas 2.35 lists one — 107's assembler difference: build P's 192 libsupc++ members are byte-identical to 107's `prefix-b` (gas 2.29.1) |
+| 1 | `c++config.h` (default, softfp, v5te, v5te/softfp) | **identical** |
+| 1 | installed headers (`include`, `include-fixed`, `install-tools`, `include/c++`) | same 84 files; 82 identical, `mkheaders.conf` differs in the prefix path only, `include-fixed/stdio.h` exists on both sides (not compared, by rule) |
+| 2 | `examples/hello`, `examples/gui`, `symbian-rs/examples/hello` by this branch's `symdev`, each from a fresh copy at one path, `SYMDEV_GXX`/`LD`/`GCC_LIB`/`GCC_TARGET_LIB` in the prefix | `.elf` **identical** (24 244, 58 532, 16 456 bytes); `.exe` **identical** outside 0x14–0x17 and 0x24–0x2B (3 588, 5 061, 968) |
+| 3 | `cp -a` to `relocated/gcce`, original renamed away, the three examples again | `g++ -v` runs the moved `cc1plus` and `as`; same result as row 2 |
+
+Two baseline builds differ in the same eight header bytes and nowhere else; a bogus
+`SYMDEV_GXX` makes `symdev build` fail, so the variables are what it uses. Build P (the
+patch) passed rows 1 and 2 too. The comparator was checked on a copy of the reference
+`libsupc++.a` with one `.text` byte flipped: it reports `array_type_info.o`.
+
+**Configure, seen from our side** (build P's libstdc++ `config.log`): the TR1 `<stdint.h>`
+test fails on `'int8_t' does not name a type`; tmpnam, gets and both C99 `<stdio.h>`
+tests say no; float.h, stdint.h, stdbool.h, stdalign.h are found. The host's uutils
+`mkdir` prints "required arguments were not provided" once during fixincludes (no
+subdirectories in sys-include), in 107's build as well; harmless.
+
+**Not done here.** The Debian 11 container build (107's open item) and the package's SPDX
+`license` field: still `GPL-3.0-or-later`, while the prefix now also holds our two MIT
+headers (and, as before, GCC's runtime-exception libraries) — the owner's call.
+
+**Evidence.** Outside git, in `~/src/gcce-own/`: `src/gcc-12.1.0` (official tarball),
+`dl/`, `recipe-P`, `recipe-D`, `run-variant.sh`, `build-{P,D,e2e}.log`,
+`prefix-{P,D,e2e}`, `relocated/gcce`, `e2e/` (downloads, build tree),
+`work/{build-examples.sh,compare-examples.py,compare-archives.py,compare-headers.sh,
+compare-trees.py,diag-member.py}`, `work/{baseline,baseline2,P,e2e,relocated}/`. Recipe
+commits in `~/projects/symdev-packages` (branch `gcce-own`).

@@ -11,7 +11,7 @@ use crate::ui_resources::UiResources;
 pub(super) fn rust() -> RustBuild {
     RustBuild {
         gcce: fake(),
-        sdk: RustSdk::from_env().unwrap(),
+        sdk: RustSdk::at(std::path::Path::new(RustSdk::CHECKOUT.unwrap())).unwrap(),
         cargo: PathBuf::from("/rustup/bin/cargo"),
         rustc: PathBuf::from("/rustup/bin/rustc"),
         name: "hello".into(),

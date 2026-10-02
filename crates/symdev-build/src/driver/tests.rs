@@ -44,6 +44,7 @@ fn fake_at(epocroot: PathBuf) -> GcceBuild {
             epocroot,
             gxx: PathBuf::from("/gcc/bin/arm-none-symbianelf-g++"),
             ld: PathBuf::from("/gcc/binutils/bin/arm-none-symbianelf-ld"),
+            ar: None,
             elf2e32: Some(PathBuf::from("/gcc/elf2e32")),
             gcc_lib: PathBuf::from("/gcc/lib/gcc/arm-none-symbianelf/12.1.0"),
             gcc_target_lib: PathBuf::from("/gcc/arm-none-symbianelf/lib"),

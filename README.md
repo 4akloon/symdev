@@ -89,17 +89,69 @@ and their causes are tracked in [docs/research/size-levers.md](docs/research/siz
 
 ## Requirements
 
-symdev bundles none of these; you point it at your own copies.
-
-| Needed | Why | Variable |
+| Needed | Why | Comes from |
 |---|---|---|
-| S60 3rd FP2 SDK | headers, libraries, `.dso` stubs | `SYMDEV_EPOCROOT` |
-| GCCE cross compiler (`arm-none-symbianelf-g++`) | C++ projects and the Rust SDK's C++ shims | `SYMDEV_GXX` |
-| binutils `arm-none-symbianelf-ld` | linking | `SYMDEV_LD` |
-| GCC runtime libraries | linking | `SYMDEV_GCC_LIB`, `SYMDEV_GCC_TARGET_LIB` |
+| GCCE cross compiler (GCC 12.1.0 + binutils 2.29.1, `arm-none-symbianelf`) | C++ projects and the Rust SDK's C++ shims | package `gcce;12.1.0`, or `SYMDEV_GXX`, `SYMDEV_LD`, `SYMDEV_GCC_LIB`, `SYMDEV_GCC_TARGET_LIB` |
+| S60 3rd FP2 SDK (headers, `.dso` stubs, static libraries) | compiling and linking | package `sdk;s60-3rd-fp2;1.1`, or `SYMDEV_EPOCROOT` |
 | Self-signing password (4+ characters) | `symdev package` | `SYMDEV_SIGN_PASSWORD` |
-| Rust nightly, pinned in `symbian-rs/rust-toolchain.toml` | the Rust SDK (`-Zbuild-std`) | — |
+| Rust SDK (`symbian-rs/`) | Rust projects only | `SYMDEV_RUST_SDK`, else the checkout symdev was built from, else package `rust-sdk;<symdev's version>` |
+| Rust nightly, pinned in `symbian-rs/rust-toolchain.toml` | Rust projects only (`-Zbuild-std`); a C++ project needs no Rust | rustup |
 | EKA2L1 (optional) | `symdev run`, `symdev test --emulator` | `SYMDEV_EKA2L1` |
+
+### Toolchain packages
+
+`symdev build` installs the GCCE and platform SDK packages it is missing into `SYMDEV_HOME`
+(default `~/.local/share/symdev`), and for a Rust project the Rust SDK, printing one line per
+download, and touches no network once they are there. `--offline` forbids downloading: a missing package is then an error that names
+the install command. `symdev package` installs nothing. Downloads are cached in
+`~/.cache/symdev/downloads` and checked against the index's SHA-256 before they are unpacked.
+
+Each `SYMDEV_*` toolchain variable that is set overrides its package path, field by field, so an
+environment that sets all of them installs nothing and builds as before. `SYMDEV_AR` overrides
+the `ar` that otherwise sits beside the linker, and `SYMDEV_ELF2E32` an external post-linker in
+place of the native one.
+
+Packages come from symdev's built-in public source, searched first, and then from the
+sources listed in `~/.config/symdev/sources.toml` (`$XDG_CONFIG_HOME/symdev/sources.toml`), in
+order. The built-in source is the owner's public bucket,
+`https://pub-15670d2771364287b9982e497c29f586.r2.dev/`, and every symdev already queries it; it
+carries GCCE, `symdev` and `rust-sdk` from the first release on. Until that release its
+`index.toml` does not exist (HTTP 404) and the source is skipped, so for now list a source or set
+the variables. The S60 SDK is not redistributable and the built-in source never carries it: it lives in the owner's
+private bucket, which a build reads only when that source is listed here **and** its key is in
+the environment. Otherwise set `SYMDEV_EPOCROOT` to your own SDK.
+
+```toml
+# ~/.config/symdev/sources.toml
+[[source]]
+name = "private"
+url = "https://<account-id>.r2.cloudflarestorage.com/symdev-private/"
+auth = "s3"
+```
+
+```bash
+# the keys are read only from the environment: SYMDEV_SOURCE_<NAME>_…
+export SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID=...
+export SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY=...
+```
+
+A `url` may also be `file:///<directory>` holding an `index.toml` and its archives (a local
+mirror); `builtin = false` at the top of the file turns the built-in source off.
+
+| Command | Does |
+|---|---|
+| `symdev sdk list` | installed packages, and those the sources offer |
+| `symdev sdk install ['<id>'…]` | installs the ids; with none, what the current project needs |
+| `symdev sdk uninstall '<id>'…` | removes installed packages |
+
+Package ids contain `;` (`gcce;12.1.0`), so quote them in a shell. There is no `update`: a new
+version is a new id, installed beside the old one, which stays until it is uninstalled.
+
+A Rust project's SDK is `SYMDEV_RUST_SDK` when it is set; else the `symbian-rs/` of the source
+checkout symdev was built from, while that still exists, so a developer working on the SDK
+keeps building against their tree; else the `rust-sdk` package of the same version as symdev,
+installed like GCCE. `symdev new --lang rust` writes the absolute path of the SDK it found into
+the new project's `Cargo.toml` and `.cargo/config.toml`.
 
 EKA2L1 is GPL-3.0 and runs as a separate process; it is never linked into or copied into this
 repository. The SDK, ROM images and real signing keys are never committed. The only key material
@@ -109,19 +161,43 @@ tests, which sign nothing else.
 
 ## Quick start
 
+Get `symdev` one of two ways.
+
+**Prebuilt** — available from the first release on; until then, build from source:
+
+```bash
+curl -fsSL https://pub-15670d2771364287b9982e497c29f586.r2.dev/install.sh | sh
+```
+
+It installs the newest `symdev` package into `SYMDEV_HOME` and links `~/.local/bin/symdev` to
+it; running it again updates. A C++ project then needs no Rust at all. A Rust project needs
+rustup (the project's `rust-toolchain.toml` names the nightly), and its first `symdev build`
+installs the `rust-sdk` package beside GCCE.
+
+**From source**, with Rust 1.98.1, in a clone of this repository:
+
 ```bash
 cargo build --release --workspace
 export PATH="$PWD/target/release:$PATH"
+```
 
+A `symdev` built this way builds Rust projects against the clone's `symbian-rs/` for as long as
+it is there.
+
+Then:
+
+```bash
 symdev new hello --lang rust              # or --lang cpp; add --template gui for an Avkon app
 cd hello
-symdev build                              # build/hello.exe
+symdev build                              # installs missing toolchain packages; build/hello.exe
 symdev package                            # build/hello.sisx, self-signed
 symdev run                                # install and launch in EKA2L1
 symdev test --emulator                    # run it and read back its test report
 ```
 
-Full environment setup and the C++ examples: [examples/README.md](examples/README.md).
+The first `symdev build` needs the `SYMDEV_*` variables, or a source for each package: the S60
+SDK comes only from a source you list in `~/.config/symdev/sources.toml` with its key in the
+environment ([Toolchain packages](#toolchain-packages)). The C++ examples: [examples/README.md](examples/README.md).
 
 ## Commands
 
@@ -134,6 +210,7 @@ Full environment setup and the C++ examples: [examples/README.md](examples/READM
 | `symdev test --emulator` | runs the app in EKA2L1 and reports the result file it wrote |
 | `symdev freeze` | appends a DLL's new exports to its frozen `.def` so ordinals stay fixed |
 | `symdev deploy` | prints the path of the `.sisx`; no device transport exists yet |
+| `symdev sdk list\|install\|uninstall` | manages the toolchain packages ([Requirements](#toolchain-packages)) |
 
 A project is described by `symdev.toml` — package, target, `[symbian]` UID3 / capabilities /
 icon, `[signing]`, and `[ui]` for an Avkon app — plus `bld.inf` / `.mmp` for C++ or `Cargo.toml`

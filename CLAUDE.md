@@ -43,7 +43,7 @@ Use the `superpowers:*` skills actively: brainstorming before design, test-drive
 
 ## Host
 
-This Linux machine is the host: build here, no Windows VM. Never commit or download SDK, ROM, `.sis`, `.sisx`, `.cer`, `.key`. Do not invent tool argv — only flags observed from the real tools. Do not claim E52 support until a stock device installs and launches the app; the emulator is not a device.
+This Linux machine is the host: build here, no Windows VM. Never commit SDK, ROM/firmware, `.sis`, `.sisx`, `.cer` or `.key` files, and never link to a third-party copy of them. symdev may download the SDK and firmware only from a source the operator configured with their own credentials (the owner's private bucket); the built-in public source carries only GPL/MIT packages and their sources (`docs/superpowers/specs/2026-10-02-toolchain-manager-design.md`). Do not invent tool argv — only flags observed from the real tools. Do not claim E52 support until a stock device installs and launches the app; the emulator is not a device.
 
 SDK and toolchain come from the environment: `SYMDEV_EPOCROOT`, `SYMDEV_GXX`, `SYMDEV_LD`, `SYMDEV_GCC_LIB`, `SYMDEV_GCC_TARGET_LIB`, `SYMDEV_EKA2L1`, `SYMDEV_SIGN_PASSWORD`. A build needs no Wine: resources, icons, E32 images, SIS packaging and signing are all native.
 

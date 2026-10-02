@@ -1,0 +1,53 @@
+//! The toolchain manager: package ids, repository indexes, sources and the installed
+//! packages under `SYMDEV_HOME` (design: `docs/superpowers/specs/2026-10-02-toolchain-manager-design.md`).
+
+mod amz_date;
+mod archive_entry;
+mod auth;
+mod catalog;
+mod error;
+mod fetch;
+mod file_fetch;
+mod gcce;
+mod home;
+mod host;
+mod http_fetch;
+mod index;
+mod index_package;
+mod keys;
+mod manager;
+mod package_id;
+mod pins;
+mod platform_sdk;
+mod receipt;
+mod reproducible;
+mod rust_sdk_package;
+mod sigv4;
+mod source;
+mod sources;
+mod tar_gz;
+
+pub use amz_date::AmzDate;
+pub use archive_entry::ArchiveEntry;
+pub use auth::Auth;
+pub use error::{Result, SdkError};
+pub use fetch::Fetch;
+pub use file_fetch::FileFetch;
+pub use gcce::Gcce;
+pub use home::SdkHome;
+pub use host::Host;
+pub use http_fetch::HttpFetch;
+pub use index::Index;
+pub use index_package::IndexPackage;
+pub use keys::S3Keys;
+pub use manager::SdkManager;
+pub use package_id::PackageId;
+pub use pins::Pins;
+pub use platform_sdk::PlatformSdk;
+pub use receipt::Receipt;
+pub use reproducible::ReproducibleTarGz;
+pub use rust_sdk_package::RustSdkPackage;
+pub use sigv4::SigV4;
+pub use source::SourceSpec;
+pub use sources::Sources;
+pub use tar_gz::TarGz;

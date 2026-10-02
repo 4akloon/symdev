@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use symdev_build::RustSdk;
 use symdev_core::Error;
 
 use crate::cli::{Lang, Template};
@@ -17,18 +18,21 @@ pub fn uid3_hex(name: &str) -> String {
     format!("0x{:08x}", uid3_for_name(name))
 }
 
+/// `rust_sdk` is asked for only by a Rust project, after the checks that need no SDK, so
+/// a failed `symdev new` installs nothing.
 pub fn create_project(
     cwd: &Path,
     name: &str,
     template: Template,
     lang: Lang,
+    rust_sdk: impl FnOnce() -> Result<RustSdk, Error>,
 ) -> Result<PathBuf, Error> {
     let root = cwd.join(name);
     if root.exists() {
         return Err(Error::Other(format!("directory `{name}` already exists")));
     }
     if lang == Lang::Rust {
-        return crate::scaffold_rust::write_rust(&root, name, template);
+        return crate::scaffold_rust::write_rust(&root, name, template, rust_sdk);
     }
     std::fs::create_dir_all(root.join("group")).map_err(io_err)?;
     std::fs::create_dir_all(root.join("src")).map_err(io_err)?;
@@ -140,6 +144,11 @@ mod tests {
         assert_eq!(uid3_hex("hello"), "0xef9f2cab");
     }
 
+    /// A C++ project has no use for the Rust SDK.
+    fn no_sdk() -> Result<RustSdk, Error> {
+        panic!("a C++ project asked for the Rust SDK")
+    }
+
     fn scratch() -> PathBuf {
         let p = std::env::temp_dir().join(format!(
             "symdev-scaffold-{}-{}",
@@ -156,7 +165,7 @@ mod tests {
     #[test]
     fn create_project_writes_hello_tree() {
         let dir = scratch();
-        let root = create_project(&dir, "hello", Template::Console, Lang::Cpp).unwrap();
+        let root = create_project(&dir, "hello", Template::Console, Lang::Cpp, no_sdk).unwrap();
         assert_eq!(root, dir.join("hello"));
         let toml = std::fs::read_to_string(root.join("symdev.toml")).unwrap();
         assert!(toml.contains("name = \"hello\""));
@@ -182,7 +191,7 @@ mod tests {
     #[test]
     fn examples_hello_matches_scaffold() {
         let dir = scratch();
-        let root = create_project(&dir, "hello", Template::Console, Lang::Cpp).unwrap();
+        let root = create_project(&dir, "hello", Template::Console, Lang::Cpp, no_sdk).unwrap();
         let example: [(&str, &str); 5] = [
             (
                 "symdev.toml",
@@ -214,7 +223,7 @@ mod tests {
     #[test]
     fn examples_gui_matches_scaffold() {
         let dir = scratch();
-        let root = create_project(&dir, "gui", Template::Gui, Lang::Cpp).unwrap();
+        let root = create_project(&dir, "gui", Template::Gui, Lang::Cpp, no_sdk).unwrap();
         let example: [(&str, &str); 7] = [
             (
                 "symdev.toml",
@@ -257,7 +266,7 @@ mod tests {
     #[test]
     fn create_gui_project_fills_name_and_uid3() {
         let dir = scratch();
-        let root = create_project(&dir, "notes", Template::Gui, Lang::Cpp).unwrap();
+        let root = create_project(&dir, "notes", Template::Gui, Lang::Cpp, no_sdk).unwrap();
         let uid = uid3_hex("notes");
         let mmp = std::fs::read_to_string(root.join("group/notes.mmp")).unwrap();
         assert!(mmp.contains("TARGET notes.exe"));
@@ -279,7 +288,7 @@ mod tests {
     fn create_project_existing_dir_errors() {
         let dir = scratch();
         std::fs::create_dir(dir.join("hello")).unwrap();
-        let err = create_project(&dir, "hello", Template::Console, Lang::Cpp).unwrap_err();
+        let err = create_project(&dir, "hello", Template::Console, Lang::Cpp, no_sdk).unwrap_err();
         assert_eq!(err.to_string(), "directory `hello` already exists");
     }
 }

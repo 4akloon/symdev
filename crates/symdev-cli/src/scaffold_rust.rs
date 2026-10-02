@@ -8,7 +8,12 @@ use symdev_core::Error;
 use crate::cli::Template;
 use crate::scaffold::{io_err, uid3_hex};
 
-pub fn write_rust(root: &Path, name: &str, template: Template) -> Result<PathBuf, Error> {
+pub fn write_rust(
+    root: &Path,
+    name: &str,
+    template: Template,
+    sdk: impl FnOnce() -> Result<RustSdk, Error>,
+) -> Result<PathBuf, Error> {
     if template != Template::Console {
         return Err(Error::Other(
             "TODO: --language rust supports only --template console (the GUI template \
@@ -16,7 +21,7 @@ pub fn write_rust(root: &Path, name: &str, template: Template) -> Result<PathBuf
                 .into(),
         ));
     }
-    let sdk = RustSdk::from_env()?;
+    let sdk = sdk()?;
     std::fs::create_dir_all(root.join("src")).map_err(io_err)?;
     std::fs::create_dir_all(root.join(".cargo")).map_err(io_err)?;
     let files = [
@@ -143,8 +148,9 @@ mod tests {
     #[test]
     fn rust_project_has_cargo_files_and_no_mmp() {
         let dir = scratch();
-        let root = create_project(&dir, "hello", Template::Console, Lang::Rust).unwrap();
-        let sdk = RustSdk::from_env().unwrap();
+        let checkout = || RustSdk::at(Path::new(RustSdk::CHECKOUT.unwrap()));
+        let root = create_project(&dir, "hello", Template::Console, Lang::Rust, checkout).unwrap();
+        let sdk = checkout().unwrap();
         let read = |p: &str| std::fs::read_to_string(root.join(p)).unwrap();
         assert!(read("symdev.toml").contains("name = \"rust\""));
         assert!(read("symdev.toml").contains("uid3 = \"0xef9f2cab\""));
@@ -162,7 +168,8 @@ mod tests {
     #[test]
     fn rust_gui_template_is_a_todo() {
         let dir = scratch();
-        let err = create_project(&dir, "notes", Template::Gui, Lang::Rust).unwrap_err();
+        let sdk = || panic!("the GUI template is refused before the SDK is looked for");
+        let err = create_project(&dir, "notes", Template::Gui, Lang::Rust, sdk).unwrap_err();
         assert!(err.to_string().starts_with("TODO:"), "{err}");
     }
 }

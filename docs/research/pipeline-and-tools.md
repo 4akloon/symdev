@@ -28,7 +28,7 @@ Do not invent further commands from these URLs. Later runbook work may copy docu
 
 There is no `darwin*` GCC branch (Verified per research prompt). A `linux*` branch exists.
 
-Exact clone commit and build/install flags: **Unknown**. Whether to build from the GCC4Symbian source tree or use the SourceForge GCC 14.2.0 + binutils 2.29.1 tarball: **Unknown** / **Needs experiment**.
+Exact clone commit and build/install flags of this host's GCC 12.1.0 and binutils 2.29.1: recovered in experiment 107 (GCC4Symbian `fe1b15a`, one patched libgcc file, two sys-include headers, gas 2.35 inside the GCC prefix), which also rebuilds them from official tarballs with identical example executables; experiment 108 replaces the three GCC4Symbian files with our own (clean-room) and gets the same target libraries and executables. The SourceForge GCC 14.2.0 tarball: not tried.
 
 ## Compile flags (Verified)
 
@@ -79,9 +79,9 @@ Do not fill these with guessed commands. Label in the runbook as `UNKNOWN — re
 
 | Item | Status |
 |---|---|
-| Ubuntu 24.04 host package list to *build* fedor4ever GCC | **Unknown** |
-| Exact GCC4Symbian clone commit | **Unknown** |
-| Source tree (`build-toolchain.sh`) vs SourceForge GCC 14.2.0 + binutils 2.29.1 tarball | **Unknown** / **Needs experiment** |
+| Host package list to *build* GCC 12.1.0 + binutils 2.29.1 | Derived for Debian 11 in experiment 107 (not run in a container) |
+| Exact GCC4Symbian clone commit | `fe1b15a` (experiment 107) |
+| Source tree (`build-toolchain.sh`) vs SourceForge GCC 14.2.0 + binutils 2.29.1 tarball | Source: the `gcce;12.1.0` recipe (experiment 107); SourceForge not tried |
 | Wine vs native `makesis` / `signsis` / `makekeys` | **Needs experiment** |
 | Full compile/link argv (crt, `-L`, `-soname` matching `--linkas`) | Experiment 5 recorded compile + link argv ([experiment-backlog.md](experiment-backlog.md)). Object + ELF produced with GNU ld **2.29.1** (same argv; experiment-2 **ld 2.35** fails on SDK `euser.dso`). |
 | soname / `--linkas` → E32 | Experiment 6 recorded Verified `elf2e32` argv ([experiment-backlog.md](experiment-backlog.md)). E32 `/home/genius/src/symdev-experiment-5/hello.exe`. |
