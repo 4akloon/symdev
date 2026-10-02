@@ -40,11 +40,14 @@ impl Catalog {
         id: &PackageId,
         host: Host,
     ) -> Result<(SourceSpec, IndexPackage, ArchiveEntry)> {
+        let sdk = id.kind() == "sdk";
         let mut searched = Vec::new();
         let mut problems = Vec::new();
+        let mut keyless = false;
         for source in self.sources.list.clone() {
             if self.fetcher(&source).is_none() {
-                problems.push(Self::keys_hint(&source, id.kind() == "sdk"));
+                problems.push(Self::keys_hint(&source, sdk));
+                keyless = true;
                 continue;
             }
             searched.push(format!("`{}`", source.name));
@@ -66,10 +69,7 @@ impl Catalog {
             }
         }
         let mut message = match (searched.is_empty(), self.sources.list.is_empty()) {
-            (_, true) => format!(
-                "{id} was not found: no package source is configured; list one in \
-                 `$XDG_CONFIG_HOME/symdev/sources.toml` (`~/.config/symdev/sources.toml`)"
-            ),
+            (_, true) => format!("{id} was not found: no package source is configured"),
             (true, false) => format!("{id} was not found: no source could be searched"),
             (false, false) => format!(
                 "{id} was not found in the sources searched: {}",
@@ -79,6 +79,15 @@ impl Catalog {
         for problem in problems {
             message.push_str("; ");
             message.push_str(&problem);
+        }
+        let file = &self.sources.file;
+        // A keyless source's hint already names SYMDEV_EPOCROOT as the way around it.
+        if sdk && !keyless {
+            message.push_str(&format!(
+                "; set SYMDEV_EPOCROOT to your own SDK, or add a source that has it in {file}"
+            ));
+        } else if self.sources.list.is_empty() {
+            message.push_str(&format!("; list one in {file}"));
         }
         Err(SdkError::Other(message))
     }
@@ -156,6 +165,7 @@ mod tests {
         let private = SourceSpec::new("private", "https://127.0.0.1:1/bucket/", Auth::S3).unwrap();
         let sources = Sources {
             list: vec![private.clone()],
+            file: "/config/symdev/sources.toml".into(),
         };
         let keys = BTreeMap::from([(
             "private".to_string(),

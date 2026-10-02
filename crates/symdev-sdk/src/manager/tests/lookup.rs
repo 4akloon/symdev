@@ -52,6 +52,25 @@ fn an_sdk_found_nowhere_with_a_keyless_source_names_the_keys_and_the_epocroot() 
     assert!(e.contains("SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID"), "{e}");
     assert!(e.contains("SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY"), "{e}");
     assert!(e.contains("or set SYMDEV_EPOCROOT to your own SDK"), "{e}");
+    assert_eq!(e.matches("SYMDEV_EPOCROOT").count(), 1, "{e}");
+}
+
+#[test]
+fn an_sdk_found_nowhere_without_a_private_source_names_the_epocroot_and_sources_toml() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut repo = Repo::new(tmp.path().join("repo"));
+    repo.add("gcce;12.1.0", Host::X86_64Linux, &[]);
+    let mut progress = Vec::new();
+    let e = manager(&tmp, vec![repo.source("public")], false, &mut progress)
+        .ensure(&[id("sdk;s60-3rd-fp2;1.1")])
+        .unwrap_err()
+        .to_string();
+    assert_eq!(
+        e,
+        "sdk;s60-3rd-fp2;1.1 was not found in the sources searched: `public`; set \
+         SYMDEV_EPOCROOT to your own SDK, or add a source that has it in \
+         /config/symdev/sources.toml"
+    );
 }
 
 #[test]
@@ -81,11 +100,23 @@ fn an_id_found_nowhere_names_the_sources_searched_and_why_one_was_unreadable() {
 fn no_configured_source_says_where_to_add_one() {
     let tmp = tempfile::tempdir().unwrap();
     let mut progress = Vec::new();
-    let e = manager(&tmp, vec![], false, &mut progress)
-        .ensure(&[id("gcce;12.1.0")])
+    let mut m = manager(&tmp, vec![], false, &mut progress);
+    let e = m.ensure(&[id("gcce;12.1.0")]).unwrap_err().to_string();
+    assert_eq!(
+        e,
+        "gcce;12.1.0 was not found: no package source is configured; list one in \
+         /config/symdev/sources.toml"
+    );
+    let e = m
+        .ensure(&[id("sdk;s60-3rd-fp2;1.1")])
         .unwrap_err()
         .to_string();
-    assert!(e.contains("sources.toml"), "{e}");
+    assert_eq!(
+        e,
+        "sdk;s60-3rd-fp2;1.1 was not found: no package source is configured; set \
+         SYMDEV_EPOCROOT to your own SDK, or add a source that has it in \
+         /config/symdev/sources.toml"
+    );
 }
 
 #[test]

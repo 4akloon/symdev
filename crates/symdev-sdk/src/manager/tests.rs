@@ -22,7 +22,10 @@ fn manager<'w>(
     offline: bool,
     progress: &'w mut Vec<u8>,
 ) -> SdkManager<'w> {
-    let sources = Sources { list: sources };
+    let sources = Sources {
+        list: sources,
+        file: "/config/symdev/sources.toml".into(),
+    };
     SdkManager::new(home(tmp), sources, BTreeMap::new(), offline, progress).unwrap()
 }
 

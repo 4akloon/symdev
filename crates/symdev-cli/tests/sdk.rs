@@ -207,6 +207,21 @@ fn an_id_in_no_source_names_the_sources_searched() {
 }
 
 #[test]
+fn an_sdk_in_no_source_names_the_epocroot_and_this_sources_toml() {
+    let w = World::new();
+    let sources = w.tmp.path().join("config/symdev/sources.toml");
+    w.bin()
+        .args(["sdk", "install", "sdk;s60-3rd-fp2;1.1"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(format!(
+            "error: sdk;s60-3rd-fp2;1.1 was not found in the sources searched: `local`; set \
+             SYMDEV_EPOCROOT to your own SDK, or add a source that has it in {}",
+            sources.display()
+        )));
+}
+
+#[test]
 fn package_installs_nothing() {
     let mut w = World::new();
     w.add_stub_sdk();

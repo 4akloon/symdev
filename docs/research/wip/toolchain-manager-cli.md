@@ -149,5 +149,5 @@ checked against the code before changing it; baseline `cargo test --workspace --
 | 7 | `installing …` printed before `install` re-checks under the lock | yes: `writeln!` precedes `home.install`, which returns early if installed | fixed: `SdkHome::install` takes `starting: impl FnOnce()`, run under the lock after the re-check; the manager prints from it (SdkHome prints nothing). Tests moved: `home/tests/receipts.rs` (300-line rule) |
 | 8 | without `HOME` the message names `SYMDEV_HOME` for every path | yes: one text for data, cache and config | fixed: packages → `SYMDEV_HOME or XDG_DATA_HOME`, cache → `XDG_CACHE_HOME`, config → `XDG_CONFIG_HOME` |
 | 9 | `bin()` keeps keys/toolchain vars; temp homes pile up in `target/tmp` | yes: 10+ `symdev-cli-home-*` after two runs | todo |
-| 10 | `sdk;…` in no source and no private source: no way out named | yes | todo |
+| 10 | `sdk;…` in no source and no private source: no way out named | yes | fixed: `Sources.file` keeps the real `sources.toml` path; an `sdk` id found nowhere without a keyless-source hint adds "set SYMDEV_EPOCROOT to your own SDK, or add a source that has it in <path>"; no sources at all names the path too (was a hard-coded `$XDG_CONFIG_HOME/…`). Spec §5, §8 (prerequisites + 4-line TOML, acceptance item 2), README, examples README |
 | 11 | host-mismatch test wording | nit, kept as is | — |
