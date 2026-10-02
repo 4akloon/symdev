@@ -23,6 +23,15 @@ Inputs: `toolchain-manager-core.md` ("For Track D"), `toolchain-manager-net.md`.
   `SYMDEV_*` path an error, so they must use real temp paths.
 - `freeze` loads no `symdev.toml`; the SDK pin needs the device from it.
 
+- Smoke-test input (2026-10-02): `~/gcc-builds/gcc-12.1.0` carries its **own binutils
+  2.35** (`bin/arm-none-symbianelf-{as,ld,ar,…}`, hard-linked to
+  `arm-none-symbianelf/bin/{as,ld,…}`, and `arm-none-symbianelf/lib/ldscripts`), while
+  `~/gcc-builds/binutils-2.29.1` is a separate 2.29.1. `g++ -print-prog-name=as` →
+  `<gcc prefix>/arm-none-symbianelf/bin/as`. So the classic env assembles with **as
+  2.35** (gcc's own) and links/archives with **ld/ar 2.29.1** (`SYMDEV_LD`, `ar` beside
+  it). Overlaying binutils 2.29.1 onto the gcc prefix replaces `as` and the ldscripts
+  too. Input for the GCCE recipe (Track C).
+
 ## Decisions
 
 - Install commands in messages quote the id (`symdev sdk install 'gcce;12.1.0'`): `;`
