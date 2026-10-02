@@ -3,11 +3,14 @@
 
 mod error;
 mod fetch;
+mod file_fetch;
+mod home;
 mod host;
 mod index;
 mod index_package;
 mod keys;
 mod package_id;
+mod receipt;
 mod reproducible;
 mod source;
 mod sources;
@@ -16,11 +19,14 @@ mod url;
 
 pub use error::{Result, SdkError};
 pub use fetch::Fetch;
+pub use file_fetch::FileFetch;
+pub use home::SdkHome;
 pub use host::Host;
 pub use index::Index;
 pub use index_package::{ArchiveEntry, IndexPackage};
 pub use keys::S3Keys;
 pub use package_id::PackageId;
+pub use receipt::Receipt;
 pub use reproducible::ReproducibleTarGz;
 pub use source::{Auth, SourceSpec};
 pub use sources::Sources;

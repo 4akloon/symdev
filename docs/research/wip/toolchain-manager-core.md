@@ -12,7 +12,7 @@ Track B (sigv4, amz_date, http_fetch) runs in parallel in `tm-net`; do not touch
 | A2 Index / IndexPackage / Host / resolve_url | done | see `git log` |
 | A3 SourceSpec / Sources | done | see `git log` |
 | A4 TarGz / ReproducibleTarGz | done | see `git log` |
-| A5 SdkHome / Receipt / FileFetch | todo | |
+| A5 SdkHome / Receipt / FileFetch | done | see `git log` |
 | A6 Gcce / PlatformSdk / Pins | todo | |
 
 ## Facts
@@ -65,9 +65,27 @@ Track B (sigv4, amz_date, http_fetch) runs in parallel in `tm-net`; do not touch
   stores the ancestors of a listed dir as dir entries, refuses `..`/absolute includes,
   uses the same `link_problem` on the source tree, GNU headers (long names via the tar
   crate's `././@LongLink`, itself mtime 0), gzip OS byte 255.
+- A5: downloads go to `cache/<sha>.tar.gz.part` and are renamed to `<sha>.tar.gz` only
+  after size + SHA-256 match; a cached file is reused only if both match, otherwise it is
+  deleted and fetched again (Review Focus 1). A failed download removes the `.part`.
+- A5: `install` refuses an `ArchiveEntry.sha256` that is not 64 lowercase hex before it
+  becomes a cache path (an entry may be built outside `Index::parse`).
+- A5: under the lock, `install` removes all of `root/.staging` first (anything there is
+  left over: no other installer can be running), then stages in `.staging/<pid>-<n>`.
+  A failed extraction removes its staging dir. `installed` errors if a receipt names a
+  different id than its directory.
+- A5: `uninstall` deletes the receipt first, then the dir, then empty parents
+  (`gcce/`), all under the lock. `list` walks at most 8 levels, skipping dot-dirs, and
+  stops descending at a receipt.
+- A5: `Receipt::write` writes `.symdev-package.toml.partial` then renames; a damaged
+  receipt is an error naming the file and "remove <dir> and run `symdev sdk install`".
+- A5: lock test checked by mutation: with `file.lock()` commented out the two-thread
+  test fails (2 downloads) 3/3; with it, 20/20 runs pass.
+- `FileFetch` takes the path after `file://` literally (no percent-decoding); a missing
+  file is `SdkError::Fetch { url, detail }`.
 
 ## Dead ends
 
 ## Next step
 
-A5: tests for `SdkHome` / `Receipt` / `FileFetch` (file:// source packed by `ReproducibleTarGz`), then implement.
+A6: tests for `Gcce` / `PlatformSdk` / `Pins`, then implement.
