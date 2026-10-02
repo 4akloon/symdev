@@ -258,3 +258,26 @@ nightly; and `rust-toolchain.toml` — `symdev build` should compare the project
 the SDK's and stop with the fix (copy the SDK's file) when they differ, since rustup reads the
 file from the project and it cannot point elsewhere. Existing projects would need their three
 paths rewritten once (a `symdev` message can name them).
+
+### The `symbian-rs` tree alone is not a Rust SDK (found 2026-10-02)
+
+`symbian-rs/crates/symbian-macros/Cargo.toml` has `symdev-locale = { path =
+"../../../crates/symdev-locale" }` — a host crate **outside** `symbian-rs` — and
+`crates/symdev-locale/Cargo.toml` inherits `version`/`edition`/`license`/`repository` from the
+root `Cargo.toml`'s `[workspace.package]`. Every project on `symbian-std` reaches it
+(`symbian-std` → `symbian-macros`). Reproduced with a scaffolded project and `cargo metadata
+--offline`:
+
+- SDK = a bare `symbian-rs` tree (what spec §12 and the packages track's note say the
+  `rust-sdk` package holds): `no matching package named symdev-locale found / location
+  searched: …/rust-sdk/crates/symdev-locale` — i.e. **outside** the versioned package dir.
+- `symbian-rs/` + `crates/symdev-locale/`: `error inheriting edition from workspace root
+  manifest … failed to find a workspace root`.
+- `Cargo.toml` (root) + `crates/symdev-locale/` + `symbian-rs/`: resolves. (Cargo does not
+  load the root's other members for a path dependency's inheritance.)
+
+So the package must keep the repository's relative layout — pack the tag with `Cargo.toml`,
+`crates/symdev-locale` and `symbian-rs` — and the SDK root is `<package>/symbian-rs`.
+Alternatives that change the repository instead (the owner's or lead's call): give
+`symdev-locale` its own `version`/`edition` and move it under `symbian-rs/`, or stop
+`symbian-macros` depending on a host crate.
