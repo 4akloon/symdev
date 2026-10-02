@@ -5,7 +5,7 @@ use std::io::{self, BufReader};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Component, Path, PathBuf};
 
-use flate2::read::GzDecoder;
+use flate2::read::MultiGzDecoder;
 use tar::EntryType;
 
 use crate::{Result, SdkError};
@@ -53,7 +53,7 @@ impl<'a> TarGz<'a> {
                 self.url
             )));
         }
-        let mut archive = tar::Archive::new(GzDecoder::new(BufReader::new(file)));
+        let mut archive = tar::Archive::new(MultiGzDecoder::new(BufReader::new(file)));
         let mut links = Vec::new();
         for entry in archive.entries().map_err(io_at(self.path))? {
             let mut entry = entry.map_err(io_at(self.path))?;

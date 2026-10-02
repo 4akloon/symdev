@@ -64,12 +64,14 @@ preprocessing. Left out: the 570 RVCT `.lib` import libraries beside the `.dso` 
 include tree is 3.8 MB and the `.dso` files 1.5 MB; the whole earlier directory-level subset
 was 9.9 MB.
 
-**Ids are validated**: segments are non-empty, are not `.` or `..`, and contain no `/`, `\`
-or NUL. The id maps
+**Ids are validated**: segments are non-empty, do not start with `.` (so not `.` or `..`,
+nor the home's own `.staging` and `.lock`), and contain no `/`, `\`, NUL or whitespace. The
+id maps
 to an install path by replacing `;` with `/`: `gcce;12.1.0` → `gcce/12.1.0`.
 
 **Archives** are `.tar.gz` (`flate2` is already a workspace dependency; the `tar` crate is
-new). The archive root is the package root. Archives are stored content-addressed,
+new); every gzip member is read, so an archive written in several members (`pigz`, or
+concatenated) is not cut short at the first. The archive root is the package root. Archives are stored content-addressed,
 `<kind>/<…>/<sha256>.tar.gz`, and never overwritten.
 
 **Index**: one `index.toml` per source.
