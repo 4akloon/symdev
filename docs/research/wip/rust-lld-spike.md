@@ -132,6 +132,12 @@ Branch: `rust-lld-spike` (worktree `~/worktrees/symdev/rust-lld-spike`). No prod
   builds for all 4, the GUI one included (--defsym gives the same literal word).
 - readelf -a dumps: `~/src/rust-lld-spike/readelf/{gnu,lld}-<p>.txt`.
 
+- Coordination (lead, after my runs): several agents share ~/.local/share/EKA2L1; every further
+  emulator run must be wrapped: `flock ~/.local/share/EKA2L1/.symdev-agent.lock -c '<run>'`,
+  short locked section, kill -9 own PID only. All runs above were made before the note.
+- Extra: lld-linked `ui-list` (batch copy) renders the Avkon list; Down moves the highlight
+  (`shots/lld-uilist-{1,2}.png`).
+
 ## Dead ends
 
 ## Next step
