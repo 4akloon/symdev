@@ -18,17 +18,18 @@ pub fn run(action: SdkAction, provision: &Provision) -> Result<ExitCode, Error> 
 }
 
 /// `installed  <id>  (<source>)` for every receipt, then `available  <id>  (<source>)`
-/// for what the sources offer and is not installed (skipped with `--offline`).
+/// for what the sources offer and is not installed. With `--offline` only the receipts
+/// are read: the sources, their keys and the host matter only to the second part.
 fn list(provision: &Provision) -> Result<ExitCode, Error> {
-    let mut stderr = std::io::stderr();
-    let mut manager = provision.manager(&mut stderr)?;
-    let installed = manager.home().list()?;
+    let installed = provision.home()?.list()?;
     for receipt in &installed {
         println!("installed  {}  ({})", receipt.id, receipt.source);
     }
     if provision.offline() {
         return Ok(ExitCode::SUCCESS);
     }
+    let mut stderr = std::io::stderr();
+    let mut manager = provision.manager(&mut stderr)?;
     let ids: BTreeSet<_> = installed.into_iter().map(|r| r.id).collect();
     for (source, package) in manager.available()? {
         if !ids.contains(&package.id) {

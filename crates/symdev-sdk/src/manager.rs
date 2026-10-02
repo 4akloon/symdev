@@ -146,10 +146,6 @@ impl<'w> SdkManager<'w> {
             .filter(|(_, p)| seen.insert(p.id.clone()) && p.archive_for(self.host).is_some())
             .collect())
     }
-
-    pub fn home(&self) -> &SdkHome {
-        &self.home
-    }
 }
 
 #[cfg(test)]
