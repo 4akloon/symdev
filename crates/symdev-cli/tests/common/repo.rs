@@ -109,9 +109,31 @@ impl World {
         );
     }
 
+    /// A `rust-sdk` package of this symdev's version with the files a Rust build checks.
+    pub fn add_stub_rust_sdk(&mut self) {
+        let id = symdev_sdk::Pins::rust_sdk();
+        self.add(
+            id.as_str(),
+            Host::Any,
+            &[
+                ("targets/arm-symbian-e32.json", "{}\n", false),
+                ("crates/symbian-std/Cargo.toml", "", false),
+                ("crates/symbian-core/Cargo.toml", "", false),
+            ],
+        );
+    }
+
     /// `symdev` in this world ([`super::bin`] with this world's directories).
     pub fn bin(&self) -> Command {
-        let mut cmd = super::bin();
+        self.place(super::bin())
+    }
+
+    /// A prebuilt `symdev` in this world: one whose checkout is not here.
+    pub fn prebuilt(&self) -> Command {
+        self.place(super::prebuilt::bin())
+    }
+
+    fn place(&self, mut cmd: Command) -> Command {
         cmd.env("SYMDEV_HOME", self.home())
             .env("XDG_DATA_HOME", self.tmp.path().join("data"))
             .env("XDG_CACHE_HOME", self.tmp.path().join("cache"))
@@ -138,6 +160,15 @@ impl World {
             self.index.to_toml().unwrap(),
         )
         .unwrap();
+    }
+
+    /// [`Self::project`] as a `language = "rust"` project.
+    pub fn rust_project(&self) -> PathBuf {
+        let dir = self.project();
+        let toml = fs::read_to_string(dir.join("symdev.toml")).unwrap();
+        let rust = toml.replace(r#"name = "cpp""#, r#"name = "rust""#);
+        fs::write(dir.join("symdev.toml"), rust).unwrap();
+        dir
     }
 
     /// A C++ project with one source file and a `bld.inf`, in its own directory.

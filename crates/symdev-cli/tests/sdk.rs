@@ -166,7 +166,9 @@ fn a_rust_build_without_its_rust_sdk_downloads_nothing() {
         .env("SYMDEV_RUST_SDK", "/nonexistent/symdev/symbian-rs")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Rust SDK not found"))
+        .stderr(predicate::str::contains(
+            "SYMDEV_RUST_SDK is set, but Rust SDK not found at /nonexistent/symdev/symbian-rs",
+        ))
         .stderr(predicate::str::contains("installing").not());
     assert!(!w.package_dir("gcce;12.1.0").exists());
 }

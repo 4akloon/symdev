@@ -1,14 +1,17 @@
-//! Where the toolchain packages live and which ones a command needs (spec §3–§4). The
-//! only code that reads `SYMDEV_HOME`, the `XDG_*` directories and the source keys.
+//! Where the toolchain packages live and which ones a command needs (spec §3–§4, §12).
+//! The only code that reads `SYMDEV_HOME`, the `XDG_*` directories, the source keys and
+//! `SYMDEV_RUST_SDK`.
+
+mod rust_sdk;
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::io::Write;
 use std::path::PathBuf;
 
-use symdev_build::{Epocroot, Toolchain, ToolchainOverrides};
+use symdev_build::{Epocroot, RustSdk, Toolchain, ToolchainOverrides};
 use symdev_core::Error;
-use symdev_manifest::Device;
+use symdev_manifest::{Device, Language};
 use symdev_sdk::{Auth, SourceSpec, Sources, builtin_source};
 use symdev_sdk::{Gcce, PackageId, Pins, PlatformSdk, S3Keys, SdkHome, SdkManager};
 
@@ -18,6 +21,8 @@ use symdev_sdk::{Gcce, PackageId, Pins, PlatformSdk, S3Keys, SdkHome, SdkManager
 pub struct Provision {
     offline: bool,
     lookup: Lookup,
+    /// The `symbian-rs` of the source checkout this symdev was built from, if any.
+    checkout: Option<PathBuf>,
 }
 
 /// Reads one environment variable (the process's, or a test's map).
@@ -25,16 +30,19 @@ type Lookup = Box<dyn Fn(&str) -> Option<OsString>>;
 
 impl Provision {
     pub fn from_env(offline: bool) -> Provision {
-        Self::from_lookup(offline, |key| std::env::var_os(key))
+        let checkout = Some(PathBuf::from(RustSdk::CHECKOUT));
+        Self::from_lookup(offline, checkout, |key| std::env::var_os(key))
     }
 
     fn from_lookup(
         offline: bool,
+        checkout: Option<PathBuf>,
         lookup: impl Fn(&str) -> Option<OsString> + 'static,
     ) -> Provision {
         Provision {
             offline,
             lookup: Box::new(lookup),
+            checkout,
         }
     }
 
@@ -116,10 +124,13 @@ impl Provision {
         Ok(home)
     }
 
-    /// The packages a build for `device` needs under the current environment: none for
-    /// a part whose every field a `SYMDEV_*` variable sets.
-    pub fn needed(&self, device: Device) -> Vec<PackageId> {
-        Self::needed_by(&self.overrides(), device)
+    /// The packages a build of a `language` project for `device` needs under the current
+    /// environment: none for a part whose every field a `SYMDEV_*` variable sets, and the
+    /// Rust SDK, first, for a Rust project that finds none outside the packages.
+    pub fn needed(&self, device: Device, language: Language) -> Vec<PackageId> {
+        let rust = language.is_rust().then(|| self.needed_rust_sdk());
+        let toolchain = Self::needed_by(&self.overrides(), device);
+        rust.flatten().into_iter().chain(toolchain).collect()
     }
 
     fn needed_by(o: &ToolchainOverrides, device: Device) -> Vec<PackageId> {

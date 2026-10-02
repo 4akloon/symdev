@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use symdev_manifest::Device;
+use symdev_manifest::{Device, Language};
 use symdev_sdk::{Auth, SourceSpec};
 
 use super::Provision;
@@ -12,7 +12,7 @@ fn provision(vars: &[(&str, &str)]) -> Provision {
         .iter()
         .map(|(k, v)| (k.to_string(), OsString::from(v)))
         .collect();
-    Provision::from_lookup(false, move |key| vars.get(key).cloned())
+    Provision::from_lookup(false, None, move |key| vars.get(key).cloned())
 }
 
 #[test]
@@ -141,7 +141,7 @@ fn the_toolchain_variables_come_from_the_lookup() {
     let vars = whole_toolchain(tmp.path());
     let vars: Vec<_> = vars.iter().map(|(k, v)| (*k, v.as_str())).collect();
     let p = provision(&vars);
-    assert!(p.needed(Device::NokiaE52).is_empty());
+    assert!(p.needed(Device::NokiaE52, Language::Cpp).is_empty());
     // Nothing is left to the packages, so no HOME is needed to find them.
     let tools = p.toolchain(Device::NokiaE52).unwrap();
     assert_eq!(tools.gxx, tmp.path());

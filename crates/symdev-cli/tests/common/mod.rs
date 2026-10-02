@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 
 use assert_cmd::Command;
 
+pub mod prebuilt;
 pub mod repo;
 
 pub const HELLO: &str = r#"

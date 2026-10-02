@@ -169,7 +169,7 @@ Spec §12, symdev side, plus the `http_fetch` proxy exposure left above (row 3).
 | Task | State |
 |---|---|
 | 1 `Pins::rust_sdk`, `RustSdkPackage` | done |
-| 2 resolution order in `Provision` (env → checkout → package) | todo |
+| 2 resolution order in `Provision` (env → checkout → package) | done |
 | 3 scaffold: how a new project names the SDK; proposal | todo |
 | 4 `http_fetch` tests immune to `HTTP_PROXY`/`ALL_PROXY` | todo |
 | 5 README / examples README: the prebuilt route | todo |
@@ -193,3 +193,27 @@ Decisions:
   (`targets/arm-symbian-e32.json`, what `RustSdk::at` requires); a test in `rust_sdk.rs`
   keeps the two equal (both mutants — `at` requiring one more file, the list naming one
   more — fail it).
+- 2: `Provision::rust_sdk()` (`crates/symdev-cli/src/provision/rust_sdk.rs`, an `impl
+  Provision` beside `provision.rs`, which would pass 300 lines) resolves, in order:
+  `SYMDEV_RUST_SDK` (through the injectable lookup; set but not a Rust SDK → `SYMDEV_RUST_SDK
+  is set, but <why>; point it at a symbian-rs directory, or unset it to use the rust-sdk;…
+  package`, nothing installed, no fall-through); the checkout (`RustSdk::CHECKOUT`, the
+  compile-time `CARGO_MANIFEST_DIR/../../symbian-rs`, held by `Provision` as
+  `checkout: Option<PathBuf>` so tests inject it) if `RustSdk::at` accepts it — gone or
+  not an SDK falls through silently; else `install_missing([Pins::rust_sdk()])` (the GCCE
+  path: receipts first, sources/keys/host only for a missing id, `--offline`) then
+  `RustSdkPackage::at` → `RustSdk::at`. An install failure gets `; or set SYMDEV_RUST_SDK
+  to a symbian-rs directory` appended (the catalog's own hint covers only `sdk;…`).
+- 2: `RustSdk::from_env` deleted; `RustSdk::at` errors no longer name the variable (the
+  caller adds it); `RustSdk::root()` added. Callers: `build_cmd` (still before the
+  toolchain, so `rust-sdk` installs before GCCE), `scaffold::create_project(…, rust_sdk:
+  impl FnOnce() -> Result<RustSdk>)` (asked only for a Rust project, after the
+  exists/template checks), `Provision::needed(device, language)` (`rust-sdk` first, for a
+  Rust project with neither variable nor checkout) used by `symdev sdk install` with no ids.
+- 2: CLI test without a checkout: the built `symdev` cannot be told its checkout is gone
+  without a production knob, so `tests/common/prebuilt.rs` copies the binary with the bytes
+  of `RustSdk::CHECKOUT` replaced by a same-length missing path (`…/symbian-xx`) — what a
+  binary built on another machine looks like here. It waits out `ETXTBSY` (a child forked by
+  another test thread while the copy was open). Mutants caught: `from_env` without the
+  checkout, `build_cmd` bypassing `Provision`, `needed` without `rust-sdk`, the missing
+  variable hint.

@@ -1,7 +1,7 @@
 //! `symdev build`: one backend per manifest language.
 use std::process::ExitCode;
 
-use symdev_build::{FrozenExports, GcceBuild, RustBuild, RustSdk, UiResources};
+use symdev_build::{FrozenExports, GcceBuild, RustBuild, UiResources};
 use symdev_core::{BuildBackend, Error, LocalEnv};
 use symdev_manifest::{Language, Manifest};
 
@@ -21,8 +21,12 @@ pub fn build_project(m: Manifest, provision: &Provision) -> Result<ExitCode, Err
         ));
     }
     // Resolved before the toolchain, so a Rust project without its Rust SDK is told so
-    // before any package is downloaded.
-    let rust_sdk = m.language.is_rust().then(RustSdk::from_env).transpose()?;
+    // before the compiler is downloaded.
+    let rust_sdk = m
+        .language
+        .is_rust()
+        .then(|| provision.rust_sdk())
+        .transpose()?;
     let tools = provision.toolchain(m.target.device)?;
     let epocroot = tools.epocroot.clone();
     let project = crate::current_project()?;

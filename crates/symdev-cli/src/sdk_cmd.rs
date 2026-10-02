@@ -42,7 +42,7 @@ fn list(provision: &Provision) -> Result<ExitCode, Error> {
 fn install(provision: &Provision, ids: Vec<PackageId>) -> Result<ExitCode, Error> {
     let ids = if ids.is_empty() {
         match symdev_manifest::load("symdev.toml") {
-            Ok(m) => provision.needed(m.target.device),
+            Ok(m) => provision.needed(m.target.device, m.language),
             Err(ManifestError::MissingFile) => {
                 return Err(Error::Other(format!(
                     "`symdev sdk install` without ids installs what the project in the \

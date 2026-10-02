@@ -33,7 +33,9 @@ fn main() -> ExitCode {
             ..
         }) => std::env::current_dir()
             .map_err(|e| Error::Other(e.to_string()))
-            .and_then(|cwd| scaffold::create_project(&cwd, &name, template, lang))
+            .and_then(|cwd| {
+                scaffold::create_project(&cwd, &name, template, lang, || provision.rust_sdk())
+            })
             .map(|root| {
                 println!("{}", root.display());
                 ExitCode::SUCCESS
