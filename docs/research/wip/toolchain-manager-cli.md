@@ -328,3 +328,23 @@ reads it).
   --lang rust` (same `src/main.rs` — `RustSdk::HELLO_MAIN` is that file — same UID3), and
   the examples README says to build the in-tree examples with a symdev from the same clone
   or `SYMDEV_RUST_SDK=<clone>/symbian-rs`. For the lead: reword item 5.
+
+### Real builds (2026-10-02, scratchpad only, toolchain from the five `SYMDEV_*` variables)
+
+- A literal copy of `symbian-rs/examples/hello` outside the clone does not build, before or
+  after this branch: it inherits `version`/`edition` from the `symbian-rs` workspace and its
+  nightly from `symbian-rs/rust-toolchain.toml` (cargo: "`-Z` flag is only accepted on the
+  nightly channel"). The SDK resolution itself was right (`--target <checkout>/targets/…`).
+- Dev route: `symdev new hello --lang rust` (its `src/main.rs` and `symdev.toml` are identical
+  to the example's) then `symdev build` with `SYMDEV_RUST_SDK` unset and an empty
+  `SYMDEV_HOME`: SDK = the checkout, nothing installed (the home was never created),
+  `build/hello.exe` 968 bytes, 19 s. The in-tree example built by the same binary gives the
+  same `.exe` except the E32 header CRC and time (0x14–0x17, 0x24–0x27); the `.elf`s differ
+  only in `.strtab` (47 bytes; symbol hashes of a crate built from another path).
+- Package route: a `file://` source holding `rust-sdk;0.1.0` packed from the commit's
+  `Cargo.toml`, `crates/symdev-locale`, `symbian-rs` (no `corpus/`; 377 466 bytes), and a
+  copy of the debug `symdev` with its checkout bytes patched (one occurrence) — `symdev new`
+  printed `installing rust-sdk;0.1.0 (0.4 MB) from local…` and wrote
+  `…/home/rust-sdk/0.1.0/symbian-rs/crates/…` into `Cargo.toml`; `symdev build` produced
+  `hello.exe` equal to the dev route's except the same eight header bytes; `symdev package`
+  → `hello.sisx` (2 304 bytes).
