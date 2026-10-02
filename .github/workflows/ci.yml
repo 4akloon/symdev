@@ -1,7 +1,9 @@
-# Rust gate only: no Symbian SDK, no ROM, no EKA2L1 on this runner.
-# Tests that need an SDK skip themselves (SYMDEV_EPOCROOT, SYMDEV_SIGN_PASSWORD);
-# the toolchain tests assert the "missing toolchain" error, so a bare runner is
-# the environment they expect. End-to-end build/package/run stays manual on the host.
+# Two gates. `check`: format, clippy and tests on a bare runner. The tests are hermetic
+# (temporary SYMDEV_HOME and XDG directories, `builtin = false`, file:// sources) and touch
+# no network; those that need a real SDK skip themselves (SYMDEV_EPOCROOT,
+# SYMDEV_SIGN_PASSWORD). `examples`: builds and packages the examples on a clean runner,
+# installing GCCE and the S60 SDK through symdev with the owner's reader key. Running them
+# in EKA2L1 stays manual on the host.
 name: CI
 
 on:
@@ -18,13 +20,16 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  # Same gate as CLAUDE.md: zero warnings, from rustc and from clippy.
-  RUSTFLAGS: -D warnings
 
 jobs:
   check:
     # Pinned, not ubuntu-latest: that label migrates to Ubuntu 26 on 2026-10-19.
     runs-on: ubuntu-24.04
+    env:
+      # Same gate as CLAUDE.md: zero warnings, from rustc and from clippy. Only here: a set
+      # RUSTFLAGS, even an empty one, replaces the `build.rustflags` that `symdev build`
+      # passes to the Rust SDK's libcall build, so the examples job must not have it.
+      RUSTFLAGS: -D warnings
     steps:
       - uses: actions/checkout@v7
 
@@ -85,8 +90,6 @@ jobs:
     if: needs.examples-key.outputs.ok == 'true'
     runs-on: ubuntu-24.04
     env:
-      SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID: ${{ secrets.SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID }}
-      SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY: ${{ secrets.SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY }}
       # The self-signed key is generated per run and thrown away with the runner.
       SYMDEV_SIGN_PASSWORD: ci-throwaway
     steps:
@@ -109,12 +112,15 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-release-1.98.1-${{ hashFiles('**/Cargo.lock') }}
 
-      # Keyed on the pinned package ids: an unchanged pin installs nothing from the bucket.
-      - name: Cache installed toolchain packages
+      # Only GCCE (GPL, public anyway), keyed on the pins: an unchanged pin downloads no
+      # compiler. Never the S60 SDK: pull-request runs, those of forks too (which run the
+      # fork's own workflow), can restore this branch's caches, so a cached SDK would be a
+      # copy anyone could take. The SDK (about 5 MB) downloads on every run.
+      - name: Cache the installed GCCE package
         uses: actions/cache@v6
         with:
-          path: ~/.local/share/symdev
-          key: symdev-packages-${{ hashFiles('crates/symdev-sdk/src/pins.rs') }}
+          path: ~/.local/share/symdev/gcce
+          key: symdev-gcce-${{ hashFiles('crates/symdev-sdk/src/pins.rs') }}
 
       - name: Configure the private source
         env:
@@ -124,9 +130,22 @@ jobs:
           printf '[[source]]\nname = "private"\nurl = "%s"\nauth = "s3"\n' "$URL" \
             > ~/.config/symdev/sources.toml
 
+      # No reader key here: build scripts of third-party crates run in this step.
       - name: Build symdev
         run: cargo build --release -p symdev-cli --locked
 
+      # The only step that holds the reader key, and it runs only symdev: `symdev sdk
+      # install` without ids installs what each example needs (the pinned GCCE and SDK).
+      - name: Install the toolchain packages
+        env:
+          SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID: ${{ secrets.SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID }}
+          SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY: ${{ secrets.SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY }}
+        run: |
+          for dir in examples/hello examples/gui symbian-rs/examples/hello; do
+            (cd "$dir" && "$GITHUB_WORKSPACE/target/release/symdev" sdk install)
+          done
+
+      # Without the key: everything is installed, so symdev reads no source.
       - name: Build and package the examples
         run: |
           export PATH="$PWD/target/release:$PATH"

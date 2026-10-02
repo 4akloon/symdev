@@ -269,11 +269,20 @@ A new job `examples` in `.github/workflows/ci.yml`, beside the existing Rust gat
 
 - runs on push to `main` and on PRs from this repository; a first step skips the job when
   the reader key is absent (forks, dependabot), instead of failing;
-- caches `$SYMDEV_HOME` with the hash of `pins.rs` as the key, so an unchanged pin touches
-  no bucket;
-- builds symdev, then `symdev build` and `symdev package` for `examples/hello`,
-  `examples/gui` and the Rust examples, through auto-install — the path a clean machine
-  takes;
+- caches only `$SYMDEV_HOME/gcce` (GPL, public anyway) with the hash of `pins.rs` as the key,
+  so an unchanged pin downloads no compiler. The SDK (about 5 MB) downloads on every run and
+  is never cached: pull-request runs — a fork's too, running the fork's own workflow — can
+  restore the default branch's caches, so a cached SDK would be a copy anyone could take
+  (review C1, 2026-10-02);
+- builds symdev, then installs the packages with `symdev sdk install` in each example
+  (what the project needs, as a clean machine's first build would), then runs `symdev
+  build` and `symdev package` for `examples/hello`, `examples/gui` and the Rust examples.
+  The reader key is set **only** on the install step, which runs nothing but symdev:
+  `cargo build` runs third-party build scripts, and the build and package steps find
+  everything installed and read no source;
+- sets `RUSTFLAGS` (`-D warnings`) only on the Rust gate: a set `RUSTFLAGS`, even an empty
+  one, replaces the `build.rustflags` that `symdev build` passes to the Rust SDK's libcall
+  build;
 - sets `SYMDEV_SIGN_PASSWORD` to a dummy value in the workflow (the key is throwaway and
   generated per run).
 
