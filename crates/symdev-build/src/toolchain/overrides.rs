@@ -25,13 +25,9 @@ pub struct ToolchainOverrides {
 }
 
 impl ToolchainOverrides {
-    /// The variables of this process's environment.
-    pub fn from_env() -> ToolchainOverrides {
-        Self::from_lookup(|key| std::env::var_os(key))
-    }
-
-    /// The variables as `get` reports them; an empty value counts as unset.
-    pub(crate) fn from_lookup(get: impl Fn(&str) -> Option<OsString>) -> ToolchainOverrides {
+    /// The variables as `get` reports them (the CLI passes the process environment);
+    /// an empty value counts as unset.
+    pub fn from_lookup(get: impl Fn(&str) -> Option<OsString>) -> ToolchainOverrides {
         let var = |key: &str| get(key).filter(|v| !v.is_empty()).map(PathBuf::from);
         ToolchainOverrides {
             epocroot: var("SYMDEV_EPOCROOT"),

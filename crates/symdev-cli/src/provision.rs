@@ -44,7 +44,7 @@ impl Provision {
 
     /// The toolchain for a build: installs what the set variables leave to the packages.
     pub fn toolchain(&self, device: Device) -> Result<Toolchain, Error> {
-        let o = Self::overrides()?;
+        let o = self.checked_overrides()?;
         let needed = Self::needed_by(&o, device);
         if needed.is_empty() {
             return Toolchain::resolve(&o, None, None);
@@ -69,7 +69,7 @@ impl Provision {
         &self,
         device: impl FnOnce() -> Result<Device, Error>,
     ) -> Result<Epocroot, Error> {
-        let o = Self::overrides()?;
+        let o = self.checked_overrides()?;
         if !o.needs_sdk() {
             return Epocroot::resolve(&o, None);
         }
@@ -84,7 +84,7 @@ impl Provision {
     /// The same for `symdev package`, which installs nothing (spec §4): the SDK is
     /// there after `symdev build`, or the error says how to get it.
     pub fn installed_epocroot(&self, device: Device) -> Result<Epocroot, Error> {
-        let o = Self::overrides()?;
+        let o = self.checked_overrides()?;
         if !o.needs_sdk() {
             return Epocroot::resolve(&o, None);
         }
@@ -105,7 +105,7 @@ impl Provision {
     /// The packages a build for `device` needs under the current environment: none for
     /// a part whose every field a `SYMDEV_*` variable sets.
     pub fn needed(&self, device: Device) -> Vec<PackageId> {
-        Self::needed_by(&ToolchainOverrides::from_env(), device)
+        Self::needed_by(&self.overrides(), device)
     }
 
     fn needed_by(o: &ToolchainOverrides, device: Device) -> Vec<PackageId> {
@@ -114,9 +114,14 @@ impl Provision {
         gcce.into_iter().chain(sdk).collect()
     }
 
-    /// The `SYMDEV_*` toolchain variables, each set path checked before any download.
-    fn overrides() -> Result<ToolchainOverrides, Error> {
-        let o = ToolchainOverrides::from_env();
+    /// The `SYMDEV_*` toolchain variables that are set.
+    fn overrides(&self) -> ToolchainOverrides {
+        ToolchainOverrides::from_lookup(|key| (self.lookup)(key))
+    }
+
+    /// The same, each set path checked before any download.
+    fn checked_overrides(&self) -> Result<ToolchainOverrides, Error> {
+        let o = self.overrides();
         o.check()?;
         Ok(o)
     }

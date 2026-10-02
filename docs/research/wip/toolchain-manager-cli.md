@@ -143,7 +143,7 @@ checked against the code before changing it; baseline `cargo test --workspace --
 | 1 | `epocroot`/`installed_epocroot` check every `SYMDEV_*` path | yes: both call `overrides()` → `check()` of all 7 | todo |
 | 2 | `available` vs `find` disagree when the first source lacks this host's archive | yes: the `&&` short-circuits before `seen.insert` | todo |
 | 3 | `keys_make_an_s3_source_searchable` makes a real HTTPS request | yes: `ensure` → `find` → ureq GET `https://127.0.0.1:1/…` (proxy from env) | todo |
-| 4 | `Provision` reads the toolchain variables past its own lookup | yes: `ToolchainOverrides::from_env()` in `overrides()`/`needed()` | todo |
+| 4 | `Provision` reads the toolchain variables past its own lookup | yes: `ToolchainOverrides::from_env()` in `overrides()`/`needed()` | fixed: `ToolchainOverrides::from_lookup` is public, `from_env` deleted (no caller left), `Provision::overrides(&self)` |
 | 5 | an all-installed build fails on download-only problems | yes: `manager()` (sources, keys, host) runs before `ensure` checks receipts | todo |
 | 6 | a Rust build downloads before `RustSdk::from_env` can fail | yes: `toolchain()` at the top, `RustSdk::from_env()` in the match | todo |
 | 7 | `installing …` printed before `install` re-checks under the lock | yes: `writeln!` precedes `home.install`, which returns early if installed | todo |

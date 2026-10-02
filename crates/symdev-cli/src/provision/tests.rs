@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
+use symdev_manifest::Device;
 use symdev_sdk::{Auth, SourceSpec};
 
 use super::Provision;
@@ -97,4 +98,30 @@ fn half_a_key_pair_names_the_missing_variable() {
     let sources = [SourceSpec::new("private", "https://example.com/p/", Auth::S3).unwrap()];
     let e = p.keys(&sources).unwrap_err().to_string();
     assert!(e.contains("SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY"), "{e}");
+}
+
+/// Every toolchain variable set to an existing path, as `(name, value)` pairs.
+fn whole_toolchain(dir: &std::path::Path) -> Vec<(&'static str, String)> {
+    let path = dir.display().to_string();
+    let names = [
+        "SYMDEV_EPOCROOT",
+        "SYMDEV_GXX",
+        "SYMDEV_LD",
+        "SYMDEV_GCC_LIB",
+        "SYMDEV_GCC_TARGET_LIB",
+    ];
+    names.into_iter().map(|n| (n, path.clone())).collect()
+}
+
+#[test]
+fn the_toolchain_variables_come_from_the_lookup() {
+    let tmp = tempfile::tempdir().unwrap();
+    let vars = whole_toolchain(tmp.path());
+    let vars: Vec<_> = vars.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let p = provision(&vars);
+    assert!(p.needed(Device::NokiaE52).is_empty());
+    // Nothing is left to the packages, so no HOME is needed to find them.
+    let tools = p.toolchain(Device::NokiaE52).unwrap();
+    assert_eq!(tools.gxx, tmp.path());
+    assert_eq!(tools.epocroot, tmp.path());
 }
