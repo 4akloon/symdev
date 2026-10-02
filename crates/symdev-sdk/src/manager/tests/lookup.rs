@@ -127,3 +127,21 @@ fn keys_make_an_s3_source_searchable() {
     assert!(e.contains("source `private` could not be read"), "{e}");
     assert!(!e.contains("SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID"), "{e}");
 }
+
+#[test]
+fn available_lists_what_install_takes_when_the_first_source_lacks_this_host() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut first = Repo::new(tmp.path().join("first"));
+    first.add("gcce;12.1.0", Host::X86_64Linux, &[]);
+    let mut second = Repo::new(tmp.path().join("second"));
+    second.add("gcce;12.1.0", Host::Any, &[]);
+    let sources = vec![first.source("one"), second.source("two")];
+    let mut progress = Vec::new();
+    let mut m = manager(&tmp, sources, false, &mut progress);
+    // The only host other than this one: `one` lists the id without an archive for it.
+    m.host = Host::Any;
+    let e = m.ensure(&[id("gcce;12.1.0")]).unwrap_err().to_string();
+    assert_eq!(e, "gcce;12.1.0 has no archive for any in source `one`");
+    let listed: Vec<_> = m.available().unwrap().into_iter().map(|(s, _)| s).collect();
+    assert!(listed.is_empty(), "the first source decides: {listed:?}");
+}

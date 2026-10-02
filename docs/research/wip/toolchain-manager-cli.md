@@ -141,7 +141,7 @@ checked against the code before changing it; baseline `cargo test --workspace --
 | # | Finding | Verified | State |
 |---|---|---|---|
 | 1 | `epocroot`/`installed_epocroot` check every `SYMDEV_*` path | yes: both call `overrides()` → `check()` of all 7 | fixed: both take the unchecked overrides; `Epocroot::resolve` checks `SYMDEV_EPOCROOT` itself (unit + CLI tests for package and freeze) |
-| 2 | `available` vs `find` disagree when the first source lacks this host's archive | yes: the `&&` short-circuits before `seen.insert` | todo |
+| 2 | `available` vs `find` disagree when the first source lacks this host's archive | yes: the `&&` short-circuits before `seen.insert` | fixed: `seen.insert` first, so the first source that lists an id decides for `available` as for `find` |
 | 3 | `keys_make_an_s3_source_searchable` makes a real HTTPS request | yes: `ensure` → `find` → ureq GET `https://127.0.0.1:1/…` (proxy from env) | todo |
 | 4 | `Provision` reads the toolchain variables past its own lookup | yes: `ToolchainOverrides::from_env()` in `overrides()`/`needed()` | fixed: `ToolchainOverrides::from_lookup` is public, `from_env` deleted (no caller left), `Provision::overrides(&self)` |
 | 5 | an all-installed build fails on download-only problems | yes: `manager()` (sources, keys, host) runs before `ensure` checks receipts | fixed: `Provision::install_missing` reads receipts first, builds the manager only for missing ids (CLI test: malformed `sources.toml`, half key pair; the host check sits in `SdkManager::new`, so it is skipped the same way) |
