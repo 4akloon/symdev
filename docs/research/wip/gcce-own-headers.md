@@ -56,6 +56,32 @@ builds' logs/config.log, reference toolchain's GCC output (c++config.h, objects,
 - Headers: MIT (packages repo is MIT; installed into the target's sys-include, so code
   that includes them carries no copyleft condition; they contain no GCC code).
 
+- Our files (packages worktree, `recipes/gcce/12.1.0/`): `sys-include/stdint.h` (47 lines,
+  2416 bytes: `intptr_t` = `__PTRDIFF_TYPE__`, `uintptr_t` = `__SIZE_TYPE__`, nothing else),
+  `sys-include/stdio.h` (42 lines, 2227 bytes: include guard only), MIT;
+  `libgcov-intptr.patch` (4 added lines `#ifndef/#define __INTPTR_TYPE__ int/#endif`+blank
+  after `#define MAX` at line 413, GPL-3.0-or-later WITH GCC-exception-3.1).
+  Both headers compile with the reference g++ `-nostdinc -std=c++98`; neither contains a
+  fixincludes trigger (`va_list`, `stdarg.h` after include, `GNU C Library`).
+
+## Experiment setup (outside git, `~/src/gcce-own/`)
+- `dl/`: the six official tarballs (hashes OK against recipe.toml); `hostbin/make` →
+  native-cc make (no wrapper env).
+- `run-variant.sh <name> <recipe dir>`: builds in `run/` into `prefix/` (fixed paths),
+  `env -i HOME PATH=hostbin:~/.local/bin:~/.local/native-cc/usr/bin:/usr/bin:/bin`, then
+  renames to `run-<name>`, `prefix-<name>`; log `build-<name>.log`.
+  Variants: `recipe-P` (patch file), `recipe-D` (no patch; gcc configure env
+  `CFLAGS_FOR_TARGET="-g -O2 -D__INTPTR_TYPE__=int"`).
+- `work/build-examples.sh <out> <gcc prefix> <ld>`: symdev release binary of this
+  worktree; fresh copy of Cargo.toml, Cargo.lock, crates, examples, symbian-rs at
+  `work/tree` per example. `work/compare-examples.py`, `work/compare-archives.py`
+  (own scripts; ~/src/gcce-recipe/work was not opened).
+- Baseline (`~/gcc-builds`, ld 2.29.1) twice: `.elf` identical, `.exe` differ only at
+  0x14-0x17 and 0x24-0x27; sizes hello 3588/24244, gui 5061/58532, rs hello 968/16456
+  (= experiment 107's table).
+- Reference has 11 archives: libgcc+libgcov ×4 multilibs, libsupc++ for default, softfp,
+  v5te/softfp (none for v5te), 7336 members.
+
 ## Dead ends
 
 ## Next step
