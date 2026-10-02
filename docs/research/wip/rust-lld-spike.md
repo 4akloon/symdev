@@ -7,12 +7,12 @@ Scratch (outside git): `~/src/rust-lld-spike/` (work/ = projects, logs, ELFs).
 Branch: `rust-lld-spike` (worktree `~/worktrees/symdev/rust-lld-spike`). No product code changes.
 
 ## Status
-- [ ] 0. Read context (shim header, driver link code, experiments)
-- [ ] 1. Capture GNU ld argv for console / async / GUI Rust apps
-- [ ] 2. Archive members pulled in (--trace / -Map), sizes, licences
-- [ ] 3. Replay with rust-lld; adaptations; readelf comparison
-- [ ] 4. elf2e32 on lld ELF; E32 compare
-- [ ] 5. EKA2L1 run + screenshot; leave probe
+- [x] 0. Read context (shim header, driver link code, experiments)
+- [x] 1. Capture GNU ld argv for console / async / GUI Rust apps
+- [x] 2. Archive members pulled in (--trace / -Map), sizes, licences
+- [x] 3. Replay with rust-lld; adaptations; readelf comparison
+- [x] 4. elf2e32 on lld ELF; E32 compare
+- [x] 5. EKA2L1 run + screenshot; leave probe
 - [ ] 6. Effort estimate; experiment 109 record
 
 ## Facts
@@ -135,4 +135,6 @@ Branch: `rust-lld-spike` (worktree `~/worktrees/symdev/rust-lld-spike`). No prod
 ## Dead ends
 
 ## Next step
-Read context files.
+Experiment 109 drafted at the end of experiment-backlog.md; `BATCH_PLACEHOLDER` waits for
+`batch.sh` (15 more examples GNU vs lld, results in `~/src/rust-lld-spike/logs/batch.txt`).
+Then verification pass and report.
