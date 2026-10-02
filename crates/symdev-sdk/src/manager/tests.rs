@@ -26,8 +26,8 @@ fn manager<'w>(
     SdkManager::new(home(tmp), sources, BTreeMap::new(), offline, progress).unwrap()
 }
 
-/// An `s3` source whose keys are not set, so it is never contacted; with keys it is a
-/// local port nothing listens on, so no test reaches the network.
+/// An `s3` source whose keys are not set, so it is never contacted (no test passes keys
+/// to a manager: `catalog::tests` checks what keys change without a request).
 fn keyless_private() -> SourceSpec {
     SourceSpec::new("private", "https://127.0.0.1:1/bucket/", Auth::S3).unwrap()
 }

@@ -1,10 +1,8 @@
 //! Which source an id comes from, and what an error says when none can provide it.
 
-use std::collections::BTreeMap;
-
 use super::repo::Repo;
-use super::{home, id, keyless_private, manager};
-use crate::{Host, S3Keys, SdkManager, Sources};
+use super::{id, keyless_private, manager};
+use crate::Host;
 
 #[test]
 fn a_keyless_private_source_is_skipped_when_a_later_source_has_the_id() {
@@ -101,31 +99,6 @@ fn an_id_listed_only_for_another_host_says_so() {
     m.host = Host::Any;
     let e = m.ensure(&[id("gcce;12.1.0")]).unwrap_err().to_string();
     assert_eq!(e, "gcce;12.1.0 has no archive for any in source `local`");
-}
-
-#[test]
-fn keys_make_an_s3_source_searchable() {
-    let tmp = tempfile::tempdir().unwrap();
-    let keys = BTreeMap::from([(
-        "private".to_string(),
-        S3Keys {
-            access_key_id: "AKID".into(),
-            secret_access_key: "secret".into(),
-        },
-    )]);
-    let sources = Sources {
-        list: vec![keyless_private()],
-    };
-    let mut progress = Vec::new();
-    let mut m = SdkManager::new(home(&tmp), sources, keys, false, &mut progress).unwrap();
-    // With keys the source is asked (and, being unreachable, could not be read): the
-    // keys hint is gone.
-    let e = m
-        .ensure(&[id("sdk;s60-3rd-fp2;1.1")])
-        .unwrap_err()
-        .to_string();
-    assert!(e.contains("source `private` could not be read"), "{e}");
-    assert!(!e.contains("SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID"), "{e}");
 }
 
 #[test]

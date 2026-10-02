@@ -141,3 +141,38 @@ impl Catalog {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::Catalog;
+    use crate::{Auth, S3Keys, SourceSpec, Sources};
+
+    /// An `s3` source is searchable exactly when it has keys; nothing is requested to
+    /// find that out (`cargo test` never touches the network).
+    #[test]
+    fn keys_give_an_s3_source_a_fetcher() {
+        let private = SourceSpec::new("private", "https://127.0.0.1:1/bucket/", Auth::S3).unwrap();
+        let sources = Sources {
+            list: vec![private.clone()],
+        };
+        let keys = BTreeMap::from([(
+            "private".to_string(),
+            S3Keys {
+                access_key_id: "AKID".into(),
+                secret_access_key: "secret".into(),
+            },
+        )]);
+        assert!(
+            Catalog::new(sources.clone(), keys)
+                .fetcher(&private)
+                .is_some()
+        );
+        assert!(
+            Catalog::new(sources, BTreeMap::new())
+                .fetcher(&private)
+                .is_none()
+        );
+    }
+}
