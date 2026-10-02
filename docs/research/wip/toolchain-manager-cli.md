@@ -171,7 +171,7 @@ Spec §12, symdev side, plus the `http_fetch` proxy exposure left above (row 3).
 | 1 `Pins::rust_sdk`, `RustSdkPackage` | done |
 | 2 resolution order in `Provision` (env → checkout → package) | done |
 | 3 scaffold: how a new project names the SDK; proposal | done (proposal only) |
-| 4 `http_fetch` tests immune to `HTTP_PROXY`/`ALL_PROXY` | todo |
+| 4 `http_fetch` tests immune to `HTTP_PROXY`/`ALL_PROXY` | done |
 | 5 README / examples README: the prebuilt route | todo |
 
 Facts (before the change, commit 553fb0f):
@@ -293,3 +293,21 @@ refused up front ("it is the symbian-rs directory of a symdev checkout or of the
 package") instead of failing inside cargo. The packer's include list follows:
 `["Cargo.toml", "crates/symdev-locale", "symbian-rs"]` (`corpus/` may be left out: no build
 reads it).
+
+### `http_fetch` and the proxy variables (task 4, review row 3)
+
+- Reproduced: `ALL_PROXY=http://127.0.0.1:9 cargo test -p symdev-sdk --lib http_fetch` → 8 of
+  11 tests failed (every one that expects a response; the three error tests passed by
+  accident).
+- Fix: `HttpFetch::new` = `with_proxy(…, Proxy::try_from_env())` — the value
+  `Config::default()` gave it before, so production is unchanged; `#[cfg(test)]
+  HttpFetch::direct` = `with_proxy(…, None)`; every test in `http_fetch/tests.rs` uses
+  `direct`. Same run with `ALL_PROXY`/`HTTP_PROXY` set: 12 of 12 pass.
+- Test `http_fetch::tests::proxy::only_production_goes_through_the_proxy_variables`: the
+  test re-runs its own binary for that one test with every proxy variable pointing at a
+  one-connection proxy in the parent (it accepts ureq's `CONNECT` and answers the tunnelled
+  GET itself); the child checks that `new` gets the proxy's body and `direct` the server's,
+  the parent that the child ran one test and that the proxy saw `CONNECT 127.0.0.1:…`. The
+  parent's environment is never changed (`set_var` would race the parallel tests). RED
+  seen with `direct` = `new` (the child's `direct` hit the spent proxy: connection refused).
+  ureq 3.4.2 tunnels plain-`http` requests through an HTTP proxy with `CONNECT` too.

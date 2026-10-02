@@ -5,7 +5,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use ureq::http::Response;
-use ureq::{Agent, Body};
+use ureq::{Agent, Body, Proxy};
 
 use crate::{AmzDate, Fetch, Result, SdkError, SigV4};
 
@@ -30,9 +30,22 @@ pub struct HttpFetch {
 }
 
 impl HttpFetch {
-    /// `source_name` appears in errors; `signer` signs every request when present.
+    /// `source_name` appears in errors; `signer` signs every request when present. The
+    /// proxy is the environment's.
     pub fn new(source_name: &str, signer: Option<SigV4>) -> HttpFetch {
+        Self::with_proxy(source_name, signer, Proxy::try_from_env())
+    }
+
+    /// The same without any proxy, whatever the environment holds: the tests' servers
+    /// listen on 127.0.0.1, and a developer's `HTTP_PROXY` must not take their requests.
+    #[cfg(test)]
+    pub(crate) fn direct(source_name: &str, signer: Option<SigV4>) -> HttpFetch {
+        Self::with_proxy(source_name, signer, None)
+    }
+
+    fn with_proxy(source_name: &str, signer: Option<SigV4>, proxy: Option<Proxy>) -> HttpFetch {
         let config = Agent::config_builder()
+            .proxy(proxy)
             .http_status_as_error(false)
             .timeout_connect(Some(Duration::from_secs(30)))
             .timeout_global(Some(Duration::from_secs(60 * 60)))

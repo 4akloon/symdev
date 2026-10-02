@@ -1,6 +1,7 @@
 //! `HttpFetch` against a `TcpListener` on 127.0.0.1 that serves canned responses; nothing
 //! here touches the network.
 
+mod proxy;
 mod server;
 
 use std::net::TcpListener;
@@ -49,7 +50,7 @@ fn expected_signature(
 fn text_returns_the_body_of_a_get() {
     let (base, requests) = serve(vec![response("200 OK", b"schema = 1\n")]);
     let url = format!("{base}index.toml");
-    let text = HttpFetch::new("public", None).text(&url).unwrap();
+    let text = HttpFetch::direct("public", None).text(&url).unwrap();
     assert_eq!(text, "schema = 1\n");
     let request = requests.recv().unwrap();
     assert_eq!(
@@ -67,7 +68,7 @@ fn download_writes_the_exact_bytes_over_an_older_file_and_counts_them() {
     let dest = dir.path().join("a.tar.gz");
     std::fs::write(&dest, vec![7u8; 400_000]).unwrap();
     let url = format!("{base}gcce/12.1.0/a.tar.gz");
-    let written = HttpFetch::new("public", None)
+    let written = HttpFetch::direct("public", None)
         .download(&url, &dest)
         .unwrap();
     assert_eq!(written, 300_000);
@@ -81,7 +82,7 @@ fn a_body_cut_short_is_an_error_not_a_short_file() {
     let (base, _requests) = serve(vec![truncated.to_vec()]);
     let dir = tempfile::tempdir().unwrap();
     let url = format!("{base}a.tar.gz");
-    let err = HttpFetch::new("public", None)
+    let err = HttpFetch::direct("public", None)
         .download(&url, &dir.path().join("a.tar.gz"))
         .unwrap_err();
     assert!(
@@ -94,7 +95,7 @@ fn a_body_cut_short_is_an_error_not_a_short_file() {
 fn not_found_is_a_fetch_error_naming_the_url_and_the_status() {
     let (base, _requests) = serve(vec![response("404 Not Found", b"<Error/>")]);
     let url = format!("{base}index.toml");
-    let err = HttpFetch::new("public", None).text(&url).unwrap_err();
+    let err = HttpFetch::direct("public", None).text(&url).unwrap_err();
     match err {
         SdkError::Fetch { url: u, detail } => assert_eq!((u, detail.as_str()), (url, "HTTP 404")),
         other => panic!("{other}"),
@@ -105,7 +106,7 @@ fn not_found_is_a_fetch_error_naming_the_url_and_the_status() {
 fn forbidden_names_the_source() {
     let (base, _requests) = serve(vec![response("403 Forbidden", b"<Error/>")]);
     let url = format!("{base}index.toml");
-    let err = HttpFetch::new("private", None).text(&url).unwrap_err();
+    let err = HttpFetch::direct("private", None).text(&url).unwrap_err();
     assert!(
         matches!(&err, SdkError::Forbidden { url: u, source_name } if *u == url && source_name == "private"),
         "{err}"
@@ -120,7 +121,7 @@ fn an_unreachable_host_is_a_fetch_error_naming_the_url() {
         .unwrap()
         .port();
     let url = format!("http://127.0.0.1:{port}/index.toml");
-    let err = HttpFetch::new("public", None).text(&url).unwrap_err();
+    let err = HttpFetch::direct("public", None).text(&url).unwrap_err();
     assert!(
         matches!(&err, SdkError::Fetch { url: u, .. } if *u == url),
         "{err}"
@@ -131,7 +132,7 @@ fn an_unreachable_host_is_a_fetch_error_naming_the_url() {
 fn a_signed_get_carries_a_valid_r2_signature() {
     let (base, requests) = serve(vec![response("200 OK", b"schema = 1\n")]);
     let url = format!("{base}index.toml");
-    let fetch = HttpFetch::new("private", Some(SigV4::s3(keys(), "auto")));
+    let fetch = HttpFetch::direct("private", Some(SigV4::s3(keys(), "auto")));
     let before = unix_now();
     fetch.text(&url).unwrap();
     let after = unix_now();
@@ -156,7 +157,7 @@ fn a_signed_get_carries_a_valid_r2_signature() {
 #[test]
 fn an_unsigned_get_carries_no_authorization() {
     let (base, requests) = serve(vec![response("200 OK", b"")]);
-    HttpFetch::new("public", None)
+    HttpFetch::direct("public", None)
         .text(&format!("{base}index.toml"))
         .unwrap();
     let request = requests.recv().unwrap();
@@ -186,7 +187,7 @@ fn put_file_sends_the_exact_body_with_signed_type_and_cache_headers() {
     let sha256 = sha256_hex(&bytes);
     let (base, requests) = serve(vec![response("200 OK", b"")]);
     let url = format!("{base}symdev-public/gcce/12.1.0/{sha256}.tar.gz");
-    let fetch = HttpFetch::new("public", Some(SigV4::s3(keys(), "auto")));
+    let fetch = HttpFetch::direct("public", Some(SigV4::s3(keys(), "auto")));
     let cache = "public, max-age=31536000, immutable";
     let before = unix_now();
     fetch
@@ -227,7 +228,7 @@ fn put_file_refused_by_the_bucket_is_forbidden() {
     std::fs::write(&file, "schema = 1\n").unwrap();
     let (base, _requests) = serve(vec![response("403 Forbidden", b"<Error/>")]);
     let url = format!("{base}index.toml");
-    let err = HttpFetch::new("public", Some(SigV4::s3(keys(), "auto")))
+    let err = HttpFetch::direct("public", Some(SigV4::s3(keys(), "auto")))
         .put_file(
             &url,
             &file,
@@ -251,7 +252,7 @@ fn put_file_of_a_missing_file_names_it_and_sends_nothing() {
         .local_addr()
         .unwrap()
         .port();
-    let err = HttpFetch::new("public", None)
+    let err = HttpFetch::direct("public", None)
         .put_file(
             &format!("http://127.0.0.1:{port}/missing.tar.gz"),
             &missing,
