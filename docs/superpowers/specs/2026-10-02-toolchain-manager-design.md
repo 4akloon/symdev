@@ -1,8 +1,8 @@
 # Toolchain manager and hosted packages: design (2026-10-02)
 
-Status: **design approved section by section** by the repository owner on 2026-10-01/02;
-this written spec awaits the owner's review. Brainstorm record:
-[toolchain-manager.md](../../research/wip/toolchain-manager.md).
+Status: **design approved section by section** by the repository owner on 2026-10-01/02,
+and this written spec, §1's rule included, on 2026-10-02; built and accepted as release
+v0.1.0 (§13). What the brainstorm and the work notes found beyond the design is in §14.
 
 ## 0. Goal
 
@@ -32,9 +32,9 @@ A public mirror of the SDK or firmware is not part of any phase: the public phas
 without it (users point at their own SDK file or `SYMDEV_EPOCROOT`).
 
 `CLAUDE.md` ("Never commit or download SDK, ROM …") and
-[licensing.md](../../research/licensing.md) ("never downloaded by this repository") forbid
-what phase 1 does with the private bucket. **Proposed replacement** (owner to approve with
-this spec):
+[licensing.md](../../research/licensing.md) ("never downloaded by this repository") forbade
+what phase 1 does with the private bucket. **Replacement**, approved by the owner with this
+spec on 2026-10-02 and now in both files (`CLAUDE.md` word for word):
 
 > Never commit SDK, ROM/firmware, `.sis`, `.sisx`, `.cer` or `.key` files, and never link to
 > a third-party copy of them. symdev may download the SDK and firmware only from a source
@@ -81,7 +81,7 @@ schema = 1
 
 [[package]]
 id = "gcce;12.1.0"
-license = "GPL-3.0-or-later"
+license = "GPL-3.0-or-later AND MIT"
 source-code = "src/gcce/12.1.0/3f9a….tar.gz"   # GPL corresponding source
 depends = []                                     # exact ids, no ranges
 
@@ -183,7 +183,7 @@ shims use GCCE too) and anything that reads `bld.inf` (it needs `epocroot`) — 
 3. if all remaining ids are installed, **touch no network** — a build works offline after
    the first install; indexes are fetched only when something is missing;
 4. install each missing id (§3), printing one line to stderr:
-   `installing gcce;12.1.0 (58 MB) from public…`;
+   `installing gcce;12.1.0 (67.5 MB) from public…`;
 5. carry on with the build.
 
 A global `--offline` flag (as in cargo) forbids the network: a missing package is then an
@@ -299,7 +299,8 @@ A new job `examples` in `.github/workflows/ci.yml`, beside the existing Rust gat
   (review C1, 2026-10-02);
 - builds symdev, then installs the packages with `symdev sdk install` in each example
   (what the project needs, as a clean machine's first build would), then runs `symdev
-  build` and `symdev package` for `examples/hello`, `examples/gui` and the Rust examples.
+  build` and `symdev package` for `examples/hello`, `examples/gui` and
+  `symbian-rs/examples/hello`.
   The reader key is set **only** on the install step, which runs nothing but symdev:
   `cargo build` runs third-party build scripts, and the build and package steps find
   everything installed and read no source;
@@ -466,3 +467,183 @@ Found during acceptance: a Rust project needs a host C linker `cc` (build script
 proc macros, `-Zbuild-std`'s `compiler_builtins`), as any Rust project does — now in the
 README and §8. Open follow-ups: the scaffold's absolute `rust-sdk/<ver>` paths (§12); building
 Rust applications without GCCE (spike, experiment 109); index signing (§11).
+
+## 14. As built: decisions and findings not obvious from the code
+
+Kept from the brainstorm and the work notes of the build (2026-10-01/02), which were deleted
+once v0.1.0 was accepted; what the code's doc comments and experiments 107–108 already say
+is not repeated. "First review" is the independent review of 34987b3 (rows 1–11); C1, I1–I3
+and M1–M10 are the whole-branch review of 669dae1, as elsewhere in this spec.
+
+**Packages and index**
+
+- **`git archive` output cannot be installed**: it begins with a PAX global header, which
+  `TarGz` refuses ("entry `pax_global_header` has an unsupported type", rechecked
+  2026-10-02), as it refuses sparse entries. Archives are packed by `ReproducibleTarGz`, so
+  the `symdev` recipe unpacks the tag's `git archive` and `publish` repacks it.
+- **A lexical check of symlink targets is not enough**: after `a/b/c/s -> ../../..` (the
+  package root), `a/b/c/t -> s/..` reads as `a/b/c` but resolves to the root's parent. Hence
+  links are created after every file and directory and then walked the way the kernel does.
+- **The SDK subset was proven sufficient**: `hello`, `gui`, the Rust hello and a DLL (built
+  as in experiments 52–53; a DLL links `edll.lib`) are byte-identical built against the
+  subset and against the full SDK. The archive holds 2 697 files, 31 MB unpacked, SHA-256
+  `cbec6da8…2a5f`, and packs to the same bytes every time.
+- **GCCE archive size**: `ReproducibleTarGz` packs a host-built prefix (about 200 MiB) in
+  about 8 s into 72.4–72.5 MB; the CI-built package is 67 463 658 bytes (§13).
+- **Rejected by the owner (2026-10-01)**: GitHub Releases as the store (object storage
+  instead), a separate `sdkmanager`-like binary (the manager lives in symdev, so a build can
+  install in-process), and conda, pixi or OCI images as the package format.
+- **For phase 2**: the EKA2L1 Z: drive made from the E52 firmware is 208 MB; the host's
+  EKA2L1 build links a private sysroot and Qt under `~/.local` (eka2l1-host skill), so it
+  cannot be packaged as it is.
+
+**Installs and cache**
+
+- **The first source that lists an id decides.** If it has no archive for this host, the
+  install fails naming that source instead of taking a later source's build of the same id;
+  `sdk list` applies the same rule, so it never offers what `install` refuses (first
+  review, row 2).
+- **A source that cannot be read is skipped like a keyless one** (unreachable, 403, a
+  malformed or newer index); its reason shows only in a not-found error. The built-in source
+  is searched first by every build, and its `index.toml` answered 404 until the first publish
+  (2026-10-02): failing there would have stopped builds whose packages all came from the
+  private source. The price: while an earlier source is down, a later one holding the same id
+  supplies it, and the receipt names which.
+- **Why each download has its own `.part` (review I2)**: with one shared
+  `<sha256>.tar.gz.part` and no cache lock, installs into 8 homes sharing one cache failed
+  3/3, and so did 6 parallel `symdev sdk install` processes, each deleting or replacing the
+  others' file. Under `downloads/.lock` a part file belongs to one download, so a part of the
+  same archive found there is an interrupted run's and is deleted.
+- **Both locks were proven by mutation**: without `File::lock` on `SdkHome` two threads
+  installing one id download twice (3/3), with it 20/20 runs download once; without the
+  cache lock the 8-home test fails 3/3.
+- **Writing the receipt before the rename (§3 step 6, review M3) is reasoned, not tested**:
+  both refusals of an archive's own receipt pass in either order.
+
+**Network and signing**
+
+- **TLS roots**: ureq 3.4.2's `rustls` feature already brings ring and the Mozilla roots
+  (`webpki-roots` 1.0.9), so no further feature is needed; checked against
+  `https://index.crates.io/config.json`.
+- **ureq 3.4.2 behaviour the adapter relies on**: `Config::default()` takes the proxy from
+  `ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY` (lower-case too) and `NO_PROXY`, and plain-`http`
+  requests are tunnelled through an HTTP proxy with `CONNECT` too; there are no timeouts by
+  default, `https_only` is off and 10 redirects are followed; `Host` carries `:port` only for
+  a non-default port, which the signer copies; `read_to_string` is lossy and capped at
+  10 MB, `as_reader` is not; a `Content-Length` header makes a `File` body sized, not chunked.
+- **The proxy finding (first review, row 3)**: with `ALL_PROXY=http://127.0.0.1:9`, 8 of the
+  11 `http_fetch` tests failed, their requests to 127.0.0.1 going to the proxy. Hence the
+  tests' proxy-less `HttpFetch::direct`, and a test that proves in a child process that
+  production still follows the variables.
+- **`HTTP 404` stays the exact `detail` of `SdkError::Fetch`** because the publisher
+  (symdev-packages `publish/src/bucket.rs`) reads a missing `index.toml` as an empty index:
+  that is how a new bucket gets its first one. 403 alone has its own variant (§5).
+- **SigV4 vectors, dead ends**: beyond the two sources `sigv4/tests.rs` cites, the S3 API PDF
+  now carries only SigV2 examples, the IAM SigV4 pages carry none, and smithy-rs's old
+  `aws-sig-v4-test-suite/get-vanilla` path is 404.
+
+**Toolchain resolution and CLI**
+
+- **For a Rust project the Rust SDK is resolved, and `rust-sdk` installed, before GCCE**, so
+  a stale `SYMDEV_RUST_SDK` fails before a 67 MB download (first review, row 6); every set
+  `SYMDEV_*` path is likewise checked before anything is downloaded.
+- **The prebuilt-symdev CLI tests cost disk**: `tests/common/prebuilt.rs` writes an 88 MB copy
+  of the debug binary per run of the `rust_sdk` test binary, into that process's test home,
+  which the next run sweeps.
+
+**Rust SDK package**
+
+- **`symbian-rs` alone does not resolve** (`cargo metadata` on a scaffolded project): a bare
+  tree gives "no matching package named `symdev-locale`", searched outside the package
+  directory; adding `crates/symdev-locale` gives "error inheriting edition from workspace
+  root manifest"; adding the root `Cargo.toml` resolves (cargo loads none of the root's other
+  members for a path dependency). Alternatives not taken (the owner's call): give
+  `symdev-locale` its own version and edition under `symbian-rs/`, or drop
+  `symbian-macros`' dependency on a host crate.
+- **What else the package holds** (symdev-packages `recipes/symdev/0.1.0/recipe.toml`,
+  measured by building a Rust hello, `examples/ui` and `examples/std-hello` against a
+  read-only copy): `symbian-rs/examples`, because they are members of the SDK workspace in
+  which `symdev build` builds `symbian-libcalls` (without them: "failed to load manifest for
+  workspace member …/examples/async"); `symbian-rs/Cargo.lock`, or that build would write a
+  lock into the package; `LICENSE`. Not `symbian-rs/corpus/`, which no build reads. The
+  recipe's `build.sh` fails on a new `symbian-rs/` entry its list does not name.
+- **The in-tree `symbian-rs/examples` are not projects on the package**: a copy outside the
+  clone fails ("`-Z` flag is only accepted on the nightly channel": its nightly and version
+  come from the `symbian-rs` workspace), and inside the clone a prebuilt symdev compiles the
+  clone's crates against the package's shims and libcalls. Build them with a symdev from the
+  same clone or `SYMDEV_RUST_SDK=<clone>/symbian-rs`.
+- **Rust outputs depend on the source path**: the Rust hello built from the checkout and from
+  the package gives the same `.exe` outside the eight header bytes, but the in-tree example
+  and a scaffolded copy of it differ in the `.elf`'s `.strtab` (47 bytes), because rustc's
+  symbol hashes include the crate's path. Compare Rust `.elf` files only from one path, as
+  experiment 107 did.
+- **The scaffold gap (§12), as reproduced**: after an upgrade, `symdev build` passes the new
+  SDK's target, libcalls and shims while cargo compiles the application against the old
+  `symbian-std` and `symbian-core`, with no error; once `rust-sdk/0.1.0` is gone (reproduced
+  by renaming it) cargo stops with "no matching package named `symbian-core` found"; the
+  project keeps the old nightly in its `rust-toolchain.toml`; the checkout route breaks the
+  same way when the checkout moves. The `build/rust-sdk` proposal also needs `symdev build`
+  to compare the project's channel with the SDK's and stop with the fix, since rustup reads
+  that file from the project only.
+- **`SYMDEV_RELEASE` checked by hand**: a binary built with `SYMDEV_RELEASE=1` holds the
+  checkout path 0 times (a normal build: once), and `symdev --offline new app --lang rust` in
+  an empty home asks for `rust-sdk;0.1.0` where the normal build scaffolds from the checkout.
+
+**CI and publishing**
+
+- **Review I3, measured**: in a scratch crate, `cargo build -v --config
+  'build.rustflags=["--cfg","foo"]'` passes `--cfg foo` with `RUSTFLAGS` unset and not with
+  `RUSTFLAGS=""` or `RUSTFLAGS="-D warnings"` (rechecked 2026-10-02). So the review's
+  `RUSTFLAGS: ""` would not have helped; `-D warnings` moved to the `check` job (§7).
+- **Review C1 leaked nothing**: the SDK cache was found before the `examples` job had ever
+  run (its secrets were set after the last push), so no cache holding the SDK was saved.
+- **In CI the Rust example builds against the checkout** (the job builds symdev without
+  `SYMDEV_RELEASE`), so the job never installs `rust-sdk`: `symdev --offline sdk install` names exactly
+  `'gcce;12.1.0' 'sdk;s60-3rd-fp2;1.1'` in each of the three examples, which is why the keyed
+  install step covers everything the keyless build step needs.
+- **No self-hosted runner**: one on the owner's machine was ruled out as unsafe for a public
+  repository; private files reach CI only through a private bucket and a secret.
+- **A published version that a released symdev pins is never deleted** (publishing rules
+  approved by the owner, 2026-10-01): old releases install their pins by id.
+- **GitHub registers a workflow only once an event has triggered it**: `workflow_dispatch` of
+  a pushed, never-triggered workflow answered 404, so symdev-packages' `symdev.yml` and
+  `publish.yml` were first started by real recipe edits (runs 37052134487 and 37052194350);
+  afterwards dispatch works (GCCE was published by run 37052495523, 16 min).
+- **`rust-sdk` is published before `symdev`** (`symdev.yml`), so the index never offers a
+  symdev whose Rust SDK is missing.
+- **`LIBZ_SYS_STATIC=1`**: a local musl build with the host's gcc as `CC` (the host has no
+  musl C compiler) linked static-pie and reached r2.dev over TLS, but libz-sys had linked the
+  host's glibc-built libz. The recipe therefore sets the variable, so libz-sys compiles its
+  bundled zlib, and fails unless libz-sys' build output says `rustc-link-lib=static=z`.
+- **`install.sh`** is tested against a fake bucket under dash, bash and busybox applets
+  (symdev-packages `tests/install.sh.test`, run by `tests.yml`); `publish file` uploads it to
+  the bucket root.
+- **Settings beyond §7's secrets**: symdev's repository variable `SYMDEV_PRIVATE_SOURCE_URL`
+  (the `examples` job's `sources.toml`); symdev-packages' variable `PUBLIC_READ_URL` and, in
+  environment `publish`, variable `PUBLISH_PUBLIC_URL` and secrets `PUBLISH_ACCESS_KEY_ID` /
+  `PUBLISH_SECRET_ACCESS_KEY`. The URLs are not secret.
+- **On the owner's host** the keys live in `~/.config/symdev/keys.env` (mode 600), sourced by
+  `~/.profile`, so only login shells have them; an agent's tool shell needs `set -a;
+  . ~/.config/symdev/keys.env; set +a`.
+
+**Licences**
+
+- **GCCE is `GPL-3.0-or-later AND MIT`** in the published index, the MIT part being our two
+  sys-include headers; this settles experiment 108's open SPDX question.
+- **The index's `license` is parsed but neither shown nor enforced**: it is there for phase
+  2's licence acceptance (§11).
+- **The prebuilt symdev's `THIRD-PARTY-NOTICES.txt`** is generated by symdev-packages'
+  `tools/third_party_notices.py` from the musl build's dependency graph: 117 third-party
+  crates plus the C and runtimes they bring (zlib, ring's BoringSSL and fiat code, Rust's
+  `std`, the LLVM runtime, musl). musl 1.2.5's `COPYRIGHT` is taken from its signed release
+  tarball, so no entry lacks a licence file. Both `symdev` and `rust-sdk` carry `LICENSE`,
+  since MIT asks for the notice in every copy.
+
+**Open follow-ups** (beyond §13's)
+
+- A server that sends its headers and then stalls the body is bounded only by the one-hour
+  request limit: ureq 3.4.2 has no idle timeout.
+- A developer's own `RUSTFLAGS` replaces the libcall build's `build.rustflags` exactly as in
+  review I3, changing an affected example by 24 bytes; symdev neither warns nor merges them.
+- `RustSdkPackage::REQUIRED` could also require a `symbian-rs/examples` member, so a package
+  without them fails at install rather than inside cargo.
