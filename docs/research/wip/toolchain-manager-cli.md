@@ -131,3 +131,23 @@ Inputs: `toolchain-manager-core.md` ("For Track D"), `toolchain-manager-net.md`.
 ## Next step
 
 Final verification (test, clippy, fmt), then report to the lead.
+
+## Review fixes (branch `tm-review-fixes`, 2026-10-02)
+
+Independent review of the toolchain manager (line numbers from 34987b3). Each finding was
+checked against the code before changing it; baseline `cargo test --workspace --offline`:
+652 passed. State per finding (commits: `git log`):
+
+| # | Finding | Verified | State |
+|---|---|---|---|
+| 1 | `epocroot`/`installed_epocroot` check every `SYMDEV_*` path | yes: both call `overrides()` → `check()` of all 7 | todo |
+| 2 | `available` vs `find` disagree when the first source lacks this host's archive | yes: the `&&` short-circuits before `seen.insert` | todo |
+| 3 | `keys_make_an_s3_source_searchable` makes a real HTTPS request | yes: `ensure` → `find` → ureq GET `https://127.0.0.1:1/…` (proxy from env) | todo |
+| 4 | `Provision` reads the toolchain variables past its own lookup | yes: `ToolchainOverrides::from_env()` in `overrides()`/`needed()` | todo |
+| 5 | an all-installed build fails on download-only problems | yes: `manager()` (sources, keys, host) runs before `ensure` checks receipts | todo |
+| 6 | a Rust build downloads before `RustSdk::from_env` can fail | yes: `toolchain()` at the top, `RustSdk::from_env()` in the match | todo |
+| 7 | `installing …` printed before `install` re-checks under the lock | yes: `writeln!` precedes `home.install`, which returns early if installed | todo |
+| 8 | without `HOME` the message names `SYMDEV_HOME` for every path | yes: one text for data, cache and config | todo |
+| 9 | `bin()` keeps keys/toolchain vars; temp homes pile up in `target/tmp` | yes: 10+ `symdev-cli-home-*` after two runs | todo |
+| 10 | `sdk;…` in no source and no private source: no way out named | yes | todo |
+| 11 | host-mismatch test wording | nit, kept as is | — |
