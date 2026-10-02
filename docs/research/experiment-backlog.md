@@ -3329,11 +3329,12 @@ with `--defsym=symrs_uid3=0x<uid3>`, it gives the same literal word and a byte-i
 **The fixed set** (`prebuilt/lib`, archives `ar crD`, runtime members `--strip-debug`):
 `libsymrs.a` 19 322 B, `libsymrs_ui.a` 59 362 B, `libsupc++.a` 7 736 B (2 members),
 `libgcc.a` 4 172 B (2 members) — **90 592 B, 23 619 B as `.tar.gz`**; the full GCCE
-`libsupc++.a`/`libgcc.a` are 244 096 / 9 754 506 B. Licences: `pr-support.c` and the
-libsupc++ sources are GPL-3.0-or-later with the GCC Runtime Library Exception 3.1 (header,
-lines 7 and 15–20): an application linked with them may be under any licence (rustc/LLVM
-is "a Compilation Process … done without using any work based on GCC", the shims are
-compiled by GCC), and shipping the members themselves is GPLv3 object code whose source is
+`libsupc++.a`/`libgcc.a` are 244 096 / 9 754 506 B. Licences: `pr-support.c` and
+`eh_personality.cc` are GPL-3.0-or-later with the GCC Runtime Library Exception 3.1 (their
+headers, lines 7–8 and 15–21): an application linked with them may be conveyed under any
+terms (`COPYING.RUNTIME` §1) as long as all its target code comes from "Eligible"
+compilation processes (§0, lines 53–57) — GCC for the shims, rustc/LLVM, which is done
+"without using any work based on GCC", for the rest — and shipping the members themselves is GPLv3 object code whose source is
 the GCC 12.1.0 tarball the `gcce` package already carries. The shims are MIT, **but their
 objects contain code generated from the S60 SDK headers** (inline members, the `TRAP`
 expansion, `XLeaveException`'s typeinfo, Avkon class layouts): whether that may go into the
@@ -3462,7 +3463,38 @@ libraries. Post-linked by the fork, the four `.exe` are **identical** (masking C
 to the lld builds made with per-application shims — including `ui`, whose Avkon shim now
 takes its UID from `--defsym` — so the emulator results above hold for them byte for byte.
 
-BATCH_PLACEHOLDER
+### 6. The other fifteen examples
+
+`batch.sh`: every remaining member of the `symbian-rs` workspace, copied out as in the
+setup, built twice in the same directory — GNU ld, then the lld wrapper with the forked
+elf2e32 — and compared (`.exe` bytes; `e32cmp.py` on `--uncompressed` images; `DT_NEEDED`).
+**All fifteen link and post-link; the import words are identical per DLL in every one.**
+
+| example | GNU | lld | Δ |
+|---|---:|---:|---:|
+| `hello-raw` | 805 | 867 | +62 |
+| `alloc` | 3 765 | 3 848 | +83 |
+| `spawnee` | 2 606 | 2 690 | +84 |
+| `files` | 8 288 | 8 444 | +156 |
+| `cleanup` | 4 265 | 4 368 | +103 |
+| `atomics` | 8 837 | 8 949 | +112 |
+| `time` | 10 146 | 10 220 | +74 |
+| `net` | 10 506 | 10 734 | +228 |
+| `tls` | 13 978 | 14 079 | +101 |
+| `ui-list` | 11 194 | 11 452 | +258 |
+| `notes` | 11 465 | 11 699 | +234 |
+| `query` | 12 673 | 12 854 | +181 |
+| `panic` | 2 018 | 2 125 | +107 |
+| `fmt` | 107 777 | 107 744 | -33 |
+| `locale` | 8 122 | 8 250 | +128 |
+
+`DT_NEEDED` is identical except `notes` and `query`, where GNU keeps `eikcoctl` and lld does
+not: GNU decides `--as-needed` before `--gc-sections` removes the reference (the effect
+`RustBuild::sdk_libraries` documents), lld after it. Neither E32 imports anything from
+`eikcoctl`; the import sections are the same 8 DLLs and 1 184 / 1 164 bytes. `fmt` comes out
+33 bytes *smaller* only after compression: uncompressed it is 416 bytes larger (262 416 →
+262 832, the PLT and GOT), and deflate over its 256 KB of code lands differently. Only the four applications of sections 4–5 and `ui-list` (a list box
+drawn, `Down` moves the highlight, `shots/lld-uilist-{1,2}.png`) were run in the emulator.
 
 ### Conclusion
 
