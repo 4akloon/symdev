@@ -130,7 +130,7 @@ Inputs: `toolchain-manager-core.md` ("For Track D"), `toolchain-manager-net.md`.
 
 ## Next step
 
-Final verification (test, clippy, fmt), then report to the lead.
+Review fixes done on `tm-review-fixes` (see "Review fixes"); waiting for the lead to merge.
 
 ## Review fixes (branch `tm-review-fixes`, 2026-10-02)
 
@@ -151,3 +151,13 @@ checked against the code before changing it; baseline `cargo test --workspace --
 | 9 | `bin()` keeps keys/toolchain vars; temp homes pile up in `target/tmp` | yes: 10+ `symdev-cli-home-*` after two runs | fixed: `bin()` removes every inherited `SYMDEV_*`/`PUBLISH_*` (tests set what they need after it, which wins); `bin_without_toolchain` and the per-test `env_remove`s deleted. Homes: `target/tmp/symdev-cli-homes/home-*`, one per process, `.lock` held for the process life; the first `bin()` removes every home whose lock it can take (made under a dot name, renamed once locked, so a sweep never takes one being made). `tests/hermetic.rs` checks both (mutants caught); after a full run one home is left, swept by the next. Supersedes the D3 note on the static `TempDir` |
 | 10 | `sdk;…` in no source and no private source: no way out named | yes | fixed: `Sources.file` keeps the real `sources.toml` path; an `sdk` id found nowhere without a keyless-source hint adds "set SYMDEV_EPOCROOT to your own SDK, or add a source that has it in <path>"; no sources at all names the path too (was a hard-coded `$XDG_CONFIG_HOME/…`). Spec §5, §8 (prerequisites + 4-line TOML, acceptance item 2), README, examples README |
 | 11 | host-mismatch test wording | nit, kept as is | — |
+
+Checked after the last fix (2026-10-02): `cargo test --workspace --offline` 665 passed, 0
+failed (652 before: +13 tests, one network test replaced); `cargo clippy --workspace
+--all-targets --offline` no warning; `cargo fmt --all --check` clean; every `.rs` file ≤ 300
+lines. By hand with the built binary under `env -i`: no `HOME` names `XDG_CONFIG_HOME` for
+`sources.toml`; `sdk install 'sdk;s60-3rd-fp2;1.1'` with no source names `SYMDEV_EPOCROOT`
+and the real `sources.toml` path, and creates nothing.
+
+Left for the lead: the `http_fetch` tests' proxy exposure (row 3); `bin()` strips every
+`SYMDEV_*`, not only the toolchain and key variables (a test sets what it needs after it).
