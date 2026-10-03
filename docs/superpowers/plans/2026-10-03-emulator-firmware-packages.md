@@ -3495,7 +3495,7 @@ runs it through symdev itself, with the two packages served from `file://` sourc
 - Produces: the evidence that the package route works on this host, or the failures that
   send work back to Tasks 7–10.
 
-- [ ] **Step 1: A stager for any packages** (scratch, research tool)
+- [x] **Step 1: A stager for any packages** (scratch, research tool)
 
 Copy `~/src/cargo-run-scratch/accept/stager` to `~/src/emu-pkg-scratch/stage/stager`. Change
 its `main` to take `<repo> <id>=<tree>@<host>…` (host `x86_64-linux` or `any`), pack each
@@ -3510,7 +3510,7 @@ S=~/src/emu-pkg-scratch/stage; rm -rf $S/public $S/private
   'firmware;rm-469;1'=$HOME/src/emu-pkg-scratch/firmware/tree@any)
 ```
 
-- [ ] **Step 2: Write `run13.sh`**
+- [x] **Step 2: Write `run13.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -3556,7 +3556,7 @@ This host's software-GL variables (`QT_OPENGL`, `LIBGL_ALWAYS_SOFTWARE`, `GALLIU
 exits, rerun with them exported. Record which is needed: the package imposes none, and
 the user sets them in his shell (spec §5).
 
-- [ ] **Step 3: Run it under the agent lock**
+- [x] **Step 3: Run it under the agent lock**
 
 ```bash
 flock ~/.local/share/EKA2L1/.symdev-agent.lock bash ~/src/emu-pkg-scratch/exp115/run13.sh > ~/src/emu-pkg-scratch/exp115/run13.log 2>&1
@@ -3577,7 +3577,13 @@ with a failing test first. Record every line above, the timings, the screenshot'
 the GL finding as experiment 115 §4. Check that `~/.local/share/EKA2L1` has nothing newer
 than `$X/marker13` (`find ~/.local/share/EKA2L1 -newer … | wc -l` is `0`).
 
-- [ ] **Step 4: Commit** the experiment record and the wip file:
+**Executed 2026-10-03.** run13.sh exports the developer's toolchain variables itself
+(cargo-run's `env.sh`), which this shell does not have. `package files newer than the start`
+counts the install (the marker precedes it): the packages were compared by content with the
+trees they were packed from instead (unchanged but for the receipt). No GL variable was
+needed. Experiment 115 §4 has the results.
+
+- [x] **Step 4: Commit** the experiment record and the wip file:
   `Record experiment 115 §4: cargo run and cargo test on the packaged emulator and firmware.`
 
 ### Task 14: Requirements, licensing rules and the emulator crate's README

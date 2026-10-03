@@ -217,4 +217,8 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   dry-run publish (brief step 4), record sizes.
 - [x] Task 12: packages 777a48f: .github/workflows/emulator.yml (YAML ok, pins = publish.yml's),
   README section "The emulator and the firmware" + pkgtools rows.
-- [ ] Task 13: next (packaged emulator real runs, exp 115 §4).
+- [x] Task 13: exp 115 §4: start rc 0 (installs firmware+emulator from file:// sources, 3 s),
+  comm eka2l1_qt, cargo run "Hello from Rust SDK (19 chars)" rc 0, cargo test ok rc 0, packages
+  unchanged by content, host LD_LIBRARY_PATH/QT_PLUGIN_PATH stripped (environ count 0), no GL
+  variables needed. Stager ~/src/emu-pkg-scratch/stage/stager; run ~/src/emu-pkg-scratch/exp115/run13.sh.
+- [ ] Task 14: next (README, licensing.md, symdev-emulator README, toolchain spec §2 row).

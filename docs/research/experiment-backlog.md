@@ -4902,3 +4902,39 @@ file to be writable to open it, and symdev installs package files 0644. The spec
 ("if it writes, the profile gets copies instead") therefore keeps links; read-only package
 files would stop the boot, so symdev must never make an installed firmware read-only. A
 firmware package must carry `Z:\stubcached` (the staged RM-469 does), or EKA2L1 writes it.
+
+### 4. `cargo run` and `cargo test` on the packaged emulator and firmware (plan Task 13)
+
+2026-10-03, 21:40Z. symdev of this branch (`7fa31ec`+, release build), with **no**
+`SYMDEV_EKA2L1` or `SYMDEV_EKA2L1_DATA`, `LD_LIBRARY_PATH` and `QT_PLUGIN_PATH` unset, and
+none of this host's software-GL variables. Two `file://` sources staged by a scratch stager
+(`~/src/emu-pkg-scratch/stage/`): `public` with `emulator;2026.10.03` (the rehearsal tree of
+plan Task 10, packed 102 819 047 bytes) and `private` with `firmware;rm-469;1` (plan Task 5's
+tree, packed 133 668 334 bytes, the same SHA-256 `032b6e1d…` as the publisher's dry run).
+The toolchain came from the developer's variables (cargo-run's `env.sh`, GCCE route,
+`SYMDEV_RUST_SDK` = this branch's `symbian-rs`); only the emulator and the firmware came from
+the packages. Script `~/src/emu-pkg-scratch/exp115/run13.sh`, run under the agent lock.
+
+* `symdev emulator start rm-469`: `installing firmware;rm-469;1 (133.7 MB) from private…`,
+  `created profile rm-469`, `installing emulator;2026.10.03 (102.8 MB) from public…`,
+  `emulator-1`, rc 0, 3 s in all. The process: comm `eka2l1_qt`, exe
+  `<SYMDEV_HOME>/emulator/2026.10.03/usr/bin/eka2l1_qt`. `symdev devices`: `emulator-1  Nokia
+  N00 (RM-469)  pid …  profile rm-469`. The profile's `data/roms/rm-469` and `data/drives/z`
+  are links into `<SYMDEV_HOME>/firmware/rm-469/1/`.
+* `symdev new t13 --lang rust`, then `cargo run`: built in 16.9 s, `Running symdev run --exe
+  …/debug/t13`, `Hello from Rust SDK (19 chars)`, rc 0. `cargo test`: `test arithmetic ... ok`,
+  `test result: ok. 1 passed`, rc 0. `symdev emulator stop emulator-1`: rc 0.
+* The PID-bound screenshot (`~/src/emu-pkg-scratch/exp115/shots/t13-hello.png`) is this
+  instance's EKA2L1 window: the app list (Zip manager; the ROM's apps are system apps, which
+  the list hides) with `Device N00 (RM-469 - S60v3 FP2)`. EKA2L1's log has no error but the
+  usual "Unable to patch export" lines; it created a GLX 4.6 context. **No software-GL
+  variable was needed** on this host: the package imposes none and the user sets none.
+* **The packages are unchanged:** after both runs every file of the installed
+  `emulator;2026.10.03` and `firmware;rm-469;1` has the SHA-256 of the tree it was packed
+  from; the only extra file is each package's `.symdev-package.toml` receipt. (The plan's
+  check, files newer than a marker touched before the start, counts the install itself:
+  16 257.)
+* Started again with this host's `LD_LIBRARY_PATH` (its own Qt 6.8.3 and sysroot) and
+  `QT_PLUGIN_PATH` exported: rc 0, and the process's `environ` holds neither variable.
+* No emulator was left running; the owner's `~/.local/share/EKA2L1` has nothing newer than
+  the run.
