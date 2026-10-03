@@ -3756,3 +3756,69 @@ section 7, post-linked by this branch's elf2e32, compared with the spike's `batc
 bytes uncompressed, −41 and +13 compressed. `DT_NEEDED` is identical except `notes` and
 `query`, where GNU keeps `eikcoctl` (experiment 109 §6: `--as-needed` decided before
 `--gc-sections`); neither image imports from it.
+
+### 5. The one known difference: the exception index
+
+`hello` is 8 bytes larger uncompressed than GNU, and its code is the same. The bytes are
+one `.ARM.exidx` entry (`readelf -u`: GNU 7 entries, lld + stubs 8). It is **not** the
+`__ARMv4PILongBXThunk_RunThread` thunk's entry, as first read: GNU ld has the same 16-byte
+veneer for `_E32Startup`'s conditional `bls RunThread` into Thumb (`.emb_text.__stub`,
+0x10, in its map), and the extra entry's address is the *end* of
+`__cpp_initialize__aeabi_`, where the thunk merely starts. It is lld's terminating
+sentinel. A synthetic link with no thunk at all — `f1` with inline unwind data, then `f2`
+with `.cantunwind` — gives 3 entries from rust-lld (a `CANTUNWIND` sentinel at `f2 + 4`)
+and 2 from GNU ld 2.29.1: lld always closes the table, even after a `CANTUNWIND` entry;
+GNU adds a terminator only when the last entry is not one.
+
+In the larger images a second effect adds to it (entries GNU / lld + stubs: hello 7 / 8,
+async 27 / 30, shim 18 / 21, ui 38 / 42). In `shim`, `_Unwind_GetRegionStart`,
+`_Unwind_GetLanguageSpecificData` and `_Unwind_GetDataRelBase` (libgcc's `pr-support.o`)
+carry the same inline data `0x80a8b0b0`: GNU merges identical adjacent entries inside one
+input `.ARM.exidx`, lld only drops whole input sections that duplicate their predecessor,
+so it keeps two entries GNU merged. The `-Bsymbolic` saving outweighs both in `async` and
+`ui`; in `hello`, `shim`, `alloc`, `time` and `panic` they are the +4 to +20 bytes left.
+
+Attempts (`~/src/rl-scratch/exidx/`: `relink.py <app> <stem> [lld args]` reruns the second
+link and the post-link; `README`):
+
+| attempt | result |
+|---|---|
+| an lld option | none: `--help` has only `--merge-exidx-entries` (the default) and `--no-merge-exidx-entries` |
+| `--no-merge-exidx-entries` | worse: hello 8 → 12 entries, 1 348 → 1 380 bytes; shim 21 → 32 |
+| `--symbol-ordering-file` with `_E32Startup`, so `__cpp_initialize__aeabi_`'s `CANTUNWIND` follows the stubs' and merges | no effect: lld does not reorder the SDK's `.emb_text` input sections (ordering a `.text` symbol, `RunThread`, works) |
+| `--symbol-ordering-file` listing every function with real unwind data first (from the link's own `.ARM.exidx`), so the `CANTUNWIND` runs merge | compensates, does not remove: hello 969 / 1 340 (7 entries), async 18 388 / 33 864, shim 4 455 / 7 096, ui 10 267 / 16 980. Always smaller uncompressed, but compressed `async` grows by 28 bytes against the plain stubs link |
+
+**Decision: the sentinel and the unmerged entries stay, documented as the one known
+difference.** The ordering file moves code away from link order for a few bytes, needs a
+third input from the first link and would need its own emulator proof; it remains an
+option for RL3 if a byte budget ever asks for it.
+
+### 6. In EKA2L1
+
+Each image went in unchanged: `link2.py`'s `final.exe` copied over the spike project's
+`build/<name>.exe`, `symdev package` (this branch's symdev; it packages, it does not build)
+and `symdev run` / `symdev test --emulator`, one run at a time under
+`flock ~/.local/share/EKA2L1/.symdev-agent.lock`, the PID-bound screenshot of
+experiment 109's `runshot.py`, `kill -9` of that PID only. After each run the installed
+`E:\sys\bin\<name>.exe` was `cmp`-equal to `final.exe`. symdev's own post-link of the same
+ELFs gives the same images: `e2e.sh` (the argv `final.exe` is made with) on the GNU ELFs
+gives symdev's GNU `.exe` except the time and the CRC.
+
+| | GNU (experiment 109) | lld + stubs |
+|---|---|---|
+| `hello` | `Trying to display: Hello from Rust SDK (19 chars)` | the same; screenshot 0 pixels from GNU's |
+| leave probe | `lld109 mkdirall=0 trapped=-1 bad=0 ensured=0 sign=-42 alive` | **the same**: the leave is raised through a stubbed `User::Leave`, caught by the shim's `TRAP`, the process goes on; 0 pixels |
+| `ui` | "Bars", `bars=3 keys=0 cmd=0`; F1, F1 → `bars=4 keys=0 cmd=1` | the same; 84 pixels differ before and after, all in the box (527,157)–(554,165): the status-pane clock |
+| `async` | `symdev test --emulator`: 15 passed | **15 passed** (one 300 ms sleep 328 ms; two together 312; in sequence 625; race 109) |
+
+Screenshots: `~/src/rl-scratch/shots/stubs-{hello,shim}-1.png`, `stubs-ui-cmd-{1,2}.png`
+(GNU's: `~/src/rust-lld-spike/shots/`). The fifteen examples of section 4 were linked and
+post-linked, not run.
+
+### 7. Without GCCE
+
+`link2.py --sandbox` and `ex15.py` run both rust-lld links and `import_stubs` inside
+`bwrap --dev-bind / / --tmpfs ~/gcc-builds` under `strace -f -e trace=%file`. **All 19
+programs link with zero accesses to `~/gcc-builds`**; the files opened are rust-lld's own
+libraries, the fixed SDK copies, `prebuilt/lib`, the Rust archives and `stubs.o`. The four
+sandboxed images equal the unsandboxed ones except the time and the CRC.
