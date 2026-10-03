@@ -3895,3 +3895,82 @@ which no lld option removes.
 wrapper: the spike projects cannot be rebuilt, their `Cargo.toml` names the deleted
 spike worktree), `exidx/` (the synthetic link, `relink.py`, `unwound-first.sh`), `cmp/`,
 `golden/`, `shots/`, `runshot.py`. Spike inputs in `~/src/rust-lld-spike/`.
+
+## 113. rust-lld is symdev's Rust linker, and a Rust build needs no GCCE (rust-lld RL3, Rust SDK)
+
+**Question.** With experiment 112's elf2e32 and import stubs in the product and the prebuilt
+shims of `rust-shims` (RL2) in the `rust-sdk` recipe, can `symdev build` link every Rust
+program with rust-lld by default — `SYMDEV_RUST_LINKER=gnu` keeping GNU ld byte for byte —
+make the images experiment 112 made, and build a Rust application on a machine with no GCCE,
+neither installing nor touching it?
+
+**Setup.** Branch `rl-driver` (worktree `~/worktrees/symdev/rl-driver`, from `main`
+`04f8e7d`), 2026-10-03. Binaries: `symdev-main` (release build of a `git archive` of
+`04f8e7d`), `symdev-rl3` (this branch, release), `symdev-rl3-release` (this branch with
+`SYMDEV_RELEASE=1`: no checkout, so the `rust-sdk` package is used). GCCE route: the lead's
+`SYMDEV_EPOCROOT`/`GXX`/`LD`/`GCC_LIB`/`GCC_TARGET_LIB`; rust-lld 23.1.1 of
+`nightly-2026-09-19`. A scratch `SYMDEV_HOME` and `XDG_*` throughout. Scratch:
+`~/src/rl-driver-scratch/` (`README`-style comments head every script).
+
+### 1. What `symdev build` does now
+
+* **The choice.** `RustLinker` (`symdev-build`): `Lld` unless `SYMDEV_RUST_LINKER=gnu`
+  (`lld` or unset is the default; any other value is refused, naming both). The CLI reads the
+  variable and `SYMDEV_RUST_LLD` (`Provision::rust_linker`); nothing below it reads the
+  environment.
+* **rust-lld.** `RustLld::in_sysroot` makes `<sysroot>/lib/rustlib/<host>/bin/rust-lld`
+  from `rustc --print sysroot` and the `host:` line of `rustc -vV`, both run in the project
+  without `RUSTUP_TOOLCHAIN`, so its `rust-toolchain.toml` applies; a missing file is an error
+  naming `SYMDEV_RUST_LLD` and `SYMDEV_RUST_LINKER=gnu`.
+* **GCCE or not.** `RustSdk::prebuilt` is `Some` when the SDK has `prebuilt/` (all four
+  archives, or an error that names the missing one). `RustLinker::needs_gcce`: GNU ld always,
+  rust-lld only without the set. `Provision::toolchain(device, gcce)` then installs and
+  resolves no `gcce` (`Toolchain::gcce` is `Option<GcceTools>`), and `symdev sdk install`
+  without ids resolves (and installs) the Rust SDK first to decide the same.
+* **Shims.** With the set, its `libsymrs_ui.a` (a `[ui]` application, first) and
+  `libsymrs.a`; without it the per-application archive compiled with GCCE as before and, for
+  rust-lld only, rewritten by `Target2Rewrite::archive`.
+* **The line.** `Linker::lld` writes the recorded line for `rust-lld -flavor gnu` with the GCC
+  runtime directories of GCCE, or the set's `lib/` for both; `LldLine::adapt` makes experiment
+  109 §2's changes (drop `--default-symver`; the SDK's `lib`/`urel` → the fixed copies; append
+  `-z notext --target2=abs -Bsymbolic -T symbian-rs/targets/symbian-lld.ld`, and
+  `--defsym=symrs_uid3=0x<uid3>` only for a `[ui]` application with the prebuilt Avkon shim —
+  the compiled one keeps `-DSYMRS_UID3`). The script is the spike's, statement for statement,
+  with product comments (`symbian-rs/targets/`, so the `rust-sdk` recipe, which packs all of
+  `targets/`, ships it).
+* **Two links.** The first writes `<name>.first.elf`; `ImportStubs::from_first_link` →
+  `build/import_stubs.o`; the second is the same argv writing `<name>.elf` with the object
+  after every other input and `--wrap=<f>` per function (`LldLine::second_link`); then
+  `ElfImage::jump_slots` must be empty, else an error naming the symbols. No function → the
+  first ELF is renamed to the result. Both write `<name>.exe.map`.
+* **SDK fixes.** `SdkLldCache::ensure` copies the `-l:` files of the line, fixed
+  (`StrtabPadding` for `.dso`, `Target2Rewrite::archive` for `.lib`), into
+  `$SYMDEV_HOME/cache/sdk-lld/<32 hex>`: SHA-256 of a rules tag, the SDK's canonical path and
+  every file's name and SHA-256. Made by the first link that needs it — `SYMDEV_EPOCROOT`
+  never passes `symdev sdk install`, an SDK installed by an older symdev has no copy, and the
+  content key is never stale — in a staging directory renamed into place. A console and a
+  GUI program name different sets, so one SDK has two directories (`lib` ~20 files).
+* **Byte fixes, public.** `StrtabPadding::zero(&[u8])` and `Target2Rewrite::{object,archive}
+  (&[u8])` live in `symdev-elf2e32` (no I/O, no environment) for the packages recipe's
+  `prebuilt.sh` too. Run on the real SDK (`fixcheck/`): 570 `.dso`, 428 padded, every one
+  byte-equal to experiment 109's `dso-fixed/`; `usrt2_2.lib` 1 rewrite, equal to its
+  `sdk-fixed/urel/`; `eexe.lib` 0.
+
+The captured line of `examples/ui` (`SYMDEV_RUST_LLD` → a logging wrapper,
+`out/argv-ui-dev.txt`) is experiment 109 §5's no-GCCE argv with GCCE's runtime directories and
+the per-application shim; the second link has 144 arguments, 72 + `import_stubs.o` + 71
+`--wrap` (experiment 112's 71 stubs). Its image equals the default run's (masking time and CRC).
+
+### 2. `SYMDEV_RUST_LINKER=gnu` is 0.2.0's link
+
+All 21 `symbian-rs/examples`, built by `symdev-main` in the `04f8e7d` tree and by
+`symdev-rl3` with `SYMDEV_RUST_LINKER=gnu` in the worktree, `SYMDEV_LD` a wrapper that logs
+the argv (`build-all.sh gnu-log`, `cmp-gnu.py`): **the ld argv is identical for all 21** (58
+arguments for a console program, 65 for a GUI one, tree root normalised). The `.exe` files
+(masking the CRC 0x14–0x17 and time 0x24–0x2B) are equal for 17; `net`, `tls`, `std-hello` and
+`std-net` differ because their Rust archives differ between the two trees (same section
+sizes, 8 677 bytes apart in `net`'s ELF: rustc's output depends on the source path).
+Relinked by `symdev-main` in the worktree (`SYMDEV_RUST_SDK` = the worktree's `symbian-rs`,
+so both links take the same inputs, `out/main-gnu-wt`), those four give the branch's images
+too. **GNU on request is byte-identical, 21 of 21.** The unit tests keep pinning the GNU line
+(`rust_build`, `rust_ui`, `libcalls`, `link`: unchanged expectations).
