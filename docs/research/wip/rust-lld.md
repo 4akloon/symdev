@@ -99,6 +99,13 @@ Do NOT edit: `crates/symdev-build/src/driver/{rust_build,libcalls}.rs`, `crates/
   `flock -w 900 ~/.local/share/EKA2L1/.symdev-agent.lock python3 ~/src/rl-scratch/runshot.py
   <work/proj> stubs-<proj> '<regex>' [delay] [keys]` (shots in `~/src/rl-scratch/shots/`).
   `~/src/rl-scratch/stubs/ld-stubs` (a SYMDEV_LD wrapper) is unused for this reason.
+- Step 3 emulator (2026-10-03, this branch's symdev package + runshot, installed exe on E:
+  `cmp`-equal to `stubs/<proj>/final.exe` each time):
+  hello: `Trying to display: Hello from Rust SDK (19 chars)`; shot 0 px from gnu-hello-1.
+  shim (leave probe): `lld109 mkdirall=0 trapped=-1 bad=0 ensured=0 sign=-42 alive`; 0 px.
+  ui: "Bars", `bars=3 keys=0 cmd=0`; F1 F1 → `bars=4 keys=0 cmd=1`; vs gnu-ui-cmd-{1,2}:
+  84 px each, all in bbox (527,157)-(554,165) = the status-pane clock. Shots:
+  `~/src/rl-scratch/shots/stubs-{hello,shim}-1.png`, `stubs-ui-cmd-{1,2}.png`.
 ## Dead ends
 - lld options for an 8-byte PLT: none. `.plt`/`.got` stay 0x120/0x4c on hello with each of
   `-z now`, `-z lazy`, `--pic-veneer`, `-z noseparate-code`, `--no-rosegment`,
