@@ -149,6 +149,9 @@ Scratch: `~/src/emu-pkg-scratch/`. Read-only observations go to experiment 115 �
   install.sh, two file:// sources) + gates + push symdev cargo-run → STOP L1; 16 = pin
   artifact.toml to CI run, rebuild, rerun 13/15 → STOP L2–L4; lead real-bucket acceptance.
 
+- All 16 tasks + lead acceptance written and committed.
+
 ## Next step
 
-Write Tasks 13–16 and the lead's acceptance into the plan; then self-review.
+Self-review the plan against the spec (coverage, placeholders, type consistency, review
+focus), fix inline, commit, push cargo-run, hand back.
