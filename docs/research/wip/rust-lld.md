@@ -90,6 +90,15 @@ Do NOT edit: `crates/symdev-build/src/driver/{rust_build,libcalls}.rs`, `crates/
   Conclusion: the one known difference is lld's terminating exidx sentinel (+8 B
   uncompressed) plus identical adjacent entries inside one input `.ARM.exidx` that lld
   does not merge (libgcc unwinder in shim/async/ui); no lld option removes either.
+- Step 3 setup: the spike work dirs cannot be rebuilt (their Cargo.toml names the deleted
+  spike worktree's symbian-rs; this branch's symdev refuses the absolute path). `symdev
+  package` does not rebuild, it packages build/<name>.exe; e2e.sh output == symdev's own
+  GNU .exe for all four (only 0x14-0x17, 0x24-0x27 = time/CRC differ). So: copy
+  `stubs/<proj>/final.exe` → `work/<proj>/build/<name>.exe`, `$S package` (S = this
+  branch's symdev, `~/src/rl-scratch/target/debug/symdev`), then
+  `flock -w 900 ~/.local/share/EKA2L1/.symdev-agent.lock python3 ~/src/rl-scratch/runshot.py
+  <work/proj> stubs-<proj> '<regex>' [delay] [keys]` (shots in `~/src/rl-scratch/shots/`).
+  `~/src/rl-scratch/stubs/ld-stubs` (a SYMDEV_LD wrapper) is unused for this reason.
 ## Dead ends
 - lld options for an 8-byte PLT: none. `.plt`/`.got` stay 0x120/0x4c on hello with each of
   `-z now`, `-z lazy`, `--pic-veneer`, `-z noseparate-code`, `--no-rosegment`,
