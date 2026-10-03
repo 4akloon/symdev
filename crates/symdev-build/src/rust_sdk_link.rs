@@ -80,8 +80,9 @@ impl RustSdkLink {
         }
         let parent = self.link.parent().unwrap_or(Path::new("."));
         std::fs::create_dir_all(parent).map_err(|e| Self::io(parent, e))?;
-        let fresh = parent.join(format!("rust-sdk.{}.tmp", std::process::id()));
-        // A leftover of a build that was killed here; there is nothing else at this name.
+        // One name for every build, so one killed here leaves the next a link to replace,
+        // never a pile of them; nothing but symdev puts anything at this name.
+        let fresh = self.link.with_extension("tmp");
         let _ = std::fs::remove_file(&fresh);
         std::os::unix::fs::symlink(tree, &fresh).map_err(|e| Self::io(&fresh, e))?;
         std::fs::rename(&fresh, &self.link).map_err(|e| Self::io(&self.link, e))

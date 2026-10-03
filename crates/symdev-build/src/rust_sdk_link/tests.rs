@@ -174,3 +174,23 @@ fn a_project_beside_the_tree_gets_its_link() {
     RustSdkLink::of(&root).point_at(&sdk).unwrap();
     assert!(fs::read_link(root.join("build/rust-sdk")).is_ok());
 }
+
+/// A build killed between making the temporary link and renaming it leaves it behind; the
+/// next build's swap goes through the same name, so nothing piles up (review 0.2.0, minor 3).
+#[test]
+fn a_temporary_link_a_killed_build_left_is_replaced() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sdk = sdk_tree(&tmp.path().join("rust-sdk/0.2.0"), "symbian-rs");
+    let root = project(tmp.path());
+    fs::create_dir_all(root.join("build")).unwrap();
+    std::os::unix::fs::symlink(tmp.path().join("gone"), root.join("build/rust-sdk.tmp")).unwrap();
+    RustSdkLink::of(&root).point_at(&sdk).unwrap();
+    let target = fs::read_link(root.join("build/rust-sdk")).unwrap();
+    assert_eq!(target, sdk.root().parent().unwrap());
+    let mut names: Vec<_> = fs::read_dir(root.join("build"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["rust-sdk"]);
+}
