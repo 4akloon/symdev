@@ -1602,3 +1602,167 @@ git add crates/symdev-emulator/src/device.rs crates/symdev-emulator/src/device/f
 git add <each test file step 4 changed, by name>
 git commit -m "Make an emulator profile from a firmware package, refuse one whose firmware is gone, and read the user's EKA2L1 data only through SYMDEV_EKA2L1_DATA."
 ```
+
+### Task 8: The EKA2L1 to start: the user's or the package's
+
+**Files:**
+- Create: `crates/symdev-emulator/src/device/eka2l1.rs` (`Eka2l1`, with its tests)
+- Modify: `crates/symdev-emulator/src/device.rs` (`mod eka2l1; pub use eka2l1::Eka2l1;`)
+- Modify: `crates/symdev-emulator/src/device/emulator_instance.rs` (`start`, `has_control` take `&Eka2l1`)
+- Modify: `crates/symdev-emulator/src/lib.rs` (delete `Eka2l1Backend`)
+- Modify: `crates/symdev-emulator/src/device/tests/firmware.rs` (Task 7's `start` call)
+- Modify: `crates/symdev-cli/src/devices_cmd.rs`, `crates/symdev-cli/src/run/device_pick.rs`
+  (only so the workspace builds; Task 9 replaces it)
+
+**Interfaces:**
+- Produces: `Eka2l1::User(PathBuf)`, `Eka2l1::Package(PathBuf)`, `.program() -> &Path`,
+  `.prepare(&self, command: &mut std::process::Command)`, `.describe() -> String`,
+  `Eka2l1::HOST_LIBRARY_VARIABLES`; `EmulatorInstance::start(eka2l1: &Eka2l1, profile:
+  &EmulatorProfile, registry: &DeviceRegistry) -> Result<RegistryEntry>`,
+  `EmulatorInstance::has_control(eka2l1: &Eka2l1) -> Result<bool>`.
+
+- [ ] **Step 1: Write the failing tests** at the end of `eka2l1.rs`
+
+```rust
+#[cfg(test)]
+mod tests {
+    use std::process::Command;
+
+    use super::Eka2l1;
+
+    fn removed(c: &Command) -> Vec<String> {
+        let mut names: Vec<String> = c
+            .get_envs()
+            .filter(|(_, value)| value.is_none())
+            .map(|(name, _)| name.to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn a_packaged_eka2l1_does_not_inherit_the_hosts_library_paths() {
+        let mut c = Command::new("setsid");
+        Eka2l1::Package("/p/usr/bin/eka2l1_qt".into()).prepare(&mut c);
+        assert_eq!(removed(&c), ["LD_LIBRARY_PATH", "QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH"]);
+    }
+
+    #[test]
+    fn the_users_eka2l1_keeps_its_environment() {
+        let mut c = Command::new("setsid");
+        Eka2l1::User("/home/u/.local/bin/eka2l1".into()).prepare(&mut c);
+        assert_eq!(c.get_envs().count(), 0);
+    }
+
+    #[test]
+    fn each_says_where_it_comes_from() {
+        let user = Eka2l1::User("/u/eka2l1".into()).describe();
+        assert_eq!(user, "SYMDEV_EKA2L1 (/u/eka2l1)");
+        let package = Eka2l1::Package("/h/emulator/2026.10.04/usr/bin/eka2l1_qt".into()).describe();
+        assert_eq!(package, "the emulator package's /h/emulator/2026.10.04/usr/bin/eka2l1_qt");
+    }
+}
+```
+
+Run `cargo test -p symdev-emulator --offline eka2l1 > /tmp/t8.log 2>&1; grep -E "^error|test result"
+/tmp/t8.log` (declare `mod eka2l1;` in `device.rs` first). Expected: `cannot find type Eka2l1`.
+
+- [ ] **Step 2: Implement** `crates/symdev-emulator/src/device/eka2l1.rs` (above the tests)
+
+```rust
+//! `Eka2l1`: the EKA2L1 symdev starts (emulator packages spec §5): the user's own, named by
+//! `SYMDEV_EKA2L1` and started as it is, or an installed `emulator` package's program.
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Eka2l1 {
+    /// `SYMDEV_EKA2L1`: a binary or the user's wrapper, with the user's environment.
+    User(PathBuf),
+    /// `<package>/usr/bin/eka2l1_qt` of an installed `emulator` package (experiment 115 §1.2).
+    Package(PathBuf),
+}
+
+impl Eka2l1 {
+    /// What a packaged EKA2L1 must not inherit: these make the loader and Qt take the host's
+    /// libraries and plugins before the bundled ones. Nothing else changes, so GL settings
+    /// in the user's environment still reach it.
+    pub const HOST_LIBRARY_VARIABLES: [&'static str; 3] =
+        ["LD_LIBRARY_PATH", "QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH"];
+
+    pub fn program(&self) -> &Path {
+        match self {
+            Eka2l1::User(program) | Eka2l1::Package(program) => program,
+        }
+    }
+
+    /// Readies `command`, which runs [`Self::program`] (directly or through `setsid`):
+    /// the package's loses the host's library paths, the user's keeps everything.
+    pub fn prepare(&self, command: &mut Command) {
+        if let Eka2l1::Package(_) = self {
+            for name in Self::HOST_LIBRARY_VARIABLES {
+                command.env_remove(name);
+            }
+        }
+    }
+
+    /// Where it comes from, for messages.
+    pub fn describe(&self) -> String {
+        match self {
+            Eka2l1::User(p) => format!("SYMDEV_EKA2L1 ({})", p.display()),
+            Eka2l1::Package(p) => format!("the emulator package's {}", p.display()),
+        }
+    }
+}
+```
+
+`emulator_instance.rs`:
+- `start(eka2l1: &Eka2l1, …)`: after `profile.check()?`, build the command as
+  `let argv = Self::argv(eka2l1.program(), profile.dir(), &socket); let mut command =
+  Command::new(&argv[0]); command.args(&argv[1..]); eka2l1.prepare(&mut command);`, then the
+  existing `.stdin(…).stdout(out).stderr(err).spawn()` on `command`. Every `eka2l1.display()`
+  in its messages becomes `eka2l1.program().display()`.
+- `has_control(eka2l1: &Eka2l1)`: `let mut probe = Command::new(eka2l1.program());
+  eka2l1.prepare(&mut probe);` before the existing `XAUTHORITY` lines. Messages likewise.
+- `argv` keeps its `&Path` signature: its test stays as it is.
+
+`lib.rs`: delete `Eka2l1Backend` and its `impl`, and the `use std::path::PathBuf;` and
+`use symdev_core::{Error, Result};` lines if nothing else uses them. Change the module doc's
+first line to `//! EKA2L1 as a separate process (GPL-3.0: never linked or vendored): the
+devices symdev starts and the control protocol.`
+
+Task 7's test calls `EmulatorInstance::start(&Eka2l1::User("/nonexistent/eka2l1".into()), &p,
+&registry)` now.
+
+- [ ] **Step 3: Keep the CLI building**
+
+In `devices_cmd.rs`, `eka2l1_with_control()` returns `Result<Eka2l1>`. Its first line
+becomes the CLI's own reading of the variable, until Task 9:
+
+```rust
+    let eka2l1 = match std::env::var_os("SYMDEV_EKA2L1").filter(|v| !v.is_empty()) {
+        Some(program) => Eka2l1::User(PathBuf::from(program)),
+        None => {
+            return Err(Error::Other(
+                "missing emulator: SYMDEV_EKA2L1 (path to eka2l1_qt or a wrapper)".into(),
+            ));
+        }
+    };
+```
+
+Its `has_control(&eka2l1)` error names `eka2l1.describe()` instead of the hard-coded
+"SYMDEV_EKA2L1 (…)". `start()` and `device_pick.rs` pass `&eka2l1`.
+
+- [ ] **Step 4: Run the tests and the gates** (Task 4 step 4's three commands). Expected:
+  all pass; `crates/symdev-cli/tests/run.rs`'s SYMDEV_EKA2L1 test still finds
+  `SYMDEV_EKA2L1` in the error.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add crates/symdev-emulator/src/device.rs crates/symdev-emulator/src/device/eka2l1.rs \
+  crates/symdev-emulator/src/device/emulator_instance.rs crates/symdev-emulator/src/lib.rs \
+  crates/symdev-emulator/src/device/tests/firmware.rs crates/symdev-cli/src/devices_cmd.rs \
+  crates/symdev-cli/src/run/device_pick.rs
+git commit -m "Start either the user's EKA2L1 as it is or a packaged one without the host's library paths."
+```
