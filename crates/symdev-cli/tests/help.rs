@@ -41,3 +41,14 @@ fn no_args_prints_help() {
 fn doctor_is_unknown_subcommand() {
     bin().arg("doctor").assert().failure().code(2);
 }
+
+/// `symdev --version` names the release, so a user can tell which symdev `install.sh` left
+/// on the PATH (0.3.0's acceptance found the flag missing).
+#[test]
+fn version_names_the_release() {
+    bin()
+        .arg("--version")
+        .assert()
+        .success()
+        .stdout(format!("symdev {}\n", env!("CARGO_PKG_VERSION")));
+}
