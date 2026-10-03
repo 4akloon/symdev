@@ -261,3 +261,9 @@ NEXT: Task 10 — `task-start <plan> 10` (EKA2L1 with --control/--data-dir; prof
   copy per topic) overrides the plan's "merge into integration's symdev". Build dir
   `~/src/EKA2L1-wt-build/cargo-run`, script `build.sh` there (configure like integration),
   background PID 130544, log `build.log` (ends EXIT=<rc>).
+  Build EXIT=0 (1458 steps). Wrapper `~/src/cargo-run-scratch/bin/eka2l1-symdev` (= ~/.local/bin/eka2l1
+  env, exec the cargo-run build); `--help` lists `--data-dir` and `--control`.
+  INCIDENT: that `--help` ran with no `--data-dir`, so the frontend used the user's default
+  folder and ROTATED its logs (~/.local/share/EKA2L1/EKA2L1.log rewritten 18:36:01; the old
+  EKA2L1_TakeThis.log of 16:39, 48 067 B, was replaced by the 17:03 log). config.yml and data/
+  untouched. Lesson: always pass `--data-dir <scratch>`, even for `--help`. Report to the owner.
