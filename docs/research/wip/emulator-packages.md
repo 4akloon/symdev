@@ -9,10 +9,10 @@ Scratch: `~/src/emu-pkg-scratch/`. Read-only observations go to experiment 115 �
 
 ## Status
 
-- [ ] read inputs (spec, cargo-run spec/plan/wip, toolchain spec §12 §15, real code)
-- [ ] read symdev-packages (publish/, recipes/gcce/12.1.0, workflows, install.sh)
-- [ ] read EKA2L1 copies and fork CI build.yml
-- [ ] experiment 115 §1 observations
+- [x] read inputs (spec, cargo-run spec/plan/wip, toolchain spec §1 §2 §4 §5 §6 §12, real code)
+- [x] read symdev-packages (publish/, recipes/gcce/12.1.0, workflows)
+- [x] read EKA2L1 copies and fork CI build.yml
+- [x] experiment 115 §1 written + committed (experiment-backlog.md end)
 - [ ] plan written, self-reviewed, committed, pushed
 
 ## Facts
@@ -79,9 +79,27 @@ Scratch: `~/src/emu-pkg-scratch/`. Read-only observations go to experiment 115 �
   (recipes/symdev/**), tests.yml. Supported host floor: glibc 2.28 (gcce on AlmaLinux 8).
 
 ## Decisions
+- Plan has an owner decision D1 (corresponding source + licence field + CLAUDE.md's
+  "GPL/MIT only" wording vs a bundle of many free licences). Recommend A: symdev-only CI
+  commit on the integration branch writes the bundled Ubuntu packages+versions; recipe
+  fetches their sources by exact version from Launchpad; one source archive.
+- glibc floor 2.38 vs symdev's 2.28: finding for the owner (spec says so), recorded in recipe.
+- Start `usr/bin/eka2l1_qt` (comm), not AppRun. Package route strips LD_LIBRARY_PATH,
+  QT_PLUGIN_PATH, QT_QPA_PLATFORM_PLUGIN_PATH from the child env (host Qt must not load into
+  the bundle); SYMDEV_EKA2L1 route untouched.
+- Types: symdev-sdk `EmulatorPackage`, `FirmwarePackage` (like PlatformSdk), `Pins::emulator()`,
+  `Pins::firmware(device)`; symdev-emulator `Eka2l1` enum (User/Package), `Firmware` enum
+  (UserData/Package), `EmulatorProfile::create(&Firmware)`; CLI `Provision::eka2l1()`,
+  `Provision::firmware()` in provision/emulator.rs; catalog bypass hint per kind.
+  Delete `Eka2l1Backend` and `EmulatorData::from_env` (default ~/.local/share/EKA2L1 route
+  goes: spec says SYMDEV_EKA2L1_DATA only).
+- Phases: A implementers (integration rebuild local, docker CI rehearsal, symdev code,
+  recipes, firmware observation with local cargo-run EKA2L1, staged acceptance with the
+  rehearsal AppImage) → L1 lead push fork → B implementers (pin recipe to the CI artifact,
+  exp 115 §2 with it) → L2 public publish, L3 private publish, L4 packages push (lead).
 
 ## Dead ends
 
 ## Next step
 
-Read the inputs.
+Write the plan: header, D1, global constraints, review focus, file map, then tasks.
