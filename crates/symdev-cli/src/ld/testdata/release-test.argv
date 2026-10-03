@@ -1,0 +1,13 @@
+/work/app/build/cargo/arm-symbian-e32/release/build/app/4f71ac116363b7c1/out/smoke-4f71ac116363b7c1.smoke.8fa819f7a81627d9-cgu.0.rcgu.o
+--as-needed
+-Bstatic
+/work/app/build/cargo/arm-symbian-e32/release/build/compiler_builtins/af926986b8385648/out/libcompiler_builtins-af926986b8385648.rlib
+-L
+/work/app/build/cargo/arm-symbian-e32/release/build/app/4f71ac116363b7c1/out/rustcXXXXXX/raw-dylibs
+-Bdynamic
+-z
+noexecstack
+-o
+/work/app/build/cargo/arm-symbian-e32/release/build/app/4f71ac116363b7c1/out/smoke-4f71ac116363b7c1
+--gc-sections
+--strip-debug

@@ -2,6 +2,8 @@ mod artifacts;
 mod build_cmd;
 mod build_dir;
 mod cli;
+#[allow(dead_code, unused_imports)] // Task 4 wires the symdev-ld role
+mod ld;
 mod provision;
 mod scaffold;
 mod scaffold_rust;

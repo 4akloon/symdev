@@ -185,7 +185,7 @@ all before it.
     `work_dir()` (`<out>.symdev`), `sisx()` (`<out>.sisx`), `record()`
     (`<out>.symdev.toml`).
 
-- [ ] **Step 1: Copy the fixtures and check them**
+- [x] **Step 1: Copy the fixtures and check them**
 
 ```bash
 mkdir -p crates/symdev-cli/src/ld/testdata
@@ -236,7 +236,7 @@ CARGO_TARGET_TMPDIR=/work/app/build/cargo/arm-symbian-e32/tmp
 RUSTUP_TOOLCHAIN=nightly-2026-09-19-x86_64-unknown-linux-gnu
 ```
 
-- [ ] **Step 2: Write the failing tests** — `crates/symdev-cli/src/ld/tests.rs`
+- [x] **Step 2: Write the failing tests** — `crates/symdev-cli/src/ld/tests.rs`
 
 ```rust
 use std::ffi::OsString;
@@ -352,12 +352,12 @@ fn an_output_outside_cargos_observed_layout_is_refused() {
 }
 ```
 
-- [ ] **Step 3: Run the tests to see them fail**
+- [x] **Step 3: Run the tests to see them fail**
 
 Run: `cargo test -p symdev-cli --offline ld::tests`
 Expected: compile errors, `LinkerArgs`, `CargoLinkEnv`, `LinkKind`, `CargoOutput` not found.
 
-- [ ] **Step 4: Implement** — `crates/symdev-cli/src/ld.rs`
+- [x] **Step 4: Implement** — `crates/symdev-cli/src/ld.rs`
 
 ```rust
 //! The `symdev-ld` role: cargo's linker for `arm-symbian-e32` (design spec §4).
@@ -572,13 +572,13 @@ Add `mod ld;` to `crates/symdev-cli/src/main.rs`, after `mod cli;`. The module i
 `main` until Task 4; add `#[allow(dead_code)]` on the `mod ld;` line with the comment `//
 Task 4 wires the symdev-ld role`, and remove it in Task 4.
 
-- [ ] **Step 5: Run the tests to see them pass**
+- [x] **Step 5: Run the tests to see them pass**
 
 Run: `cargo test -p symdev-cli --offline ld::tests`
 Expected: 10 passed. Then `cargo fmt --all` and `cargo clippy -p symdev-cli --all-targets
 --offline` — zero warnings.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add crates/symdev-cli/src/main.rs crates/symdev-cli/src/ld.rs crates/symdev-cli/src/ld

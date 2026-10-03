@@ -186,3 +186,11 @@ uid3!/report! macros; 6 symbian-test crate; 7 project shape + symdev new; 8 migr
 - Plan progress: header, D1, review focus, file map, Tasks 1–6 written and committed.
   NEXT: Task 7 (scaffold) … 19. Design notes for the rest are in the task list above;
   runner liveness test trick: a symlink named `eka2l1-fake` → /bin/sleep gives /proc comm.
+
+## Phase 3 — execution (D1 = A; one agent, superpowers:executing-plans, tasks 1 → 19)
+Ledger (git-ignored): `.superpowers/sdd/2026-10-03-cargo-build-run/progress.md`. Tick helper:
+`~/src/cargo-run-scratch/exec/tick.sh N`. Scratch for this phase: `~/src/cargo-run-scratch/exec/`.
+- Task 1 done: `ld/` types + fixtures (hashes match). Ruling: `mod ld;` gets
+  `#[allow(dead_code, unused_imports)]` (plan said dead_code only; the re-exports warn) — Task 4
+  removes it.
+NEXT: Task 2 — `task-start <plan> 2`, read brief, `cargo test -p symdev-build --offline rustc_link`.
