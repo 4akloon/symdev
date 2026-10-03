@@ -3974,3 +3974,54 @@ Relinked by `symdev-main` in the worktree (`SYMDEV_RUST_SDK` = the worktree's `s
 so both links take the same inputs, `out/main-gnu-wt`), those four give the branch's images
 too. **GNU on request is byte-identical, 21 of 21.** The unit tests keep pinning the GNU line
 (`rust_build`, `rust_ui`, `libcalls`, `link`: unchanged expectations).
+
+### 3. Sizes: rust-lld by default
+
+Every `symbian-rs/examples` member built twice more in the worktree with `symdev-rl3`: by
+default — rust-lld, the shims compiled by GCCE (the checkout has no `prebuilt/`) — and on the
+**prebuilt route**: the staged `rust-sdk` tree of section 4 (`SYMDEV_RUST_SDK` = its
+`symbian-rs`, with run1's `prebuilt/`), every GCCE variable unset (`build-all.sh lld` /
+`pre`). All 21 link, post-link and package. `.exe` compressed / uncompressed
+(`iCodeOffset + iUncompressedSize`, what `elf2e32 --uncompressed` writes; `table113.py`):
+
+| example | GNU ld | rust-lld, checkout | rust-lld, prebuilt set | exp. 112 lld + stubs |
+|---|---:|---:|---:|---:|
+| `hello` | 968 / 1 340 | 975 / 1 348 | 975 / 1 348 | 975 / 1 348 |
+| `async` | 18 431 / 33 948 | 18 360 / 33 892 | 18 360 / 33 892 | 18 360 / 33 892 |
+| `ui` | 10 315 / 17 092 | 10 288 / 17 028 | 10 288 / 17 028 | 10 288 / 17 028 |
+| `shim` | 4 450 / 7 092 | 4 461 / 7 112 | 4 461 / 7 112 | — |
+| `hello-raw` | 805 / 1 080 | 807 / 1 084 | 807 / 1 084 | 807 / 1 084 |
+| `alloc` | 3 765 / 5 932 | 3 774 / 5 940 | 3 774 / 5 940 | 3 774 / 5 940 |
+| `spawnee` | 2 606 / 4 408 | 2 609 / 4 412 | 2 609 / 4 412 | 2 609 / 4 412 |
+| `files` | 8 288 / 14 292 | 8 289 / 14 292 | 8 289 / 14 292 | 8 289 / 14 292 |
+| `cleanup` | 4 265 / 6 824 | 4 272 / 6 828 | 4 272 / 6 828 | 4 272 / 6 828 |
+| `atomics` | 8 837 / 15 920 | 8 796 / 15 848 | 8 796 / 15 848 | 8 796 / 15 848 |
+| `time` | 10 146 / 16 544 | 10 159 / 16 552 | 10 159 / 16 552 | 10 159 / 16 552 |
+| `net` | 10 506 / 17 624 | 10 504 / 17 616 | **10 506 / 17 616** | 10 504 / 17 616 |
+| `tls` | 13 978 / 25 944 | 13 938 / 25 920 | **13 920 / 25 920** | 13 938 / 25 920 |
+| `ui-list` | 11 194 / 18 636 | 11 158 / 18 580 | 11 158 / 18 580 | 11 158 / 18 580 |
+| `notes` | 11 465 / 19 072 | **11 435 / 19 020** | 11 426 / 19 012 | 11 426 / 19 012 |
+| `query` | 12 673 / 20 992 | 12 642 / 20 936 | 12 642 / 20 936 | 12 642 / 20 936 |
+| `panic` | 2 018 / 2 964 | 2 029 / 2 972 | 2 029 / 2 972 | 2 029 / 2 972 |
+| `fmt` | 107 777 / 262 416 | 107 754 / 262 412 | 107 754 / 262 412 | 107 754 / 262 412 |
+| `locale` | 8 122 / 13 296 | 8 109 / 13 288 | 8 109 / 13 288 | 8 109 / 13 288 |
+| `std-hello` | 70 442 / 124 324 | 70 402 / 124 216 | 70 356 / 124 216 | — |
+| `std-net` | 51 611 / 92 876 | 51 602 / 92 768 | 51 454 / 92 776 | — |
+
+**On the prebuilt route — experiment 112's own inputs — every uncompressed size equals
+experiment 112's.** The checkout route equals it in both columns for 17 of 18 and for the
+scaffold `hello` (975 / 1 348) and the leave probe (`apps/probe`, 4 464 / 7 112). The GNU
+column equals experiment 112's GNU column throughout. The bold cells:
+
+* **`notes`, checkout, +8 uncompressed.** One more `.ARM.exidx` entry (42 against 41, `readelf
+  -u`): `__gnu_thumb1_case_uqi`'s `CANTUNWIND`. GCCE's whole `libgcc.a` holds
+  `_thumb1_case_uqi.o` before `pr-support.o`, so the member lands right after
+  `__gxx_personality_v0`, whose entry is not `CANTUNWIND`, and stays; in the prebuilt
+  `libgcc.a` it comes after `pr-support.o` and merges (experiment 112 §5's effect). The
+  prebuilt route gives 11 426 / 19 012.
+* **`net` +2 and `tls` −18, prebuilt route, compressed only.** The staged tree lies at another
+  path, and rustc's output depends on the source path (the same cause as section 2's four
+  GNU images): same sizes, other bytes, another deflate.
+* `std-hello` and `std-net` are not in experiment 112. `std-net`'s two rust-lld images differ
+  by 8 bytes of `.rodata` (0x3de0 / 0x3de8: source-path strings), with 24 exception-index
+  entries each.
