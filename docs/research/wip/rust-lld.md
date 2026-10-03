@@ -69,6 +69,27 @@ Do NOT edit: `crates/symdev-build/src/driver/{rust_build,libcalls}.rs`, `crates/
   input `.ARM.exidx`, lld only drops whole duplicate input sections — plus the sentinel.
   Sizes unchanged from the first table (hello 968|975|1044 …; uncompressed hello 1340|1348,
   shim 7092|7112).
+- Step 2 attempts (scripts `~/src/rl-scratch/exidx/`: `relink.py <proj> <stem> [lld args]`
+  reruns the stubs second link + post-link; `unwound-first.sh <elf>`; README):
+  1. Synthetic proof, no thunk (`a.s`: f1 inline unwind, f2 `.cantunwind`): rust-lld writes 3
+     entries (sentinel CANTUNWIND at f2+4), GNU ld 2.29.1 writes 2. The sentinel is
+     unconditional in lld, even after a CANTUNWIND entry.
+  2. `--no-merge-exidx-entries`: worse (hello 8→12 entries, 1348→1380 B uncompressed; shim
+     21→32). lld has no other exidx option (`--help`: only merge/no-merge).
+  3. `--symbol-ordering-file` with `_E32Startup` (to let `__cpp_initialize__aeabi_`'s
+     CANTUNWIND merge into the stubs' run): no effect — lld does not reorder the SDK's
+     `.emb_text` input sections (ordering a `.text` symbol, `RunThread`, does work).
+  4. `--symbol-ordering-file` = every function with a real unwind entry first (from the
+     link's own exidx, `unwound-first.sh`): the CANTUNWIND runs then merge, compensating
+     the sentinel. GNU | stubs | stubs+order (.exe / uncompressed / exidx entries):
+     hello 968/1340/7 | 975/1348/8 | 969/1340/7; async 18431/33948/27 | 18360/33892/30 |
+     18388/33864/26; shim 4452/7092/18 | 4464/7112/21 | 4455/7096/19; ui 10315/17092/38 |
+     10288/17028/42 | 10267/16980/36. Uncompressed always smaller, compressed mixed (async
+     +28 vs default order). Decision: NOT adopted — it moves code away from link order for
+     a few bytes and needs its own EKA2L1 proof; documented in exp 112 as an optional knob.
+  Conclusion: the one known difference is lld's terminating exidx sentinel (+8 B
+  uncompressed) plus identical adjacent entries inside one input `.ARM.exidx` that lld
+  does not merge (libgcc unwinder in shim/async/ui); no lld option removes either.
 ## Dead ends
 - lld options for an 8-byte PLT: none. `.plt`/`.got` stay 0x120/0x4c on hello with each of
   `-z now`, `-z lazy`, `--pic-veneer`, `-z noseparate-code`, `--no-rosegment`,
@@ -77,7 +98,7 @@ Do NOT edit: `crates/symdev-build/src/driver/{rust_build,libcalls}.rs`, `crates/
   padding) + 4 B `.got.plt` slot, header 32 B + 3 reserved GOT words.
 
 ## Next step (resume 3, 2026-10-03)
-Steps: (1) confirm lld golden test + all goldens pass (`cargo test -p symdev-elf2e32 --offline`,
+Steps 1-2 DONE. Steps: (1) confirm lld golden test + all goldens pass (`cargo test -p symdev-elf2e32 --offline`,
 CARGO_TARGET_DIR=~/src/rl-scratch/target); (2) hello +7 B exidx thunk: try link order / lld
 options, record each; (3) prove hello/async/leave probe/ui with stubs in EKA2L1 + bwrap no-GCCE
 + 15 examples; (4) rebase on main, experiment 112 in backlog; (5) gates.
