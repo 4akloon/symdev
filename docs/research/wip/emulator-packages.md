@@ -200,4 +200,6 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
 - [x] Task 7: Firmware enum, EmulatorProfile::create(&Firmware) (package: links, empty C/D/E,
   one-line config), check() before start, EmulatorData::from_env deleted; devices_cmd reads
   SYMDEV_EKA2L1_DATA directly until Task 9. Gates green (55 ok, clippy 0, fmt ok).
-- [ ] Task 8: next (Eka2l1 enum User/Package, env stripping, EmulatorInstance::start(&Eka2l1)).
+- [x] Task 8: Eka2l1 enum (User/Package; Package strips LD_LIBRARY_PATH, QT_PLUGIN_PATH,
+  QT_QPA_PLATFORM_PLUGIN_PATH), start/has_control take &Eka2l1, Eka2l1Backend deleted. Gates green.
+- [ ] Task 9: next (Provision::eka2l1/firmwares, lazy profiles, CLI wiring, tests/emulator_packages.rs).

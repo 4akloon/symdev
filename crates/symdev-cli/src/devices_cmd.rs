@@ -9,7 +9,8 @@ use symdev_core::{Error, Result};
 use symdev_emulator::EmulatorData;
 use symdev_emulator::control::ControlClient;
 use symdev_emulator::device::{
-    DeviceId, DeviceRegistry, EmulatorInstance, EmulatorProfile, Firmware, RegistryEntry, is_eka2l1,
+    DeviceId, DeviceRegistry, Eka2l1, EmulatorInstance, EmulatorProfile, Firmware, RegistryEntry,
+    is_eka2l1,
 };
 
 /// How long a liveness probe waits for `emulator.info`: a wedged emulator must not hang
@@ -85,13 +86,20 @@ impl Devices {
 }
 
 /// `SYMDEV_EKA2L1`, which must have the control server.
-pub(crate) fn eka2l1_with_control() -> Result<PathBuf> {
-    let eka2l1 = symdev_emulator::Eka2l1Backend::from_env()?.eka2l1;
+pub(crate) fn eka2l1_with_control() -> Result<Eka2l1> {
+    let eka2l1 = match std::env::var_os("SYMDEV_EKA2L1").filter(|v| !v.is_empty()) {
+        Some(program) => Eka2l1::User(PathBuf::from(program)),
+        None => {
+            return Err(Error::Other(
+                "missing emulator: SYMDEV_EKA2L1 (path to eka2l1_qt or a wrapper)".into(),
+            ));
+        }
+    };
     if !EmulatorInstance::has_control(&eka2l1)? {
         return Err(Error::Other(format!(
-            "SYMDEV_EKA2L1 ({}) has no --control: cargo run needs an EKA2L1 with the control \
-             server (EKA2L1#770–#772, our fork's symdev branch)",
-            eka2l1.display()
+            "{} has no --control: cargo run needs an EKA2L1 with the control server \
+             (EKA2L1#770–#772, our fork's symdev branch)",
+            eka2l1.describe()
         )));
     }
     Ok(eka2l1)

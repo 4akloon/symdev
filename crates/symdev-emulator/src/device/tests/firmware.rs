@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::EmulatorData;
-use crate::device::{DeviceRegistry, EmulatorInstance, EmulatorProfile, Firmware};
+use crate::device::{DeviceRegistry, Eka2l1, EmulatorInstance, EmulatorProfile, Firmware};
 
 /// An installed `firmware;rm-469;1` as Task 5's stage.sh makes it.
 fn package(root: &Path) -> Firmware {
@@ -74,7 +74,7 @@ fn a_profile_whose_package_is_gone_is_refused_before_start() {
     );
     assert!(e.contains(&p.dir().display().to_string()), "{e}");
     let registry = DeviceRegistry::at(run.path().join("devices"));
-    let start = EmulatorInstance::start(Path::new("/nonexistent/eka2l1"), &p, &registry)
+    let start = EmulatorInstance::start(&Eka2l1::User("/nonexistent/eka2l1".into()), &p, &registry)
         .unwrap_err()
         .to_string();
     assert_eq!(start, e, "start must refuse before it runs anything");

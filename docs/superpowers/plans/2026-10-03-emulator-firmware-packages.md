@@ -1643,7 +1643,7 @@ git commit -m "Make an emulator profile from a firmware package, refuse one whos
   &EmulatorProfile, registry: &DeviceRegistry) -> Result<RegistryEntry>`,
   `EmulatorInstance::has_control(eka2l1: &Eka2l1) -> Result<bool>`.
 
-- [ ] **Step 1: Write the failing tests** at the end of `eka2l1.rs`
+- [x] **Step 1: Write the failing tests** at the end of `eka2l1.rs`
 
 ```rust
 #[cfg(test)]
@@ -1689,7 +1689,7 @@ mod tests {
 Run `cargo test -p symdev-emulator --offline eka2l1 > /tmp/t8.log 2>&1; grep -E "^error|test result"
 /tmp/t8.log` (declare `mod eka2l1;` in `device.rs` first). Expected: `cannot find type Eka2l1`.
 
-- [ ] **Step 2: Implement** `crates/symdev-emulator/src/device/eka2l1.rs` (above the tests)
+- [x] **Step 2: Implement** `crates/symdev-emulator/src/device/eka2l1.rs` (above the tests)
 
 ```rust
 //! `Eka2l1`: the EKA2L1 symdev starts (emulator packages spec §5): the user's own, named by
@@ -1756,7 +1756,7 @@ devices symdev starts and the control protocol.`
 Task 7's test calls `EmulatorInstance::start(&Eka2l1::User("/nonexistent/eka2l1".into()), &p,
 &registry)` now.
 
-- [ ] **Step 3: Keep the CLI building**
+- [x] **Step 3: Keep the CLI building**
 
 In `devices_cmd.rs`, `eka2l1_with_control()` returns `Result<Eka2l1>`. Its first line
 becomes the CLI's own reading of the variable, until Task 9:
@@ -1775,11 +1775,11 @@ becomes the CLI's own reading of the variable, until Task 9:
 Its `has_control(&eka2l1)` error names `eka2l1.describe()` instead of the hard-coded
 "SYMDEV_EKA2L1 (…)". `start()` and `device_pick.rs` pass `&eka2l1`.
 
-- [ ] **Step 4: Run the tests and the gates** (Task 4 step 4's three commands). Expected:
+- [x] **Step 4: Run the tests and the gates** (Task 4 step 4's three commands). Expected:
   all pass; `crates/symdev-cli/tests/run.rs`'s SYMDEV_EKA2L1 test still finds
   `SYMDEV_EKA2L1` in the error.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/symdev-emulator/src/device.rs crates/symdev-emulator/src/device/eka2l1.rs \

@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use symdev_core::{Error, Result};
 
-use super::{DeviceRegistry, EmulatorProfile, RegistryEntry, is_eka2l1};
+use super::{DeviceRegistry, Eka2l1, EmulatorProfile, RegistryEntry, is_eka2l1};
 use crate::control::ControlClient;
 
 /// How long a start may take until `emulator.info` names a device and `apps.list` answers.
@@ -27,7 +27,7 @@ impl EmulatorInstance {
     /// Starts `eka2l1` on `profile` as the next free `emulator-<n>`, waits until it answers,
     /// and registers it. Its output goes to `<profile>/symdev-<id>.out`.
     pub fn start(
-        eka2l1: &Path,
+        eka2l1: &Eka2l1,
         profile: &EmulatorProfile,
         registry: &DeviceRegistry,
     ) -> Result<RegistryEntry> {
@@ -43,14 +43,16 @@ impl EmulatorInstance {
         let out_path = profile.dir().join(format!("symdev-{id}.out"));
         let out = std::fs::File::create(&out_path).map_err(|e| file(&out_path, e))?;
         let err = out.try_clone().map_err(|e| file(&out_path, e))?;
-        let argv = Self::argv(eka2l1, profile.dir(), &socket);
-        let mut child = Command::new(&argv[0])
-            .args(&argv[1..])
+        let argv = Self::argv(eka2l1.program(), profile.dir(), &socket);
+        let mut command = Command::new(&argv[0]);
+        command.args(&argv[1..]);
+        eka2l1.prepare(&mut command);
+        let mut child = command
             .stdin(Stdio::null())
             .stdout(out)
             .stderr(err)
             .spawn()
-            .map_err(|e| Error::Other(format!("start {}: {e}", eka2l1.display())))?;
+            .map_err(|e| Error::Other(format!("start {}: {e}", eka2l1.program().display())))?;
         let pid = child.id();
         let deadline = Instant::now() + READY;
         let name = loop {
@@ -58,7 +60,7 @@ impl EmulatorInstance {
                 let said = std::fs::read_to_string(&out_path).unwrap_or_default();
                 return Err(Error::Other(format!(
                     "{} exited ({status}) before it answered on {}: {}",
-                    eka2l1.display(),
+                    eka2l1.program().display(),
                     socket.display(),
                     said.lines().rev().take(5).collect::<Vec<_>>().join(" | ")
                 )));
@@ -73,7 +75,7 @@ impl EmulatorInstance {
                 return Err(Error::Other(format!(
                     "{} did not answer on {} within {} s; symdev killed it (pid {pid}); its \
                      output is in {}",
-                    eka2l1.display(),
+                    eka2l1.program().display(),
                     socket.display(),
                     READY.as_secs(),
                     out_path.display()
@@ -126,7 +128,7 @@ impl EmulatorInstance {
     /// `--data-dir` uses (and rotates the log of) the default data folder. So it runs with
     /// `--data-dir` and `HOME`/`XDG_*` in a scratch folder, is read for 15 s at most, and is
     /// killed.
-    pub fn has_control(eka2l1: &Path) -> Result<bool> {
+    pub fn has_control(eka2l1: &Eka2l1) -> Result<bool> {
         let runtime = std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty());
         let private = runtime.is_some();
         let scratch = Self::probe_dir(
@@ -143,7 +145,8 @@ impl EmulatorInstance {
         }
         // Made here, not found: a folder someone else made first is refused.
         std::fs::create_dir(&scratch).map_err(|e| file(&scratch, e))?;
-        let mut probe = Command::new(eka2l1);
+        let mut probe = Command::new(eka2l1.program());
+        eka2l1.prepare(&mut probe);
         // The X cookie defaults to `$HOME/.Xauthority`, which the scratch HOME would hide.
         if std::env::var_os("XAUTHORITY").is_none()
             && let Some(home) = std::env::var_os("HOME")
@@ -162,7 +165,7 @@ impl EmulatorInstance {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
-            .map_err(|e| Error::Other(format!("run {} --help: {e}", eka2l1.display())))?;
+            .map_err(|e| Error::Other(format!("run {} --help: {e}", eka2l1.program().display())))?;
         let (tx, rx) = std::sync::mpsc::channel();
         if let Some(stdout) = child.stdout.take() {
             std::thread::spawn(move || {
