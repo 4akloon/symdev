@@ -73,3 +73,20 @@ Spike evidence: ~/src/rust-lld-spike/ (experiment 109 §1, §5).
   g++ of `~/gcc-builds/gcc-12.1.0` with its as 2.35, ar/ld/nm/objcopy of binutils 2.29.1)
   + `~/sdk/S60_3rd_FP2`: **90 592 B, all four archives byte-identical to the spike's
   `prebuilt/lib`** — the spike's numbers reproduced exactly.
+- **Step 3 done: link with only the prebuilt set, no GCCE.** `~/src/rl-shims-scratch/verify/
+  nogcce-link.py` (the spike's script, PREBUILT = run1's lib/ from the published GCCE):
+  rust-lld in `bwrap --dev-bind / / --tmpfs ~/gcc-builds --tmpfs <scratch home>/gcce
+  --tmpfs <spike-gcce>` under `strace -f -e trace=%file`; inside, both GCCE dirs are empty and
+  no `arm-none-symbianelf-*` on PATH. **All four link, 0 strace lines touch a GCCE path**;
+  files opened (ui): the 4 prebuilt archives, the spike's `dso-fixed/*.dso` and
+  `sdk-fixed/urel/{eexe,usrt2_2}.lib`, `symbian-lld.ld`, the two Rust archives, LLVM.
+  The ELFs are **byte-identical to the spike's `nogcce/*/*.elf`**. Post-linked by the fork
+  (`e2e.sh`), the `.exe` vs the spike's `lld/*/*.exe` and `nogcce/*/*.exe`: hello 1 044,
+  async 18 577, shim 4 572, ui 10 511 B — **no differing byte outside CRC 0x14–0x17 and time
+  0x24–0x2B**. So the emulator results of experiment 109 §4 hold for them byte for byte.
+- Negative runs of prebuilt.sh (`~/src/rl-shims-scratch/neg/`): member list without
+  `_thumb1_case_uqi.o` → exit 1; with an extra `eh_terminate.o` → exit 1; tag's
+  SHIM_OPTIONS `-O1` → exit 1 naming both lists; the old avkon shim (main 25053a2) → its
+  `#error`, exit 1.
+- Next: recipe.toml 0.2.0 (+ build.sh copy), symdev.yml install + prebuilt steps, README;
+  gates in both repos.
