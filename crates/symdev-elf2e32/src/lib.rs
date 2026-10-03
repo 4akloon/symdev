@@ -5,6 +5,7 @@ mod e32;
 mod elf;
 mod elf2e32;
 mod elf2e32_tool;
+mod import_stubs;
 mod libpath;
 
 pub use def::{E32DefEntry, E32DefFile};
@@ -25,4 +26,5 @@ pub use elf::ElfLocalReloc;
 pub use elf::{ElfImage, ElfSegment, ElfSymbol};
 pub use elf2e32::Elf2E32;
 pub use elf2e32_tool::Elf2E32Tool;
+pub use import_stubs::ImportStubs;
 pub use libpath::LibPath;

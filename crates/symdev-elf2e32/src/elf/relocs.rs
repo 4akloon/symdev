@@ -41,6 +41,24 @@ impl ElfImage {
         Ok(out)
     }
 
+    /// Undefined symbols that `R_ARM_JUMP_SLOT` relocations name, in file order: the
+    /// imported functions an lld link calls through its PLT (GNU ld's symbianelf PLT uses
+    /// `R_ARM_GLOB_DAT` instead).
+    pub fn plt_imports(&self) -> Result<Vec<String>> {
+        let dynsym = self
+            .section(Self::SHT_DYNSYM)
+            .ok_or_else(|| Error::Other("ELF has no .dynsym".into()))?;
+        self.dynamic_relocs()?
+            .into_iter()
+            .filter(|rel| {
+                rel.kind == Self::R_ARM_JUMP_SLOT
+                    && rel.symbol != 0
+                    && rel.symbol_section == Self::SHN_UNDEF
+            })
+            .map(|rel| self.string(dynsym.link, rel.symbol_name))
+            .collect()
+    }
+
     /// Dynamic relocations against defined symbols (the image's own fixups), in file order.
     pub fn local_relocs(&self) -> Result<Vec<ElfLocalReloc>> {
         let mut out = Vec::new();

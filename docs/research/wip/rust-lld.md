@@ -14,8 +14,9 @@ Do NOT edit: `crates/symdev-build/src/driver/{rust_build,libcalls}.rs`, `crates/
 - [x] A: lld detection rule (`ElfLinker`, `elf/linker.rs`)
 - [x] A: five rules + tests (`elf/lld.rs`, `elf2e32/tests/experiment_109.rs`)
 - [x] A: lld golden (`testdata/hello_lld*.hex`, `hello_lld_ordinals.txt`)
-- [ ] B: lld options investigation
-- [ ] B: stub mechanism + ImportStubs type
+- [x] B: lld options investigation (dead ends below)
+- [x] B: stub mechanism + ImportStubs type (`src/import_stubs.rs`, `import_stubs/object.rs`,
+      example driver `examples/import_stubs.rs`)
 - [ ] B: four apps sizes / elf2e32 / EKA2L1
 - [ ] experiment 112 entry
 
@@ -39,7 +40,28 @@ Do NOT edit: `crates/symdev-build/src/driver/{rust_build,libcalls}.rs`, `crates/
   Scripts: `~/src/rl-scratch/cmp/cmp4.sh`, `cmp15.sh` (arg: elf2e32 binary).
 - Built bins in `CARGO_TARGET_DIR=~/src/rl-scratch/target`.
 
+- Part B mechanism: two-pass link. First lld link (as spike) → `ImportStubs::from_first_link`
+  reads `R_ARM_JUMP_SLOT` undefined symbols (= imported functions called via PLT) → object
+  written by a tiny Rust ELF REL writer (`ImportStubs::object`; no assembler → no GCCE; chosen
+  over `rustc --emit=obj` of `global_asm!`, which needs a rustc run per build with the
+  target's `core`, slower and indirect) → second link with `stubs.o` + `--wrap=<f>` each.
+  Second link has no JUMP_SLOT, no .plt/.got.plt. objdump (binutils 2.29.1) disassembles the
+  object correctly (`ldr pc, [pc, #-4]` / `.word` + R_ARM_ABS32 __real_f).
+- Driver: `~/src/rl-scratch/stubs/link2.py <proj> [--place=end|start|after-rust] [--sandbox]`
+  (spike nogcce argv; outputs in `~/src/rl-scratch/stubs/<proj>/`).
+- First sizes (place=end, .exe GNU | stubs | lld PLT): hello 968|975|1044, async
+  18431|18360|18577, shim 4452|4464|4572, ui 10315|10288|10511. Stubs = GNU PLT count minus
+  GNU's PLT entries for the image's own globals (async 69−61=8, ui 80−71=9): with -Bsymbolic
+  lld calls those directly → async/ui smaller than GNU. hello +8 uncompressed = one exidx
+  CANTUNWIND entry lld writes for its `__ARMv4PILongBXThunk_RunThread` (GNU's veneer has none);
+  code size equal.
+
 ## Dead ends
+- lld options for an 8-byte PLT: none. `.plt`/`.got` stay 0x120/0x4c on hello with each of
+  `-z now`, `-z lazy`, `--pic-veneer`, `-z noseparate-code`, `--no-rosegment`,
+  `--hash-style=sysv`; `--help` lists no ARM PLT option (only `--target2`, `--wrap`,
+  `--pic-veneer`, `--nmagic`). lld's ARM PLT entry is fixed 16 B (12 B code + d4d4d4d4 trap
+  padding) + 4 B `.got.plt` slot, header 32 B + 3 reserved GOT words.
 
 ## Next step
 Part B: investigate lld options for an 8-byte PLT (record dead ends), then the --wrap stub

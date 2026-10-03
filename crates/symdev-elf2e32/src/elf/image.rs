@@ -32,6 +32,7 @@ impl ElfImage {
     pub(super) const STB_GLOBAL: u8 = 1;
     pub(super) const R_ARM_ABS32: u32 = 2;
     pub(super) const R_ARM_GLOB_DAT: u32 = 21;
+    pub(super) const R_ARM_JUMP_SLOT: u32 = 22;
     pub(super) const R_ARM_RELATIVE: u32 = 23;
     const EM_ARM: u16 = 40;
 
