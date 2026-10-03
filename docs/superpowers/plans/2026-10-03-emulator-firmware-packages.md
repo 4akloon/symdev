@@ -885,3 +885,181 @@ git add crates/symdev-manifest/src/schema.rs crates/symdev-sdk/src/pins.rs \
   crates/symdev-sdk/src/manager/tests.rs crates/symdev-sdk/src/manager/tests/bypass.rs
 git commit -m "Pin the emulator and the E52 firmware, read their package layouts, and name SYMDEV_EKA2L1 or SYMDEV_EKA2L1_DATA when no source has them."
 ```
+
+### Task 5: The private firmware recipe and `pkgtools device-entry`
+
+All in `~/worktrees/symdev-packages/cargo-run`. The staged tree and the archive live in
+`~/src/emu-pkg-scratch/firmware/`, never in the worktree.
+
+**Files:**
+- Create: `pkgtools/src/device_entry.rs` (`DeviceEntry`, with its tests)
+- Modify: `pkgtools/src/main.rs` (subcommand `device-entry`)
+- Create: `recipes/firmware/rm-469/1/recipe.toml`, `recipes/firmware/rm-469/1/stage.sh`
+- Create: `tests/firmware-stage.test`; Modify: `.github/workflows/tests.yml` (run it)
+
+**Interfaces:**
+- Produces: `pkgtools device-entry <devices.yml> <firmcode>` prints that device's entry
+  (its key line and indented lines) and exits 0; 1 with `error: …` otherwise.
+  `stage.sh <out>` makes `<out>/{device.yml,roms/rm-469/,drives/z/rm-469/}`. The recipe pins
+  the archive's SHA-256.
+
+- [ ] **Step 1: Write the failing tests** in `pkgtools/src/device_entry.rs`
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::DeviceEntry;
+
+    const TWO: &str = "RM-469:\n  platver: epoc93fp2\n  manufacturer: Nokia\n  firmcode: RM-469\n  model: N00\n  machine-uid: 0\n  isolated-drives: false\nRM-356:\n  platver: epoc94\n  firmcode: RM-356\n";
+
+    #[test]
+    fn takes_one_device_with_its_indented_lines() {
+        let e = DeviceEntry::find(TWO, "RM-469").unwrap();
+        assert_eq!(
+            e.text(),
+            "RM-469:\n  platver: epoc93fp2\n  manufacturer: Nokia\n  firmcode: RM-469\n  model: N00\n  machine-uid: 0\n  isolated-drives: false\n"
+        );
+    }
+
+    #[test]
+    fn the_last_device_ends_at_the_end_of_the_file() {
+        let e = DeviceEntry::find(TWO, "RM-356").unwrap();
+        assert_eq!(e.text(), "RM-356:\n  platver: epoc94\n  firmcode: RM-356\n");
+    }
+
+    #[test]
+    fn a_missing_device_lists_the_ones_there() {
+        let e = DeviceEntry::find(TWO, "RM-1").unwrap_err().to_string();
+        assert!(e.contains("no device RM-1"), "{e}");
+        assert!(e.contains("RM-469, RM-356"), "{e}");
+    }
+
+    #[test]
+    fn an_entry_whose_firmcode_differs_is_refused() {
+        let text = "RM-469:\n  firmcode: RM-470\n";
+        let e = DeviceEntry::find(text, "RM-469").unwrap_err().to_string();
+        assert!(e.contains("firmcode RM-470"), "{e}");
+    }
+}
+```
+
+And a CLI test in `pkgtools/tests/cli.rs`:
+
+```rust
+#[test]
+fn device_entry_prints_the_entry_and_exits_1_without_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let yml = tmp.path().join("devices.yml");
+    fs::write(&yml, "RM-469:\n  firmcode: RM-469\n").unwrap();
+    let ok = pkgtools(&[&"device-entry", &yml, &"RM-469"]);
+    assert_eq!(ok.status.code(), Some(0), "{}", text(&ok.stderr));
+    assert_eq!(text(&ok.stdout), "RM-469:\n  firmcode: RM-469\n");
+    let missing = pkgtools(&[&"device-entry", &yml, &"RM-1"]);
+    assert_eq!(missing.status.code(), Some(1));
+    assert!(text(&missing.stderr).starts_with("error: "), "{}", text(&missing.stderr));
+}
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+```bash
+cd ~/worktrees/symdev-packages/cargo-run && cargo test --locked -p pkgtools device_entry > /tmp/t5.log 2>&1; grep -E "^error|test result" /tmp/t5.log
+```
+
+Expected: `cannot find type DeviceEntry` (declare `mod device_entry;` in `main.rs` first)
+and an unknown subcommand in the CLI test.
+
+- [ ] **Step 3: Implement** `pkgtools/src/device_entry.rs` (above its tests)
+
+```rust
+//! `DeviceEntry`: one device of EKA2L1's `devices.yml`, as the firmware recipe's stage.sh
+//! takes it into the package's `device.yml` (symdev experiment 115 §1.4: a top-level key
+//! per firmware code, its fields indented below it).
+
+use crate::tool_error::{Result, ToolError};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceEntry {
+    text: String,
+}
+
+impl DeviceEntry {
+    /// The entry whose key is `firmcode`: its key line and every indented line after it.
+    /// Its own `firmcode:` field must name the same code.
+    pub fn find(devices_yml: &str, firmcode: &str) -> Result<DeviceEntry> {
+        let key = format!("{firmcode}:");
+        let mut lines = devices_yml.lines().skip_while(|l| *l != key);
+        let Some(first) = lines.next() else {
+            let there: Vec<&str> = devices_yml
+                .lines()
+                .filter(|l| !l.starts_with([' ', '\t']) && l.ends_with(':'))
+                .map(|l| l.trim_end_matches(':'))
+                .collect();
+            return Err(ToolError::new(format!(
+                "devices.yml has no device {firmcode}; it has: {}; install that firmware in \
+                 EKA2L1 first",
+                there.join(", ")
+            )));
+        };
+        let mut text = format!("{first}\n");
+        for line in lines.take_while(|l| l.starts_with([' ', '\t'])) {
+            text.push_str(line);
+            text.push('\n');
+        }
+        let code = text
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("firmcode:"))
+            .map(str::trim);
+        match code {
+            Some(c) if c == firmcode => Ok(DeviceEntry { text }),
+            Some(c) => Err(ToolError::new(format!(
+                "devices.yml's entry {firmcode} has firmcode {c}"
+            ))),
+            None => Err(ToolError::new(format!(
+                "devices.yml's entry {firmcode} has no firmcode field"
+            ))),
+        }
+    }
+
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+}
+```
+
+`main.rs`: `mod device_entry;`, `use crate::device_entry::DeviceEntry;` and
+
+```rust
+    /// Print one device's entry of an EKA2L1 devices.yml (the firmware recipe's
+    /// device.yml). Exit 1 when it is missing or its firmcode differs.
+    DeviceEntry {
+        #[arg(value_name = "devices.yml")]
+        devices: PathBuf,
+        /// The device's key and firmware code, e.g. RM-469.
+        #[arg(value_name = "firmcode")]
+        firmcode: String,
+    },
+```
+
+with the arm
+
+```rust
+        Command::DeviceEntry { devices, firmcode } => match std::fs::read_to_string(&devices) {
+            Ok(text) => match DeviceEntry::find(&text, &firmcode) {
+                Ok(entry) => {
+                    let _ = out.write_all(entry.text().as_bytes());
+                    0
+                }
+                Err(e) => {
+                    let _ = writeln!(err, "error: {}: {e}", devices.display());
+                    1
+                }
+            },
+            Err(e) => {
+                let _ = writeln!(err, "error: {}: {e}", devices.display());
+                1
+            }
+        },
+```
+
+- [ ] **Step 4: Run them and see them pass**, as in step 2. Expected: `test result: ok`.
