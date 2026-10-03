@@ -11,10 +11,11 @@
   "crt-objects-fallback": "false",
   "data-layout": "e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64",
   "default-uwtable": false,
+  "default-visibility": "hidden",
   "eh-frame-header": false,
   "emit-debug-gdb-scripts": false,
   "env": "e32",
-  "executables": false,
+  "executables": true,
   "features": "+soft-float,+strict-align",
   "frame-pointer": "always",
   "has-thread-local": false,
@@ -25,7 +26,7 @@
   "llvm-target": "armv5te-none-eabi",
   "max-atomic-width": 32,
   "metadata": {
-    "description": "Symbian OS 9.3 EKA2 (S60 3rd FP2) user-side E32 code, ARMv5TE soft-float EABI; symdev links, rustc never does",
+    "description": "Symbian OS 9.3 EKA2 (S60 3rd FP2) user-side E32 code, ARMv5TE soft-float EABI; cargo links through symdev-ld",
     "host_tools": false,
     "std": false,
     "tier": 3

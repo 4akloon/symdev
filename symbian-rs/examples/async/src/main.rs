@@ -55,7 +55,7 @@ pub(crate) fn start_of(report: &mut Report, case: &str) -> Option<Instant> {
 
 #[symbian_std::main]
 fn main() -> Result<i32> {
-    let mut report = Report::new("async");
+    let mut report = symbian_std::report!("async");
     let mut notes = String::new();
     checks::run(&mut report, &mut notes);
     report.checked("the measurements are written out", write_notes(&notes));

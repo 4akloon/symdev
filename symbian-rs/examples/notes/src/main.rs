@@ -16,7 +16,7 @@
 
 extern crate alloc;
 
-use symbian_std::test_report::{Evidence, Report, detail};
+use symbian_std::test_report::{Evidence, detail};
 use symbian_std::time::Instant;
 use symbian_std::ui::note;
 use symbian_std::ui::prelude::*;
@@ -67,7 +67,7 @@ impl App for Notes {
     }
 
     fn construct(&mut self, ui: &Ui) -> symbian_core::Result<()> {
-        let mut report = Report::new("notes");
+        let mut report = symbian_std::report!("notes");
         // The question the shim could not answer from a header: does a note need the
         // application environment to exist first, i.e. can one be shown this early?
         // `construct` runs after the shim's `BaseConstructL`, so it should.

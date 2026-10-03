@@ -16,11 +16,10 @@ mod cases;
 mod cost;
 
 use symbian_std::io::Result;
-use symbian_std::test_report::Report;
 
 #[symbian_std::main]
 fn main() -> Result<i32> {
-    let mut report = Report::new("fmt");
+    let mut report = symbian_std::report!("fmt");
     cases::run(&mut report);
     cost::run(&mut report);
     Ok(if report.finish()? { 0 } else { 1 })

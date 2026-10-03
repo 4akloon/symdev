@@ -28,7 +28,7 @@ use std::fs::{self, File};
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use symbian_std::test_report::{Report, detail};
+use symbian_std::test_report::detail;
 
 mod platform;
 mod spawn;
@@ -59,7 +59,7 @@ use tls::COUNTER;
 
 #[symbian_std::main]
 fn main() -> std::io::Result<()> {
-    let mut report = Report::new("stdhello");
+    let mut report = symbian_std::report!("stdhello");
 
     // The heap, through `std`'s own global allocator: `String`, `Vec`, `format!`.
     let greeting = format!("hello from std, {} bytes to write", BYTES.len());

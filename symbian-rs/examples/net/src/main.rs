@@ -192,7 +192,7 @@ fn run(report: &mut Report) {
 
 #[symbian_std::main]
 fn main() -> io::Result<()> {
-    let mut report = Report::new("net");
+    let mut report = symbian_std::report!("net");
     run(&mut report);
     report.finish()?;
     Ok(())

@@ -30,7 +30,7 @@
 
 extern crate alloc;
 
-use symbian_std::test_report::{Report, detail};
+use symbian_std::test_report::detail;
 use symbian_std::ui::prelude::*;
 
 /// The rows below the status row. Twelve of them, so that the list overflows the E52's
@@ -81,7 +81,7 @@ impl App for ListDemo {
             let _ = rows.set_items(&self::rows(label.as_str()));
         });
 
-        let mut report = Report::new("listdemo");
+        let mut report = symbian_std::report!("listdemo");
         report.check("the framework reached the Rust construct", true);
         report.check_detail(
             "the view was sized before construct",

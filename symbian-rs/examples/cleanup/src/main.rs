@@ -23,11 +23,11 @@ extern crate alloc;
 
 use symbian_std::fs;
 use symbian_std::io::Result;
-use symbian_std::test_report::{Report, detail};
+use symbian_std::test_report::detail;
 
 #[symbian_std::main]
 fn main() -> Result<i32> {
-    let mut report = Report::new("cleanup");
+    let mut report = symbian_std::report!("cleanup");
     report.check("reached main", true);
     // Without a cleanup stack the thread dies inside this call and the report below is
     // never written — which is the whole measurement.

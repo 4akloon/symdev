@@ -198,7 +198,7 @@ fn run(report: &mut Report) {
 /// exits 0 or 1, so that the exit code and the `failed` count in the file agree.
 #[symbian_std::main]
 fn main() -> Result<i32> {
-    let mut report = Report::new("files");
+    let mut report = symbian_std::report!("files");
     run(&mut report);
     Ok(if report.finish()? { 0 } else { 1 })
 }

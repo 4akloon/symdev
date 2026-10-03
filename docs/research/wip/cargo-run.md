@@ -209,4 +209,20 @@ Ledger (git-ignored): `.superpowers/sdd/2026-10-03-cargo-build-run/progress.md`.
   `LinkRecord::read` carries `#[allow(dead_code)]` until Task 13; step 5 adds
   `--target-dir build/cargo` + `SYMDEV_UID3` (q2's flags; the spike tree's config has no
   target-dir, and uid3!() comes in Task 5).
-NEXT: Task 5 — `task-start <plan> 5` (target spec + uid3!/report! macros in symbian-rs).
+- Task 5 done: spec `executables: true` + `default-visibility: hidden`; `uid3!()` (proc macro,
+  `ManifestUid3`) + `report!`; `Report::new`/`uid3_from_env`/`parse_hex_u32` gone; 15 examples
+  use `report!`; `symdev build` no longer sets SYMDEV_UID3. Byte check (`exec/t5-images.sh`,
+  built at the spike tree's path, tree restored; new tree kept as `tree-t5/`): async
+  18284/33772 vs q5d 18360/33892, files 8189/14176 vs 8289/14292, atomics 8729/15728 vs
+  8796/15848 — NOT equal, EXPLAINED: only `E32Main` differs (async 0x6d4 → 0x66c, files
+  0x148c → 0x1428, atomics 0x1494 → 0x142c; every other symbol equal in size) and .rodata −12.
+  `Report::new` called `uid3_from_env()` in a non-const context, so the optimiser left a
+  runtime hex parse of the string "0xe0000687" (present in q5d's ELF, gone now); `uid3!()` is
+  a literal (the constant 0xe0000687 now appears once in the ELF, 0 times before). Smaller,
+  same value. Ruling: `uid3!()` expands to `{ const _: &str = include_str!("<dir>/symdev.toml");
+  0x…_u32 }` so rustc tracks symdev.toml (as `strings!()` tracks locales).
+- OPEN (found in Task 5): plain cargo does not relink when only symdev.toml changes
+  (capabilities, vendor, version, [ui] text): cargo sees no input change, and symdev-ld reads
+  symdev.toml. Candidate fix: `#[symbian_std::main]` emits the same discarded
+  `include_str!` of symdev.toml, so every app crate depends on it. Decide in Task 7.
+NEXT: Task 6 — `task-start <plan> 6` (symbian-test crate).

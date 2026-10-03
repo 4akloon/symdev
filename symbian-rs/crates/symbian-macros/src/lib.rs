@@ -24,6 +24,7 @@ use proc_macro::TokenStream;
 mod cursor;
 mod entry;
 mod fast_write;
+mod manifest_uid3;
 mod signature;
 mod strings;
 
@@ -138,6 +139,31 @@ pub fn strings(input: TokenStream) -> TokenStream {
     };
     match strings::expand(std::path::Path::new(&dir)) {
         Ok(source) => tokens(&source),
+        Err(message) => tokens(&compile_error(&message)),
+    }
+}
+
+/// The application's UID3 from its `symdev.toml`, as a `u32` constant expression.
+#[proc_macro]
+pub fn uid3(input: TokenStream) -> TokenStream {
+    if !input.is_empty() {
+        return tokens(&compile_error("`symbian_std::uid3!()` takes no arguments"));
+    }
+    let Some(dir) = std::env::var_os("CARGO_MANIFEST_DIR") else {
+        return tokens(&compile_error(
+            "`symbian_std::uid3!()` needs CARGO_MANIFEST_DIR, which cargo sets",
+        ));
+    };
+    match manifest_uid3::ManifestUid3::read(std::path::Path::new(&dir)) {
+        // The `include_str!` makes rustc track symdev.toml, so an edited UID3 recompiles the
+        // crate (as `strings!()` tracks its locales files); its value is discarded.
+        Ok(uid3) => tokens(&format!(
+            "{{ const _: &str = ::core::include_str!({:?}); 0x{uid3:08x}_u32 }}",
+            std::path::Path::new(&dir)
+                .join("symdev.toml")
+                .display()
+                .to_string()
+        )),
         Err(message) => tokens(&compile_error(&message)),
     }
 }

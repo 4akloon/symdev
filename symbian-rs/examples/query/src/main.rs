@@ -25,7 +25,7 @@ use alloc::string::String;
 use core::fmt::Write as _;
 
 use symbian_core::ErrorKind;
-use symbian_std::test_report::{Evidence, Report, detail};
+use symbian_std::test_report::{Evidence, detail};
 use symbian_std::ui::prelude::*;
 use symbian_std::ui::query;
 use symbian_std::write;
@@ -144,7 +144,7 @@ impl Form {
     /// exist, so a driven run says six and an undriven one says four, and neither says
     /// anything false. **The screenshots are the test of the dialogs.**
     fn report(&self) {
-        let mut report = Report::new("querydemo");
+        let mut report = symbian_std::report!("querydemo");
         report.check_detail(
             "the framework reached the Rust construct",
             self.area.width > 0 && self.area.height > 0,

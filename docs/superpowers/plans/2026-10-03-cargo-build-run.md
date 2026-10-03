@@ -1343,7 +1343,7 @@ git commit -m "Run symdev as cargo's linker under the name symdev-ld, and make i
   `symbian_std::test_report::Report::with_uid3("app", symbian_std::uid3!())`. Target spec
   keys `"executables": true` and `"default-visibility": "hidden"`.
 
-- [ ] **Step 1: Write the failing tests** — at the end of `manifest_uid3.rs`
+- [x] **Step 1: Write the failing tests** — at the end of `manifest_uid3.rs`
 
 ```rust
 #[cfg(test)]
@@ -1380,13 +1380,13 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `cargo +nightly-2026-09-19 test --offline --manifest-path symbian-rs/crates/symbian-macros/Cargo.toml`
 (from the repository root, so `symbian-rs/.cargo/config.toml` does not apply and the tests
 build for the host). Expected: `ManifestUid3` not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `manifest_uid3.rs`, dependency-free like the rest of `symbian-macros` (its `Cargo.toml`
 says why):
@@ -1479,7 +1479,7 @@ symdev-ld"`.
 `rust_build.rs`: delete `cmd.env("SYMDEV_UID3", …)` and its comment. No crate reads the
 variable any more.
 
-- [ ] **Step 4: Run the tests and rebuild the examples**
+- [x] **Step 4: Run the tests and rebuild the examples**
 
 Run the macro tests (Step 2's command): all pass. Then `cargo test --workspace --offline`:
 the host workspace still builds the examples through `symdev build`'s tests where it does.
@@ -1490,7 +1490,7 @@ branch's `symdev` (staticlib shape still; Task 8 converts) and `e32cmp.py` them 
 `~/src/cargo-run-scratch/out/q5d/`. Expected: `EQUAL` ×3. A difference is a finding: record
 it in `docs/research/wip/cargo-run.md` and explain it before going on.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add symbian-rs/targets/arm-symbian-e32.json symbian-rs/crates/symbian-macros/src \

@@ -75,7 +75,7 @@ fn run(report: &mut Report, notes: &mut String) {
 
 #[symbian_std::main]
 fn main() -> Result<i32> {
-    let mut report = Report::new("time");
+    let mut report = symbian_std::report!("time");
     let mut notes = String::new();
     run(&mut report, &mut notes);
     report.checked("the measurements are written out", write_notes(&notes));
