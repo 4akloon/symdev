@@ -480,3 +480,157 @@ Task 8: it changes how symdev starts the program.
 
 - [ ] **Step 4: Commit** `docs/research/experiment-backlog.md` and the wip file:
   `Record experiment 115 §2: the fork CI's Linux job rehearsed on the rebuilt branch.`
+
+### Task 4: The two pins, the two package layouts, and the way around the sources
+
+**Files:**
+- Modify: `crates/symdev-manifest/src/schema.rs` (`Device::ALL`)
+- Modify: `crates/symdev-sdk/src/pins.rs` (`emulator`, `firmware`, tests)
+- Create: `crates/symdev-sdk/src/emulator_package.rs`, `crates/symdev-sdk/src/firmware_package.rs`
+- Modify: `crates/symdev-sdk/src/lib.rs` (modules and re-exports)
+- Modify: `crates/symdev-sdk/src/catalog.rs` (`bypass` replaces the `sdk: bool`)
+- Create: `crates/symdev-sdk/src/manager/tests/bypass.rs`; Modify: `crates/symdev-sdk/src/manager/tests.rs` (`mod bypass;`)
+
+**Interfaces:**
+- Produces:
+  - `Device::ALL: [Device; 1]`.
+  - `Pins::emulator() -> PackageId` (`emulator;<V>`), `Pins::firmware(Device) -> PackageId`
+    (`firmware;rm-469;1` for `NokiaE52`).
+  - `EmulatorPackage::at(root: PathBuf, id: &PackageId) -> Result<EmulatorPackage>`,
+    `EmulatorPackage::PROGRAM = "usr/bin/eka2l1_qt"`, `.program() -> PathBuf`.
+  - `FirmwarePackage::at(root: PathBuf, id: &PackageId) -> Result<FirmwarePackage>`,
+    `.root() -> &Path`, `.name() -> &str` (the id's second segment, `rm-469`).
+  - A lookup failure for an `emulator` id names `SYMDEV_EKA2L1`, for a `firmware` id
+    `SYMDEV_EKA2L1_DATA`, as an `sdk` id names `SYMDEV_EPOCROOT` today.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `pins.rs`'s test module (keep the existing ones; add `Pins::emulator()` and
+`Pins::firmware(Device::NokiaE52)` to `every_pin_is_a_valid_id`'s array):
+
+```rust
+    #[test]
+    fn the_e52_runs_on_the_rm_469_firmware() {
+        assert_eq!(
+            Pins::firmware(Device::NokiaE52),
+            PackageId::parse("firmware;rm-469;1").unwrap()
+        );
+    }
+
+    #[test]
+    fn the_emulator_is_pinned_to_a_dated_build() {
+        let id = Pins::emulator();
+        let segments: Vec<&str> = id.segments().collect();
+        assert_eq!(segments.len(), 2, "{id}");
+        assert_eq!(segments[0], "emulator");
+        let date: Vec<&str> = segments[1].split('.').collect();
+        let widths: Vec<usize> = date.iter().map(|part| part.len()).collect();
+        assert_eq!(widths, [4, 2, 2], "{id}");
+        assert!(date.iter().all(|p| p.chars().all(|c| c.is_ascii_digit())), "{id}");
+    }
+
+    #[test]
+    fn every_device_has_a_firmware() {
+        for device in Device::ALL {
+            assert_eq!(Pins::firmware(device).kind(), "firmware");
+        }
+    }
+```
+
+`crates/symdev-sdk/src/emulator_package.rs` gets a test module like `platform_sdk.rs`'s:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::EmulatorPackage;
+    use crate::PackageId;
+
+    fn id(s: &str) -> PackageId {
+        PackageId::parse(s).unwrap()
+    }
+
+    #[test]
+    fn the_program_is_the_binary_apprun_links_to() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(tmp.path().join("usr/bin")).unwrap();
+        fs::write(tmp.path().join("usr/bin/eka2l1_qt"), b"").unwrap();
+        let p = EmulatorPackage::at(tmp.path().to_path_buf(), &id("emulator;2026.10.04")).unwrap();
+        assert_eq!(p.program(), tmp.path().join("usr/bin/eka2l1_qt"));
+    }
+
+    #[test]
+    fn a_missing_program_is_named_with_the_reinstall_command() {
+        let tmp = tempfile::tempdir().unwrap();
+        let e = EmulatorPackage::at(tmp.path().to_path_buf(), &id("emulator;2026.10.04"))
+            .unwrap_err()
+            .to_string();
+        assert!(e.starts_with(&tmp.path().join("usr/bin/eka2l1_qt").display().to_string()), "{e}");
+        assert!(e.contains("symdev sdk uninstall 'emulator;2026.10.04' && symdev sdk install 'emulator;2026.10.04'"), "{e}");
+    }
+
+    #[test]
+    fn refuses_an_id_that_is_not_an_emulator() {
+        let tmp = tempfile::tempdir().unwrap();
+        let e = EmulatorPackage::at(tmp.path().to_path_buf(), &id("gcce;12.1.0")).unwrap_err();
+        assert!(e.to_string().contains("gcce;12.1.0"), "{e}");
+    }
+}
+```
+
+`crates/symdev-sdk/src/firmware_package.rs`:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::FirmwarePackage;
+    use crate::PackageId;
+
+    fn id(s: &str) -> PackageId {
+        PackageId::parse(s).unwrap()
+    }
+
+    fn tree(root: &std::path::Path) {
+        fs::create_dir_all(root.join("roms/rm-469")).unwrap();
+        fs::create_dir_all(root.join("drives/z/rm-469")).unwrap();
+        fs::write(root.join("device.yml"), "RM-469:\n  firmcode: RM-469\n").unwrap();
+    }
+
+    #[test]
+    fn the_firmware_is_named_by_the_ids_second_segment() {
+        let tmp = tempfile::tempdir().unwrap();
+        tree(tmp.path());
+        let f = FirmwarePackage::at(tmp.path().to_path_buf(), &id("firmware;rm-469;1")).unwrap();
+        assert_eq!(f.name(), "rm-469");
+        assert_eq!(f.root(), tmp.path());
+    }
+
+    #[test]
+    fn each_missing_part_is_named_with_the_reinstall_command() {
+        for part in ["device.yml", "roms/rm-469", "drives/z/rm-469"] {
+            let tmp = tempfile::tempdir().unwrap();
+            tree(tmp.path());
+            let gone = tmp.path().join(part);
+            if gone.is_dir() { fs::remove_dir_all(&gone).unwrap() } else { fs::remove_file(&gone).unwrap() }
+            let e = FirmwarePackage::at(tmp.path().to_path_buf(), &id("firmware;rm-469;1"))
+                .unwrap_err()
+                .to_string();
+            assert!(e.starts_with(&gone.display().to_string()), "{part}: {e}");
+            assert!(e.contains("symdev sdk install 'firmware;rm-469;1'"), "{part}: {e}");
+        }
+    }
+
+    #[test]
+    fn refuses_an_id_that_is_not_a_firmware_of_three_segments() {
+        let tmp = tempfile::tempdir().unwrap();
+        tree(tmp.path());
+        for bad in ["sdk;s60-3rd-fp2;1.1", "firmware;1", "firmware;rm-469;1;x"] {
+            let e = FirmwarePackage::at(tmp.path().to_path_buf(), &id(bad)).unwrap_err();
+            assert!(e.to_string().contains("firmware;<firmware>;<n>"), "{bad}: {e}");
+        }
+    }
+}
+```
