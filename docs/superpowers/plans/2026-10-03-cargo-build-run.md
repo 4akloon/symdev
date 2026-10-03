@@ -2720,7 +2720,7 @@ report into the fake profile's drive E before it sends the exit:
 | test | report + exit | expected |
 |---|---|---|
 | `cargo_test_prints_libtest_lines_and_exits_0` | two ok cases, `kill 0 None` | status 0; stdout has `test result: ok. 2 passed; 0 failed` |
-| `a_failing_case_exits_non_zero` | one `ok:false` with detail | status 101 is not used here: status 1; `test x ... FAILED` |
+| `a_failing_case_exits_non_zero` | one `ok:false` case `x` with a detail, `kill 0 None` | status 1; stdout has `test x ... FAILED` and the detail under `failures:` |
 | `a_report_from_an_earlier_run_is_not_read` | a stale report is in place before the install, and the fake writes none | the runner removed it before installing; status 1, `no test report` |
 
 - [ ] **Step 2: Run them to see them fail.**
