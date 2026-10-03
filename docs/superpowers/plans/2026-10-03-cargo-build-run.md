@@ -2959,7 +2959,7 @@ never touched.
 **Files:**
 - Modify: `docs/research/experiment-backlog.md`, `docs/research/wip/cargo-run.md`
 
-- [ ] **Step 1: The same bytes, all 21, at one path** (spec §10)
+- [x] **Step 1: The same bytes, all 21, at one path** (spec §10)
 
 ```bash
 T=~/src/cargo-run-scratch/t18/tree; mkdir -p $T ~/src/cargo-run-scratch/t18/{base,new}
@@ -2975,7 +2975,7 @@ explain each difference by section and cause. The two `std` images differ by `st
 strings (§1.4); give the sizes. Record times: a cold `cargo build --release`, and a warm one
 after `touch src/main.rs`, for `hello` and `ui`.
 
-- [ ] **Step 2: `cargo run` on `hello` and on `ui`, with PID-bound screenshots**
+- [x] **Step 2: `cargo run` on `hello` and on `ui`, with PID-bound screenshots**
 
 From a fresh profile: `cargo run --release` in `examples/hello`; it starts `emulator-1`.
 Record:
@@ -2988,12 +2988,12 @@ Record:
 as experiment 113) and take the second screen. Ctrl+C in the terminal: status 130, the
 instance still alive (`symdev devices`).
 
-- [ ] **Step 3: A second `cargo run` in seconds**
+- [x] **Step 3: A second `cargo run` in seconds**
 
 With `emulator-1` up, run `cargo run --release` again in `examples/hello` and time it from
 the command to the log line. Record the seconds; spec §1 claims "seconds".
 
-- [ ] **Step 4: `cargo test` on `async`, with a failing test and a panicking one**
+- [x] **Step 4: `cargo test` on `async`, with a failing test and a panicking one**
 
 Copy `examples/async` to `t18/async-broken/` (not committed). Add `tests/broken.rs` with
 three tests in order:
@@ -3007,14 +3007,14 @@ Add a `tests/later.rs` whose `#[test]` comes after `panics` and so must be repor
 `RUST` category is experiment 100's), then `not run` for any later case, and a non-zero
 status. `executor` passes.
 
-- [ ] **Step 5: Several devices and no terminal**
+- [x] **Step 5: Several devices and no terminal**
 
 `symdev emulator start rm-469` twice, then `cargo run --release < /dev/null` in
 `examples/hello`. Record the error: it lists both ids and names `SYMDEV_DEVICE`. Then
 `SYMDEV_DEVICE=emulator-2 cargo run --release < /dev/null` runs there. Stop both with `symdev
 emulator stop`.
 
-- [ ] **Step 6: Write it up and commit**
+- [x] **Step 6: Write it up and commit**
 
 Write experiment 114 §3 onwards and its conclusion. Each spec claim this tested gets its
 observed result or the difference from it. Then:

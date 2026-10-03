@@ -4553,3 +4553,111 @@ and does not write. Installs, logs and settings stay in the profile.
 **Evidence.** `~/src/cargo-run-scratch/`: `exec/t10-probe.sh`, `exec/t10-probe2.sh`,
 `exec/probe10.py`, `profiles/{probe-hello.log,probe-panic.log,EKA2L1-hello.log,rm-469/}`;
 `~/src/EKA2L1-wt-build/cargo-run/{build.sh,build.log}`.
+
+### 3. The same bytes, all 21 examples, at one path (cargo-run Task 18)
+
+**Method.** `~/src/cargo-run-scratch/t18/bytes.sh`. One tree path, `t18/tree`, holds first
+`git archive 3086f1d` (0.3.0: the `staticlib` shape and 0.3.0's target spec), built example
+by example with `bin/symdev-030 build`, and then `git archive` of this branch, built with
+plain `cargo build --release` through this branch's `symdev-ld` (`bin7/`, made by `symdev
+setup-linker`). The two `std` examples go through `symdev build`, which materialises the
+sysroot and then runs the same `cargo build --release`. `t18/symdiff.py` compares the two
+ELFs of each pair by section and by symbol, with crate hashes stripped.
+
+| examples | result (`.exe` compressed / uncompressed, 0.3.0 → branch) |
+|---|---|
+| `alloc` `hello` `hello-raw` `panic` `shim` `spawnee` | **equal** (masked): 3 774 / 5 940, 975 / 1 348, 807 / 1 084, 2 029 / 2 972, 4 461 / 7 112, 2 609 / 4 412 |
+| the 13 `no_std` examples that write a test report | `.text` larger by 60–192 bytes, nothing else: `async` 18 360 / 33 892 → 18 374 / 33 976, `atomics` 8 796 / 15 848 → 8 823 / 15 976, `cleanup` 4 272 / 6 828 → 4 314 / 6 948, `files` 8 289 / 14 292 → 8 359 / 14 396, `fmt` 107 754 / 262 412 → 107 737 / 262 532, `locale` 8 109 / 13 288 → 8 107 / 13 384, `net` 10 506 / 17 616 → 10 507 / 17 676, `notes` 11 435 / 19 020 → 11 469 / 19 088, `query` 12 642 / 20 936 → 12 708 / 21 128, `time` 10 159 / 16 552 → 10 168 / 16 632, `tls` 13 920 / 25 920 → 13 921 / 26 044, `ui` 10 288 / 17 028 → 10 323 / 17 096, `ui-list` 11 158 / 18 580 → 11 233 / 18 660 |
+| `std-hello`, `std-net` | 70 257 / 124 212 → 70 238 / 124 664; 51 595 / 92 776 → 51 475 / 93 056 |
+
+* **The report examples.** In each, exactly two symbols change size: `Report::record` grows
+  8 bytes, and the one function that inlines `report!` and `finish` (`E32Main`,
+  `symrs_app_construct`, `main` or `Form::report`) grows 52–184 bytes. Both are this
+  branch's changes to `symbian_std::test_report`, not the build path: `uid3!()` makes the
+  UID3 a literal where `Report::new` parsed `SYMDEV_UID3`'s text at run time (about −110
+  bytes, §2 of the wip notes), and a case's `state` (`symbian-test`) adds a field, a JSON
+  key and the finished-case filters (about +170 to +300). Every other symbol keeps its size;
+  `net` and `tls` also reorder code, as §1.2 found for the spec edit.
+* **The `std` examples.** `.rodata` +672 and +504 bytes: `std`'s panic-location strings now
+  name `build/sysroot/lib/rustlib/src/rust/library/…` instead of `build/rust-src/library/…`
+  (§1.4). `.text` −192 and −204: `Report::finish` +168 (the state), `main` −144 or +64, and
+  `std::panicking::begin_panic`'s payload helpers (−192) no longer linked.
+* **Time.** A cold `cargo build --release` (no target directory, no libcalls build) of
+  `hello` takes 15.5 s, of `ui` 16.5 s; after `touch src/main.rs`, 0.9 s and 2.1 s (`ui`'s
+  link compiles the GUI shim with GCCE). In the shared workspace every later example took
+  8–9 s, the two `std` ones 18–19 s.
+
+**Answer.** Plain cargo through `symdev-ld` gives 0.3.0's bytes wherever the program did
+not change: six examples are equal, and the other fifteen differ only by this branch's own
+SDK changes (the report's UID3 literal and case state) and, for `std`, by the sysroot's path
+strings.
+
+### 4. `cargo run` and `cargo test` on the emulator (cargo-run Task 18)
+
+**Method.** `t18/runs.sh`, under the agent lock, in `t18/tree` with this branch's `symdev`
+(`6d75fbb`), `SYMDEV_EKA2L1=eka2l1-symdev` (§2's build) and a fresh `XDG_DATA_HOME`, so the
+profile is made anew from the user's firmware. Screenshots are of the window whose
+`_NET_WM_PID` is the instance's PID (`t18/shoot.py`, the `eka2l1-host` skill's method).
+
+* **`cargo run --release` in `hello`, no emulator running.** The runner said `created
+  profile rm-469`, `starting an emulator on profile rm-469`, `emulator-1 is Nokia N00
+  (RM-469)`, and printed `Hello from Rust SDK (19 chars)` 2.0 s after the command; status 0
+  after 6.6 s (the program waits 5 s). The line is the note's text from the log's
+  `[Service.Notifier]: Trying to display:` (the runner prints those and `Emulated.Stdout`
+  lines). The window shows the app list, not the note: EKA2L1 logs an `InfoPrint` and
+  draws nothing, as §1.5's screenshot already showed.
+* **A second `cargo run` with `emulator-1` up:** the line after 0.51 s, status 0 after
+  5.27 s. Spec §1's "seconds" holds; the run is the program's own five.
+* **`cargo run --release` in `ui`:** the "Bars" screen (`bars=3 keys=0 cmd=0`); after F1 F1
+  sent to the window, `bars=4 keys=0 cmd=1`. A SIGINT to the run's process group, as Ctrl+C
+  sends it: status 130, and `symdev devices` still lists `emulator-1` with the same PID.
+* **`cargo test --release --no-fail-fast`** in a copy of `async` (`asyncbroken`, its own
+  UID3) with `tests/broken.rs` = `passes`, `fails` (`Err(Evidence::msg("on purpose"))`),
+  `panics` (`panic!`) and `later`, besides `tests/executor.rs`:
+
+  ```
+  running 4 tests
+  test passes ... ok
+  test fails ... FAILED
+  test panics ... FAILED
+  test later ... not run
+
+  failures:
+      fails: on purpose
+      panics: panicked: RUST -2
+
+  test result: FAILED. 1 passed; 2 failed; 1 not run
+  ```
+
+  `executor`: `test block_on_returns_what_the_future_produced ... ok`, `test result: ok. 1
+  passed; 0 failed`. cargo ends with status 101 and `1 target failed: --test broken`.
+  `later` sits in the same module after `panics`: a test in another file is another
+  program, which a panic does not reach.
+* **Two devices, no terminal.** `symdev emulator start rm-469` → `emulator-2`. `cargo run
+  --release < /dev/null`: status 1, `error: several devices: emulator-1, emulator-2, profile
+  rm-469; set SYMDEV_DEVICE to one of them`. With `SYMDEV_DEVICE=emulator-2`: status 0 and
+  the note. `symdev emulator stop` ended both; the user's `~/.local/share/EKA2L1` had nothing
+  newer than a marker file from before the runs.
+* **Found on the way.** Both instances run on the one profile, so they share its data
+  folder (log, drives). The spec's registry allows it and nothing broke here, but a second
+  instance of a profile should get a folder of its own or be refused (open).
+
+**Answer.** `cargo run` picks or starts a device, installs, launches, prints what the app
+shows and ends with its status; Ctrl+C stops the app and not the emulator. `cargo test`
+prints `libtest`'s lines, attributes a panic to the test that was running and reports the
+rest as not run.
+
+**Evidence (§3–4).** `~/src/cargo-run-scratch/t18/`: `bytes.sh`, `bytes.out`, `symdiff.py`,
+`symdiff.out`, `cold.sh`, `logs/`, `base/`, `new/`, `runs.sh`, `runs.log`, `runs/{hello,ui,
+ui-2,hello-1,hello-2,hello-3}.png`, `runs/*.out`, `hello-shot.sh`, `async-broken-src/`.
+
+### Conclusion
+
+`cargo build`, `cargo run` and `cargo test` work in a symdev Rust project as the design
+says, with the changes §1 forced on it: the project is a `[[bin]]` with `#![no_main]`, the
+target spec says `"executables": true` and `"default-visibility": "hidden"`, cargo needs
+`panic-abort-tests`, `symdev-ld` runs the libcalls build itself, a `rust-std` project builds
+through `symdev-rustc` and a sysroot `symdev build` makes, and `symdev-ld` writes
+`<profile>/<bin>.sisx` for `cargo run`. The images are 0.3.0's where the program did not
+change (§3). A device is an EKA2L1 with `--control` on a profile of its own (§2), chosen
+and started by the runner, and it outlives the run (§4).

@@ -335,3 +335,10 @@ NEXT: Task 18 — `task-start <plan> 18` (experiment 114 real runs).
   plus Task 6 +~170–300); std-hello .text −192 .rodata +672, std-net −204/+504 (path strings).
   Times: cold hello 15.5 s / warm 0.9 s; cold ui 16.5 s / warm 2.1 s. Next: `t18/runs.sh` under
   flock (steps 2–5), bin7 = HEAD 6d75fbb.
+- Task 18 done: exp 114 §3 (bytes), §4 (run/test) and Conclusion written. Runs: hello 2.0 s
+  to the note from cold (status 0, 6.6 s), second run 0.51 s; ui Bars → F1 F1 → cmd=1, Ctrl+C
+  130 + emulator alive; cargo test broken: ok/FAILED/FAILED(panicked: RUST -2)/not run, 101;
+  several devices error; SYMDEV_DEVICE=emulator-2 works. Runner now also prints InfoPrint notes
+  (6d75fbb). run_exe flake root-caused (comm set after CLOEXEC pipe closes) and fixed (48a4873).
+  OPEN: two instances of one profile share its data folder.
+NEXT: Task 19 — `task-start <plan> 19` (acceptance, 0.4.0, gates, final review).
