@@ -197,4 +197,4 @@ emulator evidence, experiment 113, the packages-repo API section above).
   when a checkout uses its prebuilt set, 5 rust_linker test: temp SDK without prebuilt, 6 damaged
   prebuilt error: "or delete <dir>", 7 README range −108…+20 and env-with-all-vars note,
   8 tidy (test linker lld, one path-prefix helper, named struct for link_lld inputs),
-  9 stale checklist in this file. Then gates. NEXT: item 1.
+  9 stale checklist in this file. Then gates. DONE: 1, 2, 3 (recheck.sh after item 8). NEXT: item 4.
