@@ -124,3 +124,18 @@ fn an_instance_is_started_in_its_own_session_with_its_profile_and_socket() {
         ]
     );
 }
+
+/// The `--help` probe's scratch HOME lives in the private runtime directory when there is
+/// one, not under a name anyone can take first in a shared `/tmp`.
+#[test]
+fn the_help_probe_keeps_its_scratch_folder_private() {
+    let dir =
+        crate::device::EmulatorInstance::probe_dir(Some("/run/user/7".into()), "/tmp".into(), 42);
+    assert!(dir.starts_with("/run/user/7/symdev/"), "{}", dir.display());
+    let dir = crate::device::EmulatorInstance::probe_dir(None, "/tmp".into(), 42);
+    assert!(
+        dir.starts_with("/tmp/") && dir.to_string_lossy().contains("42"),
+        "{}",
+        dir.display()
+    );
+}

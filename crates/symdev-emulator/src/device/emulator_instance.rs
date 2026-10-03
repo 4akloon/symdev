@@ -110,15 +110,38 @@ impl EmulatorInstance {
         registry.remove(&entry.id)
     }
 
+    /// The `--help` probe's scratch HOME: in the private runtime directory when there is
+    /// one (`$XDG_RUNTIME_DIR` is the user's own, mode 0700), else under the temp directory.
+    pub fn probe_dir(runtime: Option<PathBuf>, tmp: PathBuf, pid: u32) -> PathBuf {
+        let name = format!("symdev-eka2l1-help-{pid}");
+        match runtime {
+            Some(run) => run.join("symdev").join(name),
+            None => tmp.join(name),
+        }
+    }
+
     /// Whether `eka2l1 --help` lists `--control`. Observed (experiment 114 §2): the help
     /// is printed first and the process then does not exit, and any run without
     /// `--data-dir` uses (and rotates the log of) the default data folder. So it runs with
     /// `--data-dir` and `HOME`/`XDG_*` in a scratch folder, is read for 15 s at most, and is
     /// killed.
     pub fn has_control(eka2l1: &Path) -> Result<bool> {
-        let scratch =
-            std::env::temp_dir().join(format!("symdev-eka2l1-help-{}", std::process::id()));
-        std::fs::create_dir_all(&scratch).map_err(|e| file(&scratch, e))?;
+        let runtime = std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty());
+        let private = runtime.is_some();
+        let scratch = Self::probe_dir(
+            runtime.map(PathBuf::from),
+            std::env::temp_dir(),
+            std::process::id(),
+        );
+        if let Some(parent) = scratch.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| file(parent, e))?;
+        }
+        if private {
+            // Only this user can have made it: a leftover of an earlier probe.
+            let _ = std::fs::remove_dir_all(&scratch);
+        }
+        // Made here, not found: a folder someone else made first is refused.
+        std::fs::create_dir(&scratch).map_err(|e| file(&scratch, e))?;
         let mut probe = Command::new(eka2l1);
         // The X cookie defaults to `$HOME/.Xauthority`, which the scratch HOME would hide.
         if std::env::var_os("XAUTHORITY").is_none()
