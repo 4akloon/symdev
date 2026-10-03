@@ -4,7 +4,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use symdev_build::RustcLink;
-use symdev_core::{Error, Project, Result};
+use symdev_core::{Artifact, Error, Project, Result};
 
 use super::{CargoLinkEnv, CargoOutput, LinkKind, LinkRecord, LinkerArgs};
 use crate::provision::Provision;
@@ -95,14 +95,30 @@ impl LinkRun {
             LinkRecord { kind: kind.clone() }
                 .write(&PathBuf::from(format!("{}.symdev.toml", beside.display())))?;
         }
-        // 0.3.0's `build/<app>.exe` and `build/<name>.sisx`, from the release build only.
+        // 0.3.0's `build/<app>.exe` with its resources, and `build/<name>.sisx`, from the
+        // release build only.
         if kind == LinkKind::Main && out.is_release() {
             let build = root.join("build");
-            copy(exe, &build.join(format!("{}.exe", package.app())))?;
+            Self::keep_in_build(&artifacts, &build)?;
             copy(
                 &sisx,
                 &build.join(format!("{}.sisx", manifest.package.name)),
             )?;
+        }
+        Ok(())
+    }
+
+    /// The image and the resources linked beside it, copied into the project's `build/`,
+    /// where `symdev package` looks for them.
+    pub fn keep_in_build(artifacts: &[Artifact], build: &Path) -> Result<()> {
+        for artifact in artifacts {
+            let name = artifact.path.file_name().ok_or_else(|| {
+                Error::Other(format!(
+                    "symdev-ld: {} has no file name",
+                    artifact.path.display()
+                ))
+            })?;
+            copy(&artifact.path, &build.join(name))?;
         }
         Ok(())
     }

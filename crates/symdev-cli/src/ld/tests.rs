@@ -216,3 +216,23 @@ fn only_a_release_link_is_the_one_build_keeps() {
     let dev = "/work/app/build/cargo/arm-symbian-e32/debug/build/app/0123456789abcdef/out/app";
     assert!(!CargoOutput::of(Path::new(dev)).unwrap().is_release());
 }
+
+/// `symdev package` packages `build/<app>.exe` with the resources beside it, so a release link
+/// keeps all of its outputs there, not only the image and the `.sisx`.
+#[test]
+fn a_release_link_keeps_the_image_and_its_resources_in_build() {
+    let dir = tempfile::tempdir().unwrap();
+    let work = dir.path().join("out/app.symdev");
+    std::fs::create_dir_all(&work).unwrap();
+    let mut artifacts = Vec::new();
+    for name in ["app.exe", "app.rsc", "app_reg.rsc", "app_strings.r01"] {
+        std::fs::write(work.join(name), name).unwrap();
+        artifacts.push(symdev_core::Artifact::exe(work.join(name)));
+    }
+    let build = dir.path().join("build");
+    std::fs::create_dir_all(&build).unwrap();
+    super::LinkRun::keep_in_build(&artifacts, &build).unwrap();
+    for name in ["app.exe", "app.rsc", "app_reg.rsc", "app_strings.r01"] {
+        assert_eq!(std::fs::read_to_string(build.join(name)).unwrap(), name);
+    }
+}
