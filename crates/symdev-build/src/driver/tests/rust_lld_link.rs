@@ -76,7 +76,7 @@ fn two_links_around_the_stubs_and_a_plt_left_after_them_is_named() {
     let cache = SdkLldCache::at(tmp.path().join("cache"));
     let e = b
         .link_lld(
-            Some(&lld),
+            &lld,
             &cache,
             None,
             (&archive, &[], &libcalls),
@@ -124,7 +124,7 @@ fn link_with(tmp: &Path, elf: &[u8], fail: bool) -> (Result<(), symdev_core::Err
     let build = tmp.join("build");
     fs::create_dir_all(&build).unwrap();
     let got = b.link_lld(
-        Some(&lld),
+        &lld,
         &SdkLldCache::at(tmp.join("cache")),
         None,
         (&build.join("libhello.a"), &[], &build.join("libcalls.rlib")),

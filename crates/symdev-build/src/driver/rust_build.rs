@@ -211,10 +211,14 @@ impl BuildBackend for RustBuild {
         std::fs::create_dir_all(&build_dir).map_err(io)?;
         let cwd = RemotePath::new(arg(&project.root));
         self.prepare(&project.root)?;
-        if let RustLinker::Lld { .. } = self.linker {
-            // Before cargo, so an SDK that rust-lld cannot link with is not found out late.
-            self.sdk.lld_script()?;
-        }
+        // Before cargo, which takes minutes for a `std` project: an SDK rust-lld cannot
+        // link with, or no rust-lld, is said at once.
+        let lld = match &self.linker {
+            RustLinker::Lld { rust_lld, cache } => {
+                Some((self.rust_lld_ready(rust_lld.as_deref(), &cwd)?, cache))
+            }
+            RustLinker::Gnu => None,
+        };
         self.run_cargo(project, &cwd)?;
         let archive = produced(
             self.archive(project),
@@ -238,8 +242,8 @@ impl BuildBackend for RustBuild {
         )?;
         let elf = build_dir.join(format!("{}.elf", self.name));
         let map = build_dir.join(format!("{}.exe.map", self.name));
-        match &self.linker {
-            RustLinker::Gnu => self.gcce.run_tool(
+        match lld {
+            None => self.gcce.run_tool(
                 &self.link_args(
                     &archive,
                     shims.first().map(PathBuf::as_path),
@@ -249,8 +253,8 @@ impl BuildBackend for RustBuild {
                 )?,
                 &cwd,
             )?,
-            RustLinker::Lld { rust_lld, cache } => self.link_lld(
-                rust_lld.as_deref(),
+            Some((rust_lld, cache)) => self.link_lld(
+                &rust_lld,
                 cache,
                 prebuilt,
                 (&archive, &shims, &libcalls),

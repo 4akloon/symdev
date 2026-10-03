@@ -18,7 +18,7 @@ impl RustBuild {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn link_lld(
         &self,
-        rust_lld: Option<&Path>,
+        rust_lld: &Path,
         cache: &SdkLldCache,
         prebuilt: Option<&RustPrebuilt>,
         objects: (&Path, &[PathBuf], &Path),
@@ -27,15 +27,12 @@ impl RustBuild {
         cwd: &RemotePath,
     ) -> Result<()> {
         let (archive, shims, libcalls) = objects;
-        let lld = match rust_lld {
-            Some(set) => set.to_path_buf(),
-            None => self.rust_lld(cwd)?,
-        };
+        let lld = rust_lld;
         let linker = match prebuilt {
-            Some(p) => Linker::lld(&lld, p.lib_dir().into(), p.lib_dir().into()),
+            Some(p) => Linker::lld(lld, p.lib_dir().into(), p.lib_dir().into()),
             None => {
                 let g = self.gcce.tools.gcce()?;
-                Linker::lld(&lld, g.gcc_lib.clone(), g.gcc_target_lib.clone())
+                Linker::lld(lld, g.gcc_lib.clone(), g.gcc_target_lib.clone())
             }
         };
         let first_elf = elf.with_extension("first.elf");
@@ -86,6 +83,16 @@ impl RustBuild {
     fn elf_at(path: &Path) -> Result<ElfImage> {
         let bytes = std::fs::read(path).map_err(|e| at(path, e))?;
         ElfImage::parse(bytes).map_err(|e| at(path, e))
+    }
+
+    /// What a rust-lld link needs before cargo runs: the SDK's linker script, and rust-lld
+    /// itself — `set` (`SYMDEV_RUST_LLD`), else the project's toolchain's.
+    pub(super) fn rust_lld_ready(&self, set: Option<&Path>, cwd: &RemotePath) -> Result<PathBuf> {
+        self.sdk.lld_script()?;
+        match set {
+            Some(set) => Ok(set.to_path_buf()),
+            None => self.rust_lld(cwd),
+        }
     }
 
     /// The rust-lld of the project's toolchain: `rustc` run in the project, so that its

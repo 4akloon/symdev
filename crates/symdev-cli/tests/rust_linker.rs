@@ -109,3 +109,27 @@ fn a_rust_sdk_without_the_lld_script_is_refused_before_cargo_runs() {
         .stderr(predicate::str::contains("SYMDEV_RUST_LINKER=gnu"))
         .stderr(predicate::str::contains("stub cargo").not());
 }
+
+#[test]
+fn rust_lld_is_found_before_cargo_runs() {
+    // A `std` project's cargo run takes minutes; a missing rust-lld must not wait for it.
+    let w = world(true);
+    let rustc = w.tmp.path().join("rustc");
+    std::fs::write(
+        &rustc,
+        "#!/bin/sh\necho 'stub rustc: no toolchain' >&2\nexit 1\n",
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&rustc, std::fs::Permissions::from_mode(0o755)).unwrap();
+    w.prebuilt()
+        .current_dir(w.rust_project())
+        .arg("build")
+        .env("SYMDEV_CARGO", w.stub_cargo())
+        .env("SYMDEV_RUSTC", &rustc)
+        .env_remove("SYMDEV_RUST_LLD")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("stub rustc: no toolchain"))
+        .stderr(predicate::str::contains("stub cargo").not());
+}

@@ -166,6 +166,13 @@ impl World {
     }
 
     fn place(&self, mut cmd: Command) -> Command {
+        // A rust-lld of its own, so a build never asks the host's `rustc` for one; a test of
+        // that lookup removes the variable.
+        let rust_lld = self.tmp.path().join("rust-lld");
+        if !rust_lld.exists() {
+            fs::write(&rust_lld, "#!/bin/sh\nexit 1\n").unwrap();
+        }
+        cmd.env("SYMDEV_RUST_LLD", rust_lld);
         cmd.env("SYMDEV_HOME", self.home())
             .env("XDG_DATA_HOME", self.tmp.path().join("data"))
             .env("XDG_CACHE_HOME", self.tmp.path().join("cache"))
