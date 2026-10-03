@@ -4661,3 +4661,43 @@ through `symdev-rustc` and a sysroot `symdev build` makes, and `symdev-ld` write
 `<profile>/<bin>.sisx` for `cargo run`. The images are 0.3.0's where the program did not
 change (§3). A device is an EKA2L1 with `--control` on a profile of its own (§2), chosen
 and started by the runner, and it outlives the run (§4).
+
+### 5. Acceptance (spec §10; cargo-run Task 19)
+
+**Staging** (`~/src/cargo-run-scratch/accept/stage.sh`, as §4 of experiment 113): a `file://`
+source with `symdev;0.4.0` (this branch's release build with `SYMDEV_RELEASE=1`, so it has no
+checkout to fall back on), `rust-sdk;0.4.0` (this branch's tree cut with the 0.4.0 recipe's
+include list, plus experiment 113's `prebuilt/`; the shims have not changed since), the SDK
+(SHA-256 `cbec6da8…`, the private bucket's) and the **decoy** `gcce;12.1.0`. The index is
+signed with `install.sh`'s test key. The packages branch's `install.sh` (`cargo-run`, 3fe6a76)
+installs from it.
+
+**The run** (`accept.sh`, `accept-ui.sh`, under the agent lock): `env -i` with an empty
+`HOME`, `PATH` = that home's `.local/bin`, the developer's `cargo` and a host `cc`;
+`RUSTUP_HOME`/`CARGO_HOME` of the developer's rustup; `DISPLAY`, `XAUTHORITY` and
+`XDG_RUNTIME_DIR` of the session; `SYMDEV_EKA2L1` = §2's build, `SYMDEV_EKA2L1_DATA` = the
+user's EKA2L1 (for the firmware); `sources.toml` naming the staged source. No
+`SYMDEV_SIGN_PASSWORD` at any point.
+
+| step | result |
+|---|---|
+| `install.sh` | verified the index signature, installed `symdev 0.4.0`, linked `~/.local/bin/symdev`, `symdev-ld`, `symdev-rustc` |
+| `symdev new accept --lang rust` | installed `rust-sdk;0.4.0` |
+| `cargo run` | built (`dev`) in 15.9 s, `symdev-ld` installing `sdk;s60-3rd-fp2;1.1` on its way (rustc shows it as `warning: linker stderr: installing …`); `created profile rm-469`, `starting an emulator on profile rm-469`, `emulator-1 is Nokia N00 (RM-469)`, `Hello from Rust SDK (19 chars)`; status 0 |
+| `cargo test` | `running 1 test`, `test arithmetic ... ok`, `test result: ok. 1 passed; 0 failed`; status 0 |
+| installed | `cache`, `emulators`, `rust-sdk`, `sdk`, `symdev`: no GCCE, the decoy never ran |
+| an Avkon app | `symdev new acceptui` given `examples/ui`'s source, icon, locales and `[ui]` section: `cargo run` showed the "Bars" screen (`accept/out/accept-ui.png`, the instance's window); SIGINT to the runner, status 130; `symdev emulator stop emulator-1` |
+
+The scaffold's own window shows the app list: its note is an `InfoPrint`, which EKA2L1 logs and
+does not draw (§4). The user's `~/.local/share/EKA2L1` had nothing newer than a marker file.
+
+**Found on the way.** (1) A release build that is not `SYMDEV_RELEASE=1` still falls back to the
+checkout it was built from, so the first staging used the checkout's SDK; the recipe's
+`build.sh` sets the variable. (2) The `--help` probe of `has_control` ran EKA2L1 with a scratch
+`HOME`, which also hides `~/.Xauthority` when `XAUTHORITY` is unset; it now passes the cookie's
+path (d1eaa33). (3) An empty `HOME` has no host `cc`, which build scripts need (README:
+requirements).
+
+**Answer.** From an empty home, `install.sh`, `symdev new --lang rust`, `cargo run` and `cargo
+test` work with no GCCE and no signing password; the app runs on an emulator symdev started
+and the test passes.

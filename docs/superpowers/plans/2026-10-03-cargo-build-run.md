@@ -3034,11 +3034,11 @@ git commit -m "Record experiment 114's real runs of cargo build, run and test."
   (§3, §4.4–4.5, §6.1 and §11 updated to experiment 114's observations, with the deviations
   of this plan's head)
 
-- [ ] **Step 1: Docs and version.** Bump the version: `Pins::rust_sdk()` follows it, so the
+- [x] **Step 1: Docs and version.** Bump the version: `Pins::rust_sdk()` follows it, so the
   build wants `rust-sdk;0.4.0`. Update the README and the spec as listed; a fact that
   changed cites experiment 114.
 
-- [ ] **Step 2: Acceptance** (spec §10), as experiment 113 §4 staged its no-GCCE run:
+- [x] **Step 2: Acceptance** (spec §10), as experiment 113 §4 staged its no-GCCE run:
   * a `file://` source with this branch's `symdev` (release build) as `symdev;0.4.0`, the
     `rust-sdk;0.4.0` cut by the packages branch's recipe (with `prebuilt/`), and the SDK;
   * an empty `HOME` and scratch `XDG_*`;
@@ -3049,7 +3049,7 @@ git commit -m "Record experiment 114's real runs of cargo build, run and test."
   passing `smoke`. With D1 = A, no `SYMDEV_SIGN_PASSWORD` is set at any point. With B or C,
   follow that option. Record it as experiment 114's acceptance section and commit.
 
-- [ ] **Step 3: Gates**
+- [x] **Step 3: Gates**
 
 ```bash
 cargo test --workspace --offline
@@ -3059,7 +3059,7 @@ git ls-files '*.rs' | xargs wc -l | awk '$1 > 300 && $2 != "total"'   # prints n
 cargo +nightly-2026-09-19 test --offline --manifest-path symbian-rs/crates/symbian-macros/Cargo.toml
 ```
 
-- [ ] **Step 4: Review.** Use `superpowers:verification-before-completion`, then
+- [x] **Step 4: Review.** Use `superpowers:verification-before-completion`, then
   `superpowers:requesting-code-review` with base `main`. Fix every Critical and Important
   finding, rerun the gates, push the branch `cargo-run` (`git push origin cargo-run`). Do
   not merge, tag or publish; the owner decides the release.
