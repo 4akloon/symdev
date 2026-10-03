@@ -1110,3 +1110,211 @@ symdev-cli --offline ld::tests`
 Expected: the `symdev-ld` link starts the normal CLI, which prints clap's usage, so the
 assertions fail; `setup-linker` is an unknown subcommand; `LinkRun` and `LinkRecord` are
 not found.
+
+- [ ] **Step 3: Implement**
+
+`role.rs`:
+
+```rust
+//! `Role`: one binary, three programs, told apart by the name it is started under
+//! (design spec §4: `install.sh` and `symdev setup-linker` make the links).
+use std::ffi::OsStr;
+use std::path::Path;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Role { Cli, Linker, Rustc }
+
+impl Role {
+    pub fn of(argv0: &OsStr) -> Self {
+        match Path::new(argv0).file_stem().and_then(OsStr::to_str) {
+            Some("symdev-ld") => Self::Linker,
+            Some("symdev-rustc") => Self::Rustc,
+            _ => Self::Cli,
+        }
+    }
+}
+```
+
+`main.rs`: `main` starts with
+
+```rust
+    let mut args = std::env::args_os();
+    let argv0 = args.next().unwrap_or_default();
+    match role::Role::of(&argv0) {
+        role::Role::Linker => return exit(ld::LinkRun::from_env(args).and_then(|r| r.run())),
+        role::Role::Rustc => return exit(Err(Error::Other(
+            "symdev-rustc: TODO: the rust-std wrapper arrives with Task 9 (not observed)".into()))),
+        role::Role::Cli => {}
+    }
+```
+
+with `fn exit(r: Result<(), Error>) -> ExitCode` printing `error: {e}` and returning 1 (the
+same shape as the existing tail of `main`; reuse it there too). Remove Task 1's
+`#[allow(dead_code)]`.
+
+`rust_project.rs` moves `build_cmd.rs`'s Rust half (`provision.rust_sdk()`, `rust_linker()`,
+`needs_gcce`, `prebuilt_note`, `toolchain`, the `UiResources` with locales, `GcceBuild`,
+`RustBuild { … }`) into `RustProject::resolve(m, root, provision, ui)`. `ui = false` leaves
+`RustBuild::ui` as `None`: a test binary is a console program even in an Avkon project
+(spec §4.5). `build_cmd.rs` calls it with `ui = true`; behaviour unchanged.
+
+`ld/link_record.rs`:
+
+```rust
+//! `LinkRecord`: `<out>.symdev.toml`, what `symdev-ld` tells the runner about an image.
+use std::path::Path;
+
+use symdev_core::{Error, Result};
+
+use super::LinkKind;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LinkRecord { pub kind: LinkKind }
+
+impl LinkRecord {
+    pub fn write(&self, path: &Path) -> Result<()> {
+        let text = match &self.kind {
+            LinkKind::Main => "kind = \"main\"\n".to_string(),
+            LinkKind::Test { name } => format!("kind = \"test\"\nname = {:?}\n", name),
+        };
+        std::fs::write(path, text).map_err(|e| Error::Other(format!("{}: {e}", path.display())))
+    }
+
+    pub fn read(path: &Path) -> Result<Self> {
+        let bad = |why: &str| Error::Other(format!("{}: {why}; relink with cargo build", path.display()));
+        let text = std::fs::read_to_string(path).map_err(|e| bad(&e.to_string()))?;
+        let table: toml::Table = text.parse().map_err(|e: toml::de::Error| bad(&e.to_string()))?;
+        match (table.get("kind").and_then(|v| v.as_str()), table.get("name").and_then(|v| v.as_str())) {
+            (Some("main"), _) => Ok(Self { kind: LinkKind::Main }),
+            (Some("test"), Some(name)) => Ok(Self { kind: LinkKind::Test { name: name.into() } }),
+            _ => Err(bad("not a symdev-ld record")),
+        }
+    }
+}
+```
+
+`ld/link_run.rs`:
+
+```rust
+//! `LinkRun`: one `symdev-ld` call — link, package, and leave the files cargo and the
+//! runner look for (design spec §4; experiment 114 §1).
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+
+use symdev_build::RustcLink;
+use symdev_core::{Error, Project, Result};
+
+use super::{CargoLinkEnv, CargoOutput, LinkKind, LinkRecord, LinkerArgs};
+use crate::provision::Provision;
+use crate::rust_project::RustProject;
+use crate::sisx::ProjectPackage;
+
+pub(crate) struct LinkRun { args: LinkerArgs, env: CargoLinkEnv }
+
+impl LinkRun {
+    pub fn from_env(args: impl Iterator<Item = OsString>) -> Result<Self> {
+        let args = LinkerArgs::parse(args)?;
+        Ok(Self { args, env: CargoLinkEnv::from_pairs(std::env::vars()) })
+    }
+
+    /// This link's own directory, beside rustc's output.
+    pub fn work_for(args: &LinkerArgs) -> Result<PathBuf> {
+        Ok(CargoOutput::of(&args.output)?.work_dir())
+    }
+
+    pub fn run(&self) -> Result<()> {
+        let root = self.env.manifest_dir.clone().ok_or_else(|| Error::Other(
+            "symdev-ld: CARGO_MANIFEST_DIR is not set: symdev-ld is cargo's linker, named in \
+             .cargo/config.toml; run `cargo build`".into()))?;
+        let manifest = symdev_manifest::load(&root.join("symdev.toml")).map_err(|e| Error::Other(format!(
+            "symdev-ld: no usable symdev.toml in {} ({e}); `symdev new --lang rust` makes one",
+            root.display())))?;
+        if !manifest.language.is_rust() {
+            return Err(Error::Other(format!("symdev-ld: {} is not a Rust project", root.display())));
+        }
+        let kind = LinkKind::of(&self.env, &manifest.package.name)?;
+        let out = CargoOutput::of(&self.args.output)?;
+        for dir in &self.args.raw_dylibs {
+            if std::fs::read_dir(dir).is_ok_and(|mut d| d.next().is_some()) {
+                return Err(Error::Other(format!("symdev-ld: rustc's {} is not empty: TODO: \
+                    raw-dylib imports (not observed)", dir.display())));
+            }
+        }
+        let provision = Provision::from_env(false);
+        let rust = RustProject::resolve(&manifest, &root, &provision, kind == LinkKind::Main)?;
+        let link = RustcLink { inputs: self.args.inputs.clone(), work: out.work_dir() };
+        let artifacts = rust.build.link_rustc_output(&Project { root: root.clone() }, &link)?;
+        let exe = &artifacts.first().ok_or_else(|| Error::Other("symdev-ld: no image".into()))?.path;
+        let package = ProjectPackage::new(manifest.clone(), root.clone(), rust.epocroot.clone())?;
+        let password = std::env::var("SYMDEV_SIGN_PASSWORD").unwrap_or_default(); // per D1
+        let sisx = package.package(exe, &password)?;
+        copy(exe, out.path())?;
+        copy(&sisx, &out.sisx())?;
+        LinkRecord { kind: kind.clone() }.write(&out.record())?;
+        if kind == LinkKind::Main {
+            let bin = out.path().file_name().map(PathBuf::from).unwrap_or_default();
+            let beside = out.profile_dir().join(&bin);
+            copy(&sisx, &beside.with_extension("sisx"))?;
+            LinkRecord { kind }.write(&PathBuf::from(format!("{}.symdev.toml", beside.display())))?;
+            let build = root.join("build");
+            copy(exe, &build.join(format!("{}.exe", package.app())))?;
+            copy(&sisx, &build.join(format!("{}.sisx", manifest.package.name)))?;
+        }
+        Ok(())
+    }
+}
+
+fn copy(from: &Path, to: &Path) -> Result<()> {
+    std::fs::copy(from, to).map(|_| ()).map_err(|e| Error::Other(format!(
+        "symdev-ld: copy {} to {}: {e}", from.display(), to.display())))
+}
+```
+
+(`<bin>` has no extension, so `beside.with_extension("sisx")` is `<profile-dir>/<bin>.sisx`,
+exactly `<exe>.sisx` for the path `cargo run` hands the runner.) Export `LinkRecord` and
+`LinkRun` from `ld.rs`.
+
+`setup_linker.rs`: `pub(crate) fn setup_linker(dir: Option<PathBuf>) -> Result<ExitCode>`.
+For `symdev-ld` and `symdev-rustc` in `dir` (default: the directory of
+`std::env::current_exe()`): an existing link to `current_exe()` is kept; anything else there
+is an error naming it; otherwise `std::os::unix::fs::symlink(current_exe, …)`. Print each
+link. If `dir` is not on `PATH`, print `note: <dir> is not on PATH; cargo looks the linker
+up there`. `cli.rs` gains
+
+```rust
+    /// Make the `symdev-ld` and `symdev-rustc` links cargo starts (design spec §4).
+    SetupLinker {
+        /// Where to put them; default: beside this symdev.
+        #[arg(long)]
+        dir: Option<std::path::PathBuf>,
+    },
+```
+
+and `main.rs` dispatches it.
+
+- [ ] **Step 4: Run the tests**
+
+Run: `cargo test -p symdev-cli --offline`
+Expected: all pass.
+
+- [ ] **Step 5: A real link** (needs the GCCE route environment of experiment 114)
+
+```bash
+S=~/src/cargo-run-scratch; cargo build --release --offline -p symdev-cli
+mkdir -p $S/bin4 && ./target/release/symdev setup-linker --dir $S/bin4
+. $S/env.sh; cd $S/tree/symbian-rs/examples/hello && touch src/main.rs
+env -u RUSTUP_TOOLCHAIN PATH=$S/bin4:$PATH SYMDEV_SIGN_PASSWORD=scratch cargo build --release
+python3 $S/e32cmp.py ../../build/../examples/hello/build/cargo/arm-symbian-e32/release/hello $S/out/q2/hello.exe
+ls build/cargo/arm-symbian-e32/release/hello.sisx build/hello.sisx
+```
+
+(`tree/` holds the spike's bin-shape `hello`. Its `symbian-rs/.cargo/config.toml` names
+`linker = "symdev-ld"`, which `$S/bin4` now resolves to this build.)
+Expected: `EQUAL 975/1348 vs 975/1348`, and both `.sisx` files exist.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add crates/symdev-cli
+git commit -m "Run symdev as cargo's linker under the name symdev-ld, and make its links with setup-linker."
+```
