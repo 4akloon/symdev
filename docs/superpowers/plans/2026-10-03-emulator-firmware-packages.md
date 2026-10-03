@@ -284,18 +284,20 @@ start the step again.
 
 - [ ] **Step 3: Build and test on this host**
 
-Configure `~/src/EKA2L1-wt-build/emulator-pkg` exactly as `~/src/EKA2L1-wt-build/cargo-run`
-(copy its `build.sh`, change the two directories), then:
+`~/src/EKA2L1-wt-build/emulator-pkg/build.sh` is `~/src/EKA2L1-wt-build/cargo-run/build.sh`
+with `cargo-run` replaced by `emulator-pkg` everywhere (`sed s/cargo-run/emulator-pkg/g`) and
+`ekatests` added to its `ninja` targets. It configures once (the same cache options as the
+integration build, `-DEKA2L1_BUILD_TESTS=ON`), builds, restores `src/emu/qt/translations`
+and appends `EXIT=<rc>` to its `build.log`. Then:
 
 ```bash
-PATH=~/.local/eka2l1-tools/bin:~/.local/eka2l1-tools/cmake/bin:$PATH \
-LIBRARY_PATH=~/.local/eka2l1-sysroot/usr/lib/x86_64-linux-gnu \
-ninja -C ~/src/EKA2L1-wt-build/emulator-pkg eka2l1_qt ekatests > ~/src/emu-pkg-scratch/host-build.log 2>&1
+mkdir -p ~/src/EKA2L1-wt-build/emulator-pkg/tmp
+bash ~/src/EKA2L1-wt-build/emulator-pkg/build.sh; tail -1 ~/src/EKA2L1-wt-build/emulator-pkg/build.log
 (cd ~/src/EKA2L1-wt-build/emulator-pkg/src/tests && ./ekatests) > ~/src/emu-pkg-scratch/ekatests.log 2>&1
-git -C ~/src/EKA2L1-wt/emulator-pkg checkout -- src/emu/qt/translations
+tail -2 ~/src/emu-pkg-scratch/ekatests.log
 ```
 
-Expected: the build ends with exit 0, and `ekatests.log` ends with `All tests passed`. A
+Expected: `EXIT=0`, and `ekatests.log` ends with `All tests passed`. A
 failure that the merges caused is fixed on the branch as its own merge-fix commit, with the
 reason in the NOTES. A failure that `origin/master` alone also shows is recorded and left
 alone.
