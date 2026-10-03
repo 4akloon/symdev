@@ -1917,3 +1917,119 @@ byte-for-byte comparison at one path is Task 18's.
 git add symbian-rs/examples/*/Cargo.toml symbian-rs/examples/*/src/main.rs symbian-rs/examples/README.md
 git commit -m "Build the no_std examples as binaries that cargo links through symdev-ld."
 ```
+
+### Task 9: `rust-std` projects through `symdev-rustc`
+
+**Files:**
+- Create: `crates/symdev-build/src/std_sysroot.rs` (`StdSysroot`)
+- Modify: `crates/symdev-build/src/std_src.rs` (materialises into the sysroot's `lib/rustlib/src/rust`; `SRC_ROOT_ENV` goes in Task 15 with the last user)
+- Create: `crates/symdev-cli/src/rustc_wrapper.rs` (`RustcWrapper`)
+- Modify: `crates/symdev-cli/src/main.rs` (`Role::Rustc` → `RustcWrapper`)
+- Modify: `symbian-rs/examples/std-{hello,net}/{Cargo.toml,src/main.rs,.cargo/config.toml}`
+- Test: `crates/symdev-build/src/std_sysroot.rs` (`#[cfg(test)]`), `crates/symdev-cli/tests/rustc_wrapper.rs`
+
+**Interfaces:**
+- Consumes: Task 4 (`Role`), Task 7 (the shape).
+- Produces:
+  - `StdSysroot::materialise(sdk: &RustSdk, rustc: &Path, project_root: &Path) ->
+    Result<StdSysroot>`, which makes `<root>/build/sysroot`: `lib/rustlib/src/rust/library`
+    (the patched copy `StdSrc` makes today) and `lib/rustlib/<host>` (a link to the pinned
+    toolchain's). It also makes the link `<root>/build/symdev-rustc` → the running `symdev`.
+  - `StdSysroot::dir(&self) -> &Path`.
+  - The role `symdev-rustc`. It runs `rustc --sysroot <dir of argv[0]>/sysroot <args…>`, with
+    `rustc` meaning `SYMDEV_RUSTC` or `rustc` on `PATH`, through `CommandExt::exec`.
+  - A `rust-std` project's `.cargo/config.toml` has `[build] rustc = "build/symdev-rustc"`.
+    Experiment 114 §1.4 (H4) showed that a path with a slash is taken relative to the
+    directory holding `.cargo/`.
+
+- [ ] **Step 1: Observe what cargo hands the wrapper as `argv[0]`**
+
+The wrapper finds the sysroot from its own path, so that path must be the link's, not
+`symdev`'s. In `~/src/cargo-run-scratch/sdk1/symbian-rs/examples/std-hello`, write
+`build/symdev-rustc` as `#!/bin/sh\necho "$0" >> /tmp/../$HOME/src/cargo-run-scratch/argv0.txt\nexec rustc --sysroot "$(dirname "$0")/sysroot" "$@"`,
+with `[build] rustc = "build/symdev-rustc"`. Run `cargo build --release` from the project
+and from `src/`. Record `argv0.txt` in `docs/research/wip/cargo-run.md`.
+Expected: an absolute `<project>/build/symdev-rustc` both times. If it is relative, resolve
+it against the current directory in `RustcWrapper`, and make the test in Step 2 cover that.
+
+- [ ] **Step 2: Write the failing tests**
+
+`std_sysroot.rs` tests (with a fake toolchain: a temp dir with
+`lib/rustlib/src/rust/library/std/Cargo.toml` and `lib/rustlib/x86_64-unknown-linux-gnu/lib/`,
+and a `rustc` script printing that dir for `--print sysroot`, the way `std_src/tests.rs`
+fakes it today):
+
+```rust
+#[test]
+fn the_sysroot_holds_the_patched_library_and_links_the_host_libraries() {
+    let (sdk, rustc, project) = fixture();
+    let s = StdSysroot::materialise(&sdk, &rustc, &project).unwrap();
+    assert_eq!(s.dir(), project.join("build/sysroot"));
+    assert!(s.dir().join("lib/rustlib/src/rust/library/std/Cargo.toml").is_file());
+    assert!(s.dir().join("lib/rustlib/src/rust/library/symbian-sys/Cargo.toml").is_file());
+    let host = std::fs::read_link(s.dir().join("lib/rustlib/x86_64-unknown-linux-gnu")).unwrap();
+    assert!(host.ends_with("lib/rustlib/x86_64-unknown-linux-gnu"));
+    assert!(std::fs::symlink_metadata(project.join("build/symdev-rustc")).unwrap().file_type().is_symlink());
+}
+```
+
+`crates/symdev-cli/tests/rustc_wrapper.rs`: link `symdev-rustc` into a temp `build/` with a
+`sysroot/` beside it, put a fake `rustc` (a script that prints its argv) in `SYMDEV_RUSTC`,
+and run `build/symdev-rustc -vV`. Expected stdout: `--sysroot <tmp>/build/sysroot -vV`.
+
+- [ ] **Step 3: Run them to see them fail**
+
+Run: `cargo test -p symdev-build --offline std_sysroot` and `cargo test -p symdev-cli
+--offline --test rustc_wrapper`. Expected: not found / the CLI prints the Task 4 TODO.
+
+- [ ] **Step 4: Implement**
+
+`StdSysroot::materialise` calls `StdSrc::materialise_into(sdk, rustc, project_root,
+&dir.join("lib/rustlib/src/rust"))`. That is today's `materialise` with the destination as
+a parameter: the copy of the toolchain's library, `symbian-sys`, the overlay and its SHA-1
+check, all unchanged. It then links `lib/rustlib/<host>`, with `<host>` from `rustc -vV`'s
+`host:` line (`RustLld` already parses it; reuse that parser), and makes `build/symdev-rustc`
+with `std::os::unix::fs::symlink(std::env::current_exe()?, …)`, replacing a stale link.
+`RustcWrapper::run(argv0, args) -> Result<Infallible>` computes the sysroot and `exec`s.
+
+`std-hello` and `std-net`: `toshape.py` for `Cargo.toml`; `#![no_main]` after the `//!` block
+(they have no `#![no_std]`). `.cargo/config.toml` becomes:
+
+```toml
+# A `rust-std` project: cargo builds std from the patched source in build/sysroot, which
+# `symdev build` (or `symdev new`) makes; build/symdev-rustc points rustc at it (exp. 114 §1.4).
+[build]
+target = "../../targets/arm-symbian-e32.json"
+target-dir = "build/cargo"
+rustc = "build/symdev-rustc"
+
+[unstable]
+build-std = ["std", "panic_abort"]
+json-target-spec = true
+panic-abort-tests = true
+
+[target.arm-symbian-e32]
+linker = "symdev-ld"
+runner = "symdev run --exe"
+```
+
+- [ ] **Step 5: Run the tests and a real `std` build**
+
+Run Step 3's commands; expected: pass. Then, with the experiment 114 environment:
+`symdev build` once in `symbian-rs/examples/std-hello`. Until Task 15 that is still 0.3.0's
+path, and it makes nothing new, so call `StdSysroot` through a scratch `symdev` built from
+this commit, or run Task 15 first if you prefer. Then plain `cargo build --release`. Expected:
+`Compiling std v0.0.0 (<project>/build/sysroot/lib/rustlib/src/rust/library/std)`, and
+`build/stdhello.sisx`. Its uncompressed size differs from 0.3.0's 124 212 only by `std`'s
+path strings (experiment 114 §1.4: 124 920 at that path length); note the number in the wip
+file.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add crates/symdev-build/src/std_sysroot.rs crates/symdev-build/src/std_src.rs crates/symdev-build/src/lib.rs \
+  crates/symdev-cli/src/rustc_wrapper.rs crates/symdev-cli/src/main.rs crates/symdev-cli/tests/rustc_wrapper.rs \
+  symbian-rs/examples/std-hello symbian-rs/examples/std-net
+git restore --staged symbian-rs/examples/std-hello/Cargo.lock symbian-rs/examples/std-net/Cargo.lock 2>/dev/null
+git commit -m "Build rust-std projects with plain cargo through symdev-rustc and a materialised sysroot."
+```
