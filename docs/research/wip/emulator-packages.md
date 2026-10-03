@@ -240,3 +240,6 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   packages 8d1ea23 fixed its tiny EKA2L1). Whole-branch review dispatched (fresh reviewer, range
   2694821..067d31f) but its result had not arrived when this agent handed back. NOT yet READY FOR
   L1. Next: read the review, fix Critical/Important test-first, rerun gates, then write READY FOR L1.
+- [ ] L1 (lead, 2026-10-03): `git push --force-with-lease fork symdev` (d07d5ac -> 29d5f58) was refused by
+  the auto-mode classifier as a destructive git action, despite the owner's "Так, роби". Not retried,
+  not worked around; asked the owner. The whole-branch review (agent a55be6b) is still running.
