@@ -309,4 +309,11 @@ NEXT: Task 10 — `task-start <plan> 10` (EKA2L1 with --control/--data-dir; prof
   build/rust-sdk link instead of the old --target argv). Real (`exec/t15-real.sh`): hello,
   ui rc=0 (fresh), std-hello rc=0 19 s, `Compiling std v0.0.0 (…/build/sysroot/lib/rustlib/
   src/rust/library/std)` — Task 9's real check passes.
-NEXT: Task 16 — `task-start <plan> 16` (OldShape refusal).
+- Task 16 done: `OldShape` (detect on `"staticlib"`, numbered edits for Cargo.toml, main.rs,
+  config); `symdev build` refuses it first, before provisioning or cargo (integration test with
+  a marker-writing cargo on PATH).
+- Flake seen once (gates run after b4c0c1e): run_exe's cargo_test_prints… and ctrl_c… failed
+  with "SYMDEV_DEVICE=emulator-1 is neither a running emulator nor a profile; there are: none"
+  (the runner's liveness dropped the fake). Not reproduced in 5 full runs since. Stress:
+  `exec/stress-run-exe.sh 40` → `exec/stress.out`, failing logs in `exec/stress/`.
+NEXT: Task 17 — `task-start <plan> 17` (CI and the packages).

@@ -2860,7 +2860,7 @@ git commit -m "Make symdev build run cargo build, the one build path for Rust pr
 - Produces: `OldShape::detect(cargo_toml: &str, main_rs: &str, config: &str, package: &str)
   -> Option<OldShape>` and `OldShape::message(&self) -> String`.
 
-- [ ] **Step 1: Write the failing test**, using 0.3.0's scaffold text verbatim (from `git
+- [x] **Step 1: Write the failing test**, using 0.3.0's scaffold text verbatim (from `git
   show 3086f1d:crates/symdev-cli/src/scaffold_rust.rs`, `cargo_manifest("hello")` and
   `cargo_config()`):
 
@@ -2895,7 +2895,7 @@ fn a_project_in_the_new_shape_is_left_alone() {
   stderr starts `this project has 0.3.0's shape` and holds `[[bin]]`. No cargo runs: put a
   `cargo` on `PATH` that writes a marker file, and check the marker is absent.
 
-- [ ] **Step 2: Run them to see them fail.** **Step 3: Implement** (the message is a numbered
+- [x] **Step 2: Run them to see them fail.** **Step 3: Implement** (the message is a numbered
   list; only the edits a file still needs; `build_cmd.rs` reads the three files and refuses
   with `this project has 0.3.0's shape (a staticlib that symdev linked); symdev 0.4.0 builds
   it with cargo. Make these edits, then run symdev build again:` plus the list). **Step 4:

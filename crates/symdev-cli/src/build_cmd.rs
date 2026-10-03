@@ -8,6 +8,7 @@ use symdev_manifest::Manifest;
 
 use crate::build_dir::BuildDir;
 use crate::cargo_build::CargoBuild;
+use crate::old_shape::OldShape;
 use crate::provision::Provision;
 use crate::rust_project::RustProject;
 
@@ -63,6 +64,15 @@ pub fn build_project(m: Manifest, provision: &Provision) -> Result<ExitCode, Err
 /// sysroot `symdev-rustc` points at. `symdev-ld` leaves `build/<name>.exe` and
 /// `build/<name>.sisx`.
 fn build_rust(m: &Manifest, root: &Path, provision: &Provision) -> Result<ExitCode, Error> {
+    let read = |path: &str| std::fs::read_to_string(root.join(path)).unwrap_or_default();
+    let (cargo, main, config) = (
+        read("Cargo.toml"),
+        read("src/main.rs"),
+        read(".cargo/config.toml"),
+    );
+    if let Some(old) = OldShape::detect(&cargo, &main, &config, &m.package.name) {
+        return Err(Error::Other(old.message()));
+    }
     let rust = RustProject::resolve(m, root, provision, true)?;
     BuildDir::of(root).create()?;
     rust.build.prepare(root)?;

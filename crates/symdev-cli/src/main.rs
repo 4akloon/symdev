@@ -6,6 +6,7 @@ mod cli;
 mod devices_cmd;
 mod ld;
 mod libtest_print;
+mod old_shape;
 mod provision;
 mod role;
 mod run;
