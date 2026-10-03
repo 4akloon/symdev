@@ -209,3 +209,12 @@ fn a_rust_lld_variable_that_names_nothing_is_refused() {
     let e = p.rust_linker().err().unwrap().to_string();
     assert!(e.contains("SYMDEV_RUST_LLD is set to /no/rust-lld"), "{e}");
 }
+
+#[test]
+fn rust_lld_without_any_home_names_its_cache_and_the_way_back_to_gnu_ld() {
+    // Every toolchain path set, no HOME: packages need no home, the rust-lld fix cache does.
+    let e = provision(&[]).rust_linker().err().unwrap().to_string();
+    assert!(e.contains("cache/sdk-lld"), "{e}");
+    assert!(e.contains("set HOME, or set SYMDEV_HOME"), "{e}");
+    assert!(e.contains("SYMDEV_RUST_LINKER=gnu"), "{e}");
+}

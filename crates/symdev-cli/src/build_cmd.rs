@@ -34,7 +34,7 @@ pub fn build_project(m: Manifest, provision: &Provision) -> Result<ExitCode, Err
         .transpose()?;
     // GCCE is left out only when rust-lld links with the Rust SDK's prebuilt set.
     let gcce = match (&rust_sdk, &linker) {
-        (Some(sdk), Some(linker)) => linker.needs_gcce(sdk.prebuilt()?.as_ref()),
+        (Some(sdk), Some(linker)) => linker.needs_gcce(sdk)?,
         _ => true,
     };
     let tools = provision.toolchain(m.target.device, gcce)?;

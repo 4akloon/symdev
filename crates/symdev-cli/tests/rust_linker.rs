@@ -85,3 +85,27 @@ fn an_unknown_linker_is_refused_with_the_two_values() {
         .stderr(predicate::str::contains("SYMDEV_RUST_LINKER is `mold`"))
         .stderr(predicate::str::contains("`gnu`"));
 }
+
+#[test]
+fn a_rust_sdk_without_the_lld_script_is_refused_before_cargo_runs() {
+    let w = world(false);
+    let sdk = w.tmp.path().join("old-sdk/symbian-rs");
+    for file in symdev_build::RustSdk::REQUIRED {
+        let path = sdk.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, "").unwrap();
+    }
+    std::fs::write(sdk.join("Cargo.toml"), "[workspace]\nmembers = []\n").unwrap();
+    std::fs::write(sdk.join("rust-toolchain.toml"), common::SDK_TOOLCHAIN).unwrap();
+    std::fs::create_dir_all(sdk.join("crates")).unwrap();
+    w.prebuilt()
+        .current_dir(w.rust_project())
+        .arg("build")
+        .env("SYMDEV_RUST_SDK", &sdk)
+        .env("SYMDEV_CARGO", w.stub_cargo())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no targets/symbian-lld.ld"))
+        .stderr(predicate::str::contains("SYMDEV_RUST_LINKER=gnu"))
+        .stderr(predicate::str::contains("stub cargo").not());
+}

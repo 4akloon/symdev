@@ -84,8 +84,7 @@ impl Provision {
         if !language.is_rust() {
             return Ok(true);
         }
-        let sdk = self.rust_sdk()?;
-        Ok(self.rust_linker()?.needs_gcce(sdk.prebuilt()?.as_ref()))
+        self.rust_linker()?.needs_gcce(&self.rust_sdk()?)
     }
 
     /// The EPOCROOT for reading a `bld.inf`, installing the SDK if it is missing. The

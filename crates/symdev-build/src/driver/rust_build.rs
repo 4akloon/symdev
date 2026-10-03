@@ -211,6 +211,10 @@ impl BuildBackend for RustBuild {
         std::fs::create_dir_all(&build_dir).map_err(io)?;
         let cwd = RemotePath::new(arg(&project.root));
         self.prepare(&project.root)?;
+        if let RustLinker::Lld { .. } = self.linker {
+            // Before cargo, so an SDK that rust-lld cannot link with is not found out late.
+            self.sdk.lld_script()?;
+        }
         self.run_cargo(project, &cwd)?;
         let archive = produced(
             self.archive(project),
@@ -220,8 +224,8 @@ impl BuildBackend for RustBuild {
                 self.name
             ),
         )?;
-        let prebuilt = self.sdk.prebuilt()?;
-        let prebuilt = self.linker.prebuilt(prebuilt.as_ref());
+        let prebuilt = self.linker.prebuilt(&self.sdk)?;
+        let prebuilt = prebuilt.as_ref();
         let shims = self.shim_archives(project, &cwd, prebuilt)?;
         self.run_cargo_args(&self.libcalls().cargo_args(), &cwd)?;
         let libcalls = produced(

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use symdev_core::{Error, Result};
 
-use crate::{RustPrebuilt, SdkLldCache};
+use crate::{RustPrebuilt, RustSdk, SdkLldCache};
 
 /// How a Rust program is linked. C++ projects are not asked: their line is the SDK's,
 /// byte-verified, and they need GCCE to compile anyway.
@@ -40,20 +40,21 @@ impl RustLinker {
         }
     }
 
-    /// The prebuilt set this link uses, given the Rust SDK's (`RustSdk::prebuilt`):
-    /// rust-lld takes it; GNU ld never does, so its line and its per-application shims
-    /// stay as they were.
-    pub fn prebuilt<'a>(&self, sdk: Option<&'a RustPrebuilt>) -> Option<&'a RustPrebuilt> {
+    /// The prebuilt set this link uses: rust-lld takes the Rust SDK's when it has one
+    /// ([`RustSdk::prebuilt`]); GNU ld never does and does not look at it, so its line and
+    /// its per-application shims stay as they were — even beside a damaged `prebuilt/`,
+    /// whose error names `SYMDEV_RUST_LINKER=gnu` as the way out.
+    pub fn prebuilt(&self, sdk: &RustSdk) -> Result<Option<RustPrebuilt>> {
         match self {
-            Self::Lld { .. } => sdk,
-            Self::Gnu => None,
+            Self::Lld { .. } => sdk.prebuilt(),
+            Self::Gnu => Ok(None),
         }
     }
 
     /// Whether the build needs GCCE: unless rust-lld links with the prebuilt set, the
     /// shims are compiled, and GNU ld is GCCE's.
-    pub fn needs_gcce(&self, sdk: Option<&RustPrebuilt>) -> bool {
-        self.prebuilt(sdk).is_none()
+    pub fn needs_gcce(&self, sdk: &RustSdk) -> Result<bool> {
+        Ok(self.prebuilt(sdk)?.is_none())
     }
 }
 

@@ -163,9 +163,9 @@ impl RustSdk {
         match script.is_file() {
             true => Ok(script),
             false => Err(Error::Other(format!(
-                "Rust SDK at {} has no targets/symbian-lld.ld, which rust-lld links with: \
-                 it is older than symdev 0.3.0; use the rust-sdk of this symdev, or set \
-                 SYMDEV_RUST_LINKER=gnu to link with GCCE's GNU ld",
+                "Rust SDK at {} has no targets/symbian-lld.ld, which rust-lld links with \
+                 (it predates symdev's rust-lld link); set SYMDEV_RUST_LINKER=gnu to link \
+                 with GCCE's GNU ld, or use a Rust SDK that has the script",
                 self.root.display()
             ))),
         }
