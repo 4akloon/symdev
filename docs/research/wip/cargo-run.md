@@ -46,6 +46,18 @@ No push to main / merge / tag / publish; pushing `cargo-run` is allowed.
   to `-o` is NOT next to what `cargo run` hands the runner (uplift is a hardlink of the image
   only). (h) `warning: profile package spec compiler_builtins … did not match any packages`.
 
+- Q2 driver: `bin/symdev-spike` = 0.3.0 + `SPIKE_RUST_INPUTS` splice in `link_line`
+  (`driver-src/`), `q2.sh <out> <release|dev> <ex>…` (cargo with symdev's flags + SYMDEV_UID3
+  → rec-ld records inputs; then symdev-spike build with fake-cargo). `e32cmp.py` masks CRC+time.
+  Tree examples hello/ui/async converted by `toshape.py` ([[bin]] test=false + `#![no_main]`),
+  tree target spec executables=true, `tree/symbian-rs/.cargo/config.toml` linker=symdev-ld.
+- Q2 result (release): hello 975/1348, ui 10288/17028, async 18360/33892 — all EQUAL
+  (masked) to symdev-030's staticlib images. cargo 7.9–8.1 s (app crate only), link 0.5–1.6 s.
+- `symbian-std` reads `option_env!("SYMDEV_UID3")` (test_report) — a plain cargo build has no
+  such env; a dependency's build script sees ITS OWN CARGO_MANIFEST_DIR, so only a macro
+  expanded in the app crate (or a link-time symbol like `--defsym=symrs_uid3`) can see the
+  app's symdev.toml. To verify for the plan.
+
 ## Dead ends
 
 ## Next
