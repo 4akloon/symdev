@@ -1063,3 +1063,158 @@ with the arm
 ```
 
 - [ ] **Step 4: Run them and see them pass**, as in step 2. Expected: `test result: ok`.
+
+- [ ] **Step 5: Write the driver's test first**, `tests/firmware-stage.test`
+
+```sh
+#!/bin/sh
+# stage.sh of firmware;rm-469;1 against a fake EKA2L1 data folder: the staged tree, the
+# device.yml it takes, the refusals, and that the data folder is not written.
+#
+#   sh tests/firmware-stage.test
+set -eu
+root=$(cd "$(dirname "$0")/.." && pwd)
+stage=$root/recipes/firmware/rm-469/1/stage.sh
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+cargo build --release --quiet --manifest-path "$root/Cargo.toml" -p pkgtools
+export PKGTOOLS="$root/target/release/pkgtools"
+failures=0
+check() { name=$1; shift; if "$@"; then echo "ok - $name"; else echo "not ok - $name"; failures=$((failures + 1)); fi; }
+
+data=$tmp/data
+mkdir -p "$data/roms/rm-469" "$data/drives/z/rm-469/sys/bin" "$data/drives/z/rm-469/z:/private" "$data/drives/c/x"
+printf 'rom' > "$data/roms/rm-469/SYM.ROM"
+printf 'dll' > "$data/drives/z/rm-469/sys/bin/avkonfep.dll.bak"
+printf 'RM-469:\n  platver: epoc93fp2\n  firmcode: RM-469\n  model: N00\nRM-1:\n  firmcode: RM-1\n' > "$data/devices.yml"
+before=$(cd "$data" && find . -type f -exec sha256sum {} + | sort)
+
+EKA2L1_DATA=$data bash "$stage" "$tmp/out" > "$tmp/out.log" 2>&1
+check "the ROM is staged" cmp -s "$data/roms/rm-469/SYM.ROM" "$tmp/out/roms/rm-469/SYM.ROM"
+check "drive Z is staged with its z: folder" test -d "$tmp/out/drives/z/rm-469/z:/private"
+check "device.yml is the RM-469 entry" sh -c "printf 'RM-469:\n  platver: epoc93fp2\n  firmcode: RM-469\n  model: N00\n' | cmp -s - '$tmp/out/device.yml'"
+check "drive C is not staged" test ! -e "$tmp/out/drives/c"
+check "the data folder is unchanged" sh -c "[ \"\$(cd '$data' && find . -type f -exec sha256sum {} + | sort)\" = '$before' ]"
+check "an existing output folder is refused" sh -c "! EKA2L1_DATA='$data' bash '$stage' '$tmp/out' 2>/dev/null"
+check "no EKA2L1_DATA is refused" sh -c "! env -u EKA2L1_DATA bash '$stage' '$tmp/out2' 2>/dev/null"
+rm -r "$data/roms/rm-469"
+check "a missing ROM is refused by name" sh -c "EKA2L1_DATA='$data' bash '$stage' '$tmp/out3' 2>&1 | grep -q 'roms/rm-469 is missing'"
+[ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }
+```
+
+Run `sh tests/firmware-stage.test`. Expected: it fails, because `stage.sh` does not exist.
+
+- [ ] **Step 6: Write `recipes/firmware/rm-469/1/stage.sh`**
+
+```bash
+#!/usr/bin/env bash
+# Stage firmware;rm-469;1 from an EKA2L1 data folder, for `publish private`:
+#
+#   EKA2L1_DATA=~/.local/share/EKA2L1/data bash stage.sh <out-dir>
+#
+# <out-dir> must not exist. It gets roms/rm-469/ and drives/z/rm-469/ copied as they are,
+# and device.yml, the RM-469 entry of $EKA2L1_DATA/devices.yml (pkgtools device-entry).
+# Nothing in EKA2L1_DATA is written. PKGTOOLS names a pkgtools binary; by default this
+# repository's is run through cargo.
+set -euo pipefail
+if [ $# -ne 1 ]; then
+  echo "usage: EKA2L1_DATA=<EKA2L1 data folder> stage.sh <out-dir>" >&2
+  exit 2
+fi
+data=${EKA2L1_DATA:?set EKA2L1_DATA to the EKA2L1 data folder that holds devices.yml, roms/ and drives/}
+out=$1
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+pkgtools=${PKGTOOLS:-"cargo run --release --quiet --manifest-path $here/../../../../Cargo.toml -p pkgtools --"}
+if [ -e "$out" ]; then
+  echo "error: $out exists; stage.sh writes a new folder" >&2
+  exit 1
+fi
+for part in devices.yml roms/rm-469 drives/z/rm-469; do
+  if [ ! -e "$data/$part" ]; then
+    echo "error: $data/$part is missing; install the RM-469 firmware in EKA2L1 first" >&2
+    exit 1
+  fi
+done
+mkdir -p "$out/roms" "$out/drives/z"
+$pkgtools device-entry "$data/devices.yml" RM-469 > "$out/device.yml"
+cp -a "$data/roms/rm-469" "$out/roms/"
+cp -a "$data/drives/z/rm-469" "$out/drives/z/"
+echo "staged firmware;rm-469;1 in $out"
+```
+
+`sh tests/firmware-stage.test` now prints only `ok` lines. In `.github/workflows/tests.yml`,
+add `recipes/firmware/**` to nothing (the `recipes/**` path filter already covers it) and a
+step after the install.sh ones:
+
+```yaml
+      - name: The firmware recipe's stage.sh
+        run: sh tests/firmware-stage.test
+```
+
+- [ ] **Step 7: Write the recipe and pin its archive**
+
+`recipes/firmware/rm-469/1/recipe.toml`:
+
+```toml
+# firmware;rm-469;1 — the Nokia E52's firmware (RM-469) in EKA2L1's data layout, which
+# symdev makes emulator profiles from (symdev's 2026-10-03-emulator-firmware-packages-design
+# §4): roms/rm-469/SYM.ROM, drives/z/rm-469/ and device.yml, the RM-469 entry of EKA2L1's
+# devices.yml (platver epoc93fp2, firmcode RM-469, model N00, …).
+#
+# The bytes are Nokia's, with no known redistribution grant. They live only on the owner's
+# machine and in the private bucket: never in this repository, in CI or in the public
+# bucket (the publisher refuses a LicenseRef- licence there). The owner stages and
+# publishes them:
+#   EKA2L1_DATA=~/.local/share/EKA2L1/data bash recipes/firmware/rm-469/1/stage.sh <tree>
+#   cargo run --release -p publish -- private 'firmware;rm-469;1' --from <tree> \
+#     --recipe recipes/firmware/rm-469/1/recipe.toml
+#
+# Drive Z is in the state EKA2L1 leaves it after the first start: Z:\sys\bin\avkonfep.dll
+# moved to avkonfep.dll.bak (symdev experiment 115 §1.3).
+id = "firmware;rm-469;1"
+license = "LicenseRef-Nokia-firmware"
+host = "any"
+include = ["device.yml", "roms/rm-469", "drives/z/rm-469"]
+```
+
+Then, from the scratch folder (the dry run writes the 135 MB archive into the current
+directory):
+
+```bash
+mkdir -p ~/src/emu-pkg-scratch/firmware && cd ~/src/emu-pkg-scratch/firmware && rm -rf tree
+P=~/worktrees/symdev-packages/cargo-run
+EKA2L1_DATA=~/.local/share/EKA2L1/data bash $P/recipes/firmware/rm-469/1/stage.sh tree
+env -u PUBLISH_PRIVATE_URL cargo run --release --quiet --manifest-path $P/Cargo.toml -p publish -- \
+  private 'firmware;rm-469;1' --from tree --recipe $P/recipes/firmware/rm-469/1/recipe.toml --dry-run
+```
+
+Expected: an error that ends with ``record `sha256 = "<64 hex>"` in …recipe.toml and run
+again``. Add that line to the recipe. Above it, add a comment with the date and the
+`packed …` line's byte count and the file count (`find tree -type f | wc -l`). Run the dry run
+again; expected: `packed firmware;rm-469;1: …` and the index printed with
+`license = "LicenseRef-Nokia-firmware"`. Then check that the public bucket refuses it:
+
+```bash
+env -u PUBLISH_PUBLIC_URL cargo run --release --quiet --manifest-path $P/Cargo.toml -p publish -- \
+  public 'firmware;rm-469;1' --from tree --source-code /dev/null \
+  --recipe $P/recipes/firmware/rm-469/1/recipe.toml --dry-run
+```
+
+Expected: `… grants no right to publish it; only the private bucket may hold it`.
+
+- [ ] **Step 8: Gates and commit** (packages worktree)
+
+```bash
+cd ~/worktrees/symdev-packages/cargo-run
+cargo test --locked > /tmp/t5-all.log 2>&1; grep -E "FAILED|^error" /tmp/t5-all.log
+cargo clippy --all-targets --locked > /tmp/t5-clippy.log 2>&1; grep -cE "^(warning|error)" /tmp/t5-clippy.log
+cargo fmt --all --check && sh tests/firmware-stage.test | grep -c '^not ok'
+git add pkgtools/src/device_entry.rs pkgtools/src/main.rs pkgtools/tests/cli.rs \
+  recipes/firmware/rm-469/1/recipe.toml recipes/firmware/rm-469/1/stage.sh \
+  tests/firmware-stage.test .github/workflows/tests.yml
+git commit -m "Add the private firmware;rm-469;1 recipe, staged from an EKA2L1 data folder and pinned to the owner's archive."
+```
+
+Expected: no failure lines, `0` clippy lines, `0` `not ok`. A developer's
+`PUBLISH_SIGNING_KEY` in the environment makes one existing publisher test fail (cargo-run
+notes); run the gate with `env -u PUBLISH_SIGNING_KEY`. Leave `~/src/emu-pkg-scratch/firmware/tree`
+for Task 6. Commit the symdev wip file too.
