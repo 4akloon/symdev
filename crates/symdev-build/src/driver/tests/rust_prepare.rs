@@ -14,6 +14,10 @@ fn project_with(files: &[(&str, &str)]) -> tempfile::TempDir {
     tmp
 }
 
+/// A 0.1.0 scaffold's `Cargo.toml`: an SDK crate by absolute path, on line 5.
+const OLD_CARGO: &str = "[package]\nname = \"hello\"\n\n[dependencies]\n\
+                         symbian-std = { path = \"/old/symbian-rs/crates/symbian-std\" }\n";
+
 fn sdk_toolchain() -> String {
     fs::read_to_string(rust().sdk.root().join("rust-toolchain.toml")).unwrap()
 }
@@ -41,10 +45,26 @@ fn prepare_refuses_another_nightly_before_linking() {
 
 #[test]
 fn prepare_refuses_paths_into_another_sdk_before_linking() {
-    let cargo = "[package]\nname = \"hello\"\n\n[dependencies]\n\
-                 symbian-std = { path = \"/old/symbian-rs/crates/symbian-std\" }\n";
-    let project = project_with(&[("Cargo.toml", cargo)]);
+    let project = project_with(&[("Cargo.toml", OLD_CARGO)]);
     let err = rust().prepare(project.path()).unwrap_err().to_string();
+    assert!(err.contains("  Cargo.toml:5\n"), "{err}");
+    assert!(!project.path().join("build/rust-sdk").exists());
+}
+
+/// A typical 0.1.0 scaffold fails both checks, and learns both from one build (review
+/// 0.2.0, minor 5).
+#[test]
+fn prepare_reports_another_nightly_and_foreign_paths_together() {
+    let toolchain = "[toolchain]\nchannel = \"nightly-2020-01-01\"\n";
+    let project = project_with(&[
+        ("rust-toolchain.toml", toolchain),
+        ("Cargo.toml", OLD_CARGO),
+    ]);
+    let err = rust().prepare(project.path()).unwrap_err().to_string();
+    assert!(
+        err.contains("names the toolchain `nightly-2020-01-01`"),
+        "{err}"
+    );
     assert!(err.contains("  Cargo.toml:5\n"), "{err}");
     assert!(!project.path().join("build/rust-sdk").exists());
 }
