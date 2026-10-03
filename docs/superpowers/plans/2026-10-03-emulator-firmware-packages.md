@@ -1266,7 +1266,8 @@ setsid strace -f -e trace=%file -o $X/strace.txt ~/src/emu-pkg-scratch/bin/eka2l
   --data-dir $X/profile --control $S > $X/emu.out 2>&1 & pid=$!
 echo "pid $pid"
 python3 $X/probe.py $S ~/src/cargo-run-scratch/tree/symbian-rs/examples/hello/build/hello.sisx 0xef9f2cab $X/shots
-sleep 2; kill -9 $pid; for c in $(pgrep -P $pid); do kill -9 $c; done
+sleep 2; kids=$(pgrep -P $pid); kill -9 $kids $pid; sleep 1
+for p in $pid $kids; do kill -0 $p 2>/dev/null && echo "still alive: $p"; done
 grep -E "$X/pkg" $X/strace.txt | grep -E 'O_WRONLY|O_RDWR|O_CREAT|rename|unlink|mkdir' > $X/pkg-writes.txt
 echo "write attempts on the package: $(wc -l < $X/pkg-writes.txt)"
 find -L $X/pkg -newer $X/marker | head
@@ -1278,9 +1279,10 @@ ls -R $X/profile/data/drives/c | head -30
 flock ~/.local/share/EKA2L1/.symdev-agent.lock bash ~/src/emu-pkg-scratch/exp115/run6.sh > ~/src/emu-pkg-scratch/exp115/run6.log 2>&1
 ```
 
-Kill only the PID the script started and its children. `pgrep -P` lists only that PID's
-children, so the owner's own emulator is never matched. Check `pgrep -f '^.*emupkg.*exp115'`
-is empty afterwards.
+The script kills only the PID it started (strace) and that PID's children (EKA2L1),
+listed before strace dies. Once strace dies, its children belong to init and `pgrep -P`
+would no longer find them. The owner's own emulator is never matched. `run6.log` must
+have no `still alive` line.
 
 - [ ] **Step 3: Read the answers and rule**
 
