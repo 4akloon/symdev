@@ -1528,18 +1528,18 @@ mod tests {
     use super::TestModule;
 
     fn expand(src: &str) -> Result<String, String> {
-        TestModule::expand(src.parse().unwrap()).map(|t| t.to_string())
+        TestModule::expand(src)
     }
 
     #[test]
     fn test_attributes_are_stripped_and_listed_in_order() {
         let out = expand("mod checks { #[test] fn first() -> R { Ok(()) } fn helper() {} \
                           #[test] fn second() -> R { Ok(()) } }").unwrap();
-        assert!(!out.contains("# [test]"), "{out}");
+        assert!(!out.contains("#[test]"), "{out}");
         let (a, b) = (out.find("\"first\"").unwrap(), out.find("\"second\"").unwrap());
         assert!(a < b && !out.contains("\"helper\""), "{out}");
         assert!(out.contains("__SYMBIAN_TESTS") && out.contains("_Z7E32Mainv"), "{out}");
-        assert!(out.contains("checks :: __SYMBIAN_TESTS"), "{out}");
+        assert!(out.contains("checks::__SYMBIAN_TESTS"), "{out}");
     }
 
     #[test]
@@ -1562,76 +1562,108 @@ Expected: `TestModule` not found.
 
 - [ ] **Step 3: Implement**
 
-`test_module.rs` walks tokens, not strings:
+`test_module.rs` works on the item's text, like `entry.rs` (`Entry::parse` takes
+`item.to_string()`), so its unit tests run outside a macro expansion. A small scanner skips
+string and char literals and accepts any spacing rustc prints between `#`, `[`, `test` and
+`]`:
 
 ```rust
 //! `#[symbian_test::tests]`: a module of `#[test] fn`s becomes a program (design spec §7).
-use proc_macro::{Delimiter, Group, TokenStream, TokenTree};
-
 pub struct TestModule;
 
+const SHAPE: &str = "`#[symbian_test::tests]` goes on an inline `mod <name> { … }`";
+
 impl TestModule {
-    pub fn expand(item: TokenStream) -> Result<TokenStream, String> {
-        let shape = "`#[symbian_test::tests]` goes on an inline `mod <name> { … }`";
-        let mut tokens: Vec<TokenTree> = item.into_iter().collect();
-        let at = tokens.iter().position(|t| matches!(t, TokenTree::Ident(i) if i.to_string() == "mod"))
-            .ok_or_else(|| shape.to_string())?;
-        let name = match tokens.get(at + 1) { Some(TokenTree::Ident(i)) => i.to_string(), _ => return Err(shape.into()) };
-        let Some(TokenTree::Group(body)) = tokens.get(at + 2).cloned() else { return Err(shape.into()) };
-        if body.delimiter() != Delimiter::Brace { return Err(shape.into()); }
-        let (inner, tests) = Self::strip_tests(body.stream());
+    /// The expanded source for `item` (the module's text), or the message for
+    /// `compile_error!`.
+    pub fn expand(item: &str) -> Result<String, String> {
+        let rest = item.trim_start();
+        let after_mod = rest.strip_prefix("pub ").unwrap_or(rest).trim_start()
+            .strip_prefix("mod").ok_or_else(|| SHAPE.to_string())?;
+        let name: String = after_mod.trim_start().chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+        let open = item.find('{').ok_or_else(|| SHAPE.to_string())?;
+        let close = item.rfind('}').filter(|c| *c > open).ok_or_else(|| SHAPE.to_string())?;
+        if name.is_empty() || item[..open].contains(';') {
+            return Err(SHAPE.into());
+        }
+        let (body, tests) = Self::strip_tests(&item[open + 1..close]);
         if tests.is_empty() {
             return Err(format!("`mod {name}` has no `#[test]` fn for `#[symbian_test::tests]` to run"));
         }
         let cases: Vec<String> = tests.iter()
             .map(|t| format!("::symbian_test::Case {{ name: \"{t}\", run: {t} }}")).collect();
-        let list: TokenStream = format!("pub(super) const __SYMBIAN_TESTS: &[::symbian_test::Case] = &[{}];", cases.join(", "))
-            .parse().map_err(|_| "internal: the case list did not lex".to_string())?;
-        let mut new_inner = inner;
-        new_inner.extend(list);
-        tokens[at + 2] = TokenTree::Group(Group::new(Delimiter::Brace, new_inner));
-        let mut out: TokenStream = tokens.into_iter().collect();
-        let main: TokenStream = format!(
-            "#[unsafe(export_name = \"_Z7E32Mainv\")]\n\
+        Ok(format!(
+            "{head}{{{body}\npub(super) const __SYMBIAN_TESTS: &[::symbian_test::Case] = &[{list}];\n}}\n\
+             #[unsafe(export_name = \"_Z7E32Mainv\")]\n\
              pub extern \"C\" fn __symbian_e32main() -> i32 {{\n\
              ::symbian_std::__start(|| ::symbian_test::__run(env!(\"CARGO_CRATE_NAME\"), \
-             ::symbian_std::uid3!(), {name}::__SYMBIAN_TESTS))\n}}\n"
-        ).parse().map_err(|_| "internal: E32Main did not lex".to_string())?;
-        out.extend(main);
-        Ok(out)
+             ::symbian_std::uid3!(), {name}::__SYMBIAN_TESTS))\n}}\n",
+            head = &item[..open], list = cases.join(", ")))
     }
 
-    /// The module's tokens without `#[test]`, and the names of the fns that carried it.
-    fn strip_tests(body: TokenStream) -> (TokenStream, Vec<String>) {
-        let tokens: Vec<TokenTree> = body.into_iter().collect();
-        let (mut kept, mut names, mut i) = (Vec::new(), Vec::new(), 0);
-        while i < tokens.len() {
-            let is_test = matches!(&tokens[i], TokenTree::Punct(p) if p.as_char() == '#')
-                && matches!(tokens.get(i + 1), Some(TokenTree::Group(g))
-                    if g.delimiter() == Delimiter::Bracket && g.stream().to_string() == "test");
-            if is_test {
-                let fn_at = tokens[i + 2..].iter()
-                    .position(|t| matches!(t, TokenTree::Ident(x) if x.to_string() == "fn"));
-                if let Some(TokenTree::Ident(n)) = fn_at.and_then(|f| tokens.get(i + 2 + f + 1)) {
-                    names.push(n.to_string());
+    /// The body without its `#[test]` attributes, and the fns that carried one, in order.
+    fn strip_tests(body: &str) -> (String, Vec<String>) {
+        let (mut out, mut names) = (String::new(), Vec::new());
+        let b = body.as_bytes();
+        let mut i = 0;
+        while i < b.len() {
+            match b[i] {
+                b'"' | b'\'' => {
+                    let end = Self::literal_end(b, i);
+                    out.push_str(&body[i..end]);
+                    i = end;
                 }
-                i += 2;
-                continue;
+                b'#' => match Self::test_attribute_end(body, i) {
+                    Some(end) => {
+                        if let Some(name) = Self::next_fn_name(&body[end..]) { names.push(name); }
+                        i = end;
+                    }
+                    None => { out.push('#'); i += 1; }
+                },
+                _ => {
+                    let ch = body[i..].chars().next().unwrap_or(' ');
+                    out.push(ch);
+                    i += ch.len_utf8();
+                }
             }
-            kept.push(tokens[i].clone());
-            i += 1;
         }
-        (kept.into_iter().collect(), names)
+        (out, names)
+    }
+
+    /// `#` `[` `test` `]` with any whitespace between: the index after `]`.
+    fn test_attribute_end(body: &str, at: usize) -> Option<usize> {
+        let rest = body[at + 1..].trim_start().strip_prefix('[')?.trim_start().strip_prefix("test")?;
+        let rest = rest.trim_start().strip_prefix(']')?;
+        Some(body.len() - rest.len())
+    }
+
+    fn next_fn_name(text: &str) -> Option<String> {
+        let at = text.find("fn ")?;
+        let name: String = text[at + 3..].trim_start().chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+        (!name.is_empty()).then_some(name)
+    }
+
+    /// The index just past the string or char literal starting at `at`.
+    fn literal_end(b: &[u8], at: usize) -> usize {
+        let quote = b[at];
+        let mut i = at + 1;
+        while i < b.len() && b[i] != quote {
+            i += if b[i] == b'\\' { 2 } else { 1 };
+        }
+        (i + 1).min(b.len())
     }
 }
 ```
 
-(The tests above run in the macro crate's own unit tests. `proc_macro` types are usable
-there through `proc_macro2`-free `TokenStream::from_str` only inside a proc-macro context.
-If they panic with "procedural macro API is used outside of a procedural macro", split
-the token walk the way `entry.rs` does: work on `item.to_string()` with the observed `# [test]`
-spacing, and keep `TokenStream` at the entry point. The existing `tests.rs` shows which form
-this crate's tests use. Follow it.)
+A `'` that starts a lifetime (`'a`) is not a char literal. `literal_end` would then run to the
+next `'`. Guard it: treat `'` as a literal only when the byte two or three on is a `'` (a char
+literal is `'x'`, `'\n'` or `'\u{…}'`); add a test with `fn f<'a>(x: &'a str)` in the module.
+
+The unit tests in Step 1 call `TestModule::expand(src)` directly with a `&str` (drop the
+`.parse().unwrap()` and `.to_string()` there). Assert on `"#[test]"` absent rather than
+`"# [test]"`, and on `checks::__SYMBIAN_TESTS` without spaces.
 
 `lib.rs`:
 
@@ -1642,8 +1674,8 @@ mod test_module;
 /// program's `E32Main`, run on the device by `cargo test` (design spec §7).
 #[proc_macro_attribute]
 pub fn tests(_attribute: TokenStream, item: TokenStream) -> TokenStream {
-    match test_module::TestModule::expand(item) {
-        Ok(out) => out,
+    match test_module::TestModule::expand(&item.to_string()) {
+        Ok(out) => tokens(&out),
         Err(message) => tokens(&compile_error(&message)),
     }
 }
