@@ -200,3 +200,12 @@ used, `~/src/rl-shims-scratch/verify/nogcce-link.py`, = experiment 109 §5 with 
 3. Merge = release (push to main publishes rust-sdk;0.3.0 then symdev;0.3.0, install.sh).
    If 0.3.0 ends up another number: rename `recipes/symdev/0.3.0`, the ids, the tag, and
    `publish/src/recipe/tests/prebuilt.rs` (ID and path).
+
+## Gates (2026-10-03, final)
+- packages (d7542d0): `cargo fmt --all --check` 0; `cargo clippy --workspace --all-targets
+  --offline --locked -- -D warnings` 0 warnings; `cargo test` 83 + 9 ok; Python
+  `unittest discover -s tests -p '*_test.py'` 54 ok; `tests/install.sh.test` all passed
+  under dash and bash.
+- symdev (code = 4d6d1d5 on main 0a426e6): fmt 0; clippy -D warnings 0; `cargo test
+  --workspace --offline --locked` 803 passed, 0 failed (56 suites).
+- Task done; nothing pushed, merged or released; no v0.3.0 tag in the real repository.
