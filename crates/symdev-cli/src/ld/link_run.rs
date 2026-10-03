@@ -74,6 +74,11 @@ impl LinkRun {
             .ok_or_else(|| Error::Other("symdev-ld: no image".into()))?
             .path;
         let package = ProjectPackage::new(manifest.clone(), root.clone(), rust.epocroot.clone())?;
+        // A test is linked as a console program (`ui` above), so it is packaged as one too.
+        let package = match kind {
+            LinkKind::Main => package,
+            LinkKind::Test { .. } => package.console(),
+        };
         let password = std::env::var("SYMDEV_SIGN_PASSWORD").unwrap_or_default(); // per D1
         let sisx = package.package(exe, &password)?;
         copy(exe, out.path())?;

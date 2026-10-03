@@ -36,6 +36,14 @@ impl ProjectPackage {
         })
     }
 
+    /// The package of a test binary: a console program even in an Avkon project (spec
+    /// §4.5), so without the `[ui]` resources and icon the application's link builds.
+    pub fn console(mut self) -> Self {
+        self.manifest.ui = None;
+        self.manifest.symbian.icon = None;
+        self
+    }
+
     /// The application's name: the image is `<app>.exe`.
     pub fn app(&self) -> &str {
         &self.app
@@ -153,5 +161,32 @@ mod tests {
         for a in &got {
             assert!(a.path.starts_with(&work), "{}", a.path.display());
         }
+    }
+
+    const AVKON: &str = "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[target]\n\
+        device = \"nokia-e52\"\n\n[language]\nname = \"rust\"\n\n[symbian]\n\
+        uid3 = \"0xe1234567\"\ncapabilities = []\nvendor = \"symdev\"\n\n[ui]\n\
+        kind = \"avkon\"\ncaption = \"App\"\n\n[signing]\nmode = \"self-signed\"\n";
+
+    /// A test binary is linked as a console program even in an Avkon project (spec §4.5),
+    /// so it has none of the application's resources, and its package must not ask for them.
+    #[test]
+    fn a_test_of_an_avkon_project_is_packaged_as_a_console_program() {
+        let dir = tempfile::tempdir().unwrap();
+        let work = dir.path().join("out/smoke-0123456789abcdef.symdev");
+        std::fs::create_dir_all(&work).unwrap();
+        let exe = work.join("app.exe");
+        std::fs::write(&exe, b"").unwrap();
+        let m = symdev_manifest::parse(AVKON).unwrap();
+        let root = dir.path().to_path_buf();
+        let app = super::ProjectPackage::new(m.clone(), root.clone(), "".into()).unwrap();
+        assert!(
+            app.package(&exe, "").is_err(),
+            "the app's own resources are not there"
+        );
+        let test = super::ProjectPackage::new(m, root, "".into())
+            .unwrap()
+            .console();
+        assert!(test.package(&exe, "").unwrap().is_file());
     }
 }
