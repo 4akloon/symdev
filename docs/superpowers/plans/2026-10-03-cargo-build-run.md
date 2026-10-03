@@ -2164,3 +2164,139 @@ the record of what the emulator accepts. `EmulatorData::at` takes the directory 
 git add crates/symdev-emulator/src docs/research/experiment-backlog.md
 git commit -m "Give each emulator profile its own drives and log filter, referencing the user's ROM."
 ```
+
+### Task 11: The device registry and the choice of a device
+
+**Files:**
+- Create: `crates/symdev-emulator/src/device/{device_id,registry_entry,device_registry,device_choice,device_prompt}.rs`
+- Modify: `crates/symdev-emulator/src/device.rs`, `crates/symdev-emulator/src/lib.rs` (`pub mod device`), `crates/symdev-emulator/Cargo.toml` (`toml = "1"`)
+- Test: `crates/symdev-emulator/src/device/tests.rs` (split into `tests/choice.rs` and `tests/registry.rs` if past 300 lines)
+
+**Interfaces:**
+- Consumes: Task 10 (`EmulatorProfile`).
+- Produces:
+  - `DeviceId` (`emulator-<n>`, `n ≥ 1`): `DeviceId::parse(&str) -> Option<DeviceId>`,
+    `Display`.
+  - `RegistryEntry { pub id: DeviceId, pub pid: u32, pub profile: String, pub name: String,
+    pub socket: PathBuf, pub log: PathBuf }`, stored as TOML.
+  - `DeviceRegistry::at(dir)`, `DeviceRegistry::from_env() -> Result<Self>`
+    (`$XDG_RUNTIME_DIR/symdev/devices`; no `XDG_RUNTIME_DIR` is an error naming it),
+    `add(&RegistryEntry)`, `remove(&DeviceId)`, `next_id() -> Result<DeviceId>` (the lowest
+    free), and `live(&self, is_eka2l1: impl Fn(u32) -> bool, answers: impl Fn(&RegistryEntry)
+    -> bool) -> Result<Vec<RegistryEntry>>`. `live` removes every entry that fails either
+    check, and **never signals a process**.
+  - `fn is_eka2l1(pid: u32) -> bool`: `/proc/<pid>/comm` contains `eka2l1`, as
+    `Eka2l1Backend::previous` does today.
+  - `DeviceChoice { pub requested: Option<String>, pub running: Vec<RegistryEntry>, pub
+    profiles: Vec<String>, pub terminal: bool }` with `decide(&self) -> Choice`, where
+    `enum Choice { Use(DeviceId), Start(String), Ask(Vec<Offer>), Refuse(String) }` and
+    `enum Offer { Running { id: DeviceId, name: String }, Profile(String) }`.
+  - `DevicePrompt::lines(offers: &[Offer]) -> Vec<String>` and `DevicePrompt::answer(line:
+    &str, offers: &[Offer]) -> Result<Option<Offer>>` (`q` → `None`; a number out of range or
+    anything else → error, and the caller asks again).
+
+- [ ] **Step 1: Write the failing tests** — the rules of spec §5 as a table
+
+```rust
+use std::path::PathBuf;
+
+use super::{Choice, DeviceChoice, DeviceId, DevicePrompt, Offer, RegistryEntry};
+
+fn emu(n: u32, profile: &str) -> RegistryEntry {
+    RegistryEntry { id: DeviceId::parse(&format!("emulator-{n}")).unwrap(), pid: 100 + n,
+        profile: profile.into(), name: "Nokia E52 (RM-469)".into(),
+        socket: PathBuf::from(format!("/run/s{n}")), log: PathBuf::from("/l") }
+}
+fn id(s: &str) -> DeviceId { DeviceId::parse(s).unwrap() }
+fn choose(requested: Option<&str>, running: Vec<RegistryEntry>, profiles: &[&str], terminal: bool) -> Choice {
+    DeviceChoice { requested: requested.map(String::from), running,
+        profiles: profiles.iter().map(|s| s.to_string()).collect(), terminal }.decide()
+}
+
+#[test]
+fn the_rules_of_spec_section_5() {
+    // 1. SYMDEV_DEVICE wins: a running id, a running profile, a profile to start.
+    assert_eq!(choose(Some("emulator-2"), vec![emu(1, "rm-469"), emu(2, "rm-469")], &["rm-469"], false), Choice::Use(id("emulator-2")));
+    assert_eq!(choose(Some("rm-469"), vec![emu(3, "rm-469")], &["rm-469"], false), Choice::Use(id("emulator-3")));
+    assert_eq!(choose(Some("rm-469"), vec![], &["rm-469"], false), Choice::Start("rm-469".into()));
+    // 2. exactly one running → it, even with several profiles.
+    assert_eq!(choose(None, vec![emu(1, "a")], &["a", "b"], false), Choice::Use(id("emulator-1")));
+    // 3. none running, one profile → start it.
+    assert_eq!(choose(None, vec![], &["rm-469"], false), Choice::Start("rm-469".into()));
+    // 4. otherwise ask on a terminal …
+    assert!(matches!(choose(None, vec![emu(1, "a"), emu(2, "a")], &["a"], true), Choice::Ask(o) if o.len() == 3));
+    assert!(matches!(choose(None, vec![], &["a", "b"], true), Choice::Ask(o) if o.len() == 2));
+}
+
+#[test]
+fn several_devices_and_no_terminal_list_the_ids_and_name_symdev_device() {
+    let Choice::Refuse(e) = choose(None, vec![emu(1, "a"), emu(2, "a")], &["a"], false) else { panic!() };
+    assert!(e.contains("emulator-1") && e.contains("emulator-2") && e.contains("SYMDEV_DEVICE"), "{e}");
+}
+
+#[test]
+fn an_unknown_symdev_device_and_no_profile_at_all_are_refused() {
+    let Choice::Refuse(e) = choose(Some("emulator-9"), vec![emu(1, "a")], &["a"], true) else { panic!() };
+    assert!(e.contains("emulator-9") && e.contains("emulator-1") && e.contains("a"), "{e}");
+    let Choice::Refuse(e) = choose(None, vec![], &[], true) else { panic!() };
+    assert!(e.contains("firmware"), "{e}");
+}
+
+#[test]
+fn the_prompt_numbers_offers_and_takes_a_digit_or_q() {
+    let offers = vec![Offer::Running { id: id("emulator-1"), name: "Nokia E52 (RM-469)".into() },
+                      Offer::Profile("rm-469".into())];
+    assert_eq!(DevicePrompt::lines(&offers), vec!["[1]: Nokia E52 (RM-469) (emulator-1)".to_string(),
+                                                  "[2]: rm-469 (start a new emulator)".to_string()]);
+    assert_eq!(DevicePrompt::answer("2\n", &offers).unwrap(), Some(offers[1].clone()));
+    assert_eq!(DevicePrompt::answer("q", &offers).unwrap(), None);
+    assert!(DevicePrompt::answer("3", &offers).is_err() && DevicePrompt::answer("x", &offers).is_err());
+}
+
+#[test]
+fn an_entry_whose_pid_is_not_eka2l1_is_dropped_not_killed() {
+    let dir = tempfile::tempdir().unwrap();
+    let reg = super::DeviceRegistry::at(dir.path().to_path_buf());
+    let mut mine = emu(1, "a");
+    mine.pid = std::process::id(); // this test process: alive, and not an EKA2L1
+    reg.add(&mine).unwrap();
+    let live = reg.live(super::is_eka2l1, |_| true).unwrap();
+    assert!(live.is_empty());
+    assert!(!dir.path().join("emulator-1.toml").exists());
+    // still here, so nothing signalled us
+    assert!(std::path::Path::new(&format!("/proc/{}", std::process::id())).exists());
+}
+
+#[test]
+fn the_next_id_is_the_lowest_free_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let reg = super::DeviceRegistry::at(dir.path().to_path_buf());
+    reg.add(&emu(1, "a")).unwrap();
+    reg.add(&emu(3, "a")).unwrap();
+    assert_eq!(reg.next_id().unwrap(), id("emulator-2"));
+}
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `cargo test -p symdev-emulator --offline device`
+Expected: compile errors.
+
+- [ ] **Step 3: Implement** the five types to the interfaces above. `decide` in this order:
+  `requested` (an id among `running`; else a profile, `Use` of its first running instance
+  or `Start`; else `Refuse` listing running ids and profiles); exactly one running →
+  `Use`; none running and one profile → `Start`; no running and no profile → `Refuse("no
+  emulator profile and no firmware installed in EKA2L1 to make one from; install a
+  firmware in EKA2L1 first")`; `terminal` → `Ask` (running first, then profiles); else
+  `Refuse("several devices: emulator-1, emulator-2, profile rm-469; set SYMDEV_DEVICE to one
+  of them")`. Entries are files named `<id>.toml`; `live` deletes the file of an entry it
+  drops.
+
+- [ ] **Step 4: Run the tests**: `cargo test -p symdev-emulator --offline`; all pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add crates/symdev-emulator
+git commit -m "Choose a device the way flutter run does, from a registry of the emulators symdev started."
+```
