@@ -114,3 +114,14 @@ on the four apps + all examples, sizes vs exp 112.
   file not found") — emu.sh now unsets XDG_*. No-GCCE hello: `Trying to display: Hello from Rust
   SDK (19 chars)`; no-GCCE GUI (prebuilt shim + defsym): "Bars", bars=3 keys=0 cmd=0 → F1 F1 →
   bars=4 keys=0 cmd=1 (`shots/nogcce-ui-{1,2}.png`). PIDs killed, none left.
+- GNU relink with main binary + SYMDEV_RUST_SDK=worktree (`out/main-gnu-wt`): net, tls, std-hello,
+  std-net exe equal (masked) and argv equal ⇒ **GNU on request byte-identical 21/21**.
+- Prebuilt route (`out/pre`, staged tree, no GCCE vars): uncompressed = exp 112 for all 18
+  (notes included ⇒ libgcc member order explains dev-route notes +8); compressed net +2, tls −18
+  (tree path changes Rust code bytes, as in the GNU comparison).
+- Emulator, dev route (rust-lld + GCCE shims): examples/ui = no-GCCE screenshots but 44 px clock;
+  examples/shim `trapped=-12 … alive`; apps/probe (exp 109 probe) `trapped=-1 … alive`;
+  `symdev test --emulator` examples/async **15 passed**. No-GCCE leave probe (`nogcce-probe.sh`):
+  4464/7112, `trapped=-1 … alive`. Every PID killed by runshot / exited.
+## Next step
+Code review (agent running) → fixes; experiment 113 in the backlog; gates; final report.
