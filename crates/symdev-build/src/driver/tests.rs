@@ -15,6 +15,7 @@ mod link;
 mod lld_line;
 mod resolve_source;
 mod rust_build;
+mod rust_lld_link;
 mod rust_prepare;
 mod rust_ui;
 

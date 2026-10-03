@@ -5,7 +5,7 @@ use std::process::Command;
 use symdev_core::{Error, RemotePath, Result};
 use symdev_elf2e32::{ElfImage, ImportStubs};
 
-use super::{Linker, LldLine, RustBuild, arg, io};
+use super::{Linker, LldLine, RustBuild, arg};
 use crate::{RustLld, RustPrebuilt, SdkLldCache};
 
 impl RustBuild {
@@ -49,15 +49,17 @@ impl RustBuild {
             uid3_symbol: (prebuilt.is_some() && self.ui.is_some()).then_some(self.gcce.uid3),
         };
         let first = lld_line.adapt(line)?;
-        self.gcce.run_tool(&first, cwd)?;
-        let stubs = ImportStubs::from_first_link(&Self::elf_at(&first_elf)?)?;
+        self.run_link("first", &first, cwd)?;
+        let stubs = ImportStubs::from_first_link(&Self::elf_at(&first_elf)?)
+            .map_err(|e| at(&first_elf, e))?;
         if stubs.functions().is_empty() {
-            return std::fs::rename(&first_elf, elf).map_err(io);
+            std::fs::rename(&first_elf, elf).map_err(|e| at(elf, e))?;
+        } else {
+            let object = elf.with_file_name("import_stubs.o");
+            std::fs::write(&object, stubs.object()).map_err(|e| at(&object, e))?;
+            let second = LldLine::second_link(&first, elf, &object, stubs.functions())?;
+            self.run_link("second", &second, cwd)?;
         }
-        let object = elf.with_file_name("import_stubs.o");
-        std::fs::write(&object, stubs.object()).map_err(io)?;
-        let second = LldLine::second_link(&first, elf, &object, stubs.functions())?;
-        self.gcce.run_tool(&second, cwd)?;
         let left = Self::elf_at(elf)?.jump_slots()?;
         if !left.is_empty() {
             return Err(Error::Other(format!(
@@ -71,10 +73,19 @@ impl RustBuild {
         Ok(())
     }
 
+    /// One rust-lld run; its error says which of the two links failed and the way back.
+    fn run_link(&self, which: &str, args: &[String], cwd: &RemotePath) -> Result<()> {
+        self.gcce.run_tool(args, cwd).map_err(|e| {
+            Error::Other(format!(
+                "the {which} rust-lld link failed: {e}; set SYMDEV_RUST_LINKER=gnu to link \
+                 with GCCE's GNU ld instead"
+            ))
+        })
+    }
+
     fn elf_at(path: &Path) -> Result<ElfImage> {
-        let bytes =
-            std::fs::read(path).map_err(|e| Error::Other(format!("{}: {e}", path.display())))?;
-        ElfImage::parse(bytes).map_err(|e| Error::Other(format!("{}: {e}", path.display())))
+        let bytes = std::fs::read(path).map_err(|e| at(path, e))?;
+        ElfImage::parse(bytes).map_err(|e| at(path, e))
     }
 
     /// The rust-lld of the project's toolchain: `rustc` run in the project, so that its
@@ -115,4 +126,9 @@ impl RustBuild {
         }
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     }
+}
+
+/// `error`, prefixed with the file it concerns.
+fn at(path: &Path, error: impl std::fmt::Display) -> Error {
+    Error::Other(format!("{}: {error}", path.display()))
 }

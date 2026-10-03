@@ -136,10 +136,11 @@ impl RustBuild {
             return Ok(Vec::new());
         };
         if matches!(self.linker, RustLinker::Lld { .. }) {
-            let bytes = std::fs::read(&archive).map_err(io)?;
-            let fixed = Target2Rewrite::archive(&bytes)
-                .map_err(|e| Error::Other(format!("{}: {e}", archive.display())))?;
-            std::fs::write(&archive, fixed.bytes()).map_err(io)?;
+            let at =
+                |e: &dyn std::fmt::Display| Error::Other(format!("{}: {e}", archive.display()));
+            let bytes = std::fs::read(&archive).map_err(|e| at(&e))?;
+            let fixed = Target2Rewrite::archive(&bytes).map_err(|e| at(&e))?;
+            std::fs::write(&archive, fixed.bytes()).map_err(|e| at(&e))?;
         }
         Ok(vec![archive])
     }

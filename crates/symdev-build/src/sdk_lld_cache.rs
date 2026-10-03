@@ -137,6 +137,6 @@ fn at(path: &Path, e: std::io::Error) -> Error {
 }
 
 #[cfg(test)]
-mod fixture;
+pub(crate) mod fixture;
 #[cfg(test)]
 mod tests;
