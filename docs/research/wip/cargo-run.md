@@ -93,6 +93,26 @@ No push to main / merge / tag / publish; pushing `cargo-run` is allowed.
   staticlib shape with the NEW spec (`out/spec/`) = the bin-shape images EXACTLY. So rustc's
   inputs + bin shape = staticlib bytes, 19/19 no_std examples; the spec edit alone moves 2.
 
+- Q3 (`q3.sh` = q2 + `SPIKE_NO_LIBCALLS=1`, ref out/q2; `addlibcalls.py` adds the path dep +
+  `use symbian_libcalls as _;`; tree restored after). Exe compressed/uncompressed vs today:
+  | var | hello | files | atomics | async | tls |
+  | V1 plain dep (LTO'd) | 1708/3384 (+2036) | 9036/16276 | 8891/15944 | 18461/33976 | 14002/25968 |
+  | V2 + `#![no_builtins]` | EQUAL | 8976/16324 | 8841/16000 | 18447/34048 | 13976/26008 |
+  | V3 + `[profile.release.package.symbian-libcalls] codegen-units=16` | EQUAL | 8300/14356 | 8732/16000 | 18356/34048 | 13913/26140 |
+  | V4 + `-Zprofile-rustflags` hidden | = V3 (flag reached rustc, -v) |
+  today: hello 975/1348, files 8289/14292, atomics 8796/15848, async 18360/33892, tls 13938/25920.
+  Why: V1 its no_mangle entry points are exported globals of the `-shared` link → gc roots.
+  V2 rustc then passes `libsymbian_libcalls-<h>.rlib` on the line (not LTO'd) but built with the
+  app profile (cgu=1). V3/V4: cargo gives every dep of a fat-LTO bin `-C linker-plugin-lto`
+  (seen in -v) ⇒ the excluded crate's object code comes from the pre-link pipeline: members
+  carry `.llvmbc`, `AtomicLock::drop` is no longer inlined, each `__atomic_*` +4 B (objdump of
+  `__atomic_exchange_1`: `bl …AtomicLock…drop` vs inlined `RFastLock::Signal`). `lto` cannot be
+  set per package (cargo). ⇒ NOT an ordinary dependency without byte changes.
+  Alternative tested: the linker runs 0.3.0's own `cargo rustc --profile libcalls …` NESTED
+  inside cargo's build, same `--target-dir build/cargo` (`bin/nested-libcalls` via
+  REC_THEN): no lock wait, no deadlock; 7.1 s first time (core/alloc for the libcalls profile),
+  0.03 s fresh; outer build 14 s / 0.2 s. Same invocation ⇒ same rlib ⇒ same bytes.
+
 ## Dead ends
 - (none yet beyond Q4's H1/H2)
 
