@@ -2770,3 +2770,171 @@ mod executor {
 git add crates/symdev-emulator crates/symdev-cli symbian-rs/examples/async
 git commit -m "Run cargo test binaries on the device and print their report the way libtest does."
 ```
+
+### Task 15: `symdev build` is `cargo build --release`
+
+**Files:**
+- Modify: `crates/symdev-cli/src/build_cmd.rs` (a Rust project: prepare, then cargo)
+- Create: `crates/symdev-cli/src/cargo_build.rs` (`CargoBuild`: the one cargo invocation and the `symdev-ld` check)
+- Modify: `crates/symdev-build/src/driver/rust_build.rs` (delete `impl BuildBackend for RustBuild`, `cargo_args`, `archive`, `run_cargo`, `build_std`, `BUILD_STD_FEATURES`; keep `prepare`, `libcalls`, `run_cargo_args`)
+- Modify: `crates/symdev-build/src/std_src.rs` (delete `SRC_ROOT_ENV`, `dir_for` and `SYMDEV_RUST_STD_SRC`)
+- Modify: tests that pinned the deleted code (`driver/tests/rust_build.rs`: `cargo_args_are_the_recorded_build_std_invocation`, `archive_is_under_build_cargo`), README's `SYMDEV_RUST_STD_SRC` line
+- Test: `crates/symdev-cli/src/cargo_build.rs` (`#[cfg(test)]`)
+
+**Interfaces:**
+- Consumes: Tasks 4, 7, 9.
+- Produces: `CargoBuild::args() -> Vec<String>` = `["build", "--release"]`, run in the
+  project root without `RUSTUP_TOOLCHAIN`. The project's `.cargo/config.toml` carries
+  everything else. `CargoBuild::linker_on_path(path_var: &OsStr) -> Option<PathBuf>`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```rust
+#[test]
+fn symdev_build_runs_plain_cargo_build_release() {
+    assert_eq!(super::CargoBuild::args(), ["build", "--release"]);
+}
+
+#[test]
+fn the_linker_is_looked_up_on_path_like_cargo_does() {
+    let dir = tempfile::tempdir().unwrap();
+    assert_eq!(super::CargoBuild::linker_on_path(dir.path().as_os_str()), None);
+    std::os::unix::fs::symlink("/bin/true", dir.path().join("symdev-ld")).unwrap();
+    let path = std::env::join_paths([std::path::Path::new("/nonexistent"), dir.path()]).unwrap();
+    assert_eq!(super::CargoBuild::linker_on_path(&path), Some(dir.path().join("symdev-ld")));
+}
+```
+
+- [ ] **Step 2: Run them to see them fail.**
+
+- [ ] **Step 3: Implement.** `build_cmd.rs` keeps the C++ branch as it is. A Rust project
+  goes through these steps:
+  1. Task 16's `OldShape` check; it arrives next and is a no-op until then.
+  2. `RustProject::resolve(&m, &root, provision, true)`, then `rust.build.prepare(&root)`:
+     the nightly check, foreign SDK paths, `build/rust-sdk`.
+  3. For `rust-std`, `StdSysroot::materialise`.
+  4. `CargoBuild::linker_on_path(&env PATH)`. When it is `None`: `symdev-ld is not on PATH:
+     cargo links through it; run symdev setup-linker (or install.sh)`.
+  5. `cargo build --release` with inherited stdout/stderr, so the user sees cargo.
+  6. Print `build/<name>.exe` and `build/<name>.sisx`, which `symdev-ld` copied there.
+
+  `symdev package` keeps working on `build/<name>.exe` (Task 4 copies it there).
+
+- [ ] **Step 4: Run all tests**: `cargo test --workspace --offline`; all pass.
+
+- [ ] **Step 5: Real builds** (experiment 114 environment, the branch's `symdev` and its links on `PATH`):
+
+```bash
+for ex in hello ui std-hello; do (cd symbian-rs/examples/$ex && symdev build) || echo "$ex FAILED"; done
+ls symbian-rs/examples/std-hello/build/sysroot/lib/rustlib/src/rust/library/std/Cargo.toml
+```
+
+Expected: three `build/<name>.sisx`, and `std-hello`'s cargo output shows `Compiling std
+v0.0.0 (…/build/sysroot/lib/rustlib/src/rust/library/std)` (this is Task 9's real check).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add crates/symdev-cli crates/symdev-build README.md
+git commit -m "Make symdev build run cargo build, the one build path for Rust projects."
+```
+
+### Task 16: A 0.3.0 project is told exactly what to change
+
+**Files:**
+- Create: `crates/symdev-cli/src/old_shape.rs` (`OldShape`)
+- Modify: `crates/symdev-cli/src/build_cmd.rs` (refuse before cargo)
+- Test: `crates/symdev-cli/src/old_shape.rs` (`#[cfg(test)]`), `crates/symdev-cli/tests/build.rs` (one case)
+
+**Interfaces:**
+- Consumes: Task 15.
+- Produces: `OldShape::detect(cargo_toml: &str, main_rs: &str, config: &str, package: &str)
+  -> Option<OldShape>` and `OldShape::message(&self) -> String`.
+
+- [ ] **Step 1: Write the failing test**, using 0.3.0's scaffold text verbatim (from `git
+  show 3086f1d:crates/symdev-cli/src/scaffold_rust.rs`, `cargo_manifest("hello")` and
+  `cargo_config()`):
+
+```rust
+#[test]
+fn a_0_3_0_project_gets_every_edit_it_needs() {
+    let cargo = "[package]\nname = \"hello\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\
+        # `src/main.rs` is a library: rustc never links, symdev does.\nautobins = false\n\n\
+        [lib]\npath = \"src/main.rs\"\ncrate-type = [\"staticlib\"]\n\n[dependencies]\n";
+    let config = "[build]\ntarget = \"build/rust-sdk/symbian-rs/targets/arm-symbian-e32.json\"\n\
+        target-dir = \"build/cargo\"\n\n[unstable]\nbuild-std = [\"core\", \"alloc\"]\n\
+        build-std-features = [\"optimize_for_size\"]\njson-target-spec = true\n";
+    let main = "#![no_std]\n\nuse symbian_core::Result;\n";
+    let m = super::OldShape::detect(cargo, main, config, "hello").unwrap().message();
+    for want in ["Cargo.toml", "remove `autobins = false` and the `[lib]` table",
+                 "[[bin]]\nname = \"hello\"\npath = \"src/main.rs\"\ntest = false",
+                 "src/main.rs", "#![no_main]", ".cargo/config.toml", "panic-abort-tests = true",
+                 "linker = \"symdev-ld\"", "runner = \"symdev run --exe\""] {
+        assert!(m.contains(want), "{want}\n{m}");
+    }
+}
+
+#[test]
+fn a_project_in_the_new_shape_is_left_alone() {
+    let cargo = "[package]\nname = \"hello\"\n\n[[bin]]\nname = \"hello\"\npath = \"src/main.rs\"\ntest = false\n";
+    assert!(super::OldShape::detect(cargo, "#![no_std]\n#![no_main]\n", "", "hello").is_none());
+}
+```
+
+  `tests/build.rs` gains `a_staticlib_project_is_refused_with_the_edits`: the 0.3.0 files in
+  a temp dir with `symdev.toml` (`language = "rust"`), and `symdev build` exits 1. Its
+  stderr starts `this project has 0.3.0's shape` and holds `[[bin]]`. No cargo runs: put a
+  `cargo` on `PATH` that writes a marker file, and check the marker is absent.
+
+- [ ] **Step 2: Run them to see them fail.** **Step 3: Implement** (the message is a numbered
+  list; only the edits a file still needs; `build_cmd.rs` reads the three files and refuses
+  with `this project has 0.3.0's shape (a staticlib that symdev linked); symdev 0.4.0 builds
+  it with cargo. Make these edits, then run symdev build again:` plus the list). **Step 4:
+  Run the tests.** **Step 5: Commit**: `git add crates/symdev-cli && git commit -m "Refuse a
+  0.3.0 Rust project with the exact edits that bring it to the cargo shape."`
+
+### Task 17: CI and the packages
+
+**Files:**
+- Modify: `.github/workflows/ci.yml` (the `examples` job)
+- Outside this repo, on a branch `cargo-run` of `~/projects/symdev-packages` (never its
+  `main`): `install.sh` (makes the role links), `recipes/symdev/0.4.0/recipe.toml` (a copy of
+  0.3.0's for the new version; its include list gains `symbian-rs/crates/symbian-test` if it
+  lists crates one by one)
+
+- [ ] **Step 1: CI.** In the `examples` job, after "Build symdev":
+
+```yaml
+      - name: Link symdev-ld and symdev-rustc
+        run: |
+          mkdir -p "$HOME/.local/bin" && cp target/release/symdev "$HOME/.local/bin/symdev"
+          "$HOME/.local/bin/symdev" setup-linker --dir "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+```
+
+and "Build and package the examples" builds the Rust examples with cargo. The C++ ones keep
+`symdev build && symdev package`:
+
+```yaml
+          for dir in examples/hello examples/gui; do (cd "$dir" && symdev build && symdev package); done
+          for dir in symbian-rs/examples/*/; do (cd "$dir" && symdev build); done
+```
+
+The upload path becomes `symbian-rs/examples/*/build/*.sisx`. Keep `SYMDEV_SIGN_PASSWORD:
+ci-throwaway` unless D1 = A made it unnecessary. Then delete it, so CI proves a fresh
+project needs none. Validate the workflow: `python3 -c 'import yaml,sys;
+yaml.safe_load(open(".github/workflows/ci.yml"))'`.
+
+- [ ] **Step 2: install.sh.** After it links `~/.local/bin/symdev`, it runs `"$bindir/symdev"
+  setup-linker --dir "$bindir"`. Its own test suite (`cargo test` in the packages repo)
+  stays green. Add a test there if `install.sh` has one per step: check `README.md` and
+  `tests/`.
+
+- [ ] **Step 3: Commit** in each repo:
+
+```bash
+git add .github/workflows/ci.yml && git commit -m "Build the Rust examples with cargo in CI, through symdev-ld."
+git -C ~/projects/symdev-packages checkout -b cargo-run   # once
+git -C ~/projects/symdev-packages add install.sh recipes/symdev/0.4.0
+git -C ~/projects/symdev-packages commit -m "Link symdev-ld and symdev-rustc on install, and add the 0.4.0 recipe."
+```
