@@ -4177,3 +4177,78 @@ output depends on the source path (experiment 113 §2). Nightly `nightly-2026-09
   with `SYMDEV_CARGO` = a no-op. Everything after cargo is 0.3.0's path: shims, the libcalls
   rlib, both rust-lld links, import stubs, elf2e32.
 * `e32cmp.py` compares two images, masking the CRC (0x14–0x17) and the time (0x24–0x2B).
+
+### 1. The spike (design §11)
+
+#### 1.1 What rustc hands the linker
+
+A bin crate needs `#![no_main]`: `#[symbian_std::main]` writes `E32Main` and re-emits `fn
+main`, so without it rustc takes that `main` as the program's and refuses its type (E0580
+"`main` function has wrong type … found `fn() -> Result<(), SymbianError>`").
+
+This cargo uses the **new build-directory layout**. Every unit links into
+`<target-dir>/<triple>/<profile>/build/<package>/<hash>/out/`, and nothing goes to `deps/`.
+The main binary is `-o …/out/<bin>`; cargo then **hard-links** it to
+`<target-dir>/<triple>/<profile>/<bin>`. A test is `-o …/out/<test>-<hash>` and is not
+copied anywhere.
+
+The recorded argv, with the project at `/work/app` and rustc's temporary directory as
+`rustcXXXXXX`:
+
+```
+# release, main binary (13 arguments)
+/work/app/build/cargo/arm-symbian-e32/release/build/app/51c0ecfd4d2a2dcf/out/app.app.6fa0adbb789d939e-cgu.0.rcgu.o
+--as-needed
+-Bstatic
+/work/app/build/cargo/arm-symbian-e32/release/build/compiler_builtins/af926986b8385648/out/libcompiler_builtins-af926986b8385648.rlib
+-L
+/work/app/build/cargo/arm-symbian-e32/release/build/app/51c0ecfd4d2a2dcf/out/rustcXXXXXX/raw-dylibs
+-Bdynamic
+-z
+noexecstack
+-o
+/work/app/build/cargo/arm-symbian-e32/release/build/app/51c0ecfd4d2a2dcf/out/app
+--gc-sections
+--strip-debug
+```
+
+* **Release test** (`tests/smoke.rs`): the same 13, with `smoke-<hash>.smoke.<h>-cgu.0.rcgu.o`
+  and `-o …/build/app/4f71ac116363b7c1/out/smoke-4f71ac116363b7c1`.
+* **Dev** (46 arguments for the binary, 29 for the test): `…/rustcXXXXXX/symbols.o` comes
+  first, then every codegen unit's object (24 for the binary, 7 for the test), then
+  `--as-needed -Bstatic`, then 11 rlibs (`symbian_std` … `symbian_sys`, `alloc`, `core`,
+  `compiler_builtins`). The tail is the release one without `--strip-debug`.
+* **The linker's name matters.** rustc reads `symdev-ld` as a GNU ld (its stem ends in
+  `-ld`) and writes the line above. A name like `reclinker` gets the target's `gnu-lld` and
+  `-flavor gnu` as the first two arguments; everything else is identical.
+* **`cargo test` needs `[unstable] panic-abort-tests = true`.** Without it cargo builds `core`
+  twice, once with `-C panic=abort` and once without, and every crate fails with E0152
+  "duplicate lang item in crate `core`: `sized`". With it, both test and binary units are
+  `panic=abort`, and the binary unit is the one `cargo build` made.
+
+The environment rustc gives the linker:
+
+| | main binary | `harness = false` test | `--example demo` |
+|---|---|---|---|
+| `CARGO_BIN_NAME` | `app` | — | `demo` |
+| `CARGO_CRATE_NAME` | `app` | `smoke` | `demo` |
+| `CARGO_TARGET_TMPDIR` | — | `<target-dir>/arm-symbian-e32/tmp` | — |
+| `CARGO_BIN_EXE_app` | — | `<target-dir>/arm-symbian-e32/<profile>/app` | — |
+| `CARGO_MANIFEST_DIR`, `CARGO_MANIFEST_PATH`, `CARGO_PKG_NAME`, `CARGO_PRIMARY_PACKAGE=1`, `RUSTUP_TOOLCHAIN` | yes | yes | yes |
+
+`PROFILE`, `TARGET` and `OUT_DIR` do not reach the linker. Neither does anything else of
+symdev's, except what the user's shell exports.
+
+**The runner.**
+
+* `cargo run --release -- a b` runs `rec-run --exe build/cargo/arm-symbian-e32/release/app a
+  b` from the project root. The path is relative and is the hard link.
+* `cargo test --release` runs `rec-run --exe <absolute …/out/smoke-<hash>>`.
+* Both get `CARGO_MANIFEST_DIR`; only the test gets `CARGO_BIN_EXE_app`; neither gets
+  `CARGO_BIN_NAME`.
+* So a `.sisx` written next to the `-o` path is next to what `cargo test` hands the runner,
+  but not next to what `cargo run` hands it. The hard link carries the image only.
+
+Trimmed fixtures (paths normalised to `/work/app`): `fixtures/{release,dev}-{bin,test}.
+{argv,env}`, `release-bin-flavor.argv`, `release-example.{argv,env}`, `run.{argv,env}`,
+`test-run.{argv,env}`.
