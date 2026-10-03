@@ -701,12 +701,12 @@ searched rather than reported unreadable.
 - [ ] **Step 2: Run them and see them fail**
 
 ```bash
-cargo test -p symdev-sdk --offline pins:: emulator_package firmware_package manager::tests::bypass > /tmp/t4.log 2>&1; grep -E "^error|test result" /tmp/t4.log
+cargo test -p symdev-sdk --offline -- pins:: emulator_package firmware_package bypass > /tmp/t4.log 2>&1; grep -E "^error|test result" /tmp/t4.log
 ```
 
 Expected: compile errors (`no function or associated item named emulator`,
-`unresolved import super::EmulatorPackage`, `no associated item named ALL`). `cargo test`
-takes one filter; run the four filters one after another if the line above is refused.
+`file not found for module`, `no associated item named ALL`). libtest takes several
+filters after `--` and runs what matches any of them.
 
 - [ ] **Step 3: Implement**
 
