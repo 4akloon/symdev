@@ -3775,8 +3775,10 @@ async 27 / 30, shim 18 / 21, ui 38 / 42). In `shim`, `_Unwind_GetRegionStart`,
 `_Unwind_GetLanguageSpecificData` and `_Unwind_GetDataRelBase` (libgcc's `pr-support.o`)
 carry the same inline data `0x80a8b0b0`: GNU merges identical adjacent entries inside one
 input `.ARM.exidx`, lld only drops whole input sections that duplicate their predecessor,
-so it keeps two entries GNU merged. The `-Bsymbolic` saving outweighs both in `async` and
-`ui`; in `hello`, `shim`, `alloc`, `time` and `panic` they are the +4 to +20 bytes left.
+so it keeps two entries GNU merged. The sentinel is in every lld image (`hello-raw`,
+`alloc`, `spawnee`, `cleanup`, `time`, `panic`, `files`: 7 entries GNU, 8 lld). The
+`-Bsymbolic` saving outweighs both effects in `async`, `ui` and seven examples; they are
+what is left in the images still 4 to 20 bytes larger than GNU uncompressed.
 
 Attempts (`~/src/rl-scratch/exidx/`: `relink.py <app> <stem> [lld args]` reruns the second
 link and the post-link; `README`):
@@ -3807,7 +3809,7 @@ gives symdev's GNU `.exe` except the time and the CRC.
 | | GNU (experiment 109) | lld + stubs |
 |---|---|---|
 | `hello` | `Trying to display: Hello from Rust SDK (19 chars)` | the same; screenshot 0 pixels from GNU's |
-| leave probe | `lld109 mkdirall=0 trapped=-1 bad=0 ensured=0 sign=-42 alive` | **the same**: the leave is raised through a stubbed `User::Leave`, caught by the shim's `TRAP`, the process goes on; 0 pixels |
+| leave probe | `lld109 mkdirall=0 trapped=-1 bad=0 ensured=0 sign=-42 alive` | **the same**: the leave is raised through a stubbed `User::LeaveIfError`, caught by the shim's `TRAP`, the process goes on; 0 pixels |
 | `ui` | "Bars", `bars=3 keys=0 cmd=0`; F1, F1 → `bars=4 keys=0 cmd=1` | the same; 84 pixels differ before and after, all in the box (527,157)–(554,165): the status-pane clock |
 | `async` | `symdev test --emulator`: 15 passed | **15 passed** (one 300 ms sleep 328 ms; two together 312; in sequence 625; race 109) |
 
