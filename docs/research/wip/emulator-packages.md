@@ -182,8 +182,10 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   --help lists --data-dir and --control (wrapper ~/src/emu-pkg-scratch/bin/eka2l1-emupkg).
 - [x] Task 2 committed on symdev: <C> = 29d5f58aecc8826a7832c3acdce36461021da39f, <c> 29d5f58,
   <V> = 2026.10.03 (merges-only head 50a419f).
-- [ ] Task 3: ~/src/emu-pkg-scratch/rehearsal/run.sh running, PID 617606 (21:04Z), log run.log
-  (EXIT= at end). Then step 3 (extract + inspect) and exp 115 §2.
+- [x] Task 3: rehearsal EXIT=0 in 11 min 40 s, no apt or source change (Qt 6.4.2 builds our PRs).
+  Rehearsal AppImage ~/src/emu-pkg-scratch/rehearsal/out/: AppImage 95 668 728 B sha256 86bfbfd3…a268,
+  packages.tsv 167 pkgs / 131 sources sha256 ab0ef7a7…7d01. Layout = exp 115 §1.2, GLIBC_2.38.
+  Extracted at ~/src/emu-pkg-scratch/rehearsal/x/squashfs-root. Exp 115 §2 written.
 - [x] Task 4: Device::ALL, Pins::emulator (emulator;2026.10.03) / firmware, EmulatorPackage,
   FirmwarePackage, catalog bypass. Gates green (tests 55 ok, clippy 0, fmt ok).
 - [x] Task 5: packages ae57739: pkgtools device-entry, recipes/firmware/rm-469/1/{recipe.toml,stage.sh},
@@ -191,4 +193,8 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   (15 597 files, 258 MB); archive sha256 032b6e1d…b25b, 133 668 334 B (pinned). Public dry run
   refuses it. Gates: cargo test 5 ok (env -u PUBLISH_SIGNING_KEY), clippy 0, fmt ok,
   install.sh.test dash 81 ok.
-- [ ] Task 6: next (needs the rehearsal? no: Task 1's eka2l1-emupkg + Task 5's tree).
+- [x] Task 6: exp 115 §3. RULING: LINKS. Read-only ROM stops the boot (SYM.ROM opened O_RDWR|O_CREAT for a
+  MAP_PRIVATE map, never written); writable package (as installed, 0644) boots with empty C and
+  one-line config, hello installs/launches/exits kill, 0 of 15 597 package files changed, no
+  other write on Z/ROM. Package must carry Z:\stubcached (it does). Plan Task 6 got a note.
+- [ ] Task 7: next (Firmware enum, create(&Firmware) with links, check(), delete from_env).

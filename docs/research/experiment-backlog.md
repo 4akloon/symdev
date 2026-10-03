@@ -4836,3 +4836,69 @@ the package root is the extracted tree as it is. The firmware package is `roms/r
 CI has to be started and checked by whoever pushes. Two things go to the owner: the glibc
 floor (2.38 against symdev's 2.28) and the corresponding source, which must cover the
 Ubuntu libraries the AppImage bundles (FFmpeg, x264, x265, …), not only Qt.
+
+### 2. The fork CI's Linux job, rehearsed on the rebuilt branch (plan Task 3)
+
+2026-10-03. `~/src/emu-pkg-scratch/rehearsal/run.sh`: a clone of the rebuilt `symdev`
+(`29d5f58` = upstream `fbf0060` + the eleven PRs + the package-list CI commit) with its
+submodules, built in `ubuntu:24.04` with `build.yml`'s Linux apt list and cmake flags, then
+`ctest`, `scripts/generate_appimage.sh` and the package-list step as a script. One addition
+to the job: `git config --global --add safe.directory "*"` (the container runs as root on a
+mount owned by uid 1000; `actions/checkout` does the same on the runner). No apt package had
+to be added and no source change was needed against Ubuntu's Qt 6.4.2 (GCC 13.3.0).
+
+* Wall clock 11 min 40 s with `--parallel 16` (apt, clone and FFmpeg included); 489 compiler
+  warnings, no error. `ctest`: 2/2 passed (`ekatests` 3.65 s).
+* `out/eka2l1-qt-x64.AppImage` 95 668 728 bytes, SHA-256 `86bfbfd3…a268`;
+  `eka2l1-qt-x64.packages.tsv` 10 287 bytes, SHA-256 `ab0ef7a7…7d01`: 167 binary packages
+  (`<name>:amd64`, version, source, source version) from 131 source packages. No bundled
+  file was without an owner.
+* Extracted with `--appimage-extract` (only the AppImage runtime ran): the layout of §1.2
+  exactly. `AppRun -> usr/bin/eka2l1_qt` (a link, no `apprun-hooks/`), `qt.conf`
+  `Prefix = ../`, `Plugins = plugins`, `RUNPATH $ORIGIN/../lib`, 187 files in `usr/lib`, the
+  same eight plugin folders, 167 `usr/share/doc/*/copyright`. glibc floor `GLIBC_2.38`.
+  257 MB extracted. The runtime creates the folders with mode 0700; the package format
+  writes 0755 anyway.
+
+### 3. A profile made from a read-only firmware package (plan Task 6)
+
+2026-10-03. The host build of the rebuilt branch (`~/src/EKA2L1-wt-build/emulator-pkg`,
+`symdev-50a419f`) on a hand-made profile: `data/roms/rm-469` and `data/drives/z` linked into
+a copy of the staged `firmware;rm-469;1` tree (plan Task 5), `devices.yml` the package's
+`device.yml`, empty drives C, D and E, `config.yml` holding only symdev's log filter. Run
+under `strace -f -e trace=%file` and the agent lock, driven through `--control` by
+`probe.py` (install `hello.sisx`, launch `0xef9f2cab`). Scratch: `~/src/emu-pkg-scratch/exp115/`.
+
+* **Run 1, package read-only (`chmod -R a-w`):** EKA2L1 opens `SYM.ROM` with
+  `O_RDWR|O_CREAT` (`EACCES`), `set_device` fails ("device index is out of range"), the log
+  says "No device has been set up, skipping user-side initialisation", and the control
+  socket never appears (`NO SOCKET` after 120 s). The source explains the open:
+  `kernel.cpp` maps the ROM with `common::map_file(path, prot_read_write, 0, true)`, and
+  `virtualmem.cpp` opens a read-write mapping with `O_RDWR | O_CREAT` and maps it
+  `MAP_PRIVATE` ("On Linux this is always private"): the guest may write its copy of the
+  ROM, the file is never written. Nothing else touched the package.
+* **Run 2, package writable as symdev installs it (files 0644, folders 0755):**
+  1. Boots with an empty C and a one-line `config.yml`: `emulator.info` answers at once
+     with `device {manufacturer Nokia, model N00, firmware RM-469, os epoc93fp2}`, and
+     `apps.list` lists the ROM's apps.
+  2. Write-mode calls on the package (through the profile's links; strace shows the paths
+     EKA2L1 passed, so a grep for the package's own path finds nothing): exactly two,
+     `openat(…/data/roms//rm-469/SYM.ROM, O_RDWR|O_CREAT)`. No rename, unlink, mkdir or
+     write-mode open under drive Z: `Z:\sys\bin\avkonfep.dll` is only `stat`ed (the package
+     carries the `.bak` state of §1.3), and `Z:\stubcached` exists in the package (EKA2L1
+     writes it on Z when it is missing, after installing the ROM's SIS stubs into C —
+     `package/src/manager.cpp`; with it present a new profile's C gets no stub registry,
+     and installing a SIS still works). SHA-256 of all 15 597 package files before and
+     after: **0 changed**.
+  3. `package.install` of hello answers `{}`, `app.launch` gives pid 108, and
+     `event.app_exited` comes with `exit_type kill`, `exit_reason 0`. `screen.capture` 20 s
+     after the launch answered `There is no screen 0` (under strace; Task 13 looks at the
+     window). The log's only errors are the usual "Unable to patch export" lines of the
+     patch DLLs. Drive C afterwards: `sys/install/sisregistry/ef9f2cab/` and
+     `System/Data/sms_settings.dat`.
+
+**Ruling: links.** EKA2L1 writes nothing into the ROM or drive Z; it only needs the ROM
+file to be writable to open it, and symdev installs package files 0644. The spec's rule
+("if it writes, the profile gets copies instead") therefore keeps links; read-only package
+files would stop the boot, so symdev must never make an installed firmware read-only. A
+firmware package must carry `Z:\stubcached` (the staged RM-469 does), or EKA2L1 writes it.

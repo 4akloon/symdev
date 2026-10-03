@@ -422,7 +422,7 @@ AppImage with `--control` before any push.
 - Produces: `~/src/emu-pkg-scratch/rehearsal/out/eka2l1-qt-x64.AppImage`, its
   `.packages.tsv` (D1 = A) and `SHA256SUMS`. Tasks 10–15 call this "the rehearsal AppImage".
 
-- [ ] **Step 1: Write `run.sh`**
+- [x] **Step 1: Write `run.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -457,7 +457,7 @@ cp "$R/src/build/eka2l1-qt-x64.AppImage" "$R/src/build/eka2l1-qt-x64.packages.ts
 (the clone's `build.yml` has it as YAML; the container runs it as a script). Without
 D1 = A, drop the two `rehearse-package-list` lines and the `.packages.tsv` from the copies.
 
-- [ ] **Step 2: Run it in the background and wait for the end**
+- [x] **Step 2: Run it in the background and wait for the end**
 
 ```bash
 bash ~/src/emu-pkg-scratch/rehearsal/run.sh > ~/src/emu-pkg-scratch/rehearsal/run.log 2>&1; echo "EXIT=$?" >> ~/src/emu-pkg-scratch/rehearsal/run.log
@@ -470,7 +470,7 @@ on the PR branch it comes from, in the fork's PR copy (`~/src/EKA2L1-wt/<topic>`
 `eka2l1-host` skill), and repeat Task 1 from step 2. That PR then needs a push, which the
 lead does with L1; record it in the NOTES.
 
-- [ ] **Step 3: Look at what it made** (experiment 115 §2)
+- [x] **Step 3: Look at what it made** (experiment 115 §2)
 
 ```bash
 cd ~/src/emu-pkg-scratch/rehearsal && rm -rf x && mkdir x && cd x
@@ -489,7 +489,7 @@ build time and the added packages, as experiment 115 §2. A difference from §1.
 `apprun-hooks/` directory, another floor) is recorded and reported to the lead before
 Task 8: it changes how symdev starts the program.
 
-- [ ] **Step 4: Commit** `docs/research/experiment-backlog.md` and the wip file:
+- [x] **Step 4: Commit** `docs/research/experiment-backlog.md` and the wip file:
   `Record experiment 115 §2: the fork CI's Linux job rehearsed on the rebuilt branch.`
 
 ### Task 4: The two pins, the two package layouts, and the way around the sources
@@ -1245,7 +1245,7 @@ that only the firmware side is new.
 - Consumes: Task 5's staged tree, Task 1's `eka2l1-emupkg`.
 - Produces: the ruling **links** or **copies** for Task 7, and whether an empty C boots.
 
-- [ ] **Step 1: Make the package and the profile by hand**
+- [x] **Step 1: Make the package and the profile by hand**
 
 ```bash
 X=~/src/emu-pkg-scratch/exp115; rm -rf $X/pkg $X/profile; mkdir -p $X/pkg $X/profile/data/roms
@@ -1263,7 +1263,7 @@ cp ~/src/cargo-run-scratch/exec/probe10.py $X/probe.py
 `data/drives/z/<firmware>`, as in the owner's layout. That layout is why
 `EmulatorProfile::create` links the whole `drives/z` today.
 
-- [ ] **Step 2: Run it under strace and the agent lock**
+- [x] **Step 2: Run it under strace and the agent lock**
 
 `run6.sh`:
 
@@ -1295,7 +1295,7 @@ listed before strace dies. Once strace dies, its children belong to init and `pg
 would no longer find them. The owner's own emulator is never matched. `run6.log` must
 have no `still alive` line.
 
-- [ ] **Step 3: Read the answers and rule**
+- [x] **Step 3: Read the answers and rule**
 
 From `run6.log`, `probe.py`'s JSON lines, `strace.txt` and `EKA2L1.log`:
 
@@ -1316,7 +1316,17 @@ because Z or the ROM is read-only, Task 7 uses **copies**: the variant given in 
 step 3. The profile then costs 259 MB each, and the rest of the plan is unchanged. Write
 the ruling, with the evidence, as experiment 115 §3, and into the wip file.
 
-- [ ] **Step 4: Commit** the experiment record and the wip file:
+**Executed 2026-10-03 (ruling: links).** With the package read-only, item 1 fails: EKA2L1
+opens `SYM.ROM` `O_RDWR|O_CREAT` and gets `EACCES`, so no device and no control socket. The
+open is for a `MAP_PRIVATE` mapping (`common/src/virtualmem.cpp`), which never writes the
+file. A second run with the package writable as symdev installs it (0644/0755) passes 1–3,
+with 0 of 15 597 package files changed and no other write-mode call on Z or the ROM. The
+spec's rule ("if it writes, the profile gets copies") keeps links; this step's literal
+"read-only fails → copies" is read as "EKA2L1 writes → copies". The write grep must match
+the profile's link paths (`profile/data/roms`, `profile/data/drives/z`), not `$X/pkg`.
+Experiment 115 §3 has the evidence.
+
+- [x] **Step 4: Commit** the experiment record and the wip file:
   `Record experiment 115 §3: a profile made from a read-only firmware package.`
   Restore write permission on the scratch copy afterwards (`chmod -R u+w
   ~/src/emu-pkg-scratch/exp115/pkg`) so that later `rm -rf` works.
