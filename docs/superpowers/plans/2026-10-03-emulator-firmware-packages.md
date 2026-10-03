@@ -666,6 +666,7 @@ fn an_emulator_found_nowhere_names_symdev_eka2l1_and_sources_toml() {
 fn a_firmware_behind_a_keyless_private_source_names_the_keys_and_symdev_eka2l1_data() {
     let tmp = tempfile::tempdir().unwrap();
     let repo = Repo::new(tmp.path().join("repo"));
+    repo.write_index();
     let sources = vec![repo.source("public"), keyless_private()];
     let mut progress = Vec::new();
     let e = manager(&tmp, sources, false, &mut progress)
@@ -683,8 +684,10 @@ fn a_firmware_behind_a_keyless_private_source_names_the_keys_and_symdev_eka2l1_d
 #[test]
 fn a_gcce_found_nowhere_names_no_variable() {
     let tmp = tempfile::tempdir().unwrap();
+    let repo = Repo::new(tmp.path().join("repo"));
+    repo.write_index();
     let mut progress = Vec::new();
-    let e = manager(&tmp, vec![Repo::new(tmp.path().join("r")).source("public")], false, &mut progress)
+    let e = manager(&tmp, vec![repo.source("public")], false, &mut progress)
         .ensure(&[id("gcce;99.0")])
         .unwrap_err()
         .to_string();
@@ -692,8 +695,8 @@ fn a_gcce_found_nowhere_names_no_variable() {
 }
 ```
 
-`Repo::new(…).source(…)` writes an empty index on creation: check `manager/tests/repo.rs`. If
-it does not, add one package to it as `an_id_found_nowhere…` does.
+`Repo::new` writes no index; `write_index()` writes the empty one, so the source is
+searched rather than reported unreadable.
 
 - [ ] **Step 2: Run them and see them fail**
 
