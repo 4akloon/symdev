@@ -130,6 +130,24 @@ No push to main / merge / tag / publish; pushing `cargo-run` is allowed.
   * EKA2L1: dev hello (q5e image) → `Trying to display: Hello from Rust SDK (19 chars)`,
     `shots/dev-hello-1.png`, pid 71654 killed by runshot (`emu.sh`, `runshot.py` in scratch).
 
+- Q5d rest: `default-visibility: hidden` release images EQUAL to out/q2 for all 19 no_std
+  (`q5d-rest.txt` + the 5 above).
+- Q6: example target (`--example demo`, `rec/q6-example`): CARGO_BIN_NAME=demo, no
+  CARGO_TARGET_TMPDIR, `-o <out>/demo` (no hash). Fixtures `release-example.*`,
+  `release-bin-flavor.argv` (`-flavor gnu` first). Rule: CARGO_BIN_NAME set ⇒ bin or example
+  (main = the [[bin]] = package name); unset + CARGO_TARGET_TMPDIR set ⇒ integration test.
+- UID3 at compile time: `strings!()` (symbian-macros/src/lib.rs:134) already reads the APP's
+  CARGO_MANIFEST_DIR in a proc macro (observed working, exp 96/99) ⇒ a macro can read
+  symdev.toml; `test_report::Report::new` uses `option_env!("SYMDEV_UID3")` (→ 0 without it).
+- Signing (coordinator item), ORIGINAL tools via Wine (`~/src/cargo-run-scratch/signing/`):
+  `makekeys -cert -expdays 3650 -len 2048 -dname … nopw.key nopw.cer` WITHOUT -password →
+  "Warning: the private key should be encrypted with the -password option" / "Do you want to
+  use a password (y/n)?"; stdin EOF → "Enter PEM pass phrase:" → "** Error writing to key
+  file"; answering `n` → "Created key/certificate", nopw.key 1 192 B `BEGIN DSA PRIVATE KEY`
+  with NO `Proc-Type: 4,ENCRYPTED`. `signsis hello.sis hello-nopw.sisx nopw.cer nopw.key`
+  (4 positionals, no passphrase) → exit 0, 5 180 B, `file`: Symbian installation file. Usage
+  prints `[-password <password> <At least 4 characters>]` (optional). Not installed anywhere.
+
 ## Dead ends
 - (none yet beyond Q4's H1/H2)
 
