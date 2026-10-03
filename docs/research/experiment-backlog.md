@@ -3777,7 +3777,7 @@ carry the same inline data `0x80a8b0b0`: GNU merges identical adjacent entries i
 input `.ARM.exidx`, lld only drops whole input sections that duplicate their predecessor,
 so it keeps two entries GNU merged. The sentinel is in every lld image (`hello-raw`,
 `alloc`, `spawnee`, `cleanup`, `time`, `panic`, `files`: 7 entries GNU, 8 lld). The
-`-Bsymbolic` saving outweighs both effects in `async`, `ui` and seven examples; they are
+`-Bsymbolic` saving outweighs both effects in `async`, `ui` and eight examples; they are
 what is left in the images still 4 to 20 bytes larger than GNU uncompressed.
 
 Attempts (`~/src/rl-scratch/exidx/`: `relink.py <app> <stem> [lld args]` reruns the second
@@ -3824,3 +3824,74 @@ post-linked, not run.
 programs link with zero accesses to `~/gcc-builds`**; the files opened are rust-lld's own
 libraries, the fixed SDK copies, `prebuilt/lib`, the Rust archives and `stubs.o`. The four
 sandboxed images equal the unsandboxed ones except the time and the CRC.
+
+### 8. Wiring it into symdev-build (RL3)
+
+Everything below was run by scripts outside symdev; none of it is in `symdev-build` yet.
+What RL3 needs, in the order a build meets it:
+
+* **Opt-in.** GNU ld stays the default and C++/MMP projects keep it (their line is
+  byte-verified against the SDK's). The switch is build configuration, not something the
+  phone needs before launch, so it does not belong in `symdev.toml`: an environment
+  variable beside the other toolchain ones (e.g. `SYMDEV_RUST_LINKER=lld`) or a `symdev
+  build` flag — the owner's call. With it on, a Rust build stops requiring `SYMDEV_GXX`,
+  `SYMDEV_LD`, `SYMDEV_GCC_LIB`, `SYMDEV_GCC_TARGET_LIB` and `SYMDEV_AR`.
+* **Finding rust-lld.** It ships in the pinned nightly's `rustc` component (listed in
+  `lib/rustlib/manifest-rustc-x86_64-unknown-linux-gnu`; no extra component):
+  `$(rustc --print sysroot)/lib/rustlib/<host>/bin/rust-lld`, `<host>` from `rustc -vV`,
+  `rustc` run in the project so `rust-toolchain.toml` picks the nightly
+  (`RustToolchainFile` already checks it is the SDK's). Override: `SYMDEV_RUST_LLD`. Run
+  as `rust-lld -flavor gnu`.
+* **The link line.** `RustBuild::link_args` (`driver/rust_link.rs`) with experiment 109
+  §2's seven changes: no `--default-symver`; `-L` to the fixed DSO cache and the fixed
+  `urel` cache; `-z notext`; `-T symbian-lld.ld` (31 lines, MIT, shipped in `rust-sdk`);
+  `--target2=abs`; `-Bsymbolic`; GUI only `--defsym=symrs_uid3=0x<uid3>`. The GCCE `-L`
+  paths become the `rust-sdk` package's `lib/` (prebuilt `libsupc++.a`/`libgcc.a`
+  closure); `build_shims` and the case-fold overlay are skipped; the shim archive is the
+  package's prebuilt `libsymrs.a` (+ `libsymrs_ui.a` for a GUI program, before it).
+* **The stubs, a second link.** Link once to `<name>.first.elf`; `ImportStubs::
+  from_first_link(&ElfImage::parse(..)?)?`; write `ImportStubs::object()` to
+  `build/import_stubs.o`; link again with that object appended after the other inputs
+  and `--wrap=<f>` for each of `functions()`; check the result has no `R_ARM_JUMP_SLOT`
+  (an error naming the symbol otherwise) and post-link it as today. Both links take the
+  same argv apart from the output, the object and the `--wrap` list; the first one's
+  `.map` can be dropped. If `functions()` is empty the first link is the result. Cost:
+  one more rust-lld run (well under a second on these programs).
+* **SDK fixes, a local cache.** Made once at `symdev sdk install` (or lazily, keyed by
+  the SDK file's hash) under `SYMDEV_HOME`, never shipped — they are SDK bytes: (1) every
+  `.dso` the line names, with the `.strtab` padding after the last NUL zeroed (428 of
+  570 need it; no size or offset changes; `fix-dso.py`); (2) `usrt2_2.lib` with its one
+  `R_ARM_TARGET2` (`callfirstprocessfn.o`) rewritten to `R_ARM_ABS32` in place
+  (`fix-target2.py`); `eexe.lib` is used as is.
+* **Prebuilt shims and runtime** come from the `rust-sdk` package (another agent builds
+  them): `libsymrs.a`/`libsymrs_ui.a` already `TARGET2`-rewritten (3 and 7 relocations),
+  the Avkon shim taking its UID from the `symrs_uid3` symbol, the `libsupc++`/`libgcc`
+  closure of experiment 109 §1.
+* **elf2e32** needs nothing more: `ElfLinker` picks the five rules from `.comment`.
+* **Acceptance**, as here: every example GNU vs lld (import words per DLL, `DT_NEEDED`,
+  sizes), the four emulator runs, a build inside `bwrap --tmpfs` over the GCCE
+  directory. The `.ARM.exidx` sentinel (section 5) is the expected size difference.
+* **Not covered:** a Rust DLL (exports, `edll.lib`), `std` examples, a device.
+
+### Conclusion
+
+**The PLT price is gone.** With 8-byte stubs made by a 130-line object writer and a
+second link, rust-lld produces images within −72…+20 bytes of GNU ld's uncompressed, on
+all nineteen programs; seven of them come out smaller than GNU's. The product elf2e32
+reads them through five rules gated on lld's `.comment` string, labelled as derived from
+the ABI and lld and verified in EKA2L1, and gives GNU ELFs the same bytes as before. In the
+emulator the stubs builds behave as GNU's, including a caught leave and the fifteen async
+tests; no GCCE file is touched. The one known difference is lld's terminating
+`.ARM.exidx` entry (and duplicate entries it does not merge inside one input section),
+which no lld option removes.
+
+**Evidence.** 2026-10-03, this host. Code on branch `rl-elf2e32`:
+`crates/symdev-elf2e32/src/elf/{linker,lld}.rs`, `import_stubs.rs`,
+`import_stubs/{object,tests}.rs`, `examples/import_stubs.rs`,
+`src/elf2e32/tests/experiment_109.rs`, `src/testdata/hello_lld*`. Outside git,
+`~/src/rl-scratch/`: `stubs/link2.py`, `stubs/ex15.py` (+ `ex15.log`),
+`stubs/<app>/{argv,first.elf,stubs.o,final.elf,final.exe,*.strace}`,
+`stubs/ex/<example>/`, `stubs/async-test.log`, `stubs/ld-stubs` (an unused `SYMDEV_LD`
+wrapper: the spike projects cannot be rebuilt, their `Cargo.toml` names the deleted
+spike worktree), `exidx/` (the synthetic link, `relink.py`, `unwound-first.sh`), `cmp/`,
+`golden/`, `shots/`, `runshot.py`. Spike inputs in `~/src/rust-lld-spike/`.
