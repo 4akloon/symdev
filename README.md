@@ -105,6 +105,8 @@ and their causes are tracked in [docs/research/size-levers.md](docs/research/siz
 download, and touches no network once they are there. `--offline` forbids downloading: a missing package is then an error that names
 the install command. `symdev package` installs nothing. Downloads are cached in
 `~/.cache/symdev/downloads` and checked against the index's SHA-256 before they are unpacked.
+A download must average at least 16 KiB/s (the 67 MB GCCE then takes up to 70 minutes); one
+that is cut off is not resumed, and the next build downloads it again from the start.
 
 Each `SYMDEV_*` toolchain variable that is set overrides its package path, field by field, so an
 environment that sets all of them installs nothing and builds as before. `SYMDEV_AR` overrides

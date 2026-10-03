@@ -23,13 +23,13 @@ pub(crate) struct HttpTimeouts {
 
 impl HttpTimeouts {
     /// 30 s to connect, 60 s for the answer, an hour per request; a body gets 60 s plus
-    /// its size at 32 KiB/s (`gcce;12.1.0`, 67 MB: 35 minutes).
+    /// its size at 16 KiB/s (`gcce;12.1.0`, 67 MB: 70 minutes, more than the hour).
     pub(crate) const STANDARD: HttpTimeouts = HttpTimeouts {
         connect: Duration::from_secs(30),
         response: Duration::from_secs(60),
         request: Duration::from_secs(60 * 60),
         body_base: Duration::from_secs(60),
-        body_rate: 32 * 1024,
+        body_rate: 16 * 1024,
     };
 
     /// The longest the body of a `size`-byte download may take: `body_base` plus `size`
