@@ -90,3 +90,20 @@ Spike evidence: ~/src/rust-lld-spike/ (experiment 109 §1, §5).
   `#error`, exit 1.
 - Next: recipe.toml 0.2.0 (+ build.sh copy), symdev.yml install + prebuilt steps, README;
   gates in both repos.
+
+## Resume 2 (2026-10-03, after the 0.2.0 release)
+- symdev 0.2.0 released (tag v0.2.0); the prebuilt set ships with the NEXT release, so the
+  packages recipe is `recipes/symdev/0.3.0` (tag v0.3.0 does not exist yet).
+- symdev `rl-shims` rebased on main 0a426e6: clean (main touched driver/rust_build.rs
+  `prepare`, not SHIM_OPTIONS or the shims). packages `rl-shims` was already on main 149c67d.
+- packages f640113: `recipes/symdev/0.3.0/{recipe.toml,build.sh,prebuilt.sh}` committed
+  (prebuilt.sh moved from 0.2.0; recipe ids 0.3.0, tag v0.3.0, rust-sdk licence
+  `MIT AND GPL-3.0-or-later WITH GCC-exception-3.1`, include + `symbian-rs/prebuilt`).
+- CI facts: symdev reads `$XDG_CONFIG_HOME/symdev/sources.toml`, keys from
+  `SYMDEV_SOURCE_PRIVATE_{ACCESS_KEY_ID,SECRET_ACCESS_KEY}` (source name `private`);
+  packages has the reader key at repo level under those names and variable
+  `SYMDEV_PRIVATE_SOURCE_URL` (v0.2.md "G2 landed"). Packages live in
+  `$SYMDEV_HOME/gcce/12.1.0`, `$SYMDEV_HOME/sdk/s60-3rd-fp2/1.1`; downloads in
+  `$XDG_CACHE_HOME/symdev/downloads`.
+- Next: build.sh guard (tag must not track symbian-rs/prebuilt); publish test for the real
+  0.3.0 recipe (packs prebuilt/, refuses a tree without it); symdev.yml steps; README; gates.
