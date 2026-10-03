@@ -254,3 +254,10 @@ Ledger (git-ignored): `.superpowers/sdd/2026-10-03-cargo-build-run/progress.md`.
   (exec rustc --sysroot <dir of argv0>/sysroot; errors without a sysroot, naming `symdev
   build`); std-hello/std-net in bin shape with the plan's config. Real std build is Task 15.
 NEXT: Task 10 — `task-start <plan> 10` (EKA2L1 with --control/--data-dir; profiles).
+- Task 10 in progress. EKA2L1: own copy `~/src/EKA2L1-wt/cargo-run` (cp -a of integration,
+  branch `cargo-run` = symdev d07d5ac + merge dev/data-dir a3ec972 (a023886) + merge
+  dev/control-events c323b64 (a5d9df3); conflicts only in qt/src/thread.cpp and
+  qt/include/qt/cmdhandler.h option lists — both options kept). Ruling: the user's limit (own
+  copy per topic) overrides the plan's "merge into integration's symdev". Build dir
+  `~/src/EKA2L1-wt-build/cargo-run`, script `build.sh` there (configure like integration),
+  background PID 130544, log `build.log` (ends EXIT=<rc>).
