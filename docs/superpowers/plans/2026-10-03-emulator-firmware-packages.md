@@ -3599,7 +3599,7 @@ needed. Experiment 115 §4 has the results.
 
 **Interfaces:** documents Tasks 4–13; no code.
 
-- [ ] **Step 1: README requirements row** becomes:
+- [x] **Step 1: README requirements row** becomes:
 
 ```markdown
 | EKA2L1 with `--control` and `--data-dir`, and the E52 firmware | `cargo run`, `cargo test`, `symdev run`, `symdev test --emulator`, `symdev emulator`, `symdev devices` | packages `emulator;<V>` (public, glibc 2.38 or newer) and `firmware;rm-469;1` (private source only), installed on first need; or `SYMDEV_EKA2L1` (your own EKA2L1 or a wrapper that sets your host's GL variables) and `SYMDEV_EKA2L1_DATA` (an EKA2L1 data folder with the firmware installed) |
@@ -3609,7 +3609,7 @@ Add one sentence to "Toolchain packages": the emulator and firmware packages are
 by the first command that starts an emulator, not by `symdev build`. Add a second: without
 `SYMDEV_EKA2L1_DATA`, symdev never reads `~/.local/share/EKA2L1`.
 
-- [ ] **Step 2: `licensing.md`**
+- [x] **Step 2: `licensing.md`**
 
 Under "## EKA2L1", after the existing sentence, add (wording for D1 = A; for B or C, adjust
 the second bullet to the choice):
@@ -3636,7 +3636,7 @@ sources". The emulator package also carries LGPL, BSD, Apache and other free lic
 packages under licences compatible with GPL-3.0, with their corresponding source") into
 the wip file for the lead to take to the owner.
 
-- [ ] **Step 3: `crates/symdev-emulator/README.md`**
+- [x] **Step 3: `crates/symdev-emulator/README.md`**
 
 Rewrite "Usage" for what the crate is now: `device::{Eka2l1, Firmware, EmulatorProfile,
 EmulatorInstance, DeviceRegistry, DeviceChoice}` and `control::ControlClient`, one
@@ -3644,10 +3644,10 @@ sentence each. Say who resolves `SYMDEV_EKA2L1` / `SYMDEV_EKA2L1_DATA` and the p
 (`symdev-cli`'s `Provision`); this crate reads no environment for them. Keep "Not a device".
 Delete the paragraphs about `Eka2l1Backend`.
 
-- [ ] **Step 4: Toolchain spec §2 row** becomes
+- [x] **Step 4: Toolchain spec §2 row** becomes
   `| emulator;<yyyy.mm.dd>, firmware;rm-469;<n> | see 2026-10-03-emulator-firmware-packages-design.md | x86_64-linux, any |`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add README.md docs/research/licensing.md crates/symdev-emulator/README.md \

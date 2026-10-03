@@ -97,7 +97,7 @@ and their causes are tracked in [docs/research/size-levers.md](docs/research/siz
 | Rust SDK (`symbian-rs/`) | Rust projects only | `SYMDEV_RUST_SDK`, else the checkout symdev was built from, else package `rust-sdk;<symdev's version>` |
 | Rust nightly, pinned in `symbian-rs/rust-toolchain.toml`, and a host C linker (`cc`, e.g. `build-essential`) | Rust projects only (`-Zbuild-std`; build scripts and the SDK's proc macros link on the host, as for any Rust project); a C++ project needs neither | rustup, your distribution |
 | `rust-lld` | Rust projects: links them (see [Linking Rust programs](#linking-rust-programs)) | the pinned nightly's own `rustc` component (rustup installs it), or `SYMDEV_RUST_LLD` |
-| EKA2L1 with `--control` and `--data-dir` (optional; our fork's `symdev` branch until EKA2L1#766 and #770–#772 are merged) | `cargo run`, `cargo test`, `symdev run`, `symdev test --emulator`, `symdev emulator` | `SYMDEV_EKA2L1`; firmware installed in your EKA2L1 (`~/.local/share/EKA2L1`, or `SYMDEV_EKA2L1_DATA`) |
+| EKA2L1 with `--control` and `--data-dir`, and the E52 firmware | `cargo run`, `cargo test`, `symdev run`, `symdev test --emulator`, `symdev emulator`, `symdev devices` | packages `emulator;2026.10.03` (public, glibc 2.38 or newer) and `firmware;rm-469;1` (private source only), installed on first need; or `SYMDEV_EKA2L1` (your own EKA2L1 or a wrapper that sets your host's GL variables) and `SYMDEV_EKA2L1_DATA` (an EKA2L1 data folder with the firmware installed) |
 
 ### Toolchain packages
 
@@ -108,6 +108,9 @@ the install command. `symdev package` installs nothing. Downloads are cached in
 `~/.cache/symdev/downloads` and checked against the index's SHA-256 before they are unpacked.
 A download must average at least 16 KiB/s (the 67 MB GCCE then takes up to 70 minutes); one
 that is cut off is not resumed, and the next build downloads it again from the start.
+The emulator and firmware packages are installed by the first command that starts an
+emulator, not by `symdev build`. Without `SYMDEV_EKA2L1_DATA`, symdev never reads
+`~/.local/share/EKA2L1`.
 
 Each `SYMDEV_*` toolchain variable that is set overrides its package path, field by field, so an
 environment that sets all of them installs nothing; a C++ project builds as before, and a Rust
@@ -197,8 +200,8 @@ experiment 114.
 
 A device is an EKA2L1 that symdev started with `--control` on an emulator profile of its own
 (`~/.local/share/symdev/emulators/<firmware>/`: its own drives C, D, E and configuration, the
-ROM and drive Z referenced from your EKA2L1, never written). The first run makes a profile per
-firmware your EKA2L1 has. `cargo run` takes `SYMDEV_DEVICE` (`emulator-1` or a profile name)
+ROM and drive Z referenced from the firmware package, or from your EKA2L1 with
+`SYMDEV_EKA2L1_DATA`, never written). The first run makes a profile per firmware. `cargo run` takes `SYMDEV_DEVICE` (`emulator-1` or a profile name)
 first, then the one running emulator, then the one profile, which it starts; otherwise it asks,
 or without a terminal it names the choices. An emulator stays up after the run; an EKA2L1 you
 started yourself is never listed or touched.
