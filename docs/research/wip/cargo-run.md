@@ -86,7 +86,12 @@ No push to main / merge / tag / publish; pushing `cargo-run` is allowed.
   path-dependence of exp 113 §2. ⇒ rust-std images differ from 0.3.0 by path-dependent bytes.
 - Q2 rest (16 no_std, `all.sh`: baseline with the 0.3.0 spec, then bin shape): 14 EQUAL;
   `net` 10 504 vs 10 506 and `tls` 13 938 vs 13 920 — uncompressed EQUAL, compressed differ
-  (first diff in code). Investigating.
+  (first diff in code). CAUSE (verified): the target-spec edit. Every crate's unit hash
+  changes (two `core` unit dirs in net's build: 268f… old spec, 0b2c… new spec) ⇒ v0 symbol
+  hashes change ⇒ .text item order (net: `with_session` ↔ `to_socket_addrs::first` swap);
+  sections equal in size, .rodata/.data equal. net & tls rebuilt by symdev-030 in the OLD
+  staticlib shape with the NEW spec (`out/spec/`) = the bin-shape images EXACTLY. So rustc's
+  inputs + bin shape = staticlib bytes, 19/19 no_std examples; the spec edit alone moves 2.
 
 ## Dead ends
 - (none yet beyond Q4's H1/H2)
