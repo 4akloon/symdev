@@ -42,4 +42,7 @@ fn a_prebuilt_directory_missing_an_archive_is_refused_with_the_way_out() {
         e.contains("reinstall") && e.contains("SYMDEV_RUST_LINKER=gnu"),
         "{e}"
     );
+    // A checkout or SYMDEV_RUST_SDK tree is no package to reinstall: delete the set.
+    let delete = format!("delete {}", tmp.path().join("prebuilt").display());
+    assert!(e.contains(&delete), "{e}");
 }

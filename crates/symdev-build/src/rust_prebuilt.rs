@@ -34,10 +34,12 @@ impl RustPrebuilt {
             if !path.is_file() {
                 return Err(Error::Other(format!(
                     "Rust SDK at {} has {}/ but no {}: reinstall the rust-sdk package, or \
-                     set SYMDEV_RUST_LINKER=gnu to compile the shims with GCCE",
+                     delete {} (a checkout or SYMDEV_RUST_SDK tree then compiles its shims \
+                     with GCCE), or set SYMDEV_RUST_LINKER=gnu to compile the shims with GCCE",
                     sdk_root.display(),
                     Self::DIR,
-                    path.display()
+                    path.display(),
+                    dir.display()
                 )));
             }
         }
