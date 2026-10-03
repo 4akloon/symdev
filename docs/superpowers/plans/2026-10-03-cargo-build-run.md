@@ -1318,3 +1318,176 @@ Expected: `EQUAL 975/1348 vs 975/1348`, and both `.sisx` files exist.
 git add crates/symdev-cli
 git commit -m "Run symdev as cargo's linker under the name symdev-ld, and make its links with setup-linker."
 ```
+
+### Task 5: The target spec links executables, and UID3 comes from `symdev.toml` at compile time
+
+**Files:**
+- Modify: `symbian-rs/targets/arm-symbian-e32.json`
+- Create: `symbian-rs/crates/symbian-macros/src/manifest_uid3.rs` (`ManifestUid3`)
+- Modify: `symbian-rs/crates/symbian-macros/src/lib.rs` (`uid3!`), `symbian-rs/crates/symbian-std/src/lib.rs` (re-export, `report!`)
+- Modify: `symbian-rs/crates/symbian-std/src/test_report/mod.rs` (delete `Report::new`, `uid3_from_env`, `parse_hex_u32`)
+- Modify: the 15 callers of `Report::new` (`symbian-rs/examples/{fmt,ui,async,query,files,net,tls,notes,std-net,locale,std-hello,ui-list,atomics,cleanup,time}/src/main.rs`)
+- Modify: `crates/symdev-build/src/driver/rust_build.rs` (drop `cmd.env("SYMDEV_UID3", …)`)
+- Test: `symbian-rs/crates/symbian-macros/src/manifest_uid3.rs` (`#[cfg(test)]`)
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: `symbian_std::uid3!()` (a `u32` literal from `$CARGO_MANIFEST_DIR/symdev.toml`'s
+  `[symbian] uid3`), and `symbian_std::report!("app")`, which expands to
+  `symbian_std::test_report::Report::with_uid3("app", symbian_std::uid3!())`. Target spec
+  keys `"executables": true` and `"default-visibility": "hidden"`.
+
+- [ ] **Step 1: Write the failing tests** — at the end of `manifest_uid3.rs`
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::ManifestUid3;
+
+    const SCAFFOLD: &str = "[package]\nname = \"hello\"\nversion = \"0.1.0\"\n\n[target]\n\
+        device = \"nokia-e52\"\n\n[language]\nname = \"rust\"\n\n[symbian]\nuid3 = \"0xef9f2cab\"\n\
+        capabilities = []\nvendor = \"symdev\"\n\n[signing]\nmode = \"self-signed\"\n";
+
+    #[test]
+    fn the_scaffolds_uid3_is_read() {
+        assert_eq!(ManifestUid3::parse(SCAFFOLD), Ok(0xef9f_2cab));
+    }
+
+    #[test]
+    fn a_uid3_outside_the_symbian_table_does_not_count() {
+        let text = "[package]\nuid3 = \"0x1\"\n[symbian]\nvendor = \"x\"\n";
+        assert!(ManifestUid3::parse(text).unwrap_err().contains("[symbian] uid3"));
+    }
+
+    #[test]
+    fn a_uid3_that_is_not_quoted_hex_is_refused() {
+        for bad in ["uid3 = 0xe1", "uid3 = \"e1\"", "uid3 = \"0xZZ\"", "uid3 = \"0x123456789\""] {
+            let text = format!("[symbian]\n{bad}\n");
+            assert!(ManifestUid3::parse(&text).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn spaces_and_comments_around_it_are_fine() {
+        assert_eq!(ManifestUid3::parse("[symbian]\n  uid3=\"0xE0000687\"  # app\n"), Ok(0xe000_0687));
+    }
+}
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `cargo +nightly-2026-09-19 test --offline --manifest-path symbian-rs/crates/symbian-macros/Cargo.toml`
+(from the repository root, so `symbian-rs/.cargo/config.toml` does not apply and the tests
+build for the host). Expected: `ManifestUid3` not found.
+
+- [ ] **Step 3: Implement**
+
+`manifest_uid3.rs`, dependency-free like the rest of `symbian-macros` (its `Cargo.toml`
+says why):
+
+```rust
+//! `ManifestUid3`: `[symbian] uid3` of the application's `symdev.toml`, read while the
+//! application compiles. A proc macro runs in the rustc that compiles the application, so
+//! its `CARGO_MANIFEST_DIR` is the application's; a dependency's build script would see
+//! its own (experiment 114 §1, design spec §3).
+use std::path::Path;
+
+pub struct ManifestUid3;
+
+impl ManifestUid3 {
+    pub fn read(dir: &Path) -> Result<u32, String> {
+        let path = dir.join("symdev.toml");
+        let text = std::fs::read_to_string(&path)
+            .map_err(|e| format!("`symbian_std::uid3!()` reads {}: {e}", path.display()))?;
+        Self::parse(&text).map_err(|e| format!("{}: {e}", path.display()))
+    }
+
+    /// The scaffold's shape: a `[symbian]` table with `uid3 = "0x<1–8 hex digits>"`.
+    pub fn parse(text: &str) -> Result<u32, String> {
+        let mut in_symbian = false;
+        for line in text.lines() {
+            let line = line.split('#').next().unwrap_or("").trim();
+            if line.starts_with('[') {
+                in_symbian = line == "[symbian]";
+                continue;
+            }
+            let Some((key, value)) = line.split_once('=') else { continue };
+            if !in_symbian || key.trim() != "uid3" {
+                continue;
+            }
+            let hex = value.trim().strip_prefix("\"0x").or_else(|| value.trim().strip_prefix("\"0X"))
+                .and_then(|v| v.strip_suffix('"'))
+                .filter(|h| (1..=8).contains(&h.len()))
+                .ok_or_else(|| format!("[symbian] uid3 must be a quoted hex number like \"0xe0000687\", not {}", value.trim()))?;
+            return u32::from_str_radix(hex, 16).map_err(|e| format!("[symbian] uid3 {hex}: {e}"));
+        }
+        Err("no [symbian] uid3 (symdev new writes one)".into())
+    }
+}
+```
+
+`lib.rs` of `symbian-macros`:
+
+```rust
+mod manifest_uid3;
+
+/// The application's UID3 from its `symdev.toml`, as a `u32` literal.
+#[proc_macro]
+pub fn uid3(input: TokenStream) -> TokenStream {
+    if !input.is_empty() {
+        return tokens(&compile_error("`symbian_std::uid3!()` takes no arguments"));
+    }
+    let Some(dir) = std::env::var_os("CARGO_MANIFEST_DIR") else {
+        return tokens(&compile_error("`symbian_std::uid3!()` needs CARGO_MANIFEST_DIR, which cargo sets"));
+    };
+    match manifest_uid3::ManifestUid3::read(std::path::Path::new(&dir)) {
+        Ok(uid3) => tokens(&format!("0x{uid3:08x}_u32")),
+        Err(message) => tokens(&compile_error(&message)),
+    }
+}
+```
+
+`symbian-std/src/lib.rs`: `pub use symbian_macros::{main, strings, uid3};` and
+
+```rust
+/// A test report named by the application's own UID3 (`symdev.toml`), so the file
+/// `symdev test` waits for is the one the application writes.
+#[macro_export]
+macro_rules! report {
+    ($app:expr) => {
+        $crate::test_report::Report::with_uid3($app, $crate::uid3!())
+    };
+}
+```
+
+In `test_report/mod.rs` delete `Report::new`, `uid3_from_env` and `parse_hex_u32` with their
+doc comments and tests, and change the doc example to `symbian_std::report!("files")`. In
+each of the 15 examples replace `Report::new("<app>")` by `symbian_std::report!("<app>")`, and
+drop the `Report` import where nothing else uses it.
+
+`arm-symbian-e32.json`: set `"executables": true`; add `"default-visibility": "hidden",`
+after `"default-uwtable": false,` (keys stay sorted); set `metadata.description` to `"Symbian
+OS 9.3 EKA2 (S60 3rd FP2) user-side E32 code, ARMv5TE soft-float EABI; cargo links through
+symdev-ld"`.
+
+`rust_build.rs`: delete `cmd.env("SYMDEV_UID3", …)` and its comment. No crate reads the
+variable any more.
+
+- [ ] **Step 4: Run the tests and rebuild the examples**
+
+Run the macro tests (Step 2's command): all pass. Then `cargo test --workspace --offline`:
+the host workspace still builds the examples through `symdev build`'s tests where it does.
+Then check the bytes. The release images must equal experiment 114 §1.5's `out/q5d` set:
+the same spec keys, and `report!` gives `with_uid3` the constant `new` used to compute. Run
+`~/src/cargo-run-scratch/base.sh` style builds of `async`, `files`, `atomics` with the
+branch's `symdev` (staticlib shape still; Task 8 converts) and `e32cmp.py` them against
+`~/src/cargo-run-scratch/out/q5d/`. Expected: `EQUAL` ×3. A difference is a finding: record
+it in `docs/research/wip/cargo-run.md` and explain it before going on.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add symbian-rs/targets/arm-symbian-e32.json symbian-rs/crates/symbian-macros/src \
+  symbian-rs/crates/symbian-std/src symbian-rs/examples/*/src/main.rs crates/symdev-build/src/driver/rust_build.rs
+git commit -m "Let rustc link executables for the target and read UID3 from symdev.toml at compile time."
+```
