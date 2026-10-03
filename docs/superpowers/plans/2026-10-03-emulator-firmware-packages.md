@@ -91,3 +91,70 @@ file). Read the spec and §1 before starting.
    by `build.sh`. The publisher does not change.
 8. **The fork's artifact will expire** (no `retention-days`; the repository default, at
    most 90 days). The recipe's hashes are the lasting record; the package in R2 stays.
+
+## Decision D1 (open, the owner's): what goes out with the public `emulator` package
+
+The spec asks for "the fork commit as a `git archive` including submodules, plus the source
+of the Qt version linuxdeploy bundled", with a licence field of "at least
+`GPL-3.0-or-later` … and `LGPL-3.0-only`". Experiment 115 §1.2 shows the AppImage carries
+more:
+
+- 187 libraries from **167 Ubuntu 24.04 packages**. Qt's multimedia plugin pulls Ubuntu's
+  FFmpeg, which pulls `libx264` and `libx265` (GPL-2.0+), `libzvbi`, `libcodec2` and others.
+  Distributing their binaries obliges us to offer their corresponding source too (GPL-2.0
+  §3, GPL-3.0 §6, LGPL §4/§6), not only Qt's. The exact versions are known only to the
+  runner that built the AppImage.
+- 96 of the 167 copyright files mention a GPL. 35 are not in the machine-readable format,
+  so a complete SPDX expression cannot be computed; it needs a reading.
+- `CLAUDE.md` says the built-in public source carries "only GPL/MIT packages". The bundle
+  is GPL-3.0-compatible as a whole, but its parts are also LGPL, BSD, Apache-2.0, MPL-2.0,
+  ISC and more.
+
+| Option | What it means | Cost |
+|---|---|---|
+| **A (recommended)** | One commit on the integration branch only (not an upstream PR) adds a step to the fork CI's Linux job. The step writes `eka2l1-qt-x64.packages.tsv` into the artifact: for each bundled library and plugin, its Ubuntu package, version, source package and source version. The recipe fetches each source package at that exact version from Launchpad and checks it against its `.dsc`. It packs them with EKA2L1's `git archive` (submodules included) and the recipe directory into the one `--source-code` archive. Licence field: `GPL-3.0-or-later AND LGPL-3.0-only AND LicenseRef-EKA2L1-bundle`. The LicenseRef is `share/doc/eka2l1/BUNDLED.tsv` plus `usr/share/doc/<package>/copyright` in the package. `licensing.md` gets the rule that the public bucket may carry a GPL program together with the free libraries it bundles | The integration branch is "master + our PRs + one CI commit". The source archive is several hundred MB (measured in Task 11) |
+| B | A's process applied to a smaller bundle. The recipe deletes the multimedia (`ffmpeg`, `gstreamer`), `networkinformation` and `tls` plugins, and the libraries only they need, before packing. Task 13 must then show that EKA2L1 still starts, draws and plays sound | Fewer sources, but the package is no longer the CI's artifact. Still needs A's list for Qt, SDL2, ICU, GLib … |
+| C | `emulator;<V>` goes to the **private** bucket for 0.4.0, so there is no public distribution yet. The public package follows once A is done | Contradicts spec §3. Only machines with the private keys get `cargo run` working |
+
+**Recommendation: A.** It is the only option that ships exactly what the CI built and
+meets every source obligation by construction: the build itself records the versions.
+B saves storage but changes the artifact. C postpones the problem.
+
+**Tasks that depend on D1:** Task 2 and Task 11 run only for A (B adds a pruning step to
+Task 10 and keeps Tasks 2 and 11). Task 10's licence field and Task 14's `licensing.md`
+text follow the choice. Everything else is the same for A, B and C. Until the owner
+decides, implement A and stop before L1.
+
+## Finding F1 (for the owner): the emulator needs glibc 2.38
+
+The AppImage's libraries need `GLIBC_2.38` (Ubuntu 24.04+, Debian 13+, Fedora 39+, RHEL 10).
+symdev itself is static and GCCE needs glibc 2.28. The spec says a newer floor is "a finding
+for the owner, not a silent rebuild". The plan records the floor in `artifact.toml`, and
+`pkgtools emulator-check` fails if the tree needs anything newer. `README.md` states the
+requirement. On an older host, the loader's `GLIBC_2.38 not found` reaches the user through
+`EmulatorInstance::start`'s error, which quotes the emulator's last output lines. The fix
+for older hosts (building on an older base) is a later decision.
+
+## Steps reserved for the lead
+
+Each needs the owner's explicit go. Implementing agents stop before them and say so in
+the notes.
+
+- **L1** (after Task 15): push `~/src/EKA2L1-wt/emulator-pkg` branch `symdev` to
+  `4akloon/EKA2L1` (`git push --force-with-lease fork symdev`). Check that a `C/C++ CI` run
+  starts for `<C>` (`gh run list -R 4akloon/EKA2L1 --branch symdev`). If none starts within
+  five minutes, enable Actions for the fork in its web UI and run `gh workflow run
+  build.yml -R 4akloon/EKA2L1 --ref symdev`. Wait until the `build-desktop (linux)` job is
+  green, then hand Task 16 its run id.
+- **L2** (after Task 16): `emulator;<V>` reaches the public bucket by merging the
+  `symdev-packages` branch into `main`. `.github/workflows/emulator.yml` (Task 12) then
+  publishes it. Check the cross-repository artifact download in the PR run first (Task 12
+  notes why it may need a token).
+- **L3** (after Task 16): on the owner's machine, with the publisher keys:
+  `EKA2L1_DATA=~/.local/share/EKA2L1/data bash recipes/firmware/rm-469/1/stage.sh
+  ~/src/emu-pkg-scratch/firmware/tree`, then `cargo run --release -p publish -- private
+  'firmware;rm-469;1' --from ~/src/emu-pkg-scratch/firmware/tree --recipe
+  recipes/firmware/rm-469/1/recipe.toml`.
+- **L4**: push `~/worktrees/symdev-packages/cargo-run` and open its PR (this is what L2
+  merges).
+- After L2 and L3: the real-bucket acceptance (end of this plan).
