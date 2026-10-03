@@ -2682,3 +2682,175 @@ fn copy(from: &std::path::Path, to: &std::path::Path) -> Result<()> {
 #[cfg(test)]
 mod tests;
 ```
+
+`pkgtools/src/emulator_notices/submodules.rs`:
+
+```rust
+//! `Submodules`: a checkout's submodule folders, nested ones included (each `.gitmodules`'s
+//! `path = …` lines), and the licence files at their top.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use crate::tool_error::{Result, ToolError};
+
+/// The names a licence file starts with, in any case.
+const NAMES: [&str; 5] = ["LICENSE", "LICENCE", "COPYING", "NOTICE", "COPYRIGHT"];
+
+pub struct Submodules {
+    src: PathBuf,
+    /// Relative to `src`, sorted.
+    paths: Vec<PathBuf>,
+}
+
+impl Submodules {
+    pub fn read(src: &Path) -> Result<Submodules> {
+        let mut paths = Vec::new();
+        let mut todo = vec![PathBuf::new()];
+        while let Some(base) = todo.pop() {
+            let file = src.join(&base).join(".gitmodules");
+            let Ok(text) = fs::read_to_string(&file) else { continue };
+            for line in text.lines() {
+                if let Some(p) = line.trim().strip_prefix("path = ") {
+                    let rel = base.join(p.trim());
+                    todo.push(rel.clone());
+                    paths.push(rel);
+                }
+            }
+        }
+        paths.sort();
+        Ok(Submodules { src: src.to_path_buf(), paths })
+    }
+
+    /// Every submodule's licence files and `extra`, relative to the checkout. A submodule
+    /// with neither is an error naming all such submodules: read each and list its licence
+    /// file in the recipe's `notices-extra.txt`.
+    pub fn licence_files(&self, extra: &[PathBuf]) -> Result<Vec<PathBuf>> {
+        let (mut found, mut missing) = (Vec::new(), Vec::new());
+        for sub in &self.paths {
+            let dir = self.src.join(sub);
+            let entries = fs::read_dir(&dir).map_err(|e| ToolError::io(dir.display(), &e))?;
+            let mut here: Vec<PathBuf> = entries
+                .flatten()
+                .filter(|e| e.path().is_file())
+                .filter(|e| {
+                    let name = e.file_name().to_string_lossy().to_uppercase();
+                    NAMES.iter().any(|n| name.starts_with(n))
+                })
+                .map(|e| sub.join(e.file_name()))
+                .collect();
+            here.sort();
+            if here.is_empty() && !extra.iter().any(|x| self.owner(x) == Some(sub)) {
+                missing.push(sub.display().to_string());
+            }
+            found.extend(here);
+        }
+        if !missing.is_empty() {
+            return Err(ToolError::new(format!(
+                "no licence file at the top of: {}; read each one and list its licence file, \
+                 relative to the checkout, in the recipe's notices-extra.txt",
+                missing.join(", ")
+            )));
+        }
+        found.extend(extra.iter().cloned());
+        found.sort();
+        found.dedup();
+        Ok(found)
+    }
+
+    /// The deepest submodule that holds `path`.
+    fn owner(&self, path: &Path) -> Option<&PathBuf> {
+        self.paths
+            .iter()
+            .filter(|p| path.starts_with(p))
+            .max_by_key(|p| p.components().count())
+    }
+}
+```
+
+`pkgtools/src/emulator_notices/bundled_list.rs`:
+
+```rust
+//! `BundledList`: the artifact's package list (D1 = A), each package with the copyright file
+//! linuxdeploy put into the tree for it.
+
+use std::fs;
+use std::path::Path;
+
+use crate::tool_error::{Result, ToolError};
+
+pub struct BundledList {
+    /// The list's line and the copyright file, relative to the tree.
+    rows: Vec<(String, String)>,
+}
+
+impl BundledList {
+    pub fn read(tsv: &Path, tree: &Path) -> Result<BundledList> {
+        let text = fs::read_to_string(tsv).map_err(|e| ToolError::io(tsv.display(), &e))?;
+        let (mut rows, mut missing) = (Vec::new(), Vec::new());
+        for line in text.lines().filter(|l| !l.is_empty()) {
+            let fields: Vec<&str> = line.split('\t').collect();
+            let [package, _, _, _] = fields[..] else {
+                return Err(ToolError::new(format!(
+                    "{}: `{line}` is not package, version, source, source version",
+                    tsv.display()
+                )));
+            };
+            let name = package.split(':').next().unwrap_or(package);
+            let copyright = format!("usr/share/doc/{name}/copyright");
+            if !tree.join(&copyright).is_file() {
+                missing.push(copyright.clone());
+            }
+            rows.push((line.to_string(), copyright));
+        }
+        if !missing.is_empty() {
+            return Err(ToolError::new(format!(
+                "the tree has no {}: a bundled package without its licence",
+                missing.join(", ")
+            )));
+        }
+        Ok(BundledList { rows })
+    }
+
+    pub fn count(&self) -> usize {
+        self.rows.len()
+    }
+
+    pub fn to_tsv(&self) -> String {
+        let mut out = String::from("package\tversion\tsource\tsource version\tcopyright\n");
+        for (line, copyright) in &self.rows {
+            out.push_str(&format!("{line}\t{copyright}\n"));
+        }
+        out
+    }
+}
+```
+
+(`EmulatorNotices::write` calls `list.count()`.) `main.rs`: `mod emulator_notices;`,
+`use crate::emulator_notices::EmulatorNotices;`, and
+
+```rust
+    /// Write share/doc/eka2l1/ into an extracted EKA2L1 AppImage: COPYING, every
+    /// submodule's licence files, BUNDLED.tsv (with --packages) and SOURCE.txt.
+    EmulatorNotices {
+        #[arg(value_name = "eka2l1-src")]
+        src: PathBuf,
+        #[arg(value_name = "tree")]
+        tree: PathBuf,
+        #[arg(long, value_name = "id")]
+        id: String,
+        #[arg(long, value_name = "sha")]
+        commit: String,
+        #[arg(long, value_name = "packages.tsv")]
+        packages: Option<PathBuf>,
+        /// A file listing extra licence files, one path relative to <eka2l1-src> per line.
+        #[arg(long, value_name = "list")]
+        extra: Option<PathBuf>,
+    },
+```
+
+with an arm that reads `extra` (one path per non-empty line, `#` lines skipped) and calls
+`EmulatorNotices { … }.write()`. On `Ok((files, packages))` it prints `wrote
+share/doc/eka2l1: COPYING, {files} licence files, {packages} bundled packages, SOURCE.txt`
+and returns 0; on `Err` it prints `error: {e}` and returns 1. Run step 4's command; expected
+`test result: ok`.
