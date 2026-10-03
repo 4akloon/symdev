@@ -4252,3 +4252,38 @@ symdev's, except what the user's shell exports.
 Trimmed fixtures (paths normalised to `/work/app`): `fixtures/{release,dev}-{bin,test}.
 {argv,env}`, `release-bin-flavor.argv`, `release-example.{argv,env}`, `run.{argv,env}`,
 `test-run.{argv,env}`.
+
+#### 1.2 The same bytes from rustc's inputs
+
+**Method.** `base.sh` builds each example in the staticlib shape with `symdev-030`, using
+the 0.3.0 target spec. `toshape.py` then converts it, the spec gets `"executables": true`, and
+`q2.sh … release` builds and links it from rustc's inputs. For release those inputs are the
+LTO object and `libcompiler_builtins-<hash>.rlib`. They take the staticlib's place on 0.3.0's
+line, after `-l:euser.dso -l:drtaeabi.dso` and before the shims and the libcalls rlib.
+
+| examples | result (`.exe` compressed / uncompressed) |
+|---|---|
+| `hello`, `ui`, `async` | **equal** (masked): 975 / 1 348, 10 288 / 17 028, 18 360 / 33 892 |
+| `alloc` `atomics` `cleanup` `files` `fmt` `hello-raw` `locale` `notes` `panic` `query` `shim` `spawnee` `time` `ui-list` | **equal** (masked), every one |
+| `net`, `tls` | uncompressed equal (17 616, 25 920); compressed 10 504 against 10 506 and 13 938 against 13 920 |
+
+**`net` and `tls`.** Their `.text` is the same size with different bytes; `.rodata` and
+`.data` are equal.
+
+* The cause is the target-spec edit, not the bin shape. Cargo hashes the spec into every
+  unit, so `net`'s build has two `core` units: `268f…` from the old spec and `0b2c…` from the
+  new one.
+* New crate hashes give new v0 symbol names, and the code-unit order follows them. In `net`,
+  `with_session` and `to_socket_addrs::first` swap places.
+* Proof: `symdev-030` rebuilt `net` and `tls` in the **staticlib** shape with the **new** spec
+  (`out/spec/`), and both images equal the bin-shape ones exactly.
+* Experiment 113 met the same pair of orders: these are its checkout and prebuilt numbers.
+
+**Time.** With the SDK crates already built, cargo takes 7.9–10.7 s per example and the
+spike link 0.5 s (1.6 s for a GUI program, whose shim GCCE compiles). The first build of a
+fresh target directory also builds `core` and `alloc`, as before.
+
+**Answer.** Linking rustc's own inputs gives `symdev build` 0.3.0's images: 19 of 19
+`no_std` examples are byte-equal once the target spec is the same. Changing the spec moves
+two images (`net`, `tls`) by reordering code; their uncompressed sizes are unchanged. The
+`std` examples are in 1.4.
