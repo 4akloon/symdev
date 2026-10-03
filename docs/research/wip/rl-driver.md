@@ -109,3 +109,8 @@ on the four apps + all examples, sizes vs exp 112.
 - Mistake caught: `git add -A` swept build-rewritten std-hello/std-net Cargo.lock into 2 commits;
   restored (main's locks are stale: symdev-locale 0.1.0; chip suggested). Stage by name now.
 - Lesson: `pkill -f` pattern matched my own shell; use `ps | grep -F` and kill exact PIDs.
+- **Emulator** (`~/src/rl-driver-scratch/emu.sh` = symdev package + runshot.py under the lock).
+  Pitfall: exporting a scratch XDG_DATA_HOME makes EKA2L1 look for its data under it ("Devices
+  file not found") — emu.sh now unsets XDG_*. No-GCCE hello: `Trying to display: Hello from Rust
+  SDK (19 chars)`; no-GCCE GUI (prebuilt shim + defsym): "Bars", bars=3 keys=0 cmd=0 → F1 F1 →
+  bars=4 keys=0 cmd=1 (`shots/nogcce-ui-{1,2}.png`). PIDs killed, none left.
