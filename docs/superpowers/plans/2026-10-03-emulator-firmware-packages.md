@@ -537,7 +537,9 @@ In `pins.rs`'s test module (keep the existing ones; add `Pins::emulator()` and
     }
 ```
 
-`crates/symdev-sdk/src/emulator_package.rs` gets a test module like `platform_sdk.rs`'s:
+`crates/symdev-sdk/src/emulator_package.rs` and `firmware_package.rs` start as these test
+modules only; declare `mod emulator_package;` and `mod firmware_package;` in `lib.rs` now
+so that they compile. The first gets a test module like `platform_sdk.rs`'s:
 
 ```rust
 #[cfg(test)]
@@ -705,7 +707,7 @@ cargo test -p symdev-sdk --offline -- pins:: emulator_package firmware_package b
 ```
 
 Expected: compile errors (`no function or associated item named emulator`,
-`file not found for module`, `no associated item named ALL`). libtest takes several
+`unresolved import super::EmulatorPackage`, `no associated item named ALL`). libtest takes several
 filters after `--` and runs what matches any of them.
 
 - [ ] **Step 3: Implement**
@@ -837,9 +839,8 @@ impl FirmwarePackage {
 }
 ```
 
-`lib.rs`: `mod emulator_package;`, `mod firmware_package;`, `pub use
-emulator_package::EmulatorPackage;`, `pub use firmware_package::FirmwarePackage;`, in the
-alphabetical places of the existing lists.
+`lib.rs`: `pub use emulator_package::EmulatorPackage;` and `pub use
+firmware_package::FirmwarePackage;`, in the alphabetical places of the existing list.
 
 `catalog.rs`: replace `let sdk = id.kind() == "sdk";` with `let bypass = Self::bypass(id);`.
 `keys_hint` takes `bypass: Option<&str>` and appends `", or {way}"`. The final hint becomes
