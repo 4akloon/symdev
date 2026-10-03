@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use symdev_build::{RustSdk, RustSdkLink};
 use symdev_core::Error;
 
-use crate::build_cmd::ignore_build_dir;
+use crate::build_dir::BuildDir;
 use crate::cli::Template;
 use crate::scaffold::{io_err, uid3_hex};
 
@@ -30,7 +30,7 @@ pub fn write_rust(
     std::fs::create_dir_all(root.join("src")).map_err(io_err)?;
     std::fs::create_dir_all(root.join(".cargo")).map_err(io_err)?;
     // `build/` ignores itself before the link is made in it, as `symdev build` does.
-    ignore_build_dir(root)?;
+    BuildDir::of(root).create()?;
     RustSdkLink::of(root).point_at(&sdk)?;
     let files = [
         ("symdev.toml".to_string(), manifest(name)),

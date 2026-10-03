@@ -10,7 +10,7 @@ use crate::rust_sdk_link::RustSdkLink;
 /// absolute path, a Rust SDK other than the one the build resolved — what
 /// `symdev new --lang rust` wrote before projects named the SDK through
 /// [`crate::RustSdkLink`]. Built as it is, such a project would mix the two SDKs.
-pub struct ForeignSdkPaths {
+pub(crate) struct ForeignSdkPaths {
     resolved: PathBuf,
     entries: Vec<String>,
 }
@@ -18,12 +18,12 @@ pub struct ForeignSdkPaths {
 impl ForeignSdkPaths {
     /// The files looked through, relative to the project root: where the scaffold wrote
     /// the SDK's paths.
-    pub const FILES: [&'static str; 2] = ["Cargo.toml", ".cargo/config.toml"];
+    const FILES: [&'static str; 2] = ["Cargo.toml", ".cargo/config.toml"];
 
     /// Looks through the project at `root` for absolute paths into an SDK other than
     /// `sdk`: a `…/crates/<name>` where `sdk` has a crate `<name>`, and a
     /// `…/targets/arm-symbian-e32.json`. A missing file names nothing.
-    pub fn find(root: &Path, sdk: &RustSdk) -> Result<ForeignSdkPaths> {
+    pub(crate) fn find(root: &Path, sdk: &RustSdk) -> Result<ForeignSdkPaths> {
         let crates = Self::crate_names(sdk)?;
         let mut entries = Vec::new();
         for file in Self::FILES {
@@ -52,7 +52,7 @@ impl ForeignSdkPaths {
 
     /// Fails, naming each line and what to write instead, if there are any. The files
     /// are the developer's: symdev does not rewrite them.
-    pub fn check(self) -> Result<()> {
+    pub(crate) fn check(self) -> Result<()> {
         if self.entries.is_empty() {
             return Ok(());
         }

@@ -49,18 +49,12 @@ impl RustSdkWorkspace {
         Ok(RustSdkWorkspace { members })
     }
 
-    /// Each member's `Cargo.toml`, relative to the SDK directory, in the manifest's order.
-    pub fn member_manifests(&self) -> Vec<String> {
+    /// The first member's `Cargo.toml`, in the manifest's order and relative to the SDK
+    /// directory `sdk`, that is not a file there, if any.
+    pub fn missing_member(&self, sdk: &Path) -> Option<String> {
         self.members
             .iter()
             .map(|m| format!("{m}/{}", Self::MANIFEST))
-            .collect()
-    }
-
-    /// The first member manifest that is not a file under `sdk`, if any.
-    pub fn missing_member(&self, sdk: &Path) -> Option<String> {
-        self.member_manifests()
-            .into_iter()
             .find(|manifest| !sdk.join(manifest).is_file())
     }
 }
@@ -86,16 +80,11 @@ mod tests {
                             members = [\"crates/symbian-core\", \"examples/hello\"]\n";
 
     #[test]
-    fn names_each_member_s_manifest_in_order() {
+    fn looks_for_the_members_in_the_manifest_s_order() {
         let sdk = sdk_with(MANIFEST, &[]);
         let workspace = RustSdkWorkspace::read(sdk.path()).unwrap();
-        assert_eq!(
-            workspace.member_manifests(),
-            [
-                "crates/symbian-core/Cargo.toml",
-                "examples/hello/Cargo.toml"
-            ]
-        );
+        let missing = workspace.missing_member(sdk.path());
+        assert_eq!(missing.as_deref(), Some("crates/symbian-core/Cargo.toml"));
     }
 
     #[test]

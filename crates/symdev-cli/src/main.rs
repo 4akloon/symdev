@@ -1,5 +1,6 @@
 mod artifacts;
 mod build_cmd;
+mod build_dir;
 mod cli;
 mod provision;
 mod scaffold;

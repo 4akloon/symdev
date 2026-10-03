@@ -21,7 +21,6 @@ pub use bld::ParseError;
 pub use driver::{APP_CREATE, E32MAIN, GcceBuild, RustBuild};
 pub use driver::{CompileFlags, CompileIncludes, GcceCompat, Module, SourceLanguage};
 pub use exports::{DllExports, FrozenExports};
-pub use foreign_sdk_paths::ForeignSdkPaths;
 pub use icons::{AppIcon, IconOutputs};
 pub use model::{BldExport, BldInf, Mmp, MmpBitmap, MmpBitmapSource, MmpOption, MmpResource};
 pub use package::SisPackage;
