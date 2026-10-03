@@ -300,4 +300,13 @@ NEXT: Task 10 — `task-start <plan> 10` (EKA2L1 with --control/--data-dir; prof
   examples/async gets tests/executor.rs. Real (`exec/t14-real.sh`, flock): `cargo test
   --release` in examples/async → emulator-1 started, `test block_on_returns_what_the_future_produced
   ... ok`, `test result: ok. 1 passed; 0 failed`, rc=0 in 0.7 s; emulator stopped.
-NEXT: Task 15 — `task-start <plan> 15` (symdev build = cargo build --release).
+- Task 15 done: `CargoBuild` (args, linker_on_path, run); `symdev build` of a Rust project =
+  resolve → prepare → check_link (rust-lld + lld script before cargo, as 0.3.0 did) → rust-std
+  StdSysroot → symdev-ld on PATH → `cargo build --release` → print build/<name>.{exe,sisx}
+  (missing after a fresh cargo → error). RustBuild lost BuildBackend/cargo_args/archive/
+  run_cargo/build_std; StdSrc lost SRC_ROOT_ENV/dir_for/SYMDEV_RUST_STD_SRC (rust-src README
+  rewritten). Tests updated: rust_linker (symdev-ld stub on PATH), rust_sdk (asserts the
+  build/rust-sdk link instead of the old --target argv). Real (`exec/t15-real.sh`): hello,
+  ui rc=0 (fresh), std-hello rc=0 19 s, `Compiling std v0.0.0 (…/build/sysroot/lib/rustlib/
+  src/rust/library/std)` — Task 9's real check passes.
+NEXT: Task 16 — `task-start <plan> 16` (OldShape refusal).

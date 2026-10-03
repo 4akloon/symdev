@@ -2796,7 +2796,7 @@ git commit -m "Run cargo test binaries on the device and print their report the 
   project root without `RUSTUP_TOOLCHAIN`. The project's `.cargo/config.toml` carries
   everything else. `CargoBuild::linker_on_path(path_var: &OsStr) -> Option<PathBuf>`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```rust
 #[test]
@@ -2814,9 +2814,9 @@ fn the_linker_is_looked_up_on_path_like_cargo_does() {
 }
 ```
 
-- [ ] **Step 2: Run them to see them fail.**
+- [x] **Step 2: Run them to see them fail.**
 
-- [ ] **Step 3: Implement.** `build_cmd.rs` keeps the C++ branch as it is. A Rust project
+- [x] **Step 3: Implement.** `build_cmd.rs` keeps the C++ branch as it is. A Rust project
   goes through these steps:
   1. Task 16's `OldShape` check; it arrives next and is a no-op until then.
   2. `RustProject::resolve(&m, &root, provision, true)`, then `rust.build.prepare(&root)`:
@@ -2829,9 +2829,9 @@ fn the_linker_is_looked_up_on_path_like_cargo_does() {
 
   `symdev package` keeps working on `build/<name>.exe` (Task 4 copies it there).
 
-- [ ] **Step 4: Run all tests**: `cargo test --workspace --offline`; all pass.
+- [x] **Step 4: Run all tests**: `cargo test --workspace --offline`; all pass.
 
-- [ ] **Step 5: Real builds** (experiment 114 environment, the branch's `symdev` and its links on `PATH`):
+- [x] **Step 5: Real builds** (experiment 114 environment, the branch's `symdev` and its links on `PATH`):
 
 ```bash
 for ex in hello ui std-hello; do (cd symbian-rs/examples/$ex && symdev build) || echo "$ex FAILED"; done
@@ -2841,7 +2841,7 @@ ls symbian-rs/examples/std-hello/build/sysroot/lib/rustlib/src/rust/library/std/
 Expected: three `build/<name>.sisx`, and `std-hello`'s cargo output shows `Compiling std
 v0.0.0 (…/build/sysroot/lib/rustlib/src/rust/library/std)` (this is Task 9's real check).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add crates/symdev-cli crates/symdev-build README.md
