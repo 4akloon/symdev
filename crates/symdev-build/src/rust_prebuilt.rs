@@ -7,8 +7,9 @@ use symdev_core::{Error, Result};
 /// `shims/common` and `shims/s60` as `libsymrs.a` and `libsymrs_ui.a`, their
 /// `R_ARM_TARGET2` already rewritten, and the members of GCCE's `libsupc++.a` and
 /// `libgcc.a` they need (experiment 109 §1). With them rust-lld links a Rust program on a
-/// machine with no GCCE. A source checkout has no `prebuilt/` (the release recipe makes it),
-/// and there the shims are compiled with GCCE as before.
+/// machine with no GCCE. A source checkout has no `prebuilt/` (the release recipe makes it,
+/// and git ignores it), and there the shims are compiled with GCCE as before; a checkout
+/// where someone ran the recipe's `prebuilt.sh` links its output instead, until it is deleted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RustPrebuilt {
     lib: PathBuf,

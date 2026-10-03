@@ -57,7 +57,7 @@ impl RustBuild {
 
     /// [`Self::link_args`]' line written for `linker`, with any number of shim archives in
     /// the order given: GNU ld's, or the one [`super::LldLine`] turns into rust-lld's.
-    pub fn link_line(
+    pub(super) fn link_line(
         &self,
         linker: &Linker,
         archive: &Path,

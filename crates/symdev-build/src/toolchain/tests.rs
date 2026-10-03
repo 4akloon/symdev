@@ -204,3 +204,13 @@ fn a_build_without_gcce_needs_only_the_sdk_and_says_so_if_gcce_is_asked_for() {
     assert!(e.contains("without GCCE"), "{e}");
     assert!(e.contains("symdev sdk install 'gcce;12.1.0'"), "{e}");
 }
+
+#[test]
+fn with_nothing_at_all_the_sdk_is_named_before_gcce() {
+    // The order before GCCE became optional: the EPOCROOT first.
+    let e = Toolchain::resolve(&ToolchainOverrides::default(), None, None)
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(e.contains("SYMDEV_EPOCROOT"), "{e}");
+}

@@ -125,13 +125,11 @@ fn an_sdk_whose_toolchain_file_names_no_channel_says_so() {
 }
 
 #[test]
-fn the_checkout_ships_the_lld_script_and_no_prebuilt_set() {
+fn the_checkout_ships_the_lld_script() {
     let sdk = RustSdk::at(Path::new(RustSdk::CHECKOUT.unwrap())).unwrap();
     let script = sdk.lld_script().unwrap();
     assert!(script.ends_with("targets/symbian-lld.ld"));
     assert!(std::fs::read_to_string(script).unwrap().contains("PHDRS"));
-    // `prebuilt/` is made by the release recipe, never tracked.
-    assert_eq!(sdk.prebuilt().unwrap(), None);
 }
 
 #[test]

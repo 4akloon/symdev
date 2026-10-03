@@ -37,7 +37,6 @@ pub use rust_sdk::RustSdk;
 pub use rust_sdk_link::RustSdkLink;
 pub use rust_toolchain_file::RustToolchainFile;
 pub use sdk_lld_cache::SdkLldCache;
-pub use sdk_lld_copy::SdkLldCopy;
 pub use std_src::StdSrc;
 pub use strings_resources::StringsResources;
 pub use toolchain::{Epocroot, GcceTools, Toolchain, ToolchainOverrides};

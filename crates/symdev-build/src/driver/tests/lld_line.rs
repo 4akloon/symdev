@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use super::rust_build::{gui, rust};
 use super::*;
-use crate::SdkLldCopy;
+use crate::sdk_lld_copy::SdkLldCopy;
 
 fn lld_line(uid3_symbol: Option<u32>) -> LldLine {
     LldLine {

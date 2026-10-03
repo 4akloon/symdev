@@ -29,9 +29,10 @@ impl Toolchain {
         gcce: Option<&Gcce>,
         sdk: Option<&PlatformSdk>,
     ) -> Result<Toolchain> {
+        let base = Self::without_gcce(o, sdk)?;
         Ok(Toolchain {
             gcce: Some(GcceTools::resolve(o, gcce)?),
-            ..Self::without_gcce(o, sdk)?
+            ..base
         })
     }
 

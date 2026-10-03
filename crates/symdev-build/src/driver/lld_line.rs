@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use symdev_core::{Error, Result};
 
 use super::arg;
-use crate::SdkLldCopy;
+use crate::sdk_lld_copy::SdkLldCopy;
 
 /// What turns the recorded line, written for rust-lld ([`super::Linker::lld`]), into the
 /// line rust-lld links with: experiment 109 §2's changes, each forced by an lld error or a

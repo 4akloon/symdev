@@ -145,7 +145,9 @@ impl Provision {
 
     /// The packages a build of a `language` project for `device` needs under the current
     /// environment: none for a part whose every field a `SYMDEV_*` variable sets, and the
-    /// Rust SDK, first, for a Rust project that finds none outside the packages.
+    /// Rust SDK, first, for a Rust project that finds none outside the packages. Whether
+    /// GCCE is among them depends on that SDK's prebuilt set ([`Self::needs_gcce`]), so for a
+    /// Rust project this resolves the Rust SDK and installs its package if it is missing.
     pub fn needed(&self, device: Device, language: Language) -> Result<Vec<PackageId>, Error> {
         let rust = language.is_rust().then(|| self.needed_rust_sdk());
         let toolchain = Self::needed_by(&self.overrides(), device, self.needs_gcce(language)?);

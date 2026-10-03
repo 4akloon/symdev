@@ -45,7 +45,7 @@ impl SdkLldCache {
 
     /// The fixed copies of `names` — the `-l:` files of a link line, each found in the
     /// SDK's `epoc32/release/armv5/lib` or `urel` — made now if this SDK has none yet.
-    pub fn ensure(&self, epocroot: &Path, names: &[String]) -> Result<SdkLldCopy> {
+    pub(crate) fn ensure(&self, epocroot: &Path, names: &[String]) -> Result<SdkLldCopy> {
         let armv5 = epocroot.join("epoc32/release/armv5");
         let mut files = BTreeMap::new();
         for name in names {
