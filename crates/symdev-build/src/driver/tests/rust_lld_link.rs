@@ -62,34 +62,12 @@ fn stub_lld(dir: &Path, elf: &Path) -> std::path::PathBuf {
 #[test]
 fn two_links_around_the_stubs_and_a_plt_left_after_them_is_named() {
     let tmp = tempfile::tempdir().unwrap();
-    let golden = tmp.path().join("hello_lld.elf");
-    fs::write(&golden, unhex(HELLO_LLD)).unwrap();
-    let lld = stub_lld(tmp.path(), &golden);
-    let b = RustBuild {
-        gcce: fake_at(sdk(&tmp.path().join("sdk"))),
-        linker: RustLinker::Gnu,
-        ..rust()
-    };
+    let (got, log) = link_with(tmp.path(), &unhex(HELLO_LLD), false);
+    let e = got.unwrap_err().to_string();
     let build = tmp.path().join("build");
-    fs::create_dir_all(&build).unwrap();
-    let (archive, libcalls) = (build.join("libhello.a"), build.join("libcalls.rlib"));
-    let cache = SdkLldCache::at(tmp.path().join("cache"));
-    let e = b
-        .link_lld(
-            &lld,
-            &cache,
-            None,
-            (&archive, &[], &libcalls),
-            &build.join("hello.elf"),
-            &build.join("hello.exe.map"),
-            &RemotePath::new(tmp.path().display().to_string()),
-        )
-        .unwrap_err()
-        .to_string();
     // The stub's "second link" is the first one again, so its PLT calls are still there.
     assert!(e.contains("_ZN4User4ExitEi"), "{e}");
     assert!(e.contains("SYMDEV_RUST_LINKER=gnu"), "{e}");
-    let log = fs::read_to_string(tmp.path().join("argv.log")).unwrap();
     let links: Vec<&str> = log.split("--\n").filter(|l| !l.is_empty()).collect();
     assert_eq!(links.len(), 2, "{log}");
     assert!(links[0].contains(&format!("{}\n", build.join("hello.first.elf").display())));
@@ -117,17 +95,28 @@ fn link_with(tmp: &Path, elf: &[u8], fail: bool) -> (Result<(), symdev_core::Err
         )
         .unwrap();
     }
+    let cache = SdkLldCache::at(tmp.join("cache"));
     let b = RustBuild {
         gcce: fake_at(sdk(&tmp.join("sdk"))),
+        linker: RustLinker::Lld {
+            rust_lld: Some(lld.clone()),
+            cache: cache.clone(),
+        },
         ..rust()
     };
     let build = tmp.join("build");
     fs::create_dir_all(&build).unwrap();
+    let (archive, libcalls) = (build.join("libhello.a"), build.join("libcalls.rlib"));
+    let inputs = LinkInputs {
+        archive: &archive,
+        shims: &[],
+        libcalls: &libcalls,
+    };
     let got = b.link_lld(
         &lld,
-        &SdkLldCache::at(tmp.join("cache")),
+        &cache,
         None,
-        (&build.join("libhello.a"), &[], &build.join("libcalls.rlib")),
+        &inputs,
         &build.join("hello.elf"),
         &build.join("hello.exe.map"),
         &RemotePath::new(tmp.display().to_string()),

@@ -5,7 +5,7 @@ use std::process::Command;
 use symdev_core::{Error, RemotePath, Result};
 use symdev_elf2e32::{ElfImage, ImportStubs};
 
-use super::{Linker, LldLine, RustBuild, arg};
+use super::{LinkInputs, Linker, LldLine, RustBuild, arg};
 use crate::{RustLld, RustPrebuilt, SdkLldCache, file_error};
 
 impl RustBuild {
@@ -21,12 +21,11 @@ impl RustBuild {
         rust_lld: &Path,
         cache: &SdkLldCache,
         prebuilt: Option<&RustPrebuilt>,
-        objects: (&Path, &[PathBuf], &Path),
+        inputs: &LinkInputs,
         elf: &Path,
         map: &Path,
         cwd: &RemotePath,
     ) -> Result<()> {
-        let (archive, shims, libcalls) = objects;
         let lld = rust_lld;
         let linker = match prebuilt {
             Some(p) => Linker::lld(lld, p.lib_dir().into(), p.lib_dir().into()),
@@ -36,7 +35,14 @@ impl RustBuild {
             }
         };
         let first_elf = elf.with_extension("first.elf");
-        let line = self.link_line(&linker, archive, shims, Some(libcalls), &first_elf, map);
+        let line = self.link_line(
+            &linker,
+            inputs.archive,
+            inputs.shims,
+            Some(inputs.libcalls),
+            &first_elf,
+            map,
+        );
         let armv5 = self.gcce.tools.epocroot.join("epoc32/release/armv5");
         let lld_line = LldLine {
             sdk_lib: armv5.join("lib"),

@@ -9,7 +9,7 @@ use std::process::Command;
 
 use symdev_core::{Artifact, BuildBackend, Error, Project, RemotePath, Result};
 
-use super::{GcceBuild, LibcallArchive, arg, io, produced};
+use super::{GcceBuild, LibcallArchive, LinkInputs, arg, io, produced};
 use crate::RustLinker;
 use crate::foreign_sdk_paths::ForeignSdkPaths;
 use crate::required_capability::RequiredCapability;
@@ -257,7 +257,11 @@ impl BuildBackend for RustBuild {
                 &rust_lld,
                 cache,
                 prebuilt,
-                (&archive, &shims, &libcalls),
+                &LinkInputs {
+                    archive: &archive,
+                    shims: &shims,
+                    libcalls: &libcalls,
+                },
                 &elf,
                 &map,
                 &cwd,
