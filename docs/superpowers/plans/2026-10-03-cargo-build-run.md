@@ -1747,3 +1747,173 @@ git add symbian-rs/Cargo.toml symbian-rs/Cargo.lock symbian-rs/crates/symbian-te
   symbian-rs/crates/symbian-macros/src symbian-rs/crates/symbian-std/src/test_report
 git commit -m "Add symbian-test, which runs a module of tests on the phone and marks each before it runs."
 ```
+
+### Task 7: The project shape, and `symdev new` writes it
+
+**Files:**
+- Modify: `crates/symdev-cli/src/scaffold_rust.rs` (`cargo_manifest`, `cargo_config`, a `tests/smoke.rs`)
+- Create: `crates/symdev-cli/src/scaffold_rust/tests.rs` (the module's tests move here; the file must stay ≤ 300 lines)
+- Modify: `symbian-rs/examples/hello/{Cargo.toml,src/main.rs}` (the scaffold's `src/main.rs` is `include_str!` of it: `RustSdk::HELLO_MAIN`)
+- Modify: `crates/symdev-build/src/rust_sdk.rs` (`HELLO_MAIN`'s doc: no longer "no `#![no_main]`")
+- Modify: `symbian-rs/.cargo/config.toml` (the examples' shared config: linker, runner, `panic-abort-tests`)
+
+**Interfaces:**
+- Consumes: Task 4 (`symdev-ld` on `PATH`), Task 5 (spec), Task 6 (`symbian-test`).
+- Produces: the project shape every later task assumes:
+  - `Cargo.toml`: `[[bin]] name = "<name>"`, `path = "src/main.rs"`, `test = false`;
+    `[[test]] name = "smoke"`, `harness = false`; `[dev-dependencies] symbian-test = { path
+    = "build/rust-sdk/symbian-rs/crates/symbian-test" }`; the release profile as today.
+  - `.cargo/config.toml`: today's `[build]` and `[unstable]` plus `panic-abort-tests = true`,
+    and `[target.arm-symbian-e32] linker = "symdev-ld"`, `runner = "symdev run --exe"`.
+  - `src/main.rs` with `#![no_main]`; `tests/smoke.rs`.
+
+- [ ] **Step 1: Write the failing test** — in `scaffold_rust/tests.rs`, change
+  `rust_project_has_cargo_files_and_no_mmp` to:
+
+```rust
+    let cargo = read("Cargo.toml");
+    assert!(!cargo.contains("staticlib") && !cargo.contains("autobins"), "{cargo}");
+    assert!(cargo.contains("[[bin]]\nname = \"hello\"\npath = \"src/main.rs\"\ntest = false\n"), "{cargo}");
+    assert!(cargo.contains("[[test]]\nname = \"smoke\"\nharness = false\n"), "{cargo}");
+    assert!(cargo.contains("symbian-test = { path = \"build/rust-sdk/symbian-rs/crates/symbian-test\" }"));
+    let config = read(".cargo/config.toml");
+    for line in ["panic-abort-tests = true", "[target.arm-symbian-e32]",
+                 "linker = \"symdev-ld\"", "runner = \"symdev run --exe\""] {
+        assert!(config.contains(line), "{line}: {config}");
+    }
+    assert!(read("src/main.rs").contains("#![no_main]"));
+    assert_eq!(read("src/main.rs"), RustSdk::HELLO_MAIN);
+    let smoke = read("tests/smoke.rs");
+    assert!(smoke.contains("#[symbian_test::tests]") && smoke.contains("#![no_main]"), "{smoke}");
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `cargo test -p symdev-cli --offline scaffold_rust`
+Expected: FAIL on `staticlib`.
+
+- [ ] **Step 3: Implement**
+
+`cargo_manifest(name)` writes, in place of `autobins = false` and the `[lib]` table:
+
+```toml
+[[bin]]
+name = "{name}"
+path = "src/main.rs"
+# No libtest on the phone: tests are tests/*.rs with harness = false (symbian-test).
+test = false
+
+[[test]]
+name = "smoke"
+harness = false
+```
+
+and after `[dependencies]`:
+
+```toml
+[dev-dependencies]
+symbian-test = { path = "build/rust-sdk/symbian-rs/crates/symbian-test" }
+```
+
+(via `RustSdkLink::crate_dir("symbian-test")`). `cargo_config()` adds `panic-abort-tests =
+true` to `[unstable]`, with the comment `# cargo test builds core twice without it
+(E0152, experiment 114 §1.1)`, and:
+
+```toml
+# cargo links through symdev (signed .sisx beside the image) and runs on a device.
+[target.arm-symbian-e32]
+linker = "symdev-ld"
+runner = "symdev run --exe"
+```
+
+`write_rust` writes `tests/smoke.rs`:
+
+```rust
+//! A test on the device: `cargo test` builds it, symdev installs and runs it, and prints
+//! what it reports (symbian-test).
+#![no_std]
+#![no_main]
+
+#[symbian_test::tests]
+mod smoke {
+    use symbian_test::{Evidence, ensure};
+
+    #[test]
+    fn arithmetic() -> Result<(), Evidence> {
+        ensure(2 + 2 == 4, "2 + 2 is 4")
+    }
+}
+```
+
+`symbian-rs/examples/hello/Cargo.toml`: replace the comment line, `autobins = false` and the
+`[lib]` table with the `[[bin]]` table above (`name = "hello"`, no `[[test]]`).
+`symbian-rs/examples/hello/src/main.rs`: `#![no_main]` on the line after `#![no_std]`, and
+the doc comment's last paragraph says the bin needs it because the attribute keeps `fn main`.
+`symbian-rs/.cargo/config.toml`: add `panic-abort-tests = true` and the `[target.arm-symbian-e32]`
+table above.
+
+- [ ] **Step 4: Run the tests and a real project**
+
+Run: `cargo test -p symdev-cli --offline`; expected: pass. Then, with the GCCE environment of
+experiment 114 (`~/src/cargo-run-scratch/env.sh`, `SYMDEV_RUST_SDK` = this worktree's
+`symbian-rs`, the branch's `symdev` and its `setup-linker` links first on `PATH`):
+
+```bash
+cd ~/src/cargo-run-scratch && rm -f t7.ok && symdev new t7 --lang rust && cd t7 \
+  && cargo build --release && cargo test --no-run && touch ../t7.ok
+ls build/t7.sisx build/cargo/arm-symbian-e32/release/t7.sisx
+```
+
+Expected: both `.sisx` exist; `cargo test --no-run` prints `Executable tests/smoke.rs
+(…/out/smoke-<hash>)` and a `…/out/smoke-<hash>.sisx` exists beside it.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add crates/symdev-cli/src/scaffold_rust.rs crates/symdev-cli/src/scaffold_rust \
+  crates/symdev-build/src/rust_sdk.rs symbian-rs/examples/hello symbian-rs/.cargo/config.toml
+git commit -m "Make symdev new write a binary crate that cargo links, runs and tests through symdev."
+```
+
+### Task 8: The other 20 examples in the new shape
+
+**Files:**
+- Modify: `symbian-rs/examples/<ex>/Cargo.toml` and `src/main.rs` for `alloc async atomics
+  cleanup files fmt hello-raw locale net notes panic query shim spawnee time tls ui ui-list`
+  (`std-hello` and `std-net` are Task 9)
+- Modify: `symbian-rs/examples/README.md` (how to build: `cargo build --release`, `cargo run`)
+
+**Interfaces:**
+- Consumes: Tasks 4, 5, 7.
+- Produces: every `no_std` example builds with plain `cargo build --release` in its directory.
+
+- [ ] **Step 1: Convert**
+
+`~/src/cargo-run-scratch/toshape.py <dir>…` (experiment 114) does exactly this edit and
+asserts it happened: the `[lib]` staticlib table becomes `[[bin]]` named after the package
+with `test = false`, and `#![no_main]` goes after `#![no_std]`. Run it on the 18 directories.
+Then check by hand that `#![no_main]` sits after every crate-level attribute
+(`examples/atomics` has `#![forbid(unsafe_code)]`, and an inner attribute after an item is
+an error).
+
+- [ ] **Step 2: Build every one with cargo and compare with experiment 114**
+
+```bash
+. ~/src/cargo-run-scratch/env.sh; export SYMDEV_RUST_SDK=$PWD/symbian-rs SYMDEV_SIGN_PASSWORD=scratch
+for ex in alloc async atomics cleanup files fmt hello hello-raw locale net notes panic query \
+          shim spawnee time tls ui ui-list; do
+  (cd symbian-rs/examples/$ex && env -u RUSTUP_TOOLCHAIN cargo build --release >/dev/null 2>&1) ; echo "$ex rc=$?"
+done
+```
+
+Expected: rc=0 for all 19. Each `build/<name>.exe` has the uncompressed size in experiment
+113's "rust-lld, checkout" column (`e32cmp.py` prints it). This tree lies at another path
+than experiment 114's, so only path-dependent bytes may differ (`net`, `tls`). The
+byte-for-byte comparison at one path is Task 18's.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add symbian-rs/examples/*/Cargo.toml symbian-rs/examples/*/src/main.rs symbian-rs/examples/README.md
+git commit -m "Build the no_std examples as binaries that cargo links through symdev-ld."
+```
