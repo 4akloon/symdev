@@ -143,8 +143,9 @@ impl RustBuild {
     /// What a build checks and sets up before cargo runs, in the project at `root`: its
     /// `rust-toolchain.toml`, if it has one, names the SDK's nightly; nothing in it names
     /// another SDK by absolute path; and `build/rust-sdk` links to this one, the only way
-    /// the scaffold names it (experiment 110). The checks come first, so a refused
-    /// project's link is left as it was.
+    /// the scaffold names it (experiment 110), unless the project lies inside the SDK's
+    /// tree ([`RustSdkLink`]). The checks come first, so a refused project's link is left
+    /// as it was.
     pub fn prepare(&self, root: &Path) -> Result<()> {
         if let Some(own) = RustToolchainFile::read(root)? {
             own.check_against(&self.sdk.toolchain()?)?;

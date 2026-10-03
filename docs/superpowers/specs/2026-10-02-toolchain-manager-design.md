@@ -459,6 +459,11 @@ Rust for a C++ project.
   the directory holding `.cargo/` (any cwd); `-Zbuild-std` and the spec work through the
   link, cargo canonicalising the spec's path; and cargo keeps outputs built from the old tree
   when the link moves to one with older mtimes, so a re-point removes `build/cargo` first.
+  A project inside that directory — the SDK's own `symbian-rs/examples/*` built against
+  their checkout — gets no link (and loses one a 0.2.0 development build made): it names
+  the SDK by relative paths, and a link to an ancestor is a cycle that `grep -R`, `find -L`
+  and the like walk again (review 0.2.0, minor 2). A scaffold placed there would not build
+  anyway: cargo refuses it as an unlisted member of the tree's workspace.
   Before cargo runs, `symdev build` refuses (and does not rewrite) a project that still names
   another SDK by absolute path — listing each `file:line` with the line as it is and as it
   should be — and one whose `rust-toolchain.toml` names a channel other than the SDK's (a

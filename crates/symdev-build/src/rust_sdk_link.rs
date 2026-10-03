@@ -19,7 +19,12 @@ use crate::rust_sdk::RustSdk;
 /// dependency's `..` lexically, so `symbian-macros`' `../../../crates/symdev-locale`
 /// climbs out of a link to `symbian-rs` itself (`build/crates/symdev-locale`, not found),
 /// while through this one it lands on `build/rust-sdk/crates/symdev-locale`.
+///
+/// A project inside that directory gets no link: the in-repo `symbian-rs/examples/*` name
+/// the SDK by relative paths, and a link to an ancestor is a cycle that every
+/// link-following tool walks again (review 0.2.0, minor 2).
 pub struct RustSdkLink {
+    root: PathBuf,
     link: PathBuf,
     cargo_dir: PathBuf,
 }
@@ -31,6 +36,7 @@ impl RustSdkLink {
     /// The link of the project at `root`, whose cargo output is in `build/cargo`.
     pub fn of(root: &Path) -> RustSdkLink {
         RustSdkLink {
+            root: root.to_path_buf(),
             link: root.join(Self::PATH),
             cargo_dir: root.join("build/cargo"),
         }
@@ -53,7 +59,8 @@ impl RustSdkLink {
         )
     }
 
-    /// Makes the link name `sdk`'s tree, replacing the link in one step.
+    /// Makes the link name `sdk`'s tree, replacing the link in one step; for a project
+    /// inside that tree, removes the link instead (a 0.2.0 development build made one).
     ///
     /// When it named another tree, `build/cargo` is removed **first**: cargo would see the
     /// same `build/rust-sdk/…` package paths, compare mtimes, and keep what it built from
@@ -61,6 +68,9 @@ impl RustSdkLink {
     /// in between still finds the old link and removes it again.
     pub fn point_at(&self, sdk: &RustSdk) -> Result<()> {
         let tree = Self::tree_of(sdk)?;
+        if self.lies_in(tree)? {
+            return self.remove_leftover();
+        }
         let before = self.current()?;
         if before.as_deref() == Some(tree) {
             return Ok(());
@@ -94,6 +104,29 @@ impl RustSdkLink {
                 Self::PATH,
                 sdk_dir = RustSdkPackage::SDK_DIR
             ))),
+        }
+    }
+
+    /// Whether the project's root is inside `tree`, both canonical: a path through a link
+    /// to the tree is inside it too.
+    fn lies_in(&self, tree: &Path) -> Result<bool> {
+        let root = self
+            .root
+            .canonicalize()
+            .map_err(|e| Self::io(&self.root, e))?;
+        Ok(root.starts_with(tree))
+    }
+
+    /// Removes the link if there is one; anything else in its place is not symdev's, and a
+    /// project inside the tree does not need the name.
+    fn remove_leftover(&self) -> Result<()> {
+        match std::fs::symlink_metadata(&self.link) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                std::fs::remove_file(&self.link).map_err(|e| Self::io(&self.link, e))
+            }
+            Ok(_) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(Self::io(&self.link, e)),
         }
     }
 
