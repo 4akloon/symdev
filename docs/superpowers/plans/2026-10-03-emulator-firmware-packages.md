@@ -344,3 +344,139 @@ wip file: `Record the rebuilt EKA2L1 integration branch and the emulator version
   `eka2l1-qt-x64.packages.tsv`. Each line of the TSV is `<binary package>\t<version>\t<source
   package>\t<source version>`, sorted, one per package that owns a file under
   `usr/lib` or `usr/plugins` of the AppDir.
+
+- [ ] **Step 1: Add the step after "Generate AppImage"**
+
+```yaml
+    # symdev integration branch only, not an upstream change: the Ubuntu packages whose
+    # files linuxdeploy put into the AppImage, with their source packages, so that their
+    # corresponding source can be published with it. A bundled file that belongs to no
+    # package fails the job.
+    - name: List the packages the AppImage bundles
+      if: matrix.label == 'linux'
+      shell: bash
+      run: |
+        cd build/eka2l1.AppDir/usr
+        find lib plugins -type f -name '*.so*' -printf '%f\n' | sort -u > ../../bundled-files.txt
+        : > ../../bundled-owners.txt
+        while read -r name; do
+          owner=$(dpkg -S "*/$name" 2>/dev/null | awk -F': ' 'NR == 1 { print $1 }') || true
+          if [ -z "$owner" ]; then echo "::error::$name belongs to no package"; exit 1; fi
+          echo "$owner" >> ../../bundled-owners.txt
+        done < ../../bundled-files.txt
+        sort -u ../../bundled-owners.txt | xargs dpkg-query -W \
+          -f '${binary:Package}\t${Version}\t${source:Package}\t${source:Version}\n' \
+          | sort > ../../eka2l1-qt-x64.packages.tsv
+        wc -l ../../eka2l1-qt-x64.packages.tsv
+```
+
+And the Linux upload takes both files (the artifact's root is their common folder `build/`):
+
+```yaml
+    - uses: actions/upload-artifact@v7
+      with:
+        name: eka2l1-${{ steps.git_short_sha.outputs.value }}-${{ matrix.label }}
+        path: |
+          build/eka2l1-qt-x64.AppImage
+          build/eka2l1-qt-x64.packages.tsv
+      if: matrix.label == 'linux'
+```
+
+- [ ] **Step 2: Check the YAML and commit on `symdev`**
+
+```bash
+cd ~/src/EKA2L1-wt/emulator-pkg
+python3 -c 'import yaml; yaml.safe_load(open(".github/workflows/build.yml")); print("ok")'
+git add .github/workflows/build.yml
+git commit -m "ci: List the Ubuntu packages the Linux AppImage bundles (symdev integration only)."
+```
+
+Expected: `ok`. Task 3 runs the step for real.
+
+- [ ] **Step 3: Record the new `<C>` and `<V>`** with Task 1 step 6's two commands (the head
+  moved). Commit the wip file.
+
+### Task 3: The fork CI's Linux job, rehearsed in `ubuntu:24.04`
+
+The push (L1) makes a public CI run. A rehearsal finds build failures first: our PRs were
+built against Qt 6.8.3, and the CI uses Ubuntu's 6.4.2. It also gives Tasks 6–15 an
+AppImage with `--control` before any push.
+
+**Files:**
+- Outside git: `~/src/emu-pkg-scratch/rehearsal/{run.sh,run.log,out/}`
+- Modify: `docs/research/experiment-backlog.md` (experiment 115 §2: the rehearsal)
+
+**Interfaces:**
+- Consumes: branch `symdev` at `<C>` (Tasks 1–2).
+- Produces: `~/src/emu-pkg-scratch/rehearsal/out/eka2l1-qt-x64.AppImage`, its
+  `.packages.tsv` (D1 = A) and `SHA256SUMS`. Tasks 10–15 call this "the rehearsal AppImage".
+
+- [ ] **Step 1: Write `run.sh`**
+
+```bash
+#!/usr/bin/env bash
+# run.sh — rehearse build.yml's build-desktop (linux) job on the symdev branch in ubuntu:24.04:
+# the job's apt list, cmake flags, build, ctest, generate_appimage.sh and (D1 = A) the
+# package list. The extra apt packages are what the GitHub runner image has preinstalled.
+set -euo pipefail
+R=~/src/emu-pkg-scratch/rehearsal
+rm -rf "$R/src" "$R/out"; mkdir -p "$R/out"
+git clone --quiet --branch symdev ~/src/EKA2L1-wt/emulator-pkg "$R/src"
+git -C "$R/src" submodule update --init --recursive --quiet
+docker run --rm -v "$R/src:/src" -w /src -e DEBIAN_FRONTEND=noninteractive \
+  -e APPIMAGE_EXTRACT_AND_RUN=1 -e QMAKE=/usr/bin/qmake6 ubuntu:24.04 bash -euo pipefail -c '
+  apt-get update
+  apt-get -y install ccache libgtk-3-dev libpulse-dev libasound2-dev libsdl2-dev pulseaudio \
+    qt6-base-dev qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools \
+    libqt6svg6-dev qt6-multimedia-dev \
+    build-essential cmake ninja-build git wget curl file python3 pkg-config ca-certificates
+  cmake -B build -DCI=ON -DEKA2L1_ENABLE_UNEXPECTED_EXCEPTION_HANDLER=ON -DEKA2L1_NO_TERMINAL=ON \
+    -DEKA2L1_ENABLE_DISCORD_RICH_PRESENCE=ON -DCMAKE_BUILD_TYPE=Release
+  cmake --build build --config Release --parallel 16 --target eka2l1_qt ekatests
+  ctest --test-dir build -C Release --output-on-failure
+  chmod u+x scripts/generate_appimage.sh && ./scripts/generate_appimage.sh
+  bash .github/rehearse-package-list.sh
+  chown -R '"$(id -u):$(id -g)"' /src'
+cp "$R/src/build/eka2l1-qt-x64.AppImage" "$R/src/build/eka2l1-qt-x64.packages.tsv" "$R/out/"
+(cd "$R/out" && sha256sum eka2l1-qt-x64.AppImage eka2l1-qt-x64.packages.tsv > SHA256SUMS)
+```
+
+`.github/rehearse-package-list.sh` does not exist in the branch. Before the run, copy the
+`run:` block of Task 2's step into `$R/src/.github/rehearse-package-list.sh` with `set -euo
+pipefail` on top, as the clone is the rehearsal's own. Without D1 = A, drop that line and
+the `.packages.tsv` from the copies.
+
+- [ ] **Step 2: Run it in the background and wait for the end**
+
+```bash
+bash ~/src/emu-pkg-scratch/rehearsal/run.sh > ~/src/emu-pkg-scratch/rehearsal/run.log 2>&1; echo "EXIT=$?" >> ~/src/emu-pkg-scratch/rehearsal/run.log
+```
+
+Expected: `EXIT=0`. On a missing build tool (cmake or FFmpeg's configure names it), add the
+Ubuntu package to the second apt line: it is in the runner image too, not a workflow
+change. Record each added package. On a compile error in our code against Qt 6.4.2, fix it
+on the PR branch it comes from, in the fork's PR copy (`~/src/EKA2L1-wt/<topic>`, the
+`eka2l1-host` skill), and repeat Task 1 from step 2. That PR then needs a push, which the
+lead does with L1; record it in the NOTES.
+
+- [ ] **Step 3: Look at what it made** (experiment 115 §2)
+
+```bash
+cd ~/src/emu-pkg-scratch/rehearsal && rm -rf x && mkdir x && cd x
+../out/eka2l1-qt-x64.AppImage --appimage-extract > /dev/null
+ls -la squashfs-root; readlink squashfs-root/AppRun; cat squashfs-root/usr/bin/qt.conf
+objdump -p squashfs-root/usr/bin/eka2l1_qt | grep RUNPATH
+find squashfs-root -type f -exec sh -c 'objdump -T "$1" 2>/dev/null' _ {} \; \
+  | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+du -sh squashfs-root; wc -l ../out/eka2l1-qt-x64.packages.tsv
+```
+
+`--appimage-extract` runs only the AppImage runtime, which unpacks the tree; EKA2L1 does
+not start. Expected, as in §1.2: `AppRun -> usr/bin/eka2l1_qt`, `Plugins = plugins`,
+`RUNPATH $ORIGIN/../lib`, and the floor `GLIBC_2.38`. Record all of it, with `run.log`'s
+build time and the added packages, as experiment 115 §2. A difference from §1.2 (an
+`apprun-hooks/` directory, another floor) is recorded and reported to the lead before
+Task 8: it changes how symdev starts the program.
+
+- [ ] **Step 4: Commit** `docs/research/experiment-backlog.md` and the wip file:
+  `Record experiment 115 §2: the fork CI's Linux job rehearsed on the rebuilt branch.`
