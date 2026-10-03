@@ -5,8 +5,8 @@
 // It owns E32Main: for a GUI application the process entry point is
 // `EikStart::RunApplication`, and the Rust side never sees it (spec section 1.1).
 //
-// SYMRS_UID3 is defined on the compile line by symdev, from the manifest's UID3. It is
-// the application's identity, so it is generated rather than written twice.
+// The application's UID3 is its identity, so it is generated rather than written twice,
+// and it reaches AppDllUid one of two ways (SymRsAppUid below).
 #include "symrs_avkon.h"
 
 #include <aknapp.h>
@@ -21,11 +21,25 @@
 #include <eikstart.h>
 #include <gdi.h>
 
-#ifndef SYMRS_UID3
-#error "SYMRS_UID3 must be defined on the compile line (symdev passes the manifest's uid3)"
+// The UID3 AppDllUid returns.
+// * Compiled per application (symdev's GNU build), SYMRS_UID3 is on the compile line,
+//   from the manifest's uid3.
+// * Compiled once for every application (the rust-sdk package's prebuilt shim), there is
+//   no SYMRS_UID3: the final link defines the absolute symbol `symrs_uid3`
+//   (`--defsym=symrs_uid3=0x<uid3>`), whose *address* is the UID (experiment 109).
+// Both put the same literal word in AppDllUid.
+#ifdef SYMRS_UID3
+static TUid SymRsAppUid()
+	{
+	return TUid::Uid(static_cast<TInt32>(SYMRS_UID3));
+	}
+#else
+extern "C" char symrs_uid3[];
+static TUid SymRsAppUid()
+	{
+	return TUid::Uid(reinterpret_cast<TInt32>(symrs_uid3));
+	}
 #endif
-
-const TUid KSymRsAppUid = { static_cast<TInt32>(SYMRS_UID3) };
 
 // The Rust side reads a TKeyEvent as four words (abi.rs `RawKeyEvent`).
 __ASSERT_COMPILE(sizeof(TKeyEvent) == 4 * sizeof(TInt));
@@ -277,7 +291,7 @@ private:
 class CShimApplication : public CAknApplication
 	{
 private:
-	TUid AppDllUid() const { return KSymRsAppUid; }
+	TUid AppDllUid() const { return SymRsAppUid(); }
 	CApaDocument* CreateDocumentL() { return new (ELeave) CShimDocument(*this); }
 	};
 

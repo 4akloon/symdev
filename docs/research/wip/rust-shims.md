@@ -1,0 +1,37 @@
+# Rust shims prebuilt (experiment 109 → product, track (a))
+
+Branches: symdev `rl-shims` (~/worktrees/symdev/rl-shims), symdev-packages `rl-shims`
+(~/worktrees/symdev-packages/rl-shims). No push, no merge. Scratch: ~/src/rl-shims-scratch/.
+Spike evidence: ~/src/rust-lld-spike/ (experiment 109 §1, §5).
+
+## Task
+1. symdev: `symrs_avkon.cpp` reads UID3 from symbol `symrs_uid3` (`--defsym`), compile-time
+   fallback keeps today's GNU build byte-identical (examples/ui .exe before/after, mask CRC/time).
+   Driver files (`crates/symdev-build/src/driver/*`) are NOT mine: record needed change here.
+2. packages: `recipes/symdev/<ver>/build.sh` adds `prebuilt/` to `rust-sdk`: libsymrs.a,
+   libsymrs_ui.a, 4 GCC runtime members as small archives, TARGET2→ABS32 rewrite (tested tool),
+   closure check. SPDX `MIT AND GPL-3.0-or-later WITH GCC-exception-3.1`; notice names the gcce
+   source archive. Target ~90 KB raw (spike 90 592 B).
+3. Verify: build prebuilt set locally, link the spike's 4 apps with rust-lld using ONLY it
+   (bwrap, no GCCE visible), post-link with spike's elf2e32 fork, `.exe` identical to spike lld.
+
+## Log
+- 2026-10-03 start. Read backlog §109 and v0.2 owner decisions.
+- Scratch SYMDEV_HOME `~/src/rl-shims-scratch/home`: published `gcce;12.1.0` and
+  `sdk;s60-3rd-fp2;1.1` installed there with main's symdev (keys from keys.env), 3m50s.
+- **Published GCCE ≠ spike's GCCE for the assembler**: spike used `~/gcc-builds/gcc-12.1.0`
+  whose `as` is GCC4Symbian's binutils **2.35**; the published `gcce;12.1.0` has `as` 2.29.1.
+  Shim objects differ in layout (2.35 puts `.rel.rodata._ZTI15XLeaveException` in the COMDAT
+  group, 2.29.1 does not: 4 bytes), code identical; the GNU `uidemo.exe` is the same size and
+  differs only at CRC/time. So the archive byte counts will not equal the spike's 90 592 B to
+  the byte with the published GCCE; the `.exe` identity is the criterion.
+- The 4 runtime members from the published GCCE, `objcopy --strip-debug`, are byte-identical
+  to the spike's `prebuilt/rt/s-*.o` (raw `eh_personality.o`, `del_ops.o` identical too).
+- **Step 1 done (symdev).** `symrs_avkon.cpp`: `#ifdef SYMRS_UID3` → `SymRsAppUid()` returns
+  the define; else `extern "C" char symrs_uid3[]` and returns its address. RED: without the
+  define the old source stops at its `#error`. GREEN: compiles, `U symrs_uid3`, AppDllUid is
+  `ldr r0,[pc]; bx lr; .word 0 (R_ARM_ABS32 symrs_uid3)`; disassembly identical to the
+  spike's `prebuilt/obj/symrs_avkon.o`. **examples/ui before/after (driver unchanged, still
+  passes -DSYMRS_UID3):** all 10 `build/shims/*.o` byte-identical (avkon included),
+  `uidemo.elf` identical, `uidemo.exe` 10 315 B both, differs only at 0x14–0x17 (CRC) and
+  0x24–0x27 (time). Evidence `~/src/rl-shims-scratch/ui-{before,after}/`.
