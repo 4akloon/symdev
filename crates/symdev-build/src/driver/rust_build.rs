@@ -1,8 +1,9 @@
 //! `RustBuild`: the build backend for `language = "rust"` projects (experiment 65).
 //!
 //! cargo compiles the project to a static library for `arm-symbian-e32` (rustc never
-//! links, design spec §3); the recorded GCCE link line, the native post-linker and the
-//! packaging are `GcceBuild`'s, unchanged but for `-u _Z7E32Mainv`.
+//! links, design spec §3). The link is rust-lld's by default and GCCE's GNU ld on request
+//! ([`RustLinker`], experiment 113), both on the recorded GCCE line with `-u _Z7E32Mainv`;
+//! the native post-linker and the packaging are `GcceBuild`'s.
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
