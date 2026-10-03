@@ -164,3 +164,19 @@ fn an_entry_reads_back_what_was_written() {
     let back = RegistryEntry::from_toml(&e.to_toml(), std::path::Path::new("x.toml")).unwrap();
     assert_eq!(back, e);
 }
+
+#[test]
+fn an_eka2l1_that_does_not_answer_stays_registered_but_is_not_live() {
+    let dir = tempfile::tempdir().unwrap();
+    let reg = crate::device::DeviceRegistry::at(dir.path().to_path_buf());
+    reg.add(&emu(1, "a")).unwrap();
+    assert!(reg.live(|_| true, |_| false).unwrap().is_empty());
+    assert!(dir.path().join("emulator-1.toml").exists());
+    let kept = reg.registered(|_| true).unwrap();
+    assert_eq!(
+        kept.iter().map(|e| e.id).collect::<Vec<_>>(),
+        [id("emulator-1")]
+    );
+    assert!(reg.registered(|_| false).unwrap().is_empty());
+    assert!(!dir.path().join("emulator-1.toml").exists());
+}

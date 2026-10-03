@@ -55,23 +55,34 @@ impl DeviceRegistry {
             .ok_or_else(|| Error::Other("no free emulator id".into()))
     }
 
-    /// The entries that pass both checks, in id order. Every other entry is removed: one
-    /// whose PID is not an EKA2L1 (gone, or reused by another process) or whose socket does
-    /// not answer. Nothing is signalled.
+    /// The entries whose socket answers, in id order. An entry whose PID is not an EKA2L1
+    /// (gone, or reused by another process) is removed; one whose EKA2L1 runs but does not
+    /// answer stays registered, so `symdev emulator stop` can still end it. Nothing is
+    /// signalled.
     pub fn live(
         &self,
         is_eka2l1: impl Fn(u32) -> bool,
         answers: impl Fn(&RegistryEntry) -> bool,
     ) -> Result<Vec<RegistryEntry>> {
-        let mut live = Vec::new();
+        Ok(self
+            .registered(is_eka2l1)?
+            .into_iter()
+            .filter(|e| answers(e))
+            .collect())
+    }
+
+    /// The entries whose PID is still an EKA2L1, answering or not, in id order. Every other
+    /// entry is removed, and nothing is signalled.
+    pub fn registered(&self, is_eka2l1: impl Fn(u32) -> bool) -> Result<Vec<RegistryEntry>> {
+        let mut kept = Vec::new();
         for entry in self.entries()? {
-            if is_eka2l1(entry.pid) && answers(&entry) {
-                live.push(entry);
+            if is_eka2l1(entry.pid) {
+                kept.push(entry);
             } else {
                 self.remove(&entry.id)?;
             }
         }
-        Ok(live)
+        Ok(kept)
     }
 
     /// Every readable entry, in id order. A file that is not an entry is left alone.

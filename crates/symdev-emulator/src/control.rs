@@ -6,7 +6,7 @@ mod emulator_info;
 mod request;
 
 pub use app_exited::{AppExited, ExitType};
-pub use control_client::{CLOSED, ControlClient};
+pub use control_client::{CALL_TIMEOUT, CLOSED, ControlClient};
 pub use emulator_info::{EmulatorInfo, PROTOCOL};
 pub(crate) use request::{Param, Request};
 

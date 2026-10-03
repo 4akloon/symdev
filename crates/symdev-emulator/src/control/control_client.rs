@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use symdev_core::{Error, Result};
 
@@ -14,6 +14,13 @@ use crate::json::Json;
 /// The text every "the emulator went away" error starts with.
 pub const CLOSED: &str = "the emulator closed its control connection";
 
+/// How long a call waits for its answer unless [`ControlClient::with_timeout`] says
+/// otherwise: generous, since `package.install` and `app.launch` wait for the guest.
+pub const CALL_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// How often a waiting call wakes up to look at its deadline.
+const TICK: Duration = Duration::from_millis(250);
+
 pub struct ControlClient {
     reader: BufReader<UnixStream>,
     writer: UnixStream,
@@ -22,6 +29,8 @@ pub struct ControlClient {
     exits: VecDeque<AppExited>,
     /// A line read only in part when a read timed out.
     pending: String,
+    /// How long a call waits for its answer.
+    timeout: Duration,
 }
 
 impl ControlClient {
@@ -39,7 +48,15 @@ impl ControlClient {
             next_id: 0,
             exits: VecDeque::new(),
             pending: String::new(),
+            timeout: CALL_TIMEOUT,
         })
+    }
+
+    /// The same connection with calls that give up after `timeout`: a short one for a
+    /// liveness probe, so a wedged emulator does not hang `symdev devices`.
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
     }
 
     pub fn info(&mut self) -> Result<EmulatorInfo> {
@@ -112,8 +129,27 @@ impl ControlClient {
         self.writer
             .write_all(line.as_bytes())
             .map_err(|e| closed_or(e, method))?;
+        self.reader
+            .get_ref()
+            .set_read_timeout(Some(TICK))
+            .map_err(io)?;
+        let answer = self.answer(id, method);
+        self.reader.get_ref().set_read_timeout(None).map_err(io)?;
+        answer
+    }
+
+    /// Reads until the answer with `id`, queuing the exits that come first, until the
+    /// call's timeout.
+    fn answer(&mut self, id: u64, method: &str) -> Result<Json> {
+        let deadline = Instant::now() + self.timeout;
         loop {
             let Some(text) = self.read_line()? else {
+                if Instant::now() > deadline {
+                    return Err(Error::Other(format!(
+                        "the emulator did not answer {method} within {} s",
+                        self.timeout.as_secs_f32()
+                    )));
+                }
                 continue;
             };
             let Some(message) = self.take(&text)? else {

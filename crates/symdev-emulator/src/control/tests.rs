@@ -139,3 +139,20 @@ fn paths_with_quotes_and_backslashes_are_escaped() {
         "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"package.install\",\"params\":{\"path\":\"/a\\\"b\\\\c.sisx\"}}"
     );
 }
+
+#[test]
+fn an_emulator_that_never_answers_is_an_error_after_the_timeout() {
+    let (_d, sock) = fake(|_| Vec::new());
+    let started = std::time::Instant::now();
+    let e = ControlClient::connect(&sock)
+        .unwrap()
+        .with_timeout(Duration::from_millis(300))
+        .info()
+        .unwrap_err()
+        .to_string();
+    assert!(
+        e.contains("emulator.info") && e.contains("did not answer"),
+        "{e}"
+    );
+    assert!(started.elapsed() < Duration::from_secs(5));
+}

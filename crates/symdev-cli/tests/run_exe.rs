@@ -239,3 +239,45 @@ fn a_report_from_an_earlier_run_is_not_read() {
         "{out}{err}"
     );
 }
+
+/// An emulator that stops answering holds the runner in a call; a second Ctrl+C ends it at
+/// once with 130, as cargo's own runner convention has it.
+#[test]
+fn a_second_ctrl_c_ends_a_runner_waiting_on_the_emulator() {
+    let fake = FakeDevice::start(|method, id, _| match method {
+        "emulator.info" => vec![answer(id, INFO)],
+        "events.subscribe" => vec![answer(id, "{\"events\":[\"app_exited\"]}")],
+        "apps.list" => vec![answer(
+            id,
+            &format!("{{\"apps\":[{{\"uid\":{UID3},\"running\":false}}]}}"),
+        )],
+        _ => Vec::new(), // package.install never answers
+    });
+    fake.register(1);
+    let mut cmd = fake.runner(&image(fake.env.path()));
+    cmd.env("SYMDEV_DEVICE", "emulator-1");
+    let mut child = cmd.stderr(std::process::Stdio::piped()).spawn().unwrap();
+    let mut seen = Vec::new();
+    while !seen.iter().any(|m| m == "package.install") {
+        seen.push(fake.methods.recv_timeout(Duration::from_secs(20)).unwrap());
+    }
+    let pid = child.id().to_string();
+    for _ in 0..2 {
+        std::thread::sleep(Duration::from_millis(300));
+        let _ = std::process::Command::new("kill")
+            .args(["-INT", &pid])
+            .status();
+    }
+    let started = std::time::Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break Some(status);
+        }
+        if started.elapsed() > Duration::from_secs(5) {
+            let _ = child.kill();
+            break None;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    assert_eq!(status.and_then(|s| s.code()), Some(130));
+}

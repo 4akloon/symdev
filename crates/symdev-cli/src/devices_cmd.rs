@@ -3,6 +3,7 @@
 //! (made from the user's installed firmware when there are none) and their liveness.
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::Duration;
 
 use symdev_core::{Error, Result};
 use symdev_emulator::EmulatorData;
@@ -10,6 +11,10 @@ use symdev_emulator::control::ControlClient;
 use symdev_emulator::device::{
     DeviceId, DeviceRegistry, EmulatorInstance, EmulatorProfile, RegistryEntry, is_eka2l1,
 };
+
+/// How long a liveness probe waits for `emulator.info`: a wedged emulator must not hang
+/// `symdev devices` or a run.
+const PROBE: Duration = Duration::from_secs(3);
 
 pub(crate) struct Devices {
     registry: DeviceRegistry,
@@ -37,9 +42,14 @@ impl Devices {
     pub fn live(&self) -> Result<Vec<RegistryEntry>> {
         self.registry.live(is_eka2l1, |e| {
             ControlClient::connect(&e.socket)
-                .and_then(|mut c| c.info())
+                .and_then(|c| c.with_timeout(PROBE).info())
                 .is_ok()
         })
+    }
+
+    /// Every emulator symdev started that still runs, answering or not.
+    pub fn registered(&self) -> Result<Vec<RegistryEntry>> {
+        self.registry.registered(is_eka2l1)
     }
 
     /// The profiles' names. With none, one is made per firmware in the user's EKA2L1
@@ -87,8 +97,13 @@ pub(crate) fn eka2l1_with_control() -> Result<PathBuf> {
 pub(crate) fn list() -> Result<ExitCode> {
     let devices = Devices::from_env()?;
     let profiles = devices.profiles()?;
-    for e in devices.live()? {
-        println!("{}  {}  pid {}  profile {}", e.id, e.name, e.pid, e.profile);
+    let live = devices.live()?;
+    for e in devices.registered()? {
+        let state = match live.iter().any(|l| l.id == e.id) {
+            true => e.name.clone(),
+            false => "(not answering)".into(),
+        };
+        println!("{}  {}  pid {}  profile {}", e.id, state, e.pid, e.profile);
     }
     for p in profiles {
         println!("profile {p}");
@@ -116,7 +131,7 @@ pub(crate) fn stop(id: &str) -> Result<ExitCode> {
     let wanted = DeviceId::parse(id)
         .ok_or_else(|| Error::Other(format!("`{id}` is not a device id like emulator-1")))?;
     let entry = devices
-        .live()?
+        .registered()?
         .into_iter()
         .find(|e| e.id == wanted)
         .ok_or_else(|| Error::Other(format!("{id} is not running")))?;
