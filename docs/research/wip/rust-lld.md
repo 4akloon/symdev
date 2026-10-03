@@ -113,6 +113,11 @@ Do NOT edit: `crates/symdev-build/src/driver/{rust_build,libcalls}.rs`, `crates/
   `gcc-builds` paths in first/stubs/final.strace; files opened = rust-lld's own libs, spike
   dso-fixed / prebuilt/lib / sdk-fixed, Rust archives, stubs.o. The .exe equal the
   unsandboxed ones except 0x14-0x17/0x24-0x27 (time, CRC).
+- Step 3, 15 examples: `~/src/rl-scratch/stubs/ex15.py [ex…]` (spike GNU argv → nogcce
+  remap as nogcce-link.py, sandboxed first link → stubs → second link, e2e post-link,
+  compare with spike batch/<ex>/). Running in background → `stubs/ex15.log`.
+  alloc: 21 stubs, .exe GNU 3765 | stubs 3774 | PLT 3848; uncompressed 5932|5940; imports
+  identical, DT_NEEDED same, 0 gcc-builds opens.
 ## Dead ends
 - lld options for an 8-byte PLT: none. `.plt`/`.got` stay 0x120/0x4c on hello with each of
   `-z now`, `-z lazy`, `--pic-veneer`, `-z noseparate-code`, `--no-rosegment`,
