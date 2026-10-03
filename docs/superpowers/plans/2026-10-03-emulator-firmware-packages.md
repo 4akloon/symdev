@@ -130,7 +130,7 @@ decides, implement A and stop before L1.
 The AppImage's libraries need `GLIBC_2.38` (Ubuntu 24.04+, Debian 13+, Fedora 39+, RHEL 10).
 symdev itself is static and GCCE needs glibc 2.28. The spec says a newer floor is "a finding
 for the owner, not a silent rebuild". The plan records the floor in `artifact.toml`, and
-`pkgtools emulator-check` fails if the tree needs anything newer. `README.md` states the
+`pkgtools emulator-tree` fails when the tree needs any other version. `README.md` states the
 requirement. On an older host, the loader's `GLIBC_2.38 not found` reaches the user through
 `EmulatorInstance::start`'s error, which quotes the emulator's last output lines. The fix
 for older hosts (building on an older base) is a later decision.
@@ -216,8 +216,8 @@ symdev-packages (`~/worktrees/symdev-packages/cargo-run`):
 | Path | Responsibility |
 |---|---|
 | `pkgtools/src/device_entry.rs` | `DeviceEntry`: one device of an EKA2L1 `devices.yml` |
-| `pkgtools/src/emulator_tree.rs` (+ `emulator_tree/glibc.rs`) | `EmulatorTree`: the extracted AppImage's layout and glibc floor |
-| `pkgtools/src/emulator_notices.rs` | `EmulatorNotices`: `share/doc/eka2l1/` from the source tree and the package list |
+| `pkgtools/src/emulator_tree.rs` (+ `emulator_tree/{glibc_version,tool}.rs`) | `EmulatorTree`: the extracted AppImage's layout and glibc floor; `GlibcVersion`; `EmulatorTreeTool` |
+| `pkgtools/src/emulator_notices.rs` (+ `emulator_notices/{submodules,bundled_list}.rs`) | `EmulatorNotices`: `share/doc/eka2l1/` from the source tree and the package list; `Submodules`; `BundledList` |
 | `pkgtools/src/dsc.rs` | `Dsc`: a Debian source control file's files and SHA-256s (D1 = A) |
 | `recipes/firmware/rm-469/1/{recipe.toml,stage.sh}` | the private firmware package |
 | `recipes/emulator/<V>/{recipe.toml,artifact.toml,build.sh,source.sh}` | the public emulator package |
