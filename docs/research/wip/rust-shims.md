@@ -107,3 +107,16 @@ Spike evidence: ~/src/rust-lld-spike/ (experiment 109 §1, §5).
   `$XDG_CACHE_HOME/symdev/downloads`.
 - Next: build.sh guard (tag must not track symbian-rs/prebuilt); publish test for the real
   0.3.0 recipe (packs prebuilt/, refuses a tree without it); symdev.yml steps; README; gates.
+- packages 16b2322: publish tests on the real 0.3.0 recipe (`publish/src/recipe/tests/
+  prebuilt.rs`: composite licence; packs prebuilt/ = 7 files; refused without prebuilt/,
+  "matches nothing"; mutation: dropping the include line fails 2 of 3); build.sh guard:
+  the tag must not track `symbian-rs/prebuilt` (checked on fake tags v9/v10, v0.2.0 clean).
+- **Rehearsal of the 0.3.0 release, local** (`~/src/rl-shims-scratch/rehearse/`):
+  `symdev-src` = clone of rl-shims + commit "workspace version 0.3.0" + tag v0.3.0 (scratch
+  clone ONLY; the real repo has no v0.3.0), `packages` = git archive of packages HEAD with
+  the recipe's git = file:// of that clone. build.sh running in background, PID 3684169,
+  log `rehearse/build.log`, `CC_x86_64_unknown_linux_musl=gcc` (no musl-gcc on this host),
+  `CARGO_TARGET_DIR=rehearse/target`. Then: sources.toml (private + key = "builtin") under
+  rehearse/config, `out/symdev/bin/symdev sdk install` into rehearse/home with the
+  keys.env reader key, prebuilt.sh from rehearse/work, pack dry run into
+  rehearse/artifact/packed, epoc32 check of the artifact.
