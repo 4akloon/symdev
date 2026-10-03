@@ -82,3 +82,7 @@ on the four apps + all examples, sizes vs exp 112.
   hello.first.elf 79 624 = exp 109 lld; cache key dir `home/cache/sdk-lld/6178838f…`.
 - Batches (background): `out/main-gnu.txt` (main bin, gnu-log, main-src tree), then
   `out/rl3-gnu.txt` → `out/rl3-lld.txt` (worktree). Per example: `out/<run>/<ex>.{log,ld.argv}`, `*.exe`.
+- No-GCCE: `bin/symdev-rl3-release` (SYMDEV_RELEASE=1, target `release-target/`); file:// repo
+  `stage/repo` made by `stager/` from `stage/trees/{rust-sdk (recipe include list from HEAD +
+  run1 prebuilt/), sdk (copy of rl-shims-scratch installed SDK, same sha cbec6da8…), gcce
+  (DECOY stub)}`. Script `nogcce.sh` → `nogcce.txt`, `nogcce/{new,build}-{hello,ui}.{log,strace}`.
