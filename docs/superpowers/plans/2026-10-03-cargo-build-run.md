@@ -128,3 +128,104 @@ test in the task named.
 5. **A `[[bin]]` renamed away from the package name.** `symdev-ld` sees a `CARGO_BIN_NAME`
    that is not `symdev.toml`'s `package.name`, and says so with both names instead of
    packaging it as a stray example (Task 1, test `a_binary_not_named_after_the_package_is_refused`).
+
+## File structure
+
+| Path | Responsibility |
+|---|---|
+| `crates/symdev-cli/src/role.rs` | `Role`: which program the `symdev` binary is, from `argv[0]` |
+| `crates/symdev-cli/src/ld.rs` + `ld/` | the `symdev-ld` role |
+| `ld/linker_args.rs` | `LinkerArgs`: rustc's argv, the observed flags only |
+| `ld/cargo_link_env.rs` | `CargoLinkEnv`: the cargo variables a link sees |
+| `ld/link_kind.rs` | `LinkKind`: the main binary or a test |
+| `ld/cargo_output.rs` | `CargoOutput`: the `-o` path in cargo's layout, and the paths beside it |
+| `ld/link_record.rs` | `LinkRecord`: `<out>.symdev.toml`, what the runner needs to know |
+| `ld/link_run.rs` | `LinkRun`: one `symdev-ld` invocation, end to end |
+| `ld/testdata/` | experiment 114's recorded argv and environments |
+| `crates/symdev-cli/src/setup_linker.rs` | `symdev setup-linker` |
+| `crates/symdev-cli/src/sisx.rs` | `ProjectPackage`: `package_project`'s body as a type |
+| `crates/symdev-cli/src/rustc_wrapper.rs` | `RustcWrapper`: the `symdev-rustc` role |
+| `crates/symdev-cli/src/run.rs` + `run/` | the runner: `ExeTarget`, `AppExit`, `Runner`, `Interrupt` |
+| `crates/symdev-cli/src/libtest_print.rs` | `LibtestPrint`: `test x ... ok` and the summary |
+| `crates/symdev-cli/src/devices_cmd.rs` | `symdev devices`, `symdev emulator start/stop` |
+| `crates/symdev-cli/src/old_shape.rs` | `OldShape`: the 0.3.0 `staticlib` project and its edits |
+| `crates/symdev-build/src/driver/rustc_link.rs` | `RustcLink` + `RustBuild::link_rustc_output` |
+| `crates/symdev-build/src/std_sysroot.rs` | `StdSysroot`: the sysroot `symdev-rustc` points at |
+| `crates/symdev-emulator/src/control.rs` + `control/` | `ControlClient`, `Request`, `AppExited` |
+| `crates/symdev-emulator/src/device.rs` + `device/` | `DeviceId`, `DeviceRegistry`, `EmulatorProfile`, `DeviceChoice`, `EmulatorInstance` |
+| `symbian-rs/crates/symbian-macros/src/manifest_uid3.rs` | `ManifestUid3`: `symdev.toml`'s UID3 at expansion time |
+| `symbian-rs/crates/symbian-test/` | the `harness = false` test harness |
+
+---
+
+### Task 1: The recorded rustc calls as fixtures, and the types that read them
+
+**Files:**
+- Create: `crates/symdev-cli/src/ld.rs`, `crates/symdev-cli/src/ld/{linker_args,cargo_link_env,link_kind,cargo_output}.rs`, `crates/symdev-cli/src/ld/tests.rs`
+- Create: `crates/symdev-cli/src/ld/testdata/` (copied from `~/src/cargo-run-scratch/fixtures/`)
+- Modify: `crates/symdev-cli/src/main.rs` (add `mod ld;`)
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces:
+  - `LinkerArgs::parse(impl IntoIterator<Item = OsString>) -> Result<LinkerArgs>` with
+    `pub inputs: Vec<PathBuf>`, `pub output: PathBuf`, `pub raw_dylibs: Vec<PathBuf>`.
+  - `CargoLinkEnv::from_pairs(impl IntoIterator<Item = (String, String)>) -> CargoLinkEnv` with
+    `pub bin_name`, `pub crate_name`, `pub target_tmpdir: Option<String>` and
+    `pub manifest_dir: Option<PathBuf>`.
+  - `LinkKind::of(&CargoLinkEnv, package: &str) -> Result<LinkKind>`, where
+    `enum LinkKind { Main, Test { name: String } }`.
+  - `CargoOutput::of(&Path) -> Result<CargoOutput>` with `path()`, `profile_dir()`,
+    `work_dir()` (`<out>.symdev`), `sisx()` (`<out>.sisx`), `record()`
+    (`<out>.symdev.toml`).
+
+- [ ] **Step 1: Copy the fixtures and check them**
+
+```bash
+mkdir -p crates/symdev-cli/src/ld/testdata
+cp ~/src/cargo-run-scratch/fixtures/{release,dev}-{bin,test}.{argv,env} \
+   ~/src/cargo-run-scratch/fixtures/release-bin-flavor.argv \
+   ~/src/cargo-run-scratch/fixtures/release-example.{argv,env} \
+   ~/src/cargo-run-scratch/fixtures/{run,test-run}.{argv,env} crates/symdev-cli/src/ld/testdata/
+(cd crates/symdev-cli/src/ld/testdata && sha256sum * | cut -c1-16,65-)
+```
+
+Expected (first 16 hex digits):
+`376a67de2d6f8b4c dev-bin.argv`, `bbf8d8ebe141a666 dev-bin.env`, `c57211ec975a1554 dev-test.argv`,
+`c1ea86bbaf4f2c39 dev-test.env`, `958eb68fd78aaaf0 release-bin.argv`,
+`bbf8d8ebe141a666 release-bin.env`, `9f3baeac322e2de7 release-bin-flavor.argv`,
+`c0d6c6058d696cfb release-example.argv`, `ec52cd24b3986728 release-example.env`,
+`c6acf1e1b21c5c91 release-test.argv`, `5d8c53d6c4160d0d release-test.env`,
+`be709ab59ee8cd4c run.argv`, `6be51f90290a6a7c run.env`, `342a8886bcc0fe94 test-run.argv`,
+`a8c3e74b10eec0e5 test-run.env`. If the scratch copy is gone, rebuild the files from
+experiment 114 §1.1. `release-bin.argv` is the 13-line block printed there. The test variant
+differs only in the object name and the `-o` path:
+
+```
+/work/app/build/cargo/arm-symbian-e32/release/build/app/4f71ac116363b7c1/out/smoke-4f71ac116363b7c1.smoke.8fa819f7a81627d9-cgu.0.rcgu.o
+--as-needed
+-Bstatic
+/work/app/build/cargo/arm-symbian-e32/release/build/compiler_builtins/af926986b8385648/out/libcompiler_builtins-af926986b8385648.rlib
+-L
+/work/app/build/cargo/arm-symbian-e32/release/build/app/4f71ac116363b7c1/out/rustcXXXXXX/raw-dylibs
+-Bdynamic
+-z
+noexecstack
+-o
+/work/app/build/cargo/arm-symbian-e32/release/build/app/4f71ac116363b7c1/out/smoke-4f71ac116363b7c1
+--gc-sections
+--strip-debug
+```
+
+`release-test.env`:
+
+```
+CARGO_BIN_EXE_app=/work/app/build/cargo/arm-symbian-e32/release/app
+CARGO_CRATE_NAME=smoke
+CARGO_MANIFEST_DIR=/work/app
+CARGO_MANIFEST_PATH=/work/app/Cargo.toml
+CARGO_PKG_NAME=app
+CARGO_PRIMARY_PACKAGE=1
+CARGO_TARGET_TMPDIR=/work/app/build/cargo/arm-symbian-e32/tmp
+RUSTUP_TOOLCHAIN=nightly-2026-09-19-x86_64-unknown-linux-gnu
+```
