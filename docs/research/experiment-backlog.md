@@ -4481,3 +4481,75 @@ The `.sisx` was not installed anywhere.
   `q2-rest.txt`, `q5d-rest.txt`.
 * Projects: `q1/app`, `sdk1/` (`std-hello` with H3/H4 files), `q4/{tc-copy,rustup}`.
 * Emulator and signing: `emu.sh`, `runshot.py`, `shots/`, `signing/`.
+
+### 2. An emulator profile (cargo-run Task 10)
+
+**The emulator.** `~/src/EKA2L1-wt/cargo-run`, branch `cargo-run`: the `symdev` integration
+branch (`d07d5ac`) with `dev/data-dir` (`a3ec972`) and `dev/control-events` (`c323b64`,
+carrying `dev/control-server` and `dev/control-input`) merged. The two merges conflicted only
+in the option lists of `qt/src/thread.cpp` and `qt/include/qt/cmdhandler.h`; both options
+were kept. Built in `~/src/EKA2L1-wt-build/cargo-run` (1 458 steps, exit 0), started through
+`~/src/cargo-run-scratch/bin/eka2l1-symdev`, which sets the environment of `~/.local/bin/eka2l1`.
+`--help` lists `--data-dir` and `--control`. `emulator.info` answers
+`{"name":"EKA2L1","version":"cargo-run-a5d9df3","protocol":1,"paused":false,
+"device":{"manufacturer":"Nokia","model":"N00","firmware":"RM-469","os":"epoc93fp2"}}`.
+
+* **`--help` alone uses the default data folder.** Run with no `--data-dir`, it rotated the
+  user's `~/.local/share/EKA2L1/EKA2L1.log` into `EKA2L1_TakeThis.log`. Every later run here
+  passed `--data-dir`.
+
+**The profile.** The user's data folder holds `config.yml` and `data/{devices.yml,drives/
+{c,d,e,z},roms/rm-469}`; `z` is 208 MB, `c` 17 MB, `roms/rm-469` 51 MB. The profile made by
+hand at `~/src/cargo-run-scratch/profiles/rm-469/`:
+
+| Path in the profile | What it is |
+|---|---|
+| `config.yml` | a copy, with `log-filter: "*:info Emulated.Stdout:trace Kernel:trace"` |
+| `data/devices.yml` | a copy |
+| `data/roms/rm-469`, `data/drives/z` | **symbolic links** to the user's |
+| `data/drives/c` | a copy |
+| `data/drives/d`, `data/drives/e` | empty directories |
+
+`setsid eka2l1-symdev --data-dir <profile> --control $XDG_RUNTIME_DIR/symdev-probe.sock`,
+under the agent lock, driven by `probe10.py` (the README's protocol, Python standard
+library):
+
+* **Ready at once.** The first `emulator.info` already named the device; the log says
+  `[Frontend.Control]: Control server listening on /run/user/1000/symdev-probe.sock`.
+* **The links work.** The ROM and drive Z were read through them, and nothing under the
+  user's folder was newer than a marker file touched before the run (`find -newer`, `-L`
+  for Z and the ROM), in either of two runs.
+* `package.install` of experiment 114 §1.5's `hello.sisx` → `{}`. The files went to the
+  profile: `data/drives/e/sys/bin/hello.exe`,
+  `data/drives/e/private/10003a3f/import/apps/hello_reg.rsc`, and the registry under
+  `data/drives/c/sys/install/sisregistry/ef9f2cab/`.
+* `app.launch` `0xef9f2cab` → `{"pid":107}`. `hello` shows its note and ends by itself after
+  five seconds: `event.app_exited` `{"uid":4020186283,"pid":107,"name":"hello[ef9f2cab]0001",
+  "exit_type":"kill","exit_reason":0,"exit_category":"None"}`. `screen.capture` right after
+  it: `-32002 There is no screen 0` (the device reboots after an app exits, README). `app.kill`
+  then: `-32002 No app with UID 0xEF9F2CAB is running`.
+* `examples/panic` (`0xe00006a8`): `event.app_exited` with `"exit_type":"panic",
+  "exit_reason":-2,"exit_category":"RUST"`, and in the log (needs `Kernel:trace`)
+  `T …/kernel/src/thread.cpp:542 [Kernel]: Thread Main panicked with category: RUST and exit
+  code: -2 `.
+* **What the emulator wrote into the profile:** `EKA2L1.log` (the log of this instance), its
+  Qt settings `EKA2L1/EKA2L1.ini`, copies of the shipped `patch/`, `resources/`, `scripts/`,
+  `compat/` and `bindings/`, `cache/`, `data/j2me/`, `config.yml` and `data/devices.yml`
+  rewritten (every key spelled out; the device list unchanged), and on drive C
+  `system/data/sms_settings.dat`.
+* **Guest output.** A log line is `<level> <source>:<line> [<class>]: <text>`. An InfoPrint is
+  `I …/notifier.cpp:111 [Service.Notifier]: Trying to display: Hello from Rust SDK (19
+  chars)`. `RDebug::Print` is logged by the kernel's `debug_print` as class
+  `Emulated.Stdout` at trace level, so its line is `T … [Emulated.Stdout]: <text>`. No
+  program in the Rust SDK calls `RDebug`, so no such line was seen in these runs.
+* **Ending it.** `kill -9` of our PID (its `comm` is `eka2l1_qt` once the wrapper has
+  exec'd; `bash` for the first instant). The socket file stays behind after `kill -9`; the
+  README says the next instance replaces a socket nobody listens on.
+
+**Answer.** A profile is a data folder of its own: copies of `config.yml`, `devices.yml` and
+drive C, empty D and E, and links to the user's ROM and drive Z, which the emulator reads
+and does not write. Installs, logs and settings stay in the profile.
+
+**Evidence.** `~/src/cargo-run-scratch/`: `exec/t10-probe.sh`, `exec/t10-probe2.sh`,
+`exec/probe10.py`, `profiles/{probe.log,probe-panic.log,EKA2L1-hello.log,rm-469/}`;
+`~/src/EKA2L1-wt-build/cargo-run/{build.sh,build.log}`.
