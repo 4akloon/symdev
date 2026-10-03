@@ -3552,3 +3552,97 @@ than `$X/marker13` (`find ~/.local/share/EKA2L1 -newer … | wc -l` is `0`).
 
 - [ ] **Step 4: Commit** the experiment record and the wip file:
   `Record experiment 115 §4: cargo run and cargo test on the packaged emulator and firmware.`
+
+### Task 14: Requirements, licensing rules and the emulator crate's README
+
+**Files:**
+- Modify: `README.md` (the EKA2L1 row of the requirements table, and the "Toolchain
+  packages" paragraph)
+- Modify: `docs/research/licensing.md` (rules for the emulator and the firmware packages)
+- Modify: `crates/symdev-emulator/README.md` (rewritten: it still documents the deleted
+  `Eka2l1Backend::run`/`previous`)
+- Modify: `docs/superpowers/specs/2026-10-02-toolchain-manager-design.md` (§2 table row
+  `emulator;…`, `firmware;rm-469;…`)
+
+**Interfaces:** documents Tasks 4–13; no code.
+
+- [ ] **Step 1: README requirements row** becomes:
+
+```markdown
+| EKA2L1 with `--control` and `--data-dir`, and the E52 firmware | `cargo run`, `cargo test`, `symdev run`, `symdev test --emulator`, `symdev emulator`, `symdev devices` | packages `emulator;<V>` (public, glibc 2.38 or newer) and `firmware;rm-469;1` (private source only), installed on first need; or `SYMDEV_EKA2L1` (your own EKA2L1 or a wrapper that sets your host's GL variables) and `SYMDEV_EKA2L1_DATA` (an EKA2L1 data folder with the firmware installed) |
+```
+
+Add one sentence to "Toolchain packages": the emulator and firmware packages are installed
+by the first command that starts an emulator, not by `symdev build`. Add a second: without
+`SYMDEV_EKA2L1_DATA`, symdev never reads `~/.local/share/EKA2L1`.
+
+- [ ] **Step 2: `licensing.md`**
+
+Under "## EKA2L1", after the existing sentence, add (wording for D1 = A; for B or C, adjust
+the second bullet to the choice):
+
+```markdown
+- **`emulator;<version>` (public bucket).** The fork CI's AppImage of our integration
+  branch, extracted: EKA2L1 (GPL-3.0-or-later) with the Qt (LGPL-3.0) and other free
+  libraries linuxdeploy bundled from Ubuntu. The package carries `share/doc/eka2l1/` (the GPL
+  text, every submodule's licence, `BUNDLED.tsv` with each Ubuntu package's copyright file,
+  `SOURCE.txt`). Its corresponding source is published beside it through `publish
+  --source-code`: the fork commit with every submodule, the recipe, and every bundled
+  Ubuntu source package at the exact version the CI used. symdev still only starts it as
+  a separate process.
+- **`firmware;<firmware>;<n>` (private bucket only).** Nokia's ROM and drive Z in EKA2L1's
+  layout, like the SDK: the owner's own copy, staged on his machine
+  (`recipes/firmware/…/stage.sh`), published with `publish private`, licence
+  `LicenseRef-Nokia-firmware`, which the publisher refuses for the public bucket. Never in
+  git, CI or the public bucket.
+```
+
+`CLAUDE.md` says "the built-in public source carries only GPL/MIT packages and their
+sources". The emulator package also carries LGPL, BSD, Apache and other free licences
+(D1). Do **not** edit `CLAUDE.md`. Write the proposed wording ("only free-software
+packages under licences compatible with GPL-3.0, with their corresponding source") into
+the wip file for the lead to take to the owner.
+
+- [ ] **Step 3: `crates/symdev-emulator/README.md`**
+
+Rewrite "Usage" for what the crate is now: `device::{Eka2l1, Firmware, EmulatorProfile,
+EmulatorInstance, DeviceRegistry, DeviceChoice}` and `control::ControlClient`, one
+sentence each. Say who resolves `SYMDEV_EKA2L1` / `SYMDEV_EKA2L1_DATA` and the packages
+(`symdev-cli`'s `Provision`); this crate reads no environment for them. Keep "Not a device".
+Delete the paragraphs about `Eka2l1Backend`.
+
+- [ ] **Step 4: Toolchain spec §2 row** becomes
+  `| emulator;<yyyy.mm.dd>, firmware;rm-469;<n> | see 2026-10-03-emulator-firmware-packages-design.md | x86_64-linux, any |`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add README.md docs/research/licensing.md crates/symdev-emulator/README.md \
+  docs/superpowers/specs/2026-10-02-toolchain-manager-design.md docs/research/wip/emulator-packages.md
+git commit -m "Document the emulator and firmware packages: requirements, licensing rules and the emulator crate."
+```
+
+### Task 15: Staged acceptance from an empty home (experiment 115 §5), then stop for L1
+
+The spec's acceptance, with `file://` sources in place of the buckets and the rehearsal
+AppImage in place of the CI's. Task 16 reruns it with the CI's AppImage, and the lead
+reruns it against the real buckets.
+
+**Files:**
+- Outside git: `~/src/emu-pkg-scratch/accept/{stage.sh,accept.sh,inner.sh,out/}`
+- Modify: `docs/research/experiment-backlog.md` (experiment 115 §5), the wip file
+
+**Interfaces:**
+- Consumes: everything above; the packages branch's `install.sh`.
+
+- [ ] **Step 1: Stage two sources** (`stage.sh`, adapted from
+  `~/src/cargo-run-scratch/accept/stage.sh`)
+
+- **public** (`accept/public/`): `symdev;0.4.0` (this branch, `SYMDEV_RELEASE=1` release
+  build), `rust-sdk;0.4.0` (HEAD cut with the 0.4.0 recipe's include list plus experiment
+  113's `prebuilt/`, as before) and `emulator;<V>` (`$E/prefix`). Its index is signed
+  with `install.sh.test`'s throwaway key, as before, because `install.sh` verifies it.
+- **private** (`accept/private/`): `sdk;s60-3rd-fp2;1.1` (the cargo-run staging's tree)
+  and `firmware;rm-469;1` (Task 5's tree).
+
+Use Task 13's stager for both.
