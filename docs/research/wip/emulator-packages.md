@@ -202,4 +202,7 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   SYMDEV_EKA2L1_DATA directly until Task 9. Gates green (55 ok, clippy 0, fmt ok).
 - [x] Task 8: Eka2l1 enum (User/Package; Package strips LD_LIBRARY_PATH, QT_PLUGIN_PATH,
   QT_QPA_PLATFORM_PLUGIN_PATH), start/has_control take &Eka2l1, Eka2l1Backend deleted. Gates green.
-- [ ] Task 9: next (Provision::eka2l1/firmwares, lazy profiles, CLI wiring, tests/emulator_packages.rs).
+- [x] Task 9: Provision::eka2l1()/firmwares() (provision/emulator.rs), Devices::profiles/make_profiles/
+  profiles_or_make, eka2l1_with_control(&Provision) naming the package, lazy pick_device, CLI wiring,
+  tests/emulator_packages.rs (5 ok). Gates green (56 ok, clippy 0, fmt ok).
+- [ ] Task 10: next (packages: pkgtools emulator-tree/emulator-notices, recipes/emulator/2026.10.03/).

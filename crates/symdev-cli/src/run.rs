@@ -15,6 +15,8 @@ use std::process::ExitCode;
 use symdev_core::{Error, Result};
 use symdev_emulator::control::ControlClient;
 
+use crate::provision::Provision;
+
 pub(crate) use app_exit::AppExit;
 pub(crate) use device_pick::pick_device;
 pub(crate) use exe_target::ExeTarget;
@@ -23,14 +25,18 @@ pub(crate) use log_tail::LogTail;
 pub(crate) use runner::Runner;
 pub(crate) use test_outcome::{CaseLine, TestOutcome, Verdict};
 
-pub(crate) fn run(exe: Option<PathBuf>, args: Vec<String>) -> Result<ExitCode> {
+pub(crate) fn run(
+    exe: Option<PathBuf>,
+    args: Vec<String>,
+    provision: &Provision,
+) -> Result<ExitCode> {
     refuse_arguments(&args)?;
     let cwd = std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?;
     let target = match exe {
         Some(exe) => ExeTarget::of(&exe, &cwd)?,
         None => project_target(&cwd)?,
     };
-    let device = pick_device(std::io::stdin().is_terminal())?;
+    let device = pick_device(std::io::stdin().is_terminal(), provision)?;
     let client = ControlClient::connect(&device.socket)?;
     // Only now: until the app runs, Ctrl+C ends symdev as usual.
     let interrupt = Interrupt::install()?;

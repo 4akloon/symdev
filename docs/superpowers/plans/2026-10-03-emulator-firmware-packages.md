@@ -1809,7 +1809,7 @@ git commit -m "Start either the user's EKA2L1 as it is or a packaged one without
   a start needs one: nothing is running, or `SYMDEV_DEVICE` names a profile. A fake
   running device in the CLI tests therefore never reaches a source.
 
-- [ ] **Step 1: Write the failing unit tests**, `provision/emulator/tests.rs`
+- [x] **Step 1: Write the failing unit tests**, `provision/emulator/tests.rs`
 
 ```rust
 use std::collections::BTreeMap;
@@ -1866,7 +1866,7 @@ fn without_the_variables_offline_names_the_install_commands() {
 }
 ```
 
-- [ ] **Step 2: Write the failing CLI tests**, `crates/symdev-cli/tests/emulator_packages.rs`
+- [x] **Step 2: Write the failing CLI tests**, `crates/symdev-cli/tests/emulator_packages.rs`
 
 ```rust
 //! `symdev emulator start` and `symdev devices` against a `file://` source holding the
@@ -2019,7 +2019,7 @@ fn walk(dir: &Path) -> Vec<(PathBuf, std::time::SystemTime)> {
 `firmware;rm-469;1` and `SYMDEV_EKA2L1_DATA` in stderr instead of `install a firmware in
 EKA2L1` (`bin()`'s `sources.toml` has no source, so the lookup fails without a network).
 
-- [ ] **Step 3: Run them and see them fail**
+- [x] **Step 3: Run them and see them fail**
 
 ```bash
 cargo test -p symdev-cli --offline --test emulator_packages > /tmp/t9.log 2>&1; grep -E "^error|test result|FAILED|panicked" /tmp/t9.log
@@ -2030,7 +2030,7 @@ Expected: the unit tests do not compile (`no method named eka2l1`). The CLI test
 install line, the old "missing emulator: SYMDEV_EKA2L1" error, profiles not made from the
 package.
 
-- [ ] **Step 4: Implement** `crates/symdev-cli/src/provision/emulator.rs`
+- [x] **Step 4: Implement** `crates/symdev-cli/src/provision/emulator.rs`
 
 ```rust
 //! The EKA2L1 and the firmware an emulator runs (emulator packages spec §5): the user's
@@ -2193,7 +2193,7 @@ emulator, &provision)`, `devices_cmd::list(&provision)`, `devices_cmd::start(&pr
 After this step, `grep -rn 'SYMDEV_EKA2L1' crates/symdev-cli/src` shows only
 `provision/emulator.rs` and messages.
 
-- [ ] **Step 5: Run the tests and the gates**
+- [x] **Step 5: Run the tests and the gates**
 
 Step 3's two commands, then Task 4 step 4's three commands. Expected: all pass, 0 clippy
 lines. If a test under `crates/symdev-cli/tests/` now reaches the built-in source (an
@@ -2201,7 +2201,7 @@ lines. If a test under `crates/symdev-cli/tests/` now reaches the built-in sourc
 profile and asked for a firmware. Give it a profile directory or `SYMDEV_EKA2L1_DATA`, as
 its intent requires; do not turn the lazy rule off.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add crates/symdev-cli/src/provision.rs crates/symdev-cli/src/provision/emulator.rs \

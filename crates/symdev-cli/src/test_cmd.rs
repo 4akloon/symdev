@@ -8,9 +8,14 @@ use symdev_core::{Error, Result};
 use symdev_emulator::control::ControlClient;
 
 use crate::ld::LinkKind;
+use crate::provision::Provision;
 use crate::run::{ExeTarget, Interrupt, Runner, pick_device};
 
-pub fn test_project(m: symdev_manifest::Manifest, emulator: bool) -> Result<ExitCode> {
+pub fn test_project(
+    m: symdev_manifest::Manifest,
+    emulator: bool,
+    provision: &Provision,
+) -> Result<ExitCode> {
     if !emulator {
         return Err(Error::Other(
             "symdev test needs --emulator: the host-side tests of the SDK crates are \
@@ -28,7 +33,7 @@ pub fn test_project(m: symdev_manifest::Manifest, emulator: bool) -> Result<Exit
     target.kind = LinkKind::Test {
         name: m.package.name.clone(),
     };
-    let device = pick_device(std::io::stdin().is_terminal())?;
+    let device = pick_device(std::io::stdin().is_terminal(), provision)?;
     let client = ControlClient::connect(&device.socket)?;
     let interrupt = Interrupt::install()?;
     let exit = Runner::new(target, device, client).run(&interrupt, &mut std::io::stdout())?;

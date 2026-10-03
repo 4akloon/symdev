@@ -58,7 +58,7 @@ fn run_with_a_profile_to_start_and_no_emulator_names_symdev_eka2l1() {
 
 /// No running emulator, no profile, no firmware to make one from.
 #[test]
-fn run_without_any_device_says_to_install_a_firmware() {
+fn run_without_any_device_names_the_firmware_package_and_symdev_eka2l1_data() {
     let dir = tempfile::tempdir().unwrap();
     write_toml(
         &dir,
@@ -76,5 +76,6 @@ fn run_without_any_device_says_to_install_a_firmware() {
         .assert()
         .failure()
         .code(1)
-        .stderr(predicate::str::contains("install a firmware in EKA2L1"));
+        .stderr(predicate::str::contains("firmware;rm-469;1"))
+        .stderr(predicate::str::contains("SYMDEV_EKA2L1_DATA"));
 }

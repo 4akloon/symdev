@@ -3,20 +3,30 @@ use std::io::{BufRead, Write};
 
 use symdev_core::{Error, Result};
 use symdev_emulator::device::{
-    Choice, DeviceChoice, DevicePrompt, EmulatorInstance, Offer, RegistryEntry,
+    Choice, DeviceChoice, DeviceId, DevicePrompt, EmulatorInstance, Offer, RegistryEntry,
 };
 
 use crate::devices_cmd::{Devices, eka2l1_with_control};
+use crate::provision::Provision;
 
 /// `SYMDEV_DEVICE`, else the running emulators and the profiles; a prompt on stderr and
 /// stdin when `terminal` and there is more than one.
-pub(crate) fn pick_device(terminal: bool) -> Result<RegistryEntry> {
+pub(crate) fn pick_device(terminal: bool, provision: &Provision) -> Result<RegistryEntry> {
     let devices = Devices::from_env()?;
-    let profiles = devices.profiles()?;
     let running = devices.live()?;
     let requested = std::env::var("SYMDEV_DEVICE")
         .ok()
         .filter(|v| !v.is_empty());
+    // A profile is made only when a start needs one: nothing runs, or SYMDEV_DEVICE names
+    // a profile rather than an emulator id.
+    let wants_profile = running.is_empty()
+        || requested
+            .as_deref()
+            .is_some_and(|r| DeviceId::parse(r).is_none());
+    let mut profiles = devices.profiles();
+    if profiles.is_empty() && wants_profile {
+        profiles = devices.make_profiles(provision.firmwares()?)?;
+    }
     let choice = DeviceChoice {
         requested,
         running: running.clone(),
@@ -39,7 +49,7 @@ pub(crate) fn pick_device(terminal: bool) -> Result<RegistryEntry> {
             .find(|e| e.id == id)
             .ok_or_else(|| Error::Other(format!("{id} is not running"))),
         Offer::Profile(profile) => {
-            let eka2l1 = eka2l1_with_control()?;
+            let eka2l1 = eka2l1_with_control(provision)?;
             eprintln!("starting an emulator on profile {profile}");
             let entry =
                 EmulatorInstance::start(&eka2l1, &devices.profile(&profile), devices.registry())?;

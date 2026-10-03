@@ -1,17 +1,20 @@
 //! `symdev devices`, `symdev emulator start <profile>`, `symdev emulator stop <id>`
 //! (design spec §5), and `Devices`, which the runner shares: the registry, the profiles
-//! (made from the user's installed firmware when there are none) and their liveness.
+//! (made from `Provision`'s firmware when a command needs one and there are none) and
+//! their liveness.
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
 use symdev_core::{Error, Result};
-use symdev_emulator::EmulatorData;
 use symdev_emulator::control::ControlClient;
 use symdev_emulator::device::{
     DeviceId, DeviceRegistry, Eka2l1, EmulatorInstance, EmulatorProfile, Firmware, RegistryEntry,
     is_eka2l1,
 };
+use symdev_sdk::Pins;
+
+use crate::provision::Provision;
 
 /// How long a liveness probe waits for `emulator.info`: a wedged emulator must not hang
 /// `symdev devices` or a run.
@@ -53,22 +56,26 @@ impl Devices {
         self.registry.registered(is_eka2l1)
     }
 
-    /// The profiles' names. With none, one is made per firmware in the user's EKA2L1
-    /// (`data/roms/<firmware>`), spec §5 phase 1.
-    pub fn profiles(&self) -> Result<Vec<String>> {
-        let names = Self::dirs(&self.profiles_root);
-        if !names.is_empty() {
-            return Ok(names);
-        }
-        let user = match std::env::var_os("SYMDEV_EKA2L1_DATA").filter(|v| !v.is_empty()) {
-            Some(dir) => EmulatorData::at(std::path::Path::new(&dir)),
-            None => return Ok(Vec::new()),
-        };
-        for firmware in Firmware::in_user_data(&user) {
+    /// The profiles that exist, by name. Makes none.
+    pub fn profiles(&self) -> Vec<String> {
+        Self::dirs(&self.profiles_root)
+    }
+
+    /// A profile per firmware of `firmwares`, made now (spec §5: on first need).
+    pub fn make_profiles(&self, firmwares: Vec<Firmware>) -> Result<Vec<String>> {
+        for firmware in firmwares {
             self.profile(firmware.name()).create(&firmware)?;
             eprintln!("created profile {}", firmware.name());
         }
-        Ok(Self::dirs(&self.profiles_root))
+        Ok(self.profiles())
+    }
+
+    /// The profiles, made from `provision`'s firmware when there are none.
+    pub fn profiles_or_make(&self, provision: &Provision) -> Result<Vec<String>> {
+        match self.profiles() {
+            none if none.is_empty() => self.make_profiles(provision.firmwares()?),
+            some => Ok(some),
+        }
     }
 
     fn dirs(dir: &Path) -> Vec<String> {
@@ -85,29 +92,33 @@ impl Devices {
     }
 }
 
-/// `SYMDEV_EKA2L1`, which must have the control server.
-pub(crate) fn eka2l1_with_control() -> Result<Eka2l1> {
-    let eka2l1 = match std::env::var_os("SYMDEV_EKA2L1").filter(|v| !v.is_empty()) {
-        Some(program) => Eka2l1::User(PathBuf::from(program)),
-        None => {
-            return Err(Error::Other(
-                "missing emulator: SYMDEV_EKA2L1 (path to eka2l1_qt or a wrapper)".into(),
-            ));
-        }
-    };
-    if !EmulatorInstance::has_control(&eka2l1)? {
-        return Err(Error::Other(format!(
-            "{} has no --control: cargo run needs an EKA2L1 with the control server \
-             (EKA2L1#770–#772, our fork's symdev branch)",
-            eka2l1.describe()
-        )));
+/// The EKA2L1 to start, which must have the control server.
+pub(crate) fn eka2l1_with_control(provision: &Provision) -> Result<Eka2l1> {
+    let eka2l1 = provision.eka2l1()?;
+    if EmulatorInstance::has_control(&eka2l1)? {
+        return Ok(eka2l1);
     }
-    Ok(eka2l1)
+    let fix = match &eka2l1 {
+        Eka2l1::User(_) => format!(
+            "unset SYMDEV_EKA2L1 to use the {} package, or point it at an EKA2L1 built from \
+             our fork's symdev branch",
+            Pins::emulator()
+        ),
+        Eka2l1::Package(_) => format!(
+            "the package is damaged: run `symdev sdk uninstall {w} && symdev sdk install {w}`",
+            w = Pins::emulator().shell_word()
+        ),
+    };
+    Err(Error::Other(format!(
+        "{} has no --control: cargo run needs an EKA2L1 with the control server \
+         (EKA2L1#770–#772); {fix}",
+        eka2l1.describe()
+    )))
 }
 
-pub(crate) fn list() -> Result<ExitCode> {
+pub(crate) fn list(provision: &Provision) -> Result<ExitCode> {
     let devices = Devices::from_env()?;
-    let profiles = devices.profiles()?;
+    let profiles = devices.profiles_or_make(provision)?;
     let live = devices.live()?;
     for e in devices.registered()? {
         let state = match live.iter().any(|l| l.id == e.id) {
@@ -122,16 +133,16 @@ pub(crate) fn list() -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-pub(crate) fn start(profile: &str) -> Result<ExitCode> {
+pub(crate) fn start(profile: &str, provision: &Provision) -> Result<ExitCode> {
     let devices = Devices::from_env()?;
-    let profiles = devices.profiles()?;
+    let profiles = devices.profiles_or_make(provision)?;
     if !profiles.iter().any(|p| p == profile) {
         return Err(Error::Other(format!(
             "no emulator profile {profile}; there are: {}",
             profiles.join(", ")
         )));
     }
-    let eka2l1 = eka2l1_with_control()?;
+    let eka2l1 = eka2l1_with_control(provision)?;
     let entry = EmulatorInstance::start(&eka2l1, &devices.profile(profile), devices.registry())?;
     println!("{}", entry.id);
     Ok(ExitCode::SUCCESS)

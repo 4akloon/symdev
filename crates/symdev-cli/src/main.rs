@@ -72,17 +72,17 @@ fn main() -> ExitCode {
             }),
         Some(Commands::Build) => manifest().and_then(|m| build_cmd::build_project(m, &provision)),
         Some(Commands::Package) => manifest().and_then(|m| package_project(m, &provision)),
-        Some(Commands::Run { exe, args }) => run::run(exe, args),
+        Some(Commands::Run { exe, args }) => run::run(exe, args, &provision),
         Some(Commands::Test { emulator }) => {
-            manifest().and_then(|m| test_cmd::test_project(m, emulator))
+            manifest().and_then(|m| test_cmd::test_project(m, emulator, &provision))
         }
         Some(Commands::Freeze) => freeze_project(&provision),
         Some(Commands::Deploy) => manifest().and_then(deploy_project),
         Some(Commands::Sdk { action }) => sdk_cmd::run(action, &provision),
         Some(Commands::SetupLinker { dir }) => setup_linker::setup_linker(dir),
-        Some(Commands::Devices) => devices_cmd::list(),
+        Some(Commands::Devices) => devices_cmd::list(&provision),
         Some(Commands::Emulator { action }) => match action {
-            EmulatorAction::Start { profile } => devices_cmd::start(&profile),
+            EmulatorAction::Start { profile } => devices_cmd::start(&profile, &provision),
             EmulatorAction::Stop { id } => devices_cmd::stop(&id),
         },
     };
