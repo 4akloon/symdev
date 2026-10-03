@@ -120,6 +120,16 @@ Scratch: `~/src/emu-pkg-scratch/`. Read-only observations go to experiment 115 �
   `Devices::profiles()` = existing only; `Devices::make_profiles(firmwares)` creates.
   list()/start() make on first need (as 0.4.0 cargo-run did).
 
+- Task 9 written + committed (provision/emulator.rs, devices_cmd profiles/make_profiles/
+  profiles_or_make, lazy pick_device, tests/emulator_packages.rs).
+- Task 10 design: pkgtools `emulator-tree <tree> --glibc X.Y` (EmulatorTree layout +
+  GlibcVersion via `object` 0.39 verneed; test on current_exe), `emulator-notices <src>
+  <tree> --id --commit [--packages tsv] [--extra list]` (COPYING, third-party/ per
+  submodule from .gitmodules recursive, BUNDLED.tsv, SOURCE.txt); recipe.toml +
+  artifact.toml (zeros until Task 16) + build.sh (gh run download or
+  EMULATOR_ARTIFACT_DIR; sha256sum; --appimage-extract; clone fork commit w/ submodules
+  into ./eka2l1-src); tests/emulator-build.test (hash refusal, zeros refusal).
+
 ## Next step
 
-Write Task 9 (Provision::eka2l1/firmwares + wiring + CLI tests), then 10–16.
+Write Task 10 into the plan, then 11–16 and the lead's acceptance.
