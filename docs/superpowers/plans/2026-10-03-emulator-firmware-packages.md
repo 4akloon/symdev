@@ -3301,7 +3301,7 @@ branch; the YAML is checked locally.
   On a push to `main` that touches it, or a manual run, the upload of `emulator;<V>` and
   its source (that is L2).
 
-- [ ] **Step 1: Write `.github/workflows/emulator.yml`**
+- [x] **Step 1: Write `.github/workflows/emulator.yml`**
 
 ```yaml
 # emulator;<version> (symdev's 2026-10-03-emulator-firmware-packages-design §3):
@@ -3456,7 +3456,7 @@ jobs:
             --recipe "recipes/emulator/$VERSION/recipe.toml"
 ```
 
-- [ ] **Step 2: Check it**
+- [x] **Step 2: Check it**
 
 ```bash
 cd ~/worktrees/symdev-packages/cargo-run
@@ -3467,7 +3467,7 @@ grep -n "uses:" .github/workflows/emulator.yml | sort -u -k2 | head
 Expected: `ok`. Every `uses:` pin is one that `publish.yml` or `build.yml` already uses
 (same SHA, same comment).
 
-- [ ] **Step 3: Document and commit**
+- [x] **Step 3: Document and commit**
 
 In the packages `README.md`, next to the GCCE and symdev recipes, add a short section with:
 the two new recipes; who runs what (the owner runs the firmware's stage and `publish

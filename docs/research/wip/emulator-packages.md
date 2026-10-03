@@ -211,4 +211,10 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   Rehearsal build: ~/src/emu-pkg-scratch/emulator/prefix, 258 MB, glibc floor 2.38, 78 licence
   files, 167 bundled packages. notices-extra.txt: 5 submodules read by hand (RectangleBinPack PD,
   microprofile Unlicense, stb PD/MIT, sdl2-cmake-scripts BSD-2, upscale-shaders per-file headers).
-- [ ] Task 11: in progress (dsc.rs + dsc-files done uncommitted, source.sh written; next: archive + dry run).
+- [ ] Task 11: code committed (packages 8693baf: Dsc + dsc-files, source.sh; Launchpad form
+  +sourcefiles/<src>/<ver>/<file> answers 303→200, epoch kept in <ver>). source.sh running from
+  ~/src/emu-pkg-scratch/emulator/work (PID 739061, log ../source.log). Next: when EXIT= appears,
+  dry-run publish (brief step 4), record sizes.
+- [x] Task 12: packages 777a48f: .github/workflows/emulator.yml (YAML ok, pins = publish.yml's),
+  README section "The emulator and the firmware" + pkgtools rows.
+- [ ] Task 13: next (packaged emulator real runs, exp 115 §4).
