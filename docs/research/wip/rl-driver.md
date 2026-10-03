@@ -42,9 +42,10 @@ rust-sdk/symbian-rs/prebuilt/` (lib: 4172/7736/19294/59174 B).
   TARGET2-rewritten in place for lld only.
 
 ## Status
-- [x] elf2e32 byte types (commit below)  - [x] Toolchain split (71b3f48)  - [x] RustPrebuilt, RustLld (d56811a), SdkLldCache  - [x] RustLinker
-- [x] link line + two links (LldLine, rust_lld_link.rs)  - [x] CLI + Provision (needs_gcce, toolchain(device, gcce))  - [ ] real builds  - [ ] no-GCCE run
-- [ ] emulator  - [ ] docs + exp 113  - [ ] gates
+- [x] elf2e32 byte types  - [x] Toolchain split  - [x] RustPrebuilt, RustLld, SdkLldCache
+- [x] RustLinker  - [x] link line + two links  - [x] CLI + Provision  - [x] real builds
+- [x] no-GCCE run  - [x] emulator  - [x] docs + experiment 113  - [x] first review (#1–#12)
+- [x] final review's 9 minor items  - [ ] recheck.sh + final gates (see the end of this file)
 
 ## For the packages repo
 Crate `symdev-elf2e32` (path `crates/symdev-elf2e32`, deps only `symdev-core` + `symdev-uidcrc`,
@@ -66,16 +67,7 @@ Checked against the real SDK (`~/src/rl-driver-scratch/fixcheck`): 570 `.dso`, 4
 all byte-equal to the spike's `dso-fixed/`; `usrt2_2.lib` 1 rewritten = spike's copy;
 `eexe.lib` 0.
 
-## Findings
-
-## Dead ends
-
-## Next step
-Real builds. GNU byte-identical check first (main binary vs branch with SYMDEV_RUST_LINKER=gnu,
-argv via SYMDEV_LD wrapper + .exe cmp masking CRC 0x14-0x17 / time 0x24-0x2B), then lld default
-on the four apps + all examples, sizes vs exp 112.
-
-## Real builds (running)
+## Real builds
 - Binaries: `~/src/rl-driver-scratch/bin/symdev-main` (git archive 04f8e7d → main-src, release),
   `bin/symdev-rl3` (branch f71d1d5, release). Env `env-gcce.sh` (scratch SYMDEV_HOME/XDG).
 - Smoke: examples/hello rust-lld default (GCCE shims) → hello.exe **975 B** = exp 112 lld+stubs;
