@@ -1137,6 +1137,7 @@ dependencies = [
  "symdev-manifest",
  "symdev-sdk",
  "tempfile",
+ "toml",
 ]
 
 [[package]]

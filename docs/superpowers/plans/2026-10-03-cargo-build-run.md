@@ -1010,7 +1010,7 @@ first, before Task 4.
   - `RustProject::resolve(manifest: &Manifest, root: &Path, provision: &Provision, ui: bool)
     -> Result<RustProject>`, with `pub build: RustBuild` and `pub epocroot: PathBuf`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `crates/symdev-cli/tests/ld.rs` drives the real binary through a link named `symdev-ld`:
 
@@ -1109,7 +1109,7 @@ fn a_link_record_says_main_or_names_the_test() {
 }
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `cargo test -p symdev-cli --offline --test ld --test setup_linker` and `cargo test -p
 symdev-cli --offline ld::tests`
@@ -1117,7 +1117,7 @@ Expected: the `symdev-ld` link starts the normal CLI, which prints clap's usage,
 assertions fail; `setup-linker` is an unknown subcommand; `LinkRun` and `LinkRecord` are
 not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `role.rs`:
 
@@ -1298,12 +1298,12 @@ up there`. `cli.rs` gains
 
 and `main.rs` dispatches it.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `cargo test -p symdev-cli --offline`
 Expected: all pass.
 
-- [ ] **Step 5: A real link** (needs the GCCE route environment of experiment 114)
+- [x] **Step 5: A real link** (needs the GCCE route environment of experiment 114)
 
 ```bash
 S=~/src/cargo-run-scratch; cargo build --release --offline -p symdev-cli
@@ -1318,7 +1318,7 @@ ls build/cargo/arm-symbian-e32/release/hello.sisx build/hello.sisx
 `linker = "symdev-ld"`, which `$S/bin4` now resolves to this build.)
 Expected: `EQUAL 975/1348 vs 975/1348`, and both `.sisx` files exist.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add crates/symdev-cli

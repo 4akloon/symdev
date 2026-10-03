@@ -4,11 +4,12 @@ mod common;
 use common::bin;
 
 #[test]
-fn help_lists_only_the_eight_commands() {
+fn help_lists_only_the_known_commands() {
     // `run` (EKA2L1, M5) joined the §17 four on 2026-09-19, `freeze` (DLL exports,
     // experiment 54) the same day, `test` (the result protocol, experiment 79) on
     // 2026-09-20 and `sdk` (the toolchain manager) on 2026-10-02; the other north-star
-    // verbs are still not subcommands.
+    // verbs are still not subcommands. `setup-linker` (cargo's `symdev-ld`, the cargo-run
+    // plan) came on 2026-10-03.
     let assert = bin().arg("--help").assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let commands: Vec<_> = stdout
@@ -21,7 +22,15 @@ fn help_lists_only_the_eight_commands() {
     assert_eq!(
         commands,
         [
-            "new", "build", "package", "deploy", "run", "test", "freeze", "sdk"
+            "new",
+            "build",
+            "package",
+            "deploy",
+            "run",
+            "test",
+            "freeze",
+            "setup-linker",
+            "sdk"
         ],
         "{stdout}"
     );

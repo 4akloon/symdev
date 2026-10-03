@@ -202,4 +202,11 @@ Ledger (git-ignored): `.superpowers/sdd/2026-10-03-cargo-build-run/progress.md`.
   Old test `package_short_password_errors_before_tools` replaced by the two D1 tests; cli
   `package_missing_sign_password` → `package_without_a_password_signs_with_a_generated_pair`.
   READMEs (root, examples, symdev-cli) updated to the new rule.
-NEXT: Task 4 — `task-start <plan> 4`, read brief (big: role + LinkRun + setup-linker).
+- Task 4 done: `Role`, `RustProject`, `LinkRecord`, `LinkRun`, `setup-linker`. Real link
+  (`exec/t4-link.sh`, bin4/ = setup-linker of the release build): plain cargo build of the
+  spike's bin-shape hello, 11 s, EQUAL 975/1348 to out/q2, `.sisx` at `-o`, profile dir and
+  build/ — with NO SYMDEV_SIGN_PASSWORD (D1 = A). Rulings: help test now lists setup-linker;
+  `LinkRecord::read` carries `#[allow(dead_code)]` until Task 13; step 5 adds
+  `--target-dir build/cargo` + `SYMDEV_UID3` (q2's flags; the spike tree's config has no
+  target-dir, and uid3!() comes in Task 5).
+NEXT: Task 5 — `task-start <plan> 5` (target spec + uid3!/report! macros in symbian-rs).

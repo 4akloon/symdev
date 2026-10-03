@@ -183,3 +183,28 @@ fn an_output_outside_cargos_observed_layout_is_refused() {
         assert!(e.contains("not observed"), "{odd}: {e}");
     }
 }
+
+#[test]
+fn two_links_of_one_project_use_two_work_dirs() {
+    let bin =
+        super::LinkRun::work_for(&LinkerArgs::parse(argv("release-bin.argv")).unwrap()).unwrap();
+    let test =
+        super::LinkRun::work_for(&LinkerArgs::parse(argv("release-test.argv")).unwrap()).unwrap();
+    assert_ne!(bin, test);
+    assert!(bin.ends_with("out/app.symdev") && test.ends_with("out/smoke-4f71ac116363b7c1.symdev"));
+}
+
+#[test]
+fn a_link_record_says_main_or_names_the_test() {
+    let dir = tempfile::tempdir().unwrap();
+    for kind in [
+        LinkKind::Main,
+        LinkKind::Test {
+            name: "smoke".into(),
+        },
+    ] {
+        let p = dir.path().join("r.toml");
+        super::LinkRecord { kind: kind.clone() }.write(&p).unwrap();
+        assert_eq!(super::LinkRecord::read(&p).unwrap().kind, kind);
+    }
+}

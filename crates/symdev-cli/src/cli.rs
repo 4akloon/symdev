@@ -42,6 +42,12 @@ pub enum Commands {
     },
     /// Append the DLLs' new exports to their frozen .def files (eabi/<name>u.def).
     Freeze,
+    /// Make the `symdev-ld` and `symdev-rustc` links cargo starts (design spec §4).
+    SetupLinker {
+        /// Where to put them; default: beside this symdev.
+        #[arg(long)]
+        dir: Option<std::path::PathBuf>,
+    },
     /// Manage the toolchain packages (GCCE, platform SDK) under SYMDEV_HOME, from the
     /// sources listed in ~/.config/symdev/sources.toml.
     Sdk {

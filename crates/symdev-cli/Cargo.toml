@@ -19,6 +19,7 @@ symdev-core = { path = "../symdev-core" }
 symdev-emulator = { path = "../symdev-emulator" }
 symdev-manifest = { path = "../symdev-manifest" }
 symdev-sdk = { path = "../symdev-sdk" }
+toml = "1"
 
 [dev-dependencies]
 assert_cmd = "2"

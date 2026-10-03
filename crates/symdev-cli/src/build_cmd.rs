@@ -1,12 +1,13 @@
 //! `symdev build`: one backend per manifest language.
 use std::process::ExitCode;
 
-use symdev_build::{FrozenExports, GcceBuild, RustBuild, UiResources};
+use symdev_build::{FrozenExports, GcceBuild};
 use symdev_core::{BuildBackend, Error, LocalEnv};
 use symdev_manifest::{Language, Manifest};
 
 use crate::build_dir::BuildDir;
 use crate::provision::Provision;
+use crate::rust_project::RustProject;
 
 pub fn build_project(m: Manifest, provision: &Provision) -> Result<ExitCode, Error> {
     let uid3 = m
@@ -21,71 +22,25 @@ pub fn build_project(m: Manifest, provision: &Provision) -> Result<ExitCode, Err
                 .into(),
         ));
     }
-    // Resolved before the toolchain, so a Rust project without its Rust SDK is told so
-    // before the compiler is downloaded.
-    let rust_sdk = m
-        .language
-        .is_rust()
-        .then(|| provision.rust_sdk())
-        .transpose()?;
-    let linker = rust_sdk
-        .as_ref()
-        .map(|_| provision.rust_linker())
-        .transpose()?;
-    // GCCE is left out only when rust-lld links with the Rust SDK's prebuilt set.
-    let gcce = match (&rust_sdk, &linker) {
-        (Some(sdk), Some(linker)) => linker.needs_gcce(sdk)?,
-        _ => true,
-    };
-    if let (Some(sdk), Some(linker)) = (&rust_sdk, &linker)
-        && let Some(note) = provision.prebuilt_note(sdk, linker)?
-    {
-        eprintln!("{note}");
-    }
-    let tools = provision.toolchain(m.target.device, gcce)?;
-    let epocroot = tools.epocroot.clone();
     let project = crate::current_project()?;
-    BuildDir::of(&project.root).create()?;
-    // A `[ui]` project's icon is built by the Rust backend's own resource stage,
-    // which names it after the application rather than after an MMP target there is
-    // none of; `GcceBuild` must not also try, or `AppIcon::of` fails looking for one.
-    let icon = m.symbian.icon.clone();
-    // `locales/` may translate the caption; the launcher reads each translation from
-    // its own `<app>.r<code>`, so the resource stage needs to know them.
-    let locales = symdev_locale::Locales::load(&project.root.join("locales"))
-        .map_err(|e| Error::Other(e.to_string()))?;
-    let ui = m.ui.map(|ui| {
-        UiResources {
-            app: m.package.name.clone(),
+    let (artifacts, epocroot) = if m.language.is_rust() {
+        let rust = RustProject::resolve(&m, &project.root, provision, true)?;
+        BuildDir::of(&project.root).create()?;
+        (rust.build.build(&project)?, rust.epocroot)
+    } else {
+        let tools = provision.toolchain(m.target.device, true)?;
+        let epocroot = tools.epocroot.clone();
+        BuildDir::of(&project.root).create()?;
+        let gcce = GcceBuild {
+            env: LocalEnv,
+            tools,
             uid3,
-            ui,
-            icon: icon.as_ref().map(|i| project.root.join(i)),
-            captions: Vec::new(),
-        }
-        .with_locales(locales.as_ref())
-    });
-    let gcce = GcceBuild {
-        env: LocalEnv,
-        tools,
-        uid3,
-        capabilities: m.symbian.capabilities,
-        icon: if ui.is_some() { None } else { icon },
-        icons: m.icons,
-        secure_id: m.symbian.secure_id,
-    };
-    let artifacts = match rust_sdk.zip(linker) {
-        None => gcce.build(&project)?,
-        Some((sdk, linker)) => RustBuild {
-            gcce,
-            sdk,
-            cargo: RustBuild::cargo_from_env(),
-            rustc: RustBuild::rustc_from_env(),
-            name: m.package.name,
-            linker,
-            ui,
-            std: m.language.has_std(),
-        }
-        .build(&project)?,
+            capabilities: m.symbian.capabilities,
+            icon: m.symbian.icon,
+            icons: m.icons,
+            secure_id: m.symbian.secure_id,
+        };
+        (gcce.build(&project)?, epocroot)
     };
     for artifact in artifacts {
         println!("{}", artifact.path.display());

@@ -2,12 +2,14 @@ mod artifacts;
 mod build_cmd;
 mod build_dir;
 mod cli;
-#[allow(dead_code, unused_imports)] // Task 4 wires the symdev-ld role
 mod ld;
 mod provision;
+mod role;
+mod rust_project;
 mod scaffold;
 mod scaffold_rust;
 mod sdk_cmd;
+mod setup_linker;
 mod sisx;
 mod test_cmd;
 
@@ -20,9 +22,27 @@ use symdev_core::{Error, Project};
 
 use cli::{Cli, Commands};
 use provision::Provision;
+use role::Role;
 use sisx::ProjectPackage;
 
 fn main() -> ExitCode {
+    let mut args = std::env::args_os();
+    let argv0 = args.next().unwrap_or_default();
+    match Role::of(&argv0) {
+        Role::Linker => {
+            return exit(
+                ld::LinkRun::from_env(args)
+                    .and_then(|r| r.run())
+                    .map(|()| ExitCode::SUCCESS),
+            );
+        }
+        Role::Rustc => {
+            return exit(Err(Error::Other(
+                "symdev-rustc: the rust-std wrapper is not built yet (plan Task 9)".into(),
+            )));
+        }
+        Role::Cli => {}
+    }
     let cli = Cli::parse();
     let provision = Provision::from_env(cli.offline);
     let result = match cli.command {
@@ -53,7 +73,13 @@ fn main() -> ExitCode {
         Some(Commands::Freeze) => freeze_project(&provision),
         Some(Commands::Deploy) => manifest().and_then(deploy_project),
         Some(Commands::Sdk { action }) => sdk_cmd::run(action, &provision),
+        Some(Commands::SetupLinker { dir }) => setup_linker::setup_linker(dir),
     };
+    exit(result)
+}
+
+/// `error: <e>` and status 1, or the command's own status.
+fn exit(result: Result<ExitCode, Error>) -> ExitCode {
     result.unwrap_or_else(|e| {
         eprintln!("error: {e}");
         ExitCode::from(1)
