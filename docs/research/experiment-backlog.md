@@ -4938,3 +4938,36 @@ the packages. Script `~/src/emu-pkg-scratch/exp115/run13.sh`, run under the agen
   `QT_PLUGIN_PATH` exported: rc 0, and the process's `environ` holds neither variable.
 * No emulator was left running; the owner's `~/.local/share/EKA2L1` has nothing newer than
   the run.
+
+### 5. The acceptance, staged (plan Task 15; spec §6)
+
+2026-10-03, 23:44Z. symdev of this branch (`bf85b46`, release build) packed as `symdev;0.4.0`
+and staged with the packages branch's `install.sh` (`777a48f`) into two `file://` sources
+signed with a throwaway key (`~/src/emu-pkg-scratch/accept/stage.sh`): `public` with
+`symdev;0.4.0` (3 223 471 bytes), `rust-sdk;0.4.0` (424 442) and `emulator;2026.10.03`
+(102 819 047, SHA-256 `7dc84337…`); `private` with `sdk;s60-3rd-fp2;1.1` (4 941 155) and
+`firmware;rm-469;1` (133 668 334, `032b6e1d…`). `accept.sh` took the agent lock, then ran
+`inner.sh` under `bwrap` with an empty tmpfs over the owner's `~/.local/share/EKA2L1`, in an
+empty `HOME`, with `env -i` (no `SYMDEV_*` toolchain variable, no `SYMDEV_EKA2L1`, no
+`SYMDEV_EKA2L1_DATA`, no GL variable).
+
+* The owner's folder as seen inside: 0 entries. `install.sh` rc 0: verified the index
+  signature, installed symdev 0.4.0, linked `symdev`, `symdev-ld`, `symdev-rustc`.
+* `symdev new accept --lang rust` rc 0, `installing rust-sdk;0.4.0 (0.4 MB) from public…`.
+* `cargo run` rc 0 in 24.1 s (the hello line after 19.4 s), from nothing installed:
+  `installing sdk;s60-3rd-fp2;1.1 (4.9 MB) from private…` (from the linker), `installing
+  firmware;rm-469;1 (133.7 MB) from private…`, `created profile rm-469`, `installing
+  emulator;2026.10.03 (102.8 MB) from public…`, `starting an emulator on profile rm-469`,
+  `emulator-1 is Nokia N00 (RM-469)`, `Hello from Rust SDK (19 chars)`.
+* `cargo test` rc 0: `test arithmetic ... ok`, `test result: ok. 1 passed; 0 failed`.
+  `symdev devices`: `emulator-1  Nokia N00 (RM-469)  pid …  profile rm-469`; stopped with
+  `symdev emulator stop emulator-1`.
+* Installed: `emulator`, `emulators` (the profile `rm-469`), `firmware`, `rust-sdk`, `sdk`,
+  `symdev`, and the linker's cache; no `gcce`.
+* `accept rc=0`; the owner's `~/.local/share/EKA2L1` has 0 files newer than the run; no
+  `eka2l1_qt` left running.
+* The PID-bound screenshot (`~/src/emu-pkg-scratch/accept/out/accept.png`) is the packaged
+  EKA2L1's window: the app list with `Device N00 (RM-469 - S60v3 FP2)`, as in §4.
+* Seen in passing, not this plan's: the private SDK's install message, printed by
+  `symdev-ld`, reaches the user as rustc's `warning: linker stderr: installing sdk;…`
+  (`linker_messages`).

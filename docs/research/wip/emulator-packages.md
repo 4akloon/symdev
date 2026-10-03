@@ -211,10 +211,13 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   Rehearsal build: ~/src/emu-pkg-scratch/emulator/prefix, 258 MB, glibc floor 2.38, 78 licence
   files, 167 bundled packages. notices-extra.txt: 5 submodules read by hand (RectangleBinPack PD,
   microprofile Unlicense, stb PD/MIT, sdl2-cmake-scripts BSD-2, upscale-shaders per-file headers).
-- [ ] Task 11: code committed (packages 8693baf: Dsc + dsc-files, source.sh; Launchpad form
-  +sourcefiles/<src>/<ver>/<file> answers 303→200, epoch kept in <ver>). source.sh running from
-  ~/src/emu-pkg-scratch/emulator/work (PID 739061, log ../source.log). Next: when EXIT= appears,
-  dry-run publish (brief step 4), record sizes.
+- [x] Task 11: packages 8693baf: Dsc + dsc-files, source.sh (Launchpad +sourcefiles/<src>/<ver>/<file>,
+  303 -> 200, epoch kept). source.sh EXIT=0 in ~7 min (21:36:54-21:43:51Z): 131 Ubuntu source
+  packages, each checked against its .dsc; src-out 1.3 GB unpacked; archive
+  ~/src/emu-pkg-scratch/emulator/source.tar.gz = 785 617 958 bytes. Publish dry run rc 0: packed
+  emulator;2026.10.03 102 819 047 B (sha256 7dc84337...38fd), would upload
+  src/emulator/2026.10.03/411a272e...5bea.tar.gz; index license "GPL-3.0-or-later AND LGPL-3.0-only
+  AND LicenseRef-EKA2L1-bundle" with a source-code key.
 - [x] Task 12: packages 777a48f: .github/workflows/emulator.yml (YAML ok, pins = publish.yml's),
   README section "The emulator and the firmware" + pkgtools rows.
 - [x] Task 13: exp 115 §4: start rc 0 (installs firmware+emulator from file:// sources, 3 s),
@@ -224,4 +227,11 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
 - [x] Task 14: README requirements row + Toolchain packages sentences + device paragraph,
   licensing.md (public-source rule aligned with CLAUDE.md d2e3f57; emulator/firmware bullets),
   symdev-emulator README rewritten, toolchain spec §2 row. CLAUDE.md untouched (owner changed it).
-- [ ] Task 15: next (staged acceptance, exp 115 §5; then gates, review, push, STOP before L1).
+- [ ] Task 15: exp 115 §5 staged acceptance PASSED (accept.sh, bwrap, owner's EKA2L1 dir hidden:
+  0 entries; empty HOME; install.sh rc 0 from file:// public; symdev new rc 0; cargo run rc 0 in
+  24.1 s: installs rust-sdk, sdk (private), firmware rm-469 (private), emulator (public), creates
+  profile rm-469, "emulator-1 is Nokia N00 (RM-469)", "Hello from Rust SDK (19 chars)"; cargo test
+  rc 0 (1 passed); emulator stopped with symdev emulator stop; packages: emulator emulators firmware
+  rust-sdk sdk symdev, no gcce; owner's EKA2L1 files newer than the run: 0; accept rc=0).
+  Shot ~/src/emu-pkg-scratch/accept/out/accept.png: the packaged EKA2L1's window, device
+  "N00 (RM-469 - S60v3 FP2)". No eka2l1_qt left. Next: exp 115 §5 text, final gates, review.

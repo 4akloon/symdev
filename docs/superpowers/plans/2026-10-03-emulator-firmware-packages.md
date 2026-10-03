@@ -3126,7 +3126,7 @@ archive as `src/emulator/<V>/<sha256>.tar.gz` and names it in the index's `sourc
   archive: `<name>/eka2l1/` (the fork commit and every submodule at its recorded commit),
   `<name>/recipe/`, `<name>/ubuntu/<source>/` (D1 = A), and `<name>/SHA256SUMS`.
 
-- [ ] **Step 1: Write the failing tests** at the end of `pkgtools/src/dsc.rs`
+- [x] **Step 1: Write the failing tests** at the end of `pkgtools/src/dsc.rs`
 
 ```rust
 #[cfg(test)]
@@ -3163,7 +3163,7 @@ mod tests {
 Run `cargo test --locked -p pkgtools dsc` (with `mod dsc;` in `main.rs`). Expected:
 unresolved `Dsc`.
 
-- [ ] **Step 2: Implement** `pkgtools/src/dsc.rs` (above the tests)
+- [x] **Step 2: Implement** `pkgtools/src/dsc.rs` (above the tests)
 
 ```rust
 //! `Dsc`: the files of a Debian source package and their SHA-256s, from its `.dsc`
@@ -3208,7 +3208,7 @@ a Debian source package with their SHA-256s, from its .dsc, in sha256sum -c form
 arm reads the file, prints `Dsc::parse(..)?.sha256sums()` and returns 0, or prints `error:
 <path>: <e>` and returns 1. Run step 1's command; expected `test result: ok`.
 
-- [ ] **Step 3: Write `recipes/emulator/<V>/source.sh`**
+- [x] **Step 3: Write `recipes/emulator/<V>/source.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -3259,7 +3259,7 @@ Launchpad keeps every published version's files under
 `https://launchpad.net/ubuntu/+archive/primary/+files/<file>`. Record which form works, and
 use only that one, in the script and in the notes.
 
-- [ ] **Step 4: Make the archive from the rehearsal and dry-run the publish**
+- [x] **Step 4: Make the archive from the rehearsal and dry-run the publish**
 
 ```bash
 E=~/src/emu-pkg-scratch/emulator; P=~/worktrees/symdev-packages/cargo-run
@@ -3278,7 +3278,7 @@ licence of Task 10 and a `source-code` key. Record in the wip file: the package'
 size, the source archive's size, how many Ubuntu source packages it holds, and the time.
 These sizes are D1's "cost" column, measured.
 
-- [ ] **Step 5: Gates and commit** (Task 10 step 9's gate commands)
+- [x] **Step 5: Gates and commit** (Task 10 step 9's gate commands)
 
 ```bash
 git add pkgtools/src/dsc.rs pkgtools/src/main.rs recipes/emulator/<V>/source.sh
@@ -3668,7 +3668,7 @@ reruns it against the real buckets.
 **Interfaces:**
 - Consumes: everything above; the packages branch's `install.sh`.
 
-- [ ] **Step 1: Stage two sources** (`stage.sh`, adapted from
+- [x] **Step 1: Stage two sources** (`stage.sh`, adapted from
   `~/src/cargo-run-scratch/accept/stage.sh`)
 
 - **public** (`accept/public/`): `symdev;0.4.0` (this branch, `SYMDEV_RELEASE=1` release
@@ -3681,7 +3681,7 @@ reruns it against the real buckets.
 
 Use Task 13's stager for both.
 
-- [ ] **Step 2: Write `accept.sh` and `inner.sh`**
+- [x] **Step 2: Write `accept.sh` and `inner.sh`**
 
 `accept.sh` takes the agent lock and hides the owner's EKA2L1 folder:
 
@@ -3709,7 +3709,7 @@ The rest is cargo-run's `accept.sh` unchanged: `install.sh`, `symdev new accept 
 PID-bound screenshot (`$A/out/accept.png`), `cargo test`, `symdev devices`, `symdev emulator
 stop` for each id, and `ls $H/.local/share/symdev`.
 
-- [ ] **Step 3: Run it and read the result**
+- [x] **Step 3: Run it and read the result**
 
 ```bash
 mkdir -p ~/src/emu-pkg-scratch/accept/out && bash ~/src/emu-pkg-scratch/accept/stage.sh && bash ~/src/emu-pkg-scratch/accept/accept.sh
