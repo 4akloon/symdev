@@ -1434,3 +1434,171 @@ cargo test -p symdev-emulator --offline device:: > /tmp/t7.log 2>&1; grep -E "^e
 ```
 
 Expected: `unresolved import crate::device::Firmware` and `no method named check`.
+
+- [ ] **Step 3: Implement**
+
+`crates/symdev-emulator/src/device/firmware.rs`:
+
+```rust
+//! `Firmware`: what an emulator profile is made from (emulator packages spec §5): a
+//! firmware installed in the user's EKA2L1 (reached through `SYMDEV_EKA2L1_DATA`), or an
+//! installed `firmware;<name>;<n>` package.
+use std::path::PathBuf;
+
+use crate::EmulatorData;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Firmware {
+    /// `data/roms/<name>` of the user's EKA2L1 data folder; drive Z, drive C,
+    /// `devices.yml` and `config.yml` are that folder's.
+    UserData { data: EmulatorData, name: String },
+    /// An installed package: `roms/<name>/`, `drives/z/<name>/` and `device.yml` under `root`.
+    Package { root: PathBuf, name: String },
+}
+
+impl Firmware {
+    /// The firmware's folder name, which is also its profile's name (`rm-469`).
+    pub fn name(&self) -> &str {
+        match self {
+            Firmware::UserData { name, .. } | Firmware::Package { name, .. } => name,
+        }
+    }
+
+    /// Every firmware installed in the user's data folder `data` (`data/roms/<name>/`), in
+    /// name order; none when the folder has no `data/roms`.
+    pub fn in_user_data(data: &EmulatorData) -> Vec<Firmware> {
+        let roms = data.root().join("data/roms");
+        let mut names: Vec<String> = std::fs::read_dir(&roms)
+            .map(|dir| {
+                dir.flatten()
+                    .filter(|e| e.path().is_dir())
+                    .filter_map(|e| e.file_name().into_string().ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        names.sort();
+        names
+            .into_iter()
+            .map(|name| Firmware::UserData {
+                data: data.clone(),
+                name,
+            })
+            .collect()
+    }
+}
+```
+
+`emulator_profile.rs`: today's `create(from, firmware)` body below the "already exists"
+check becomes `fn create_from_user(&self, from: &EmulatorData, firmware: &str) ->
+Result<()>`, unchanged. Then:
+
+```rust
+    /// Makes the profile from `firmware`; an existing profile is never overwritten. From
+    /// the user's data: ROM and the whole drive Z linked, `devices.yml`, drive C and
+    /// `config.yml` copied (experiment 114 §2). From a package: ROM and drive Z linked
+    /// into it, its `device.yml` as `devices.yml`, empty C, D and E, and a `config.yml`
+    /// holding only symdev's log filter, every other option at EKA2L1's default
+    /// (experiment 115 §3).
+    pub fn create(&self, firmware: &Firmware) -> Result<()> {
+        if self.dir.symlink_metadata().is_ok() {
+            return Err(Error::Other(format!(
+                "emulator profile {} already exists at {}",
+                self.name,
+                self.dir.display()
+            )));
+        }
+        match firmware {
+            Firmware::UserData { data, name } => self.create_from_user(data, name),
+            Firmware::Package { root, name } => self.create_from_package(root, name),
+        }
+    }
+
+    fn create_from_package(&self, root: &Path, name: &str) -> Result<()> {
+        let data = self.dir.join("data");
+        for dir in ["drives/c", "drives/d", "drives/e", "roms"] {
+            make_dir(&data.join(dir))?;
+        }
+        copy_file(&root.join("device.yml"), &data.join("devices.yml"))?;
+        link(&root.join("roms").join(name), &data.join("roms").join(name))?;
+        link(&root.join("drives/z"), &data.join("drives/z"))?;
+        let out = self.dir.join("config.yml");
+        std::fs::write(&out, format!("{LOG_FILTER}\n")).map_err(|e| file(&out, e))
+    }
+
+    /// Refuses a profile whose ROM or drive Z is a link to nothing (its firmware package
+    /// was uninstalled, or the user's EKA2L1 data moved), before EKA2L1 starts on it.
+    pub fn check(&self) -> Result<()> {
+        let data = self.dir.join("data");
+        let mut links = vec![data.join("drives/z")];
+        if let Ok(roms) = std::fs::read_dir(data.join("roms")) {
+            links.extend(roms.flatten().map(|e| e.path()));
+        }
+        for path in links {
+            let is_link = path.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink());
+            if is_link && !path.exists() {
+                let target = std::fs::read_link(&path).map_err(|e| file(&path, e))?;
+                return Err(Error::Other(format!(
+                    "emulator profile {} links {} to {}, which is gone: its firmware package \
+                     was uninstalled or its EKA2L1 data moved. Install it again (`symdev sdk \
+                     install`), or remove {} and symdev makes the profile again",
+                    self.name,
+                    path.display(),
+                    target.display(),
+                    self.dir.display()
+                )));
+            }
+        }
+        Ok(())
+    }
+```
+
+**If Task 6 ruled copies:** in `create_from_package`, replace the two `link` lines with
+`copy_tree(&root.join("roms"), &root.join("roms").join(name), &data.join("roms").join(name))?;`
+and `copy_tree(&root.join("drives/z"), &root.join("drives/z"), &data.join("drives/z"))?;`.
+Change the first test's two `read_link` assertions to `is_dir()` plus one copied file
+compared with `std::fs::read`. Delete `check()`, its call and its test, which then guard
+nothing, and drop Review Focus item 3 with a note in the wip file.
+
+`emulator_instance.rs`, first line of `start`: `profile.check()?;`.
+
+`results.rs`: delete `EmulatorData::from_env` and its doc comment. Rewrite the struct's doc so
+that it no longer names a default: "EKA2L1's data folder: a profile's own, or the user's
+named by `SYMDEV_EKA2L1_DATA`". The file then has no `std::env` use. Keep the imports
+clippy still needs.
+
+- [ ] **Step 4: Keep the CLI building**
+
+`devices_cmd.rs`'s `profiles()` called `EmulatorData::from_env()`. Until Task 9 wires
+`Provision`, replace those lines with the equivalent that reads the variable in the CLI:
+
+```rust
+        let user = match std::env::var_os("SYMDEV_EKA2L1_DATA").filter(|v| !v.is_empty()) {
+            Some(dir) => EmulatorData::at(std::path::Path::new(&dir)),
+            None => return Ok(Vec::new()),
+        };
+        for firmware in Firmware::in_user_data(&user) {
+            self.profile(firmware.name()).create(&firmware)?;
+            eprintln!("created profile {}", firmware.name());
+        }
+```
+
+This is temporary; Task 9 replaces it. `crates/symdev-cli/tests/run.rs`'s
+`run_with_a_profile_to_start_and_no_emulator_names_symdev_eka2l1` now sets
+`SYMDEV_EKA2L1_DATA` to `user` (its `XDG_DATA_HOME/EKA2L1`) instead of relying on the default
+folder. Every other CLI test that made a firmware under `XDG_DATA_HOME/EKA2L1` does the same:
+`grep -rln 'EKA2L1' crates/symdev-cli/tests` lists them, among them `tests/test_cmd.rs`
+and `tests/common/fake_control.rs`.
+
+- [ ] **Step 5: Run the tests and the gates** (Task 4 step 4's three commands). Expected: all
+  pass, 0 clippy lines.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add crates/symdev-emulator/src/device.rs crates/symdev-emulator/src/device/firmware.rs \
+  crates/symdev-emulator/src/device/emulator_profile.rs crates/symdev-emulator/src/device/emulator_instance.rs \
+  crates/symdev-emulator/src/results.rs crates/symdev-emulator/src/device/tests.rs \
+  crates/symdev-emulator/src/device/tests/firmware.rs crates/symdev-emulator/src/device/tests/profile.rs \
+  crates/symdev-cli/src/devices_cmd.rs crates/symdev-cli/tests
+git commit -m "Make an emulator profile from a firmware package, refuse one whose firmware is gone, and read the user's EKA2L1 data only through SYMDEV_EKA2L1_DATA."
+```
