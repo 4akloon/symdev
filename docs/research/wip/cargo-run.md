@@ -246,4 +246,11 @@ Ledger (git-ignored): `.superpowers/sdd/2026-10-03-cargo-build-run/progress.md`.
   5+6 (measured on async: E32Main 0x66c (T5) → 0x720 (+180: report `state` in json, finished()
   filters), `Report::record` +8, .rodata +12 `,"state":"`; net vs q2: +60 uncompressed).
   `symbian-rs/examples/README.md` did not exist → created (short how-to; Task 19 updates it).
-NEXT: Task 9 — `task-start <plan> 9` (rust-std via symdev-rustc + sysroot).
+- Task 9 done. Step 1 observation (sdk1 std-hello, wrapper script logging $0, `[build] rustc =
+  "build/symdev-rustc"`): cargo starts it as the ABSOLUTE `<project>/build/symdev-rustc`, 43×
+  from the project root and 3× from `src/` (touch + rebuild). `StdSysroot` (build/sysroot:
+  `StdSrc::materialise_into` lib/rustlib/src/rust + link lib/rustlib/<host> via
+  `RustLld::in_sysroot`'s host parse; link build/symdev-rustc → current_exe), `RustcWrapper`
+  (exec rustc --sysroot <dir of argv0>/sysroot; errors without a sysroot, naming `symdev
+  build`); std-hello/std-net in bin shape with the plan's config. Real std build is Task 15.
+NEXT: Task 10 — `task-start <plan> 10` (EKA2L1 with --control/--data-dir; profiles).

@@ -1948,7 +1948,7 @@ git commit -m "Build the no_std examples as binaries that cargo links through sy
     Experiment 114 §1.4 (H4) showed that a path with a slash is taken relative to the
     directory holding `.cargo/`.
 
-- [ ] **Step 1: Observe what cargo hands the wrapper as `argv[0]`**
+- [x] **Step 1: Observe what cargo hands the wrapper as `argv[0]`**
 
 The wrapper finds the sysroot from its own path, so that path must be the link's, not
 `symdev`'s. In `~/src/cargo-run-scratch/sdk1/symbian-rs/examples/std-hello`, write
@@ -1959,7 +1959,7 @@ and from `src/`. Record `argv0.txt` in `docs/research/wip/cargo-run.md`.
 Expected: an absolute `<project>/build/symdev-rustc` both times. If it is relative, resolve
 it against the current directory in `RustcWrapper`, and make the test in Step 2 cover that.
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 `std_sysroot.rs` tests (with a fake toolchain: a temp dir with
 `lib/rustlib/src/rust/library/std/Cargo.toml` and `lib/rustlib/x86_64-unknown-linux-gnu/lib/`,
@@ -1984,12 +1984,12 @@ fn the_sysroot_holds_the_patched_library_and_links_the_host_libraries() {
 `sysroot/` beside it, put a fake `rustc` (a script that prints its argv) in `SYMDEV_RUSTC`,
 and run `build/symdev-rustc -vV`. Expected stdout: `--sysroot <tmp>/build/sysroot -vV`.
 
-- [ ] **Step 3: Run them to see them fail**
+- [x] **Step 3: Run them to see them fail**
 
 Run: `cargo test -p symdev-build --offline std_sysroot` and `cargo test -p symdev-cli
 --offline --test rustc_wrapper`. Expected: not found / the CLI prints Task 4's "not built yet" error.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 `StdSysroot::materialise` calls `StdSrc::materialise_into(sdk, rustc, project_root,
 &dir.join("lib/rustlib/src/rust"))`. That is today's `materialise` with the destination as
@@ -2020,13 +2020,13 @@ linker = "symdev-ld"
 runner = "symdev run --exe"
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run Step 3's commands; expected: pass. The real `std` build (`Compiling std v0.0.0
 (<project>/build/sysroot/lib/rustlib/src/rust/library/std)` and `build/stdhello.sisx`) needs
 `symdev build` to call `StdSysroot`, which Task 15 does; it is Task 15's Step 5.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add crates/symdev-build/src/std_sysroot.rs crates/symdev-build/src/std_src.rs crates/symdev-build/src/lib.rs \

@@ -23,6 +23,7 @@
 //! It reports through `symbian_std::test_report`, which writes
 //! `E:\symdev\results\<uid3>.json`; `symdev test --emulator` reads that back off the
 //! emulated drive and fails the build if any case failed.
+#![no_main]
 
 use std::fs::{self, File};
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};

@@ -20,6 +20,7 @@
 //!
 //! The example blocks on each in turn, so starting only one leaves it waiting and no
 //! report is written — which reads as a network failure and is not one.
+#![no_main]
 
 use std::io::{Read, Write};
 use std::net::ToSocketAddrs;

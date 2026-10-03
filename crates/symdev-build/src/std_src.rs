@@ -68,9 +68,21 @@ impl StdSrc {
     /// `rustc` is the compiler whose `rust-src` is copied — the pinned nightly, found
     /// the same way `RustBuild` finds cargo.
     pub fn materialise(sdk: &RustSdk, rustc: &Path, project_root: &Path) -> Result<Self> {
+        Self::materialise_into(sdk, rustc, project_root, &Self::dir_for(project_root))
+    }
+
+    /// [`Self::materialise`] into `root` (which receives `library/`): `StdSysroot` puts
+    /// it at `<sysroot>/lib/rustlib/src/rust`, where rustc looks for `rust-src`.
+    pub fn materialise_into(
+        sdk: &RustSdk,
+        rustc: &Path,
+        project_root: &Path,
+        root: &Path,
+    ) -> Result<Self> {
         let library = Self::toolchain_library(rustc, project_root)?;
-        let root = Self::dir_for(project_root);
-        let this = Self { root };
+        let this = Self {
+            root: root.to_path_buf(),
+        };
         if this.root.exists() {
             std::fs::remove_dir_all(&this.root).map_err(io)?;
         }

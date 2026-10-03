@@ -6,6 +6,7 @@ mod ld;
 mod provision;
 mod role;
 mod rust_project;
+mod rustc_wrapper;
 mod scaffold;
 mod scaffold_rust;
 mod sdk_cmd;
@@ -37,9 +38,9 @@ fn main() -> ExitCode {
             );
         }
         Role::Rustc => {
-            return exit(Err(Error::Other(
-                "symdev-rustc: the rust-std wrapper is not built yet (plan Task 9)".into(),
-            )));
+            return exit(
+                rustc_wrapper::RustcWrapper::run(Path::new(&argv0), args).map(|n| match n {}),
+            );
         }
         Role::Cli => {}
     }

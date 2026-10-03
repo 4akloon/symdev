@@ -7,12 +7,11 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/4akloon/symdev"
-# `src/main.rs` is a library: rustc never links, symdev does (design spec §3).
-autobins = false
 
-[lib]
+[[bin]]
+name = "stdnet"
 path = "src/main.rs"
-crate-type = ["staticlib"]
+test = false
 
 [dependencies]
 # The only SDK crate a `std` application needs, and only for the entry attribute, the
@@ -29,8 +28,7 @@ symbian-std = { path = "../../crates/symbian-std", default-features = false, fea
 symbian-sys = { path = "../../crates/symbian-sys" }
 
 # The `symbian-rs` workspace's profile, repeated because this is its own workspace.
-# rustc never links (design spec §3): the crate is a `staticlib` that symdev's recorded
-# `ld` line consumes. Size over speed, one object per archive, no unwinder.
+# cargo links through symdev-ld (experiment 114). Size over speed, one object, no unwinder.
 [profile.release]
 opt-level = "s"
 lto = true
