@@ -113,6 +113,23 @@ No push to main / merge / tag / publish; pushing `cargo-run` is allowed.
   REC_THEN): no lock wait, no deadlock; 7.1 s first time (core/alloc for the libcalls profile),
   0.03 s fresh; outer build 14 s / 0.2 s. Same invocation ⇒ same rlib ⇒ same bytes.
 
+- Q5 dev profile (`q2.sh … dev`; tree [profile.dev] = panic abort only):
+  * default dev: argv = symbols.o + 24 CGU objs + 11 rlibs (core/alloc/cb too); objects carry
+    DWARF (`-C debuginfo=2`). 0.3.0's line FAILS: `undefined symbol: strlen` from
+    `alloc::ffi::c_str::CString::from_raw` (hello, async), `symrs_list_destroy` (ui): every
+    GLOBAL DEFAULT symbol of a pulled rlib member is a gc root in the `-shared` link.
+  * dev + `lto = true` (`out/q5a`): links; hello 16 940/44 772, ui 49 420/131 308, async
+    80 104/230 516 (release 975/1 348 …). ELF has no .debug_* (0.3.0's line has `--strip-debug`).
+    Kept DWARF (`SPIKE_KEEP_DEBUG`, `out/q5a-dbg`): hello.elf 3 751 928 B vs 202 656 (.debug_info
+    1 082 485, .debug_str 1 376 786, .debug_line 572 056, …); OUR elf2e32 ACCEPTS it and the
+    .exe is byte-EQUAL to the stripped one (hello, ui).
+  * target spec `"default-visibility": "hidden"` (key name per rustc's list; `default-hidden-
+    visibility` is refused as unknown field): release images EQUAL to out/q2 for hello, ui,
+    async, net, tls (`out/q5d`); default dev WITHOUT lto now LINKS (`out/q5e`): hello
+    16 908/44 568, ui 49 390/131 140, async 79 878/230 504.
+  * EKA2L1: dev hello (q5e image) → `Trying to display: Hello from Rust SDK (19 chars)`,
+    `shots/dev-hello-1.png`, pid 71654 killed by runshot (`emu.sh`, `runshot.py` in scratch).
+
 ## Dead ends
 - (none yet beyond Q4's H1/H2)
 
