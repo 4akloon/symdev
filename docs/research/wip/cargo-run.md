@@ -58,7 +58,22 @@ No push to main / merge / tag / publish; pushing `cargo-run` is allowed.
   expanded in the app crate (or a link-time symbol like `--defsym=symrs_uid3`) can see the
   app's symdev.toml. To verify for the plan.
 
-## Dead ends
+- Q4 (in `sdk1/symbian-rs/examples/std-hello`, old shape; baseline symdev-030 build 21 s
+  materialised `build/rust-src` 82 MB; `out/q4-base.*`):
+  H1 `[env] __CARGO_TESTS_ONLY_SRC_ROOT = {value=…, relative=true}` → NO (std from toolchain
+  rust-src, cfg_select errors). H2 `[target.arm-symbian-e32] rustflags=["--sysroot",<abs>]` →
+  NO (same). H3 toolchain dir `q4/tc-copy`: rustc's sysroot = canonical dir of
+  librustc_driver.so — symlinks resolve back to the nightly; copied `bin/rustc`+`bin/cargo`
+  + HARDLINKED `lib/librustc_driver-*.so` + symlinks for the rest + `lib/rustlib/src/rust` →
+  patched copy ⇒ `--print sysroot` = tc dir, cargo builds core/std from the patched source.
+  Via rustup (scratch RUSTUP_HOME `q4/rustup`, `rustup toolchain link symdev-std …`):
+  rust-toolchain.toml `channel = "symdev-std"` WORKS; `path = "<abs>"` WORKS (no link
+  needed); `path = "<relative>"` → rustup `error: relative path toolchain`.
+  H4 `[build] rustc = "./rustc-std"` (config-relative; works from `src/` too) + wrapper
+  `exec rustc --sysroot <project>/build/sysroot "$@"`, sysroot = `lib/rustlib/<host>` → nightly's
+  + `lib/rustlib/src/rust` → patched copy ⇒ WORKS (12 s), no rustup state, no abs path.
+  Path strings in the image change: `build/rust-src/library/std/src/…` (0.3.0) vs
+  `build/sysroot/lib/rustlib/src/rust/library/std/src/…` (H4) — staticlib 1 289 862 vs 1 290 330.
 
 ## Next
 Read exp 109–113 format, `crates/symdev-build` Rust build path, set up env.
