@@ -35,15 +35,17 @@ fn dll_module_uses_the_sdk_dll_recipe() {
     }
     let job = symdev_elf2e32::Elf2E32::from_args(&args).unwrap();
     assert_eq!(job.uid().uid2, 0x1000_008d);
-    let link = d.link_args_for(
-        &module,
-        "mathlib",
-        Path::new("/p/build/m.o"),
-        Path::new("/p/build/mathlib.elf"),
-        Path::new("/p/build/mathlib.dll.map"),
-        &[],
-        &[PathBuf::from("/p/build")],
-    );
+    let link = d
+        .link_args_for(
+            &module,
+            "mathlib",
+            Path::new("/p/build/m.o"),
+            Path::new("/p/build/mathlib.elf"),
+            Path::new("/p/build/mathlib.dll.map"),
+            &[],
+            &[PathBuf::from("/p/build")],
+        )
+        .unwrap();
     assert!(link.iter().any(|a| a == "-l:edll.lib"));
     assert!(link.iter().any(|a| a == "_E32Dll"));
     assert!(link.iter().any(|a| a == "mathlib{000a0000}[e5d1b001].dll"));

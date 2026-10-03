@@ -1,8 +1,10 @@
 //! `GcceBuild`: linker argv (`arm-none-symbianelf-ld`).
 use std::path::{Path, PathBuf};
 
+use symdev_core::Result;
+
 use super::module::Module;
-use super::{GcceBuild, arg};
+use super::{GcceBuild, Linker, arg};
 
 impl GcceBuild {
     /// Recorded experiment-5 link; `libraries` (MMP `LIBRARY`, as `.dso`) are added
@@ -14,7 +16,7 @@ impl GcceBuild {
         elf: &Path,
         map: &Path,
         libraries: &[String],
-    ) -> Vec<String> {
+    ) -> Result<Vec<String>> {
         self.link_args_for(&self.exe_module(), name, obj, elf, map, libraries, &[])
     }
 
@@ -30,17 +32,35 @@ impl GcceBuild {
         map: &Path,
         libraries: &[String],
         lib_dirs: &[PathBuf],
+    ) -> Result<Vec<String>> {
+        let linker = Linker::gnu(self.tools.gcce()?);
+        Ok(self.link_line(&linker, module, name, obj, elf, map, libraries, lib_dirs))
+    }
+
+    /// The recorded line for `linker`: the GNU one above, or the same line written for
+    /// rust-lld, which the Rust backend then adapts (experiment 113).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn link_line(
+        &self,
+        linker: &Linker,
+        module: &Module,
+        name: &str,
+        obj: &Path,
+        elf: &Path,
+        map: &Path,
+        libraries: &[String],
+        lib_dirs: &[PathBuf],
     ) -> Vec<String> {
         let (entry, first_lib) = if module.dll {
             ("_E32Dll", "-l:edll.lib")
         } else {
             ("_E32Startup", "-l:eexe.lib")
         };
-        let mut args: Vec<String> = vec![
-            arg(&self.tools.ld),
-            format!("-L{}/", self.tools.gcc_lib.display()),
+        let mut args = linker.program.clone();
+        args.extend([
+            format!("-L{}/", linker.gcc_lib.display()),
             "-L".into(),
-            arg(&self.tools.gcc_target_lib),
+            arg(&linker.gcc_target_lib),
             "--target1-abs".into(),
             "--no-undefined".into(),
             "-nostdlib".into(),
@@ -76,7 +96,7 @@ impl GcceBuild {
             "-(".into(),
             "-l:usrt2_2.lib".into(),
             "-)".into(),
-            format!("-L{}", self.tools.gcc_target_lib.display()),
+            format!("-L{}", linker.gcc_target_lib.display()),
             format!(
                 "-L{}",
                 self.tools
@@ -90,7 +110,7 @@ impl GcceBuild {
             "-l:drtaeabi.dso".into(),
             "-l:scppnwdl.dso".into(),
             "-l:drtrvct2_2.dso".into(),
-        ];
+        ]);
         let at = args.len() - 6;
         for (i, dir) in lib_dirs.iter().enumerate() {
             args.insert(at + i, format!("-L{}", dir.display()));

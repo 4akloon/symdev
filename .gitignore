@@ -14,5 +14,8 @@
 # has a `target/` of its own that the line above does not cover.
 /symbian-rs/examples/*/target/
 /symbian-rs/examples/*/build/
+# The prebuilt shims and GCC runtime the release recipe (`prebuilt.sh`) writes; a checkout
+# that has them links them instead of compiling `shims/` (`RustPrebuilt`). Never tracked.
+/symbian-rs/prebuilt/
 
 __pycache__/

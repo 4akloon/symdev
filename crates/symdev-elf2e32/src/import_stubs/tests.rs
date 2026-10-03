@@ -196,3 +196,15 @@ fn a_gnu_link_is_refused_as_a_first_link() {
     let err = ImportStubs::from_first_link(&elf).unwrap_err().to_string();
     assert!(err.contains("lld"), "{err}");
 }
+
+#[test]
+fn jump_slots_lists_every_plt_relocation_and_a_gnu_link_has_none() {
+    // The check after the second link: any R_ARM_JUMP_SLOT left means a call the stubs
+    // did not cover, and elf2e32 would refuse it.
+    let lld = ElfImage::parse(unhex(include_str!("../testdata/hello_lld.elf.hex"))).unwrap();
+    let slots = lld.jump_slots().unwrap();
+    assert_eq!(slots.len(), 16);
+    assert_eq!(slots, lld.plt_imports().unwrap());
+    let gnu = ElfImage::parse(unhex(include_str!("../testdata/hello.elf.hex"))).unwrap();
+    assert_eq!(gnu.jump_slots().unwrap(), Vec::<String>::new());
+}

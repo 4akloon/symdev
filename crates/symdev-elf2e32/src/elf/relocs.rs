@@ -59,6 +59,23 @@ impl ElfImage {
             .collect()
     }
 
+    /// The symbol of every `R_ARM_JUMP_SLOT`, defined or not (an empty name for none), in
+    /// file order. An lld link whose calls all go through import stubs has none; one left
+    /// is a PLT entry elf2e32 cannot turn into an import.
+    pub fn jump_slots(&self) -> Result<Vec<String>> {
+        let dynsym = self
+            .section(Self::SHT_DYNSYM)
+            .ok_or_else(|| Error::Other("ELF has no .dynsym".into()))?;
+        self.dynamic_relocs()?
+            .into_iter()
+            .filter(|rel| rel.kind == Self::R_ARM_JUMP_SLOT)
+            .map(|rel| match rel.symbol {
+                0 => Ok(String::new()),
+                _ => self.string(dynsym.link, rel.symbol_name),
+            })
+            .collect()
+    }
+
     /// Dynamic relocations against defined symbols (the image's own fixups), in file order.
     pub fn local_relocs(&self) -> Result<Vec<ElfLocalReloc>> {
         let mut out = Vec::new();

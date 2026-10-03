@@ -5,13 +5,15 @@ use super::*;
 #[test]
 fn link_args_append_mmp_libraries_once() {
     let d = fake();
-    let args = d.link_args(
-        "gui",
-        Path::new("/p/build/gui.o"),
-        Path::new("/p/build/gui.elf"),
-        Path::new("/p/build/gui.exe.map"),
-        &["euser.dso".into(), "avkon.dso".into()],
-    );
+    let args = d
+        .link_args(
+            "gui",
+            Path::new("/p/build/gui.o"),
+            Path::new("/p/build/gui.elf"),
+            Path::new("/p/build/gui.exe.map"),
+            &["euser.dso".into(), "avkon.dso".into()],
+        )
+        .unwrap();
     assert_eq!(args.iter().filter(|a| *a == "-l:euser.dso").count(), 1);
     let avkon = args.iter().position(|a| a == "-l:avkon.dso").unwrap();
     let supcpp = args.iter().position(|a| a == "-lsupc++").unwrap();
@@ -21,13 +23,15 @@ fn link_args_append_mmp_libraries_once() {
 #[test]
 fn link_args_use_ld_2_29_1_recorded_experiment_5() {
     let d = fake();
-    let args = d.link_args(
-        "hello",
-        Path::new("/proj/build/hello.o"),
-        Path::new("/proj/build/hello.elf"),
-        Path::new("/proj/build/hello.exe.map"),
-        &[],
-    );
+    let args = d
+        .link_args(
+            "hello",
+            Path::new("/proj/build/hello.o"),
+            Path::new("/proj/build/hello.elf"),
+            Path::new("/proj/build/hello.exe.map"),
+            &[],
+        )
+        .unwrap();
     assert_eq!(
         args.first().map(String::as_str),
         Some("/gcc/binutils/bin/arm-none-symbianelf-ld")

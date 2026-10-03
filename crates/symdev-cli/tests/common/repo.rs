@@ -111,24 +111,48 @@ impl World {
 
     /// A `rust-sdk` package of this symdev's version with the files a Rust build checks.
     pub fn add_stub_rust_sdk(&mut self) {
+        self.add_rust_sdk(&[]);
+    }
+
+    /// The same with the prebuilt shims and GCC runtime of a release (0.3.0 on), with
+    /// which rust-lld links a Rust project without GCCE.
+    pub fn add_stub_rust_sdk_with_prebuilt(&mut self) {
+        self.add_rust_sdk(&[
+            ("symbian-rs/prebuilt/lib/libsymrs.a", "!<arch>\n", false),
+            ("symbian-rs/prebuilt/lib/libsymrs_ui.a", "!<arch>\n", false),
+            ("symbian-rs/prebuilt/lib/libsupc++.a", "!<arch>\n", false),
+            ("symbian-rs/prebuilt/lib/libgcc.a", "!<arch>\n", false),
+        ]);
+    }
+
+    fn add_rust_sdk(&mut self, extra: &[(&str, &str, bool)]) {
         let id = symdev_sdk::Pins::rust_sdk();
-        self.add(
-            id.as_str(),
-            Host::Any,
-            &[
-                ("Cargo.toml", "", false),
-                ("crates/symdev-locale/Cargo.toml", "", false),
-                ("symbian-rs/targets/arm-symbian-e32.json", "{}\n", false),
-                (
-                    "symbian-rs/rust-toolchain.toml",
-                    super::SDK_TOOLCHAIN,
-                    false,
-                ),
-                ("symbian-rs/Cargo.toml", super::SDK_WORKSPACE, false),
-                ("symbian-rs/crates/symbian-std/Cargo.toml", "", false),
-                ("symbian-rs/crates/symbian-core/Cargo.toml", "", false),
-            ],
-        );
+        let files = [
+            ("Cargo.toml", "", false),
+            ("crates/symdev-locale/Cargo.toml", "", false),
+            ("symbian-rs/targets/arm-symbian-e32.json", "{}\n", false),
+            ("symbian-rs/targets/symbian-lld.ld", "SECTIONS {}\n", false),
+            (
+                "symbian-rs/rust-toolchain.toml",
+                super::SDK_TOOLCHAIN,
+                false,
+            ),
+            ("symbian-rs/Cargo.toml", super::SDK_WORKSPACE, false),
+            ("symbian-rs/crates/symbian-std/Cargo.toml", "", false),
+            ("symbian-rs/crates/symbian-core/Cargo.toml", "", false),
+        ];
+        let files: Vec<_> = files.iter().chain(extra).copied().collect();
+        self.add(id.as_str(), Host::Any, &files);
+    }
+
+    /// A cargo that prints its arguments and fails, so a build stops right after the
+    /// toolchain is set up and shows what was installed for it.
+    pub fn stub_cargo(&self) -> PathBuf {
+        let path = self.tmp.path().join("cargo");
+        fs::write(&path, "#!/bin/sh\necho \"stub cargo $*\" >&2\nexit 1\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        path
     }
 
     /// `symdev` in this world ([`super::bin`] with this world's directories).
@@ -142,6 +166,13 @@ impl World {
     }
 
     fn place(&self, mut cmd: Command) -> Command {
+        // A rust-lld of its own, so a build never asks the host's `rustc` for one; a test of
+        // that lookup removes the variable.
+        let rust_lld = self.tmp.path().join("rust-lld");
+        if !rust_lld.exists() {
+            fs::write(&rust_lld, "#!/bin/sh\nexit 1\n").unwrap();
+        }
+        cmd.env("SYMDEV_RUST_LLD", rust_lld);
         cmd.env("SYMDEV_HOME", self.home())
             .env("XDG_DATA_HOME", self.tmp.path().join("data"))
             .env("XDG_CACHE_HOME", self.tmp.path().join("cache"))

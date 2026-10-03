@@ -177,8 +177,9 @@ feature.
 
 ## 4. Auto-install
 
-Every command that needs the toolchain — `symdev build` (C++ and Rust: the Rust SDK's C++
-shims use GCCE too) and anything that reads `bld.inf` (it needs `epocroot`) — does this:
+Every command that needs the toolchain — `symdev build` (C++, and Rust unless rust-lld links
+it with the Rust SDK's prebuilt shims, §12) and anything that reads `bld.inf` (it needs
+`epocroot`) — does this:
 
 1. work out the required ids from the device and the pins;
 2. drop an id whose every field is already set by the environment;
@@ -469,6 +470,31 @@ Rust for a C++ project.
   should be — and one whose `rust-toolchain.toml` names a channel other than the SDK's (a
   project without that file, like the SDK's own examples, is not checked). The SDK directory
   must be named `symbian-rs`, as it is in a checkout and in the package.
+- **The Rust linker (added 2026-10-03, symdev 0.3.0; experiment 113).** A Rust project is
+  linked by rust-lld (`RustLinker::Lld`), found as `<sysroot>/lib/rustlib/<host>/bin/rust-lld`
+  with `rustc --print sysroot` and `rustc -vV` run in the project (its `rust-toolchain.toml`
+  applies), or `SYMDEV_RUST_LLD`. `SYMDEV_RUST_LINKER=gnu` keeps GCCE's GNU ld and the line
+  of 0.2.0, argv for argv (`RustLinker::Gnu`); both variables are read by the CLI only.
+  `rust-sdk` from 0.3.0 holds `symbian-rs/prebuilt/lib` (`RustPrebuilt`: `libsymrs.a`,
+  `libsymrs_ui.a`, and the `libsupc++.a`/`libgcc.a` members they need, made by the release
+  recipe's `prebuilt.sh`). With it and rust-lld, **a Rust build needs no GCCE**: `Provision`
+  neither installs nor resolves `gcce` (`Toolchain::gcce` is `None`), for `symdev build` and
+  for `symdev sdk install` alike, which resolves (and installs) the Rust SDK first to see
+  whether it has the set. Without the set — a source checkout — the shims are compiled with
+  GCCE as before, their `R_ARM_TARGET2` rewritten to `R_ARM_ABS32`, and rust-lld links them.
+  The line is the recorded one written for rust-lld (`Linker::lld`) and adapted by `LldLine`
+  (experiment 109 §2: no `--default-symver`, `-z notext --target2=abs -Bsymbolic -T
+  symbian-rs/targets/symbian-lld.ld`, `--defsym=symrs_uid3=0x<uid3>` for the prebuilt Avkon
+  shim, the prebuilt `lib/` for the GCCE runtime directories); it runs twice, the second time
+  with `build/import_stubs.o` and `--wrap=<f>` per called import (`ImportStubs`, experiment
+  112), and a `R_ARM_JUMP_SLOT` left after it is an error naming the symbols. lld refuses
+  some SDK files as shipped, so `SdkLldCache` keeps fixed copies of the files the line names
+  under `$SYMDEV_HOME/cache/sdk-lld/<32 hex>`, the name a SHA-256 of the fix rules, the SDK's
+  canonical path and each file's name and contents: made at the first link that needs them
+  (not at `sdk install`, which a `SYMDEV_EPOCROOT` never passes through), never stale, never
+  shipped. The byte fixes are public types of `symdev-elf2e32` (`StrtabPadding`,
+  `Target2Rewrite`), which the packages repository's recipe also uses. C++ projects keep
+  GNU ld.
 - **Build.** Static, `x86_64-unknown-linux-musl`, so the binary runs on any Linux whatever its
   glibc; this can only be proven in CI (no musl tools on the owner's host). Fallback if musl
   fails: a glibc build in the AlmaLinux 8 container, as for GCCE.

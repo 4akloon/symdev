@@ -91,11 +91,12 @@ and their causes are tracked in [docs/research/size-levers.md](docs/research/siz
 
 | Needed | Why | Comes from |
 |---|---|---|
-| GCCE cross compiler (GCC 12.1.0 + binutils 2.29.1, `arm-none-symbianelf`) | C++ projects and the Rust SDK's C++ shims | package `gcce;12.1.0`, or `SYMDEV_GXX`, `SYMDEV_LD`, `SYMDEV_GCC_LIB`, `SYMDEV_GCC_TARGET_LIB` |
+| GCCE cross compiler (GCC 12.1.0 + binutils 2.29.1, `arm-none-symbianelf`) | C++ projects; a Rust project only when the Rust SDK has no prebuilt shims (a source checkout) or with `SYMDEV_RUST_LINKER=gnu` | package `gcce;12.1.0`, or `SYMDEV_GXX`, `SYMDEV_LD`, `SYMDEV_GCC_LIB`, `SYMDEV_GCC_TARGET_LIB` |
 | S60 3rd FP2 SDK (headers, `.dso` stubs, static libraries) | compiling and linking | package `sdk;s60-3rd-fp2;1.1`, or `SYMDEV_EPOCROOT` |
 | Self-signing password (4+ characters) | `symdev package` | `SYMDEV_SIGN_PASSWORD` |
 | Rust SDK (`symbian-rs/`) | Rust projects only | `SYMDEV_RUST_SDK`, else the checkout symdev was built from, else package `rust-sdk;<symdev's version>` |
 | Rust nightly, pinned in `symbian-rs/rust-toolchain.toml`, and a host C linker (`cc`, e.g. `build-essential`) | Rust projects only (`-Zbuild-std`; build scripts and the SDK's proc macros link on the host, as for any Rust project); a C++ project needs neither | rustup, your distribution |
+| `rust-lld` | Rust projects: links them (see [Linking Rust programs](#linking-rust-programs)) | the pinned nightly's own `rustc` component (rustup installs it), or `SYMDEV_RUST_LLD` |
 | EKA2L1 (optional) | `symdev run`, `symdev test --emulator` | `SYMDEV_EKA2L1` |
 
 ### Toolchain packages
@@ -109,7 +110,10 @@ A download must average at least 16 KiB/s (the 67 MB GCCE then takes up to 70 mi
 that is cut off is not resumed, and the next build downloads it again from the start.
 
 Each `SYMDEV_*` toolchain variable that is set overrides its package path, field by field, so an
-environment that sets all of them installs nothing and builds as before. `SYMDEV_AR` overrides
+environment that sets all of them installs nothing; a C++ project builds as before, and a Rust
+project links with rust-lld, which needs a home for its SDK fix cache (`SYMDEV_HOME`, `XDG_DATA_HOME`
+or `HOME`; see [Linking Rust programs](#linking-rust-programs)) unless `SYMDEV_RUST_LINKER=gnu`
+keeps GNU ld. `SYMDEV_AR` overrides
 the `ar` that otherwise sits beside the linker, and `SYMDEV_ELF2E32` an external post-linker in
 place of the native one.
 
@@ -174,6 +178,30 @@ committed, so in a fresh clone, or after `rm -rf build`, run `symdev build` once
 with the exact lines to change, when the project still names another SDK by absolute path (as
 symdev 0.1.0 scaffolds did) or its `rust-toolchain.toml` names another nightly than the SDK's.
 
+### Linking Rust programs
+
+A Rust program is linked by **rust-lld**, the linker every Rust toolchain ships, run as
+`rust-lld -flavor gnu` from the project's own toolchain (`rustc --print sysroot` in the project,
+so its `rust-toolchain.toml` applies; `SYMDEV_RUST_LLD` names another). With the prebuilt shims
+the `rust-sdk` package carries from 0.3.0 on (`symbian-rs/prebuilt/`: the SDK's C++ shims and
+the four GCC runtime members they need, compiled once), a Rust project needs **no GCCE at all**:
+`symdev build` and `symdev sdk install` install only the Rust SDK and the platform SDK. A source
+checkout has no `prebuilt/`; there the shims are compiled with GCCE as before and rust-lld links
+them. The link line is the recorded GNU one with the changes experiments 109 and 112 found
+necessary, plus [`symbian-rs/targets/symbian-lld.ld`](symbian-rs/targets/symbian-lld.ld); it
+runs twice, the second time with GNU ld's 8-byte import stubs in place of lld's PLT, so the
+images are the size GNU ld makes them: −108 to +20 bytes uncompressed over the 21 SDK examples
+(experiment 113).
+
+lld refuses some SDK files as they are (the `.strtab` padding of most `.dso`, one
+`R_ARM_TARGET2` in `usrt2_2.lib`), so the first rust-lld link copies the files the line names,
+fixed, into `$SYMDEV_HOME/cache/sdk-lld/<hash>/`. The hash covers the SDK's path and every
+file's contents, so the copies follow whichever SDK the build uses — the package or your
+`SYMDEV_EPOCROOT` — and are never stale. They are SDK bytes: they stay on your machine.
+
+`SYMDEV_RUST_LINKER=gnu` links with GCCE's GNU ld instead, with the line every Rust build used
+before rust-lld, argv for argv; it needs GCCE. C++ projects always link with GNU ld.
+
 EKA2L1 is GPL-3.0 and runs as a separate process; it is never linked into or copied into this
 repository. The SDK, ROM images and real signing keys are never committed. The only key material
 in the tree is the throwaway DSA keys, certificate and signed test packages under
@@ -194,7 +222,8 @@ It installs the newest `symdev` package into `SYMDEV_HOME` and links `~/.local/b
 it; running it again updates. A C++ project then needs no Rust at all. A Rust project needs
 rustup (the project's `rust-toolchain.toml` names the nightly) and a host C linker `cc`, as any
 Rust project with build scripts does, and its first `symdev build` installs the `rust-sdk`
-package beside GCCE.
+package and the platform SDK — and no GCCE, which a `rust-sdk` with prebuilt shims (0.3.0 on)
+makes unnecessary.
 
 **From source**, with Rust 1.98.1, in a clone of this repository:
 

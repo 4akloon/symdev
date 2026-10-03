@@ -8,9 +8,11 @@
 use std::path::{Path, PathBuf};
 
 use symdev_core::{Project, RemotePath, Result};
+use symdev_elf2e32::Target2Rewrite;
 
 use super::{CompileFlags, CompileIncludes, RustBuild, arg, io};
 use crate::resources::SdkIncludeCaseFold;
+use crate::{RustLinker, RustPrebuilt, file_error};
 
 impl RustBuild {
     /// Where the shim object for `source` goes: `build/shims/<stem>.o`, under the
@@ -107,9 +109,38 @@ impl RustBuild {
 
     /// `ar cr <archive> <objects…>`, the one archiver invocation.
     pub fn ar_args(&self, archive: &Path, objects: &[PathBuf]) -> Result<Vec<String>> {
-        let mut args = vec![arg(&self.gcce.tools.ar()?), "cr".into(), arg(archive)];
+        let mut args = vec![
+            arg(&self.gcce.tools.gcce()?.ar()?),
+            "cr".into(),
+            arg(archive),
+        ];
         args.extend(objects.iter().map(|o| arg(o)));
         Ok(args)
+    }
+
+    /// The shim archives the link names, in order. With the prebuilt set (rust-lld and an
+    /// installed `rust-sdk`) its archives, compiled once; else this application's own,
+    /// compiled now with GCCE — and for rust-lld with their `R_ARM_TARGET2` rewritten to
+    /// `R_ARM_ABS32`, as the prebuilt set's are (experiment 109 §2, change 5). GNU ld's
+    /// archive is left exactly as `ar` wrote it.
+    pub(super) fn shim_archives(
+        &self,
+        project: &Project,
+        cwd: &RemotePath,
+        prebuilt: Option<&RustPrebuilt>,
+    ) -> Result<Vec<PathBuf>> {
+        if let Some(p) = prebuilt {
+            return Ok(p.shims(self.ui.is_some()));
+        }
+        let Some(archive) = self.build_shims(project, cwd)? else {
+            return Ok(Vec::new());
+        };
+        if matches!(self.linker, RustLinker::Lld { .. }) {
+            let bytes = std::fs::read(&archive).map_err(|e| file_error(&archive, e))?;
+            let fixed = Target2Rewrite::archive(&bytes).map_err(|e| file_error(&archive, e))?;
+            std::fs::write(&archive, fixed.bytes()).map_err(|e| file_error(&archive, e))?;
+        }
+        Ok(vec![archive])
     }
 
     /// Compiles every SDK shim source into `build/shims/` and archives the objects.

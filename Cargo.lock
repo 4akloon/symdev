@@ -1104,6 +1104,7 @@ version = "0.2.0"
 dependencies = [
  "der",
  "sha1",
+ "sha2",
  "symbian-fmt",
  "symdev-core",
  "symdev-elf2e32",
