@@ -2410,12 +2410,18 @@ fn another_protocol_is_refused_with_what_to_install() {
 }
 
 #[test]
-fn a_closed_connection_says_the_emulator_closed_it() {
+fn a_quiet_socket_is_no_exit_and_a_closed_one_is_the_emulator_gone() {
     let (_d, sock) = fake(|_| Vec::new());
-    let mut c = ControlClient::connect(&sock).unwrap();
-    drop(std::os::unix::net::UnixStream::connect(&sock)); // nothing; the fake answers nothing
-    let e = c.next_exit(Duration::from_millis(200));
-    assert!(matches!(e, Ok(None)), "a quiet socket is no exit yet");
+    let mut quiet = ControlClient::connect(&sock).unwrap();
+    assert!(matches!(quiet.next_exit(Duration::from_millis(200)), Ok(None)));
+
+    let dir = tempfile::tempdir().unwrap();
+    let gone = dir.path().join("g.sock");
+    let listener = UnixListener::bind(&gone).unwrap();
+    std::thread::spawn(move || drop(listener.accept().unwrap())); // accept, then hang up
+    let mut c = ControlClient::connect(&gone).unwrap();
+    let e = c.next_exit(Duration::from_secs(2)).unwrap_err().to_string();
+    assert!(e.starts_with("the emulator closed its control connection"), "{e}");
 }
 
 #[test]
