@@ -578,3 +578,208 @@ Expected: 10 passed. Then `cargo fmt --all` and `cargo clippy -p symdev-cli --al
 git add crates/symdev-cli/src/main.rs crates/symdev-cli/src/ld.rs crates/symdev-cli/src/ld
 git commit -m "Read rustc's linker argv and cargo's variables as experiment 114 recorded them."
 ```
+
+### Task 2: `RustBuild` links rustc's inputs in a directory of its own
+
+**Files:**
+- Modify: `crates/symdev-build/src/driver/link_inputs.rs` (`archive` → `rust: &[PathBuf]`)
+- Modify: `crates/symdev-build/src/driver/rust_link.rs` (`link_args`, `link_line` take `&[PathBuf]`)
+- Modify: `crates/symdev-build/src/driver/rust_lld_link.rs` (passes `inputs.rust`)
+- Modify: `crates/symdev-build/src/driver/rust_shims.rs` (`shim_archives`, `build_shims` take the work directory)
+- Modify: `crates/symdev-build/src/driver/rust_build.rs` (the 0.3.0 path passes `&[archive]` and `build/`)
+- Create: `crates/symdev-build/src/driver/rustc_link.rs` (`RustcLink`, `RustBuild::link_rustc_output`)
+- Modify: `crates/symdev-build/src/driver/mod.rs`, `crates/symdev-build/src/lib.rs` (export `RustcLink`)
+- Test: `crates/symdev-build/src/driver/tests/{rust_build,libcalls,lld_line,link,rust_ui,rust_lld_link}.rs`
+
+**Interfaces:**
+- Consumes: nothing from Task 1.
+- Produces:
+  - `pub struct RustcLink { pub inputs: Vec<PathBuf>, pub work: PathBuf }`.
+  - `RustBuild::link_rustc_output(&self, project: &Project, link: &RustcLink) ->
+    Result<Vec<Artifact>>`. The first artifact is `link.work/<name>.exe`; the UI and strings
+    resources follow, all inside `link.work`.
+  - `RustBuild::link_args(&self, rust: &[PathBuf], shim: Option<&Path>, libcalls:
+    Option<&Path>, elf: &Path, map: &Path) -> Result<Vec<String>>`.
+
+Experiment 114 §1.2 proved the rule this task encodes. rustc's inputs take the staticlib's
+place in order: the first where the archive stood, the rest right after it, before the
+shims and libcalls. With that rule all 19 `no_std` images are byte-equal.
+
+- [ ] **Step 1: Write the failing tests** — append to `crates/symdev-build/src/driver/tests/rust_build.rs`
+
+```rust
+#[test]
+fn rustc_inputs_stand_where_the_archive_stood_in_order() {
+    let b = rust();
+    let (elf, map) = (Path::new("/p/w/hello.elf"), Path::new("/p/w/hello.exe.map"));
+    let obj = PathBuf::from("/p/out/hello.hello.9136cb57f297e5ab-cgu.0.rcgu.o");
+    let cb = PathBuf::from("/p/out/libcompiler_builtins-af926986b8385648.rlib");
+    let shim = PathBuf::from("/p/w/shims/libsymrs.a");
+    let lc = PathBuf::from("/p/build/cargo/arm-symbian-e32/libcalls/libsymbian_libcalls.rlib");
+    let got = b.link_args(&[obj.clone(), cb.clone()], Some(&shim), Some(&lc), elf, map).unwrap();
+    let mut want = b.link_args(&[obj.clone()], Some(&shim), Some(&lc), elf, map).unwrap();
+    let at = want.iter().position(|x| *x == obj.display().to_string()).unwrap();
+    want.insert(at + 1, cb.display().to_string());
+    assert_eq!(got, want);
+    let pos = |p: &PathBuf| got.iter().position(|x| *x == p.display().to_string()).unwrap();
+    let drt = got.iter().position(|x| x == "-l:drtaeabi.dso").unwrap();
+    assert!(drt < pos(&obj) && pos(&obj) < pos(&cb) && pos(&cb) < pos(&shim) && pos(&shim) < pos(&lc));
+}
+
+#[test]
+fn a_link_with_no_rust_input_is_an_error() {
+    let (elf, map) = (Path::new("/p/w/hello.elf"), Path::new("/p/w/hello.exe.map"));
+    let e = rust().link_args(&[], None, None, elf, map).unwrap_err().to_string();
+    assert!(e.contains("no Rust object"), "{e}");
+}
+```
+
+In `the_sdk_owns_the_shim_sources_and_compiles_them_with_the_cpp_argv` and
+`shim_objects_follow_the_archive_and_keep_the_dso_ordering`, change the expected
+`/p/build/shims/…` paths to `/p/w/shims/…` and pass `Path::new("/p/w")` as the work
+directory. That is the reason for the change: two links of one project, under `cargo test`,
+must not share `shims/` or `sdk-include-casefold/`.
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `cargo test -p symdev-build --offline driver::tests`
+Expected: compile errors (`link_args` takes `&Path`; `shim_archives` takes no directory).
+
+- [ ] **Step 3: Implement**
+
+`link_inputs.rs` becomes:
+
+```rust
+//! `LinkInputs`: what a Rust program's link takes besides the SDK's own files.
+use std::path::{Path, PathBuf};
+
+/// rustc's objects and rlibs (or 0.3.0's one staticlib), the shim archives in link order,
+/// and the libcall archive.
+pub struct LinkInputs<'a> {
+    pub rust: &'a [PathBuf],
+    pub shims: &'a [PathBuf],
+    pub libcalls: &'a Path,
+}
+```
+
+In `rust_link.rs`, `link_args` and `link_line` take `rust: &[PathBuf]` in place of
+`archive: &Path`, and `link_line` returns `Result<Vec<String>>`. Its first lines:
+
+```rust
+        let Some((first, rest)) = rust.split_first() else {
+            return Err(Error::Other(
+                "the link has no Rust object: rustc passed none, or cargo built nothing".into(),
+            ));
+        };
+        let archive = first.as_path();
+```
+
+Everything after that is unchanged, with `archive` as before. After the existing
+`args.splice(after..after, extras);` the rest go in right behind the first input, so the
+shims and libcalls follow the last of them:
+
+```rust
+        let at = args.iter().position(|a| a == &arg(archive)).map_or(args.len(), |i| i + 1);
+        args.splice(at..at, rest.iter().map(|p| arg(p)));
+```
+
+(Insert `rest` *before* the existing `extras` splice, so that `after` in that splice is
+computed from the last Rust input: replace its `position(|a| a == &arg(archive))` with
+`position(|a| rust.last().is_some_and(|l| a == &arg(l)))`.)
+
+`rust_lld_link.rs`: `self.link_line(&linker, inputs.rust, inputs.shims, Some(inputs.libcalls),
+&first_elf, map)?`.
+
+`rust_shims.rs`: add `work: &Path` as the last parameter of `shim_archives` and
+`build_shims`. `build_shims` uses `work.join("shims")` and `work.join("sdk-include-casefold")`
+instead of `project.root.join("build")…`.
+
+`rust_build.rs` (the 0.3.0 path, removed in Task 15): pass `&[archive.clone()]` and
+`&build_dir`.
+
+`rustc_link.rs`:
+
+```rust
+//! `RustcLink`: a link of what rustc compiled, run by `symdev-ld` (design spec §4).
+use std::path::PathBuf;
+
+use symdev_core::{Artifact, Project, RemotePath, Result};
+
+use super::{LinkInputs, RustBuild, arg, produced};
+use crate::RustLinker;
+use crate::file_error;
+use crate::required_capability::RequiredCapability;
+
+/// One link's inputs and its own directory. `cargo test` links the binary and every test
+/// at once, so nothing a link writes may be shared with another (experiment 114 §1.1).
+pub struct RustcLink {
+    /// rustc's objects and rlibs, in rustc's order (experiment 114 §1.2).
+    pub inputs: Vec<PathBuf>,
+    /// Shims, both ELFs, the import stubs, the map, the image and its resources.
+    pub work: PathBuf,
+}
+
+impl RustBuild {
+    /// 0.3.0's link after cargo, on rustc's inputs: the shims, the libcall archive (built
+    /// by the same `cargo rustc` as 0.3.0, now nested in cargo's own build: experiment
+    /// 114 §1.3 saw no lock wait), rust-lld's two links or GNU ld, the capability check,
+    /// elf2e32, and the resources. The image is `work/<name>.exe`.
+    pub fn link_rustc_output(&self, project: &Project, link: &RustcLink) -> Result<Vec<Artifact>> {
+        std::fs::create_dir_all(&link.work).map_err(|e| file_error(&link.work, e))?;
+        let cwd = RemotePath::new(arg(&project.root));
+        let lld = match &self.linker {
+            RustLinker::Lld { rust_lld, cache } => {
+                Some((self.rust_lld_ready(rust_lld.as_deref(), &cwd)?, cache))
+            }
+            RustLinker::Gnu => None,
+        };
+        let prebuilt = self.linker.prebuilt(&self.sdk)?;
+        let shims = self.shim_archives(project, &cwd, prebuilt.as_ref(), &link.work)?;
+        self.run_cargo_args(&self.libcalls().cargo_args(), &cwd)?;
+        let libcalls = produced(self.libcalls().path(project), "the Rust SDK's symbian-libcalls crate defines the __atomic_* family and memcmp")?;
+        let elf = link.work.join(format!("{}.elf", self.name));
+        let map = link.work.join(format!("{}.exe.map", self.name));
+        match lld {
+            None => self.gcce.run_tool(
+                &self.link_args(&link.inputs, shims.first().map(PathBuf::as_path), Some(&libcalls), &elf, &map)?,
+                &cwd,
+            )?,
+            Some((rust_lld, cache)) => self.link_lld(
+                &rust_lld, cache, prebuilt.as_ref(),
+                &LinkInputs { rust: &link.inputs, shims: &shims, libcalls: &libcalls },
+                &elf, &map, &cwd,
+            )?,
+        }
+        RequiredCapability::check(&elf, &self.gcce.capabilities, &format!("{}.exe", self.name))?;
+        let out = link.work.join(format!("{}.exe", self.name));
+        self.gcce.run_elf2e32(&self.gcce.elf2e32_args(&self.name, &elf, &out), &cwd)?;
+        let mut artifacts = vec![Artifact::exe(out)];
+        artifacts.extend(self.build_ui(&link.work)?);
+        artifacts.extend(self.build_strings(&project.root, &link.work)?);
+        Ok(artifacts)
+    }
+}
+```
+
+Make `run_cargo_args` `pub(super)` if it is private. Export: `pub use driver::RustcLink;`
+in `lib.rs`.
+
+- [ ] **Step 4: Run the tests**
+
+Run: `cargo test -p symdev-build --offline`
+Expected: all pass, including every pre-existing link test after the `&[a.into()]` call
+changes (the GNU line tests pin that a one-element slice is 0.3.0's line exactly).
+
+- [ ] **Step 5: Check 0.3.0's images did not move**
+
+Build `bin/symdev-030`'s successor from this tree (`cargo build --release --offline -p
+symdev-cli`). Run `~/src/cargo-run-scratch/base.sh <out> hello ui async` with `bin/symdev-030`
+replaced by it. Then compare with `e32cmp.py` against `~/src/cargo-run-scratch/out/base/`.
+Expected: `EQUAL` ×3.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add crates/symdev-build/src
+git commit -m "Link rustc's objects and rlibs where the staticlib stood, each link in its own directory."
+```
