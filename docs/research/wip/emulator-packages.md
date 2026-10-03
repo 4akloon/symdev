@@ -111,6 +111,9 @@ Scratch: `~/src/emu-pkg-scratch/`. Read-only observations go to experiment 115 �
   13 packaged emulator real run (exp 115 §4); 14 docs/licensing; 15 staged acceptance
   (exp 115 §5) → STOP L1; 16 pin to CI artifact → STOP L2–L4; lead real-bucket acceptance.
 
+- Tasks 1–4 written + committed (Task 4: Device::ALL, Pins, EmulatorPackage, FirmwarePackage,
+  catalog bypass, tests in manager/tests/bypass.rs).
+
 ## Next step
 
-Write Task 1 onward into the plan.
+Write Task 5 (firmware recipe + pkgtools device-entry) into the plan, then 6–16.
