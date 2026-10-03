@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 
 use assert_cmd::Command;
 
+pub mod fake_control;
 pub mod prebuilt;
 pub mod repo;
 
@@ -59,7 +60,8 @@ pub fn isolated(mut cmd: Command) -> Command {
     cmd.env("SYMDEV_HOME", dir("data/symdev"))
         .env("XDG_DATA_HOME", dir("data"))
         .env("XDG_CACHE_HOME", dir("cache"))
-        .env("XDG_CONFIG_HOME", dir("config"));
+        .env("XDG_CONFIG_HOME", dir("config"))
+        .env("XDG_RUNTIME_DIR", dir("run"));
     cmd
 }
 

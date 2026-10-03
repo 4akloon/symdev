@@ -7,48 +7,36 @@ forty files, and the other 82 MB come from the toolchain at build time.
 
 ## How a build uses it
 
-`symdev build` does this itself, in `StdSrc::materialise`
-(`crates/symdev-build/src/std_src.rs`):
+A `language = "rust-std"` project builds with plain cargo (experiment 114 §1.4). Its
+`.cargo/config.toml` names `[build] rustc = "build/symdev-rustc"`, a link to `symdev`
+that runs the pinned `rustc --sysroot <project>/build/sysroot …`. `symdev build` makes that
+sysroot in `StdSysroot::materialise` (`crates/symdev-build/src/std_sysroot.rs`):
 
 1. `rustc --print sysroot` names the pinned nightly; its
-   `lib/rustlib/src/rust/library` is copied to `<project>/build/rust-src/library`.
-   (`SYMDEV_RUST_STD_SRC` moves that copy somewhere shared.)
+   `lib/rustlib/src/rust/library` is copied to
+   `<project>/build/sysroot/lib/rustlib/src/rust/library` (`StdSrc`).
 2. `symbian-rs/crates/symbian-sys` is copied in as `library/symbian-sys`.
 3. `overlay/library/` is copied over the top.
-4. cargo is run with `__CARGO_TESTS_ONLY_SRC_ROOT=<copy>/library` and
-   `-Zbuild-std=std,panic_abort`.
+4. `lib/rustlib/<host>` is linked to the nightly's own, for the host's crates (proc macros,
+   build scripts), and `build/symdev-rustc` to the running `symdev`.
 
-Nothing in the rustup component is touched; it is shared between every project on the
+cargo resolves `-Zbuild-std`'s source before any build script runs, so the sysroot must
+exist before cargo starts: run `symdev build` once, then `cargo build` as often as you
+like. Nothing in the rustup component is touched; it is shared between every project on the
 host and rustup overwrites it on the next update.
 
-By hand, the same thing is four commands:
+`StdSrc` writes every file afresh rather than `cp -a`: cargo decides what to rebuild from
+modification times, and a copy that kept the source's times could be called unchanged.
 
-```sh
-SRC=$(rustc --print sysroot)/lib/rustlib/src/rust/library
-cp -a "$SRC" /tmp/symbian-std/library
-cp -a symbian-rs/crates/symbian-sys /tmp/symbian-std/library/symbian-sys
-cp -R symbian-rs/rust-src/overlay/library/. /tmp/symbian-std/library/
-__CARGO_TESTS_ONLY_SRC_ROOT=/tmp/symbian-std/library \
-  cargo build --release --target symbian-rs/targets/arm-symbian-e32.json \
-  -Zbuild-std=std,panic_abort -Zjson-target-spec
-```
+## Why a `rustc` wrapper
 
-Two things about doing it by hand. `cp -a` keeps the source's modification times, and
-cargo decides what to rebuild from those, so a re-materialised tree can be called
-unchanged — `touch` the copied `library/std` and `library/symbian-sys`, or delete the
-`build/<hash>` directories for them. `StdSrc` writes every file afresh and does not
-have the problem.
-
-## Why `__CARGO_TESTS_ONLY_SRC_ROOT`
-
-It is cargo's own test hook, and it is the only thing that works. The obvious
-alternative, `rustup toolchain link` to a directory whose `lib/rustlib/src` is the
-patched copy, does **not**: a symlinked `bin/rustc` resolves `/proc/self/exe` back to
-the real toolchain, so `rustc --print sysroot` answers with the original and the patched
-source is never read. Making it work would need `bin` hard-linked or copied onto the
-same filesystem as `~/.rustup` — more machinery for the same result. The variable is
-"tests only", but `rust-toolchain.toml` pins the nightly, so the cargo that reads it is
-pinned too.
+Experiment 114 §1.4 tried the alternatives. `[env] __CARGO_TESTS_ONLY_SRC_ROOT` in the
+config reaches the processes cargo starts, not cargo; `--sysroot` in the target's
+`rustflags` is not seen when cargo finds the `build-std` source; a toolchain directory
+works only with `librustc_driver` hard-linked (rustc takes its sysroot from that file's
+canonical path) and an absolute path or rustup state in the project. A wrapper named by a
+config-relative path needs none of that. (0.3.0 ran cargo with
+`__CARGO_TESTS_ONLY_SRC_ROOT` itself; that route is gone.)
 
 ## What is in the overlay
 

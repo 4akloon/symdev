@@ -67,3 +67,24 @@ fn waiting_for_a_report_that_never_comes_is_an_error() {
         .to_string();
     assert!(err.contains("never wrote one"), "{err}");
 }
+
+#[test]
+fn a_case_symbian_test_has_not_finished_carries_its_state() {
+    let report = TestReport::parse(
+        r#"{"schema":1,"app":"t","uid3":"0x1","passed":0,"failed":0,"cases":[
+            {"name":"a","ok":true},{"name":"b","ok":false,"state":"running"},
+            {"name":"c","ok":false,"state":"pending"}]}"#,
+    )
+    .unwrap();
+    let states: Vec<_> = report.cases.iter().map(|c| c.state).collect();
+    assert_eq!(
+        states,
+        [None, Some(CaseState::Running), Some(CaseState::Pending)]
+    );
+    let e = TestReport::parse(
+        r#"{"schema":1,"app":"t","uid3":"0x1","cases":[{"name":"a","ok":true,"state":"other"}]}"#,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(e.contains("other"), "{e}");
+}

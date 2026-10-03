@@ -4,14 +4,21 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-# `src/main.rs` is a library: rustc never links, symdev does (design spec §3).
-autobins = false
 
-[lib]
+[[bin]]
+name = "asyncdemo"
 path = "src/main.rs"
-crate-type = ["staticlib"]
+test = false
 
 [dependencies]
 symbian-async = { path = "../../crates/symbian-async" }
 symbian-core = { path = "../../crates/symbian-core" }
 symbian-std = { path = "../../crates/symbian-std" }
+
+# A device test (`cargo test`): tests/*.rs with harness = false, on symbian-test.
+[[test]]
+name = "executor"
+harness = false
+
+[dev-dependencies]
+symbian-test = { path = "../../crates/symbian-test" }

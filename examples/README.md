@@ -10,7 +10,6 @@ Build and package it on the Linux host. `symdev build` installs the GCCE and S60
 
 ```bash
 cd examples/hello
-export SYMDEV_SIGN_PASSWORD=...   # self-signed key password, 4+ characters
 symdev build     # installing gcce;12.1.0 (… MB) from …, then build/hello.exe
 symdev package   # build/hello.sisx (EXE + hello_reg.rsc), self-signed
 ```
@@ -24,7 +23,6 @@ export SYMDEV_GXX=~/gcc-builds/gcc-12.1.0/bin/arm-none-symbianelf-g++
 export SYMDEV_LD=~/gcc-builds/binutils-2.29.1/bin/arm-none-symbianelf-ld
 export SYMDEV_GCC_LIB=~/gcc-builds/gcc-12.1.0/lib/gcc/arm-none-symbianelf/12.1.0
 export SYMDEV_GCC_TARGET_LIB=~/gcc-builds/gcc-12.1.0/arm-none-symbianelf/lib
-export SYMDEV_SIGN_PASSWORD=...   # self-signed key password, 4+ characters
 symdev build     # build/hello.exe
 symdev package   # build/hello.sisx (EXE + hello_reg.rsc), self-signed
 ```

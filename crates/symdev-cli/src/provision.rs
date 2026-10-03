@@ -1,7 +1,8 @@
 //! Where the toolchain packages live and which ones a command needs (spec §3–§4, §12).
-//! The only code that reads `SYMDEV_HOME`, the `XDG_*` directories, the source keys and
-//! `SYMDEV_RUST_SDK`.
+//! The only code that reads `SYMDEV_HOME`, the `XDG_*` directories, the source keys,
+//! `SYMDEV_RUST_SDK`, `SYMDEV_EKA2L1` and `SYMDEV_EKA2L1_DATA`.
 
+mod emulator;
 mod rust_linker;
 mod rust_sdk;
 

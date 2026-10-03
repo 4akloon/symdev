@@ -136,3 +136,60 @@ fn build_invalid_manifest_not_not_implemented() {
         .stderr(predicate::str::contains("error: invalid manifest:"))
         .stderr(predicate::str::contains("not implemented").not());
 }
+
+/// A 0.3.0 Rust project (its scaffold's files, verbatim) is refused with the edits, before
+/// anything is provisioned and before cargo could run.
+#[test]
+fn a_staticlib_project_is_refused_with_the_edits() {
+    let dir = tempfile::tempdir().unwrap();
+    write_toml(
+        &dir,
+        &HELLO
+            .replace(r#"name = "cpp""#, r#"name = "rust""#)
+            .replace(
+                "capabilities = []",
+                "uid3 = \"0xE0000001\"\ncapabilities = []",
+            ),
+    );
+    let file = |path: &str, text: &str| {
+        let path = dir.path().join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    file(
+        "Cargo.toml",
+        "[package]\nname = \"hello\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\
+         # `src/main.rs` is a library: rustc never links, symdev does.\nautobins = false\n\n\
+         [lib]\npath = \"src/main.rs\"\ncrate-type = [\"staticlib\"]\n",
+    );
+    file("src/main.rs", "#![no_std]\n");
+    file(
+        ".cargo/config.toml",
+        "[build]\ntarget-dir = \"build/cargo\"\n",
+    );
+    let marker = dir.path().join("cargo-ran");
+    file(
+        "bin/cargo",
+        &format!("#!/bin/sh\ntouch {}\n", marker.display()),
+    );
+    use std::os::unix::fs::PermissionsExt;
+    let cargo = dir.path().join("bin/cargo");
+    std::fs::set_permissions(&cargo, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let path = std::env::join_paths(
+        std::iter::once(dir.path().join("bin"))
+            .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap())),
+    )
+    .unwrap();
+    bin()
+        .current_dir(&dir)
+        .env("PATH", path)
+        .arg("build")
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::starts_with(
+            "error: this project has 0.3.0's shape",
+        ))
+        .stderr(predicate::str::contains("[[bin]]"));
+    assert!(!marker.exists());
+}

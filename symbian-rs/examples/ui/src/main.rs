@@ -21,10 +21,11 @@
 //! promises, with a view of a plausible size. **The screenshot pair is the test of
 //! `draw` and `key`; the report is the test of the entry path.**
 #![no_std]
+#![no_main]
 
 extern crate alloc;
 
-use symbian_std::test_report::{Report, detail};
+use symbian_std::test_report::detail;
 use symbian_std::ui::prelude::*;
 
 /// How many bars the chart may show. Six is what fits the E52's client area at the
@@ -56,7 +57,7 @@ impl App for Bars {
     }
 
     fn construct(&mut self, ui: &Ui) -> symbian_core::Result<()> {
-        let mut report = Report::new("uidemo");
+        let mut report = symbian_std::report!("uidemo");
         // Reaching this callback at all is three facts at once: the shim linked
         // against the application's `symrs_app_*`, `create` returned an object and
         // `BaseConstructL` did not leave.

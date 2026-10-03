@@ -53,7 +53,7 @@ in-place `ndk-bundle` to side-by-side `ndk;<version>` for exactly this reason.)
 | `sdk;s60-3rd-fp2;1.1` | headers, `.dso` import stubs, three static libraries, `variant.cfg` | `any` |
 | `symdev;0.1.0` | `bin/symdev`, statically linked (§12) | `x86_64-linux` |
 | `rust-sdk;0.1.0` | the Rust SDK in the repository's layout: `Cargo.toml`, `crates/symdev-locale`, `symbian-rs` (§12) | `any` |
-| `emulator;…`, `firmware;rm-469;…` | phase 2 | — |
+| `emulator;<yyyy.mm.dd>`, `firmware;rm-469;<n>` | see 2026-10-03-emulator-firmware-packages-design.md | `x86_64-linux`, `any` |
 
 The SDK package is only what a GCCE build reads, measured on 2026-10-02: `epoc32/include`
 (2 123 files, 24 MB), the 570 `.dso` import stubs in `epoc32/release/armv5/lib` (6.3 MB), the

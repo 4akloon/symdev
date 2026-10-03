@@ -222,7 +222,7 @@ fn check_heap_survived(report: &mut Report) {
 }
 
 fn main() -> i32 {
-    let mut report = Report::new("atomics");
+    let mut report = symbian_std::report!("atomics");
     check_single_threaded(&mut report);
     check_mutex(&mut report);
     check_one_thread(&mut report);

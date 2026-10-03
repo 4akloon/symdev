@@ -16,10 +16,8 @@ mod cost;
 mod keys;
 mod probe;
 
-use symbian_std::test_report::Report;
-
 fn main() -> i32 {
-    let mut report = Report::new("tls");
+    let mut report = symbian_std::report!("tls");
     // The platform first, because what `thread_local!` is allowed to assume is
     // whatever these cases observe.
     probe::one_thread(&mut report);

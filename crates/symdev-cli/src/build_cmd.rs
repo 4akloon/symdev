@@ -1,12 +1,16 @@
 //! `symdev build`: one backend per manifest language.
+use std::path::Path;
 use std::process::ExitCode;
 
-use symdev_build::{FrozenExports, GcceBuild, RustBuild, UiResources};
+use symdev_build::{FrozenExports, GcceBuild, StdSysroot};
 use symdev_core::{BuildBackend, Error, LocalEnv};
-use symdev_manifest::{Language, Manifest};
+use symdev_manifest::Manifest;
 
 use crate::build_dir::BuildDir;
+use crate::cargo_build::CargoBuild;
+use crate::old_shape::OldShape;
 use crate::provision::Provision;
+use crate::rust_project::RustProject;
 
 pub fn build_project(m: Manifest, provision: &Provision) -> Result<ExitCode, Error> {
     let uid3 = m
@@ -21,77 +25,24 @@ pub fn build_project(m: Manifest, provision: &Provision) -> Result<ExitCode, Err
                 .into(),
         ));
     }
-    // Resolved before the toolchain, so a Rust project without its Rust SDK is told so
-    // before the compiler is downloaded.
-    let rust_sdk = m
-        .language
-        .is_rust()
-        .then(|| provision.rust_sdk())
-        .transpose()?;
-    let linker = rust_sdk
-        .as_ref()
-        .map(|_| provision.rust_linker())
-        .transpose()?;
-    // GCCE is left out only when rust-lld links with the Rust SDK's prebuilt set.
-    let gcce = match (&rust_sdk, &linker) {
-        (Some(sdk), Some(linker)) => linker.needs_gcce(sdk)?,
-        _ => true,
-    };
-    if let (Some(sdk), Some(linker)) = (&rust_sdk, &linker)
-        && let Some(note) = provision.prebuilt_note(sdk, linker)?
-    {
-        eprintln!("{note}");
-    }
-    let tools = provision.toolchain(m.target.device, gcce)?;
-    let epocroot = tools.epocroot.clone();
     let project = crate::current_project()?;
+    if m.language.is_rust() {
+        return build_rust(&m, &project.root, provision);
+    }
+    let tools = provision.toolchain(m.target.device, true)?;
+    let epocroot = tools.epocroot.clone();
     BuildDir::of(&project.root).create()?;
-    // A `[ui]` project's icon is built by the Rust backend's own resource stage,
-    // which names it after the application rather than after an MMP target there is
-    // none of; `GcceBuild` must not also try, or `AppIcon::of` fails looking for one.
-    let icon = m.symbian.icon.clone();
-    // `locales/` may translate the caption; the launcher reads each translation from
-    // its own `<app>.r<code>`, so the resource stage needs to know them.
-    let locales = symdev_locale::Locales::load(&project.root.join("locales"))
-        .map_err(|e| Error::Other(e.to_string()))?;
-    let ui = m.ui.map(|ui| {
-        UiResources {
-            app: m.package.name.clone(),
-            uid3,
-            ui,
-            icon: icon.as_ref().map(|i| project.root.join(i)),
-            captions: Vec::new(),
-        }
-        .with_locales(locales.as_ref())
-    });
     let gcce = GcceBuild {
         env: LocalEnv,
         tools,
         uid3,
         capabilities: m.symbian.capabilities,
-        icon: if ui.is_some() { None } else { icon },
+        icon: m.symbian.icon,
         icons: m.icons,
         secure_id: m.symbian.secure_id,
     };
-    let artifacts = match rust_sdk.zip(linker) {
-        None => gcce.build(&project)?,
-        Some((sdk, linker)) => RustBuild {
-            gcce,
-            sdk,
-            cargo: RustBuild::cargo_from_env(),
-            rustc: RustBuild::rustc_from_env(),
-            name: m.package.name,
-            linker,
-            ui,
-            std: m.language.has_std(),
-        }
-        .build(&project)?,
-    };
-    for artifact in artifacts {
+    for artifact in gcce.build(&project)? {
         println!("{}", artifact.path.display());
-    }
-    if m.language != Language::Cpp {
-        return Ok(ExitCode::SUCCESS);
     }
     for dll in FrozenExports::of(&project, &epocroot)? {
         if !dll.unfrozen.is_empty() {
@@ -104,6 +55,53 @@ pub fn build_project(m: Manifest, provision: &Provision) -> Result<ExitCode, Err
                 dll.unfrozen.join(", ")
             );
         }
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// A Rust project: `cargo build --release` (design spec §3), after what cargo cannot do
+/// itself — the nightly and SDK checks and `build/rust-sdk`, and for `rust-std` the
+/// sysroot `symdev-rustc` points at. `symdev-ld` leaves `build/<name>.exe` and
+/// `build/<name>.sisx`.
+fn build_rust(m: &Manifest, root: &Path, provision: &Provision) -> Result<ExitCode, Error> {
+    let read = |path: &str| std::fs::read_to_string(root.join(path)).unwrap_or_default();
+    let (cargo, main, config) = (
+        read("Cargo.toml"),
+        read("src/main.rs"),
+        read(".cargo/config.toml"),
+    );
+    if let Some(old) = OldShape::detect(
+        &cargo,
+        &main,
+        &config,
+        &m.package.name,
+        m.language.has_std(),
+    ) {
+        return Err(Error::Other(old.message()));
+    }
+    let rust = RustProject::resolve(m, root, provision, true)?;
+    BuildDir::of(root).create()?;
+    rust.build.prepare(root)?;
+    rust.build.check_link(root)?;
+    if m.language.has_std() {
+        StdSysroot::materialise(&rust.build.sdk, &rust.build.rustc, root)?;
+    }
+    CargoBuild::run(root)?;
+    let build = root.join("build");
+    for file in [
+        format!("{}.exe", m.package.name),
+        format!("{}.sisx", m.package.name),
+    ] {
+        let path = build.join(file);
+        if !path.is_file() {
+            // cargo found nothing to do, so symdev-ld did not run to write it again.
+            return Err(Error::Other(format!(
+                "{} is missing and cargo had nothing to relink: touch src/main.rs (or remove \
+                 build/cargo) and build again",
+                path.display()
+            )));
+        }
+        println!("{}", path.display());
     }
     Ok(ExitCode::SUCCESS)
 }

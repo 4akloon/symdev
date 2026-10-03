@@ -5,6 +5,7 @@
 //! prints numbers derived from the data so the log proves the round trip happened. No
 //! `unsafe` anywhere: everything goes through `symbian-core` and the global allocator.
 #![no_std]
+#![no_main]
 
 extern crate alloc;
 

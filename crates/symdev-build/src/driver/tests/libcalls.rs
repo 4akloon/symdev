@@ -30,9 +30,9 @@ fn the_libcall_archive_is_searched_last() {
         libcalls,
         PathBuf::from("/p/build/cargo/arm-symbian-e32/libcalls/libsymbian_libcalls.rlib")
     );
-    let shim = b.shim_archive(&project);
+    let shim = b.shim_archive(&project.root.join("build"));
     let got = b
-        .link_args(a, Some(&shim), Some(&libcalls), elf, map)
+        .link_args(&[a.into()], Some(&shim), Some(&libcalls), elf, map)
         .unwrap();
     let archive = got.iter().position(|x| x == &a.display().to_string());
     let at_shim = got.iter().position(|x| x == &shim.display().to_string());
@@ -43,7 +43,9 @@ fn the_libcall_archive_is_searched_last() {
     assert_eq!(at_libcalls, archive.map(|i| i + 2));
 
     // With no C++ shim it still follows the application archive directly.
-    let got = b.link_args(a, None, Some(&libcalls), elf, map).unwrap();
+    let got = b
+        .link_args(&[a.into()], None, Some(&libcalls), elf, map)
+        .unwrap();
     let archive = got.iter().position(|x| x == &a.display().to_string());
     let at_libcalls = got
         .iter()

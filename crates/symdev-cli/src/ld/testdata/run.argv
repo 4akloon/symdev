@@ -1,0 +1,4 @@
+--exe
+build/cargo/arm-symbian-e32/release/app
+a
+b

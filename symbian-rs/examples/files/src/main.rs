@@ -9,6 +9,7 @@
 //! `E:\symdev\results\<uid3>.json`; `symdev test --emulator` reads that back off the
 //! emulated drive and fails the build if any case failed.
 #![no_std]
+#![no_main]
 
 extern crate alloc;
 
@@ -198,7 +199,7 @@ fn run(report: &mut Report) {
 /// exits 0 or 1, so that the exit code and the `failed` count in the file agree.
 #[symbian_std::main]
 fn main() -> Result<i32> {
-    let mut report = Report::new("files");
+    let mut report = symbian_std::report!("files");
     run(&mut report);
     Ok(if report.finish()? { 0 } else { 1 })
 }

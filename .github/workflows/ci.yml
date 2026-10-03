@@ -1,7 +1,8 @@
 # Two gates. `check`: format, clippy and tests on a bare runner. The tests are hermetic
 # (temporary SYMDEV_HOME and XDG directories, `builtin = false`, file:// sources) and touch
 # no network; those that need a real SDK skip themselves (SYMDEV_EPOCROOT,
-# SYMDEV_SIGN_PASSWORD). `examples`: builds and packages the examples on a clean runner,
+# SYMDEV_SIGN_PASSWORD). `examples`: builds and packages the examples on a clean runner
+# (the Rust ones with cargo, through symdev-ld),
 # installing GCCE and the S60 SDK through symdev with the owner's reader key. Running them
 # in EKA2L1 stays manual on the host.
 name: CI
@@ -89,9 +90,8 @@ jobs:
     needs: examples-key
     if: needs.examples-key.outputs.ok == 'true'
     runs-on: ubuntu-24.04
-    env:
-      # The self-signed key is generated per run and thrown away with the runner.
-      SYMDEV_SIGN_PASSWORD: ci-throwaway
+    # No SYMDEV_SIGN_PASSWORD: the generated self-signed key needs none (decision D1 of the
+    # cargo-run plan), and this job proves a fresh project builds without it.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -134,6 +134,14 @@ jobs:
       - name: Build symdev
         run: cargo build --release -p symdev-cli --locked
 
+      # cargo links the Rust examples through `symdev-ld` and a rust-std one compiles
+      # through `symdev-rustc`: the links `install.sh` makes for an installed symdev.
+      - name: Link symdev-ld and symdev-rustc
+        run: |
+          mkdir -p "$HOME/.local/bin" && cp target/release/symdev "$HOME/.local/bin/symdev"
+          "$HOME/.local/bin/symdev" setup-linker --dir "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       # The only step that holds the reader key, and it runs only symdev: `symdev sdk
       # install` without ids installs what each example needs (the pinned GCCE and SDK).
       - name: Install the toolchain packages
@@ -148,15 +156,14 @@ jobs:
       # Without the key: everything is installed, so symdev reads no source.
       - name: Build and package the examples
         run: |
-          export PATH="$PWD/target/release:$PATH"
-          for dir in examples/hello examples/gui symbian-rs/examples/hello; do
-            (cd "$dir" && symdev build && symdev package)
-          done
+          for dir in examples/hello examples/gui; do (cd "$dir" && symdev build && symdev package); done
+          # `symdev build` of a Rust project is `cargo build --release`, which signs too.
+          for dir in symbian-rs/examples/*/; do (cd "$dir" && symdev build); done
 
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: examples-sisx
           path: |
             examples/*/build/*.sisx
-            symbian-rs/examples/hello/build/*.sisx
+            symbian-rs/examples/*/build/*.sisx
           if-no-files-found: error

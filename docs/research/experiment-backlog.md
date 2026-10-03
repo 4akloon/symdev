@@ -4138,3 +4138,836 @@ review fixes: error messages, the final `R_ARM_JUMP_SLOT` check on both paths, t
 `urel`-first lookup. It then relinked nine programs: `hello`, `async`, `ui`, `notes` and
 `shim` by default; `ui` and `notes` on the prebuilt route; `hello` and `ui` with GNU ld. All
 nine `.exe` are equal to the ones above, masking the CRC and time (`recheck.txt`).
+
+## 114. `cargo build`, `cargo run` and `cargo test` in a symdev Rust project (cargo-run, Rust SDK)
+
+**Question.** The design (`docs/superpowers/specs/2026-10-03-cargo-build-run-design.md`) makes
+symdev cargo's linker (`symdev-ld`) and runner (`symdev run --exe`). Its §11 spike asks what
+rustc really hands a linker for this target, whether a link built from that gives `symdev
+build` 0.3.0's images, whether libcalls and the patched `std` fit plain cargo, what the `dev`
+profile produces, and how a test binary is told from the main one. §1 answers those by
+observation; the real runs of the finished work come later in this record.
+
+**Setup.** Branch `cargo-run` (worktree `~/worktrees/symdev/cargo-run`), 2026-10-03, code
+equal to `main` `3086f1d` (symdev 0.3.0). Scratch `~/src/cargo-run-scratch/` (each script
+starts with a comment saying what it does). `bin/symdev-030`: a release build of the branch.
+`env.sh`: the GCCE route of experiment 113 (`SYMDEV_EPOCROOT`, `SYMDEV_GXX` …, rust-lld by
+default, shims compiled by GCCE because the checkout has no `prebuilt/`), a scratch
+`SYMDEV_HOME`/`XDG_*`/`TMPDIR`, and `SYMDEV_RUST_SDK` = `tree/symbian-rs`. `tree/` is a `git
+archive` of the branch; baseline and new builds both run in it, at one path, because rustc's
+output depends on the source path (experiment 113 §2). Nightly `nightly-2026-09-19`, cargo
+`1.100.0-nightly (495c385d0 2026-09-16)`, rust-lld 23.1.1.
+
+* `bin/rec-ld` stands in for cargo's linker. It writes argv, the environment and a copy of
+  every `.o`/`.rlib` input to `rec/<run>/`, then an empty `-o` file, and exits 0. `bin/symdev-ld`
+  is a link to it, the name the design gives the linker.
+* `bin/rec-run` stands in for the runner and records argv, cwd and the environment.
+* `q1/app` is a scaffold-shaped project on a copy of the SDK (`sdk1/`) whose target spec says
+  `"executables": true`. It has `[[bin]] name = "app"`, `test = false`, a `harness = false`
+  test `tests/smoke.rs` and `.cargo/config.toml` with `[target.arm-symbian-e32] linker =
+  "symdev-ld"`.
+* `toshape.py` turns an example from `[lib] crate-type = ["staticlib"]` into `[[bin]]`
+  (named after the package, `test = false`) and adds `#![no_main]`.
+* The throwaway driver is `bin/symdev-spike`: 0.3.0 with three environment switches added to
+  `RustBuild::link_line` (`driver-src/`). `SPIKE_RUST_INPUTS=<file>` replaces the staticlib
+  argument with rustc's recorded inputs, in order. `SPIKE_NO_LIBCALLS` drops the separate
+  libcalls archive. `SPIKE_KEEP_DEBUG` drops `--strip-debug`.
+* `q2.sh <out> <profile> <ex>…` builds the bin shape with symdev's own cargo flags and the
+  value `symdev build` gives `SYMDEV_UID3`, through `rec-ld`. It then runs `symdev-spike build`
+  with `SYMDEV_CARGO` = a no-op. Everything after cargo is 0.3.0's path: shims, the libcalls
+  rlib, both rust-lld links, import stubs, elf2e32.
+* `e32cmp.py` compares two images, masking the CRC (0x14–0x17) and the time (0x24–0x2B).
+
+### 1. The spike (design §11)
+
+#### 1.1 What rustc hands the linker
+
+A bin crate needs `#![no_main]`: `#[symbian_std::main]` writes `E32Main` and re-emits `fn
+main`, so without it rustc takes that `main` as the program's and refuses its type (E0580
+"`main` function has wrong type … found `fn() -> Result<(), SymbianError>`").
+
+This cargo uses the **new build-directory layout**. Every unit links into
+`<target-dir>/<triple>/<profile>/build/<package>/<hash>/out/`, and nothing goes to `deps/`.
+The main binary is `-o …/out/<bin>`; cargo then **hard-links** it to
+`<target-dir>/<triple>/<profile>/<bin>`. A test is `-o …/out/<test>-<hash>` and is not
+copied anywhere.
+
+The recorded argv, with the project at `/work/app` and rustc's temporary directory as
+`rustcXXXXXX`:
+
+```
+# release, main binary (13 arguments)
+/work/app/build/cargo/arm-symbian-e32/release/build/app/51c0ecfd4d2a2dcf/out/app.app.6fa0adbb789d939e-cgu.0.rcgu.o
+--as-needed
+-Bstatic
+/work/app/build/cargo/arm-symbian-e32/release/build/compiler_builtins/af926986b8385648/out/libcompiler_builtins-af926986b8385648.rlib
+-L
+/work/app/build/cargo/arm-symbian-e32/release/build/app/51c0ecfd4d2a2dcf/out/rustcXXXXXX/raw-dylibs
+-Bdynamic
+-z
+noexecstack
+-o
+/work/app/build/cargo/arm-symbian-e32/release/build/app/51c0ecfd4d2a2dcf/out/app
+--gc-sections
+--strip-debug
+```
+
+* **Release test** (`tests/smoke.rs`): the same 13, with `smoke-<hash>.smoke.<h>-cgu.0.rcgu.o`
+  and `-o …/build/app/4f71ac116363b7c1/out/smoke-4f71ac116363b7c1`.
+* **Dev** (46 arguments for the binary, 29 for the test): `…/rustcXXXXXX/symbols.o` comes
+  first, then every codegen unit's object (24 for the binary, 7 for the test), then
+  `--as-needed -Bstatic`, then 11 rlibs (`symbian_std` … `symbian_sys`, `alloc`, `core`,
+  `compiler_builtins`). The tail is the release one without `--strip-debug`.
+* **The linker's name matters.** rustc reads `symdev-ld` as a GNU ld (its stem ends in
+  `-ld`) and writes the line above. A name like `reclinker` gets the target's `gnu-lld` and
+  `-flavor gnu` as the first two arguments; everything else is identical.
+* **`cargo test` needs `[unstable] panic-abort-tests = true`.** Without it cargo builds `core`
+  twice, once with `-C panic=abort` and once without, and every crate fails with E0152
+  "duplicate lang item in crate `core`: `sized`". With it, both test and binary units are
+  `panic=abort`, and the binary unit is the one `cargo build` made.
+
+The environment rustc gives the linker:
+
+| | main binary | `harness = false` test | `--example demo` |
+|---|---|---|---|
+| `CARGO_BIN_NAME` | `app` | — | `demo` |
+| `CARGO_CRATE_NAME` | `app` | `smoke` | `demo` |
+| `CARGO_TARGET_TMPDIR` | — | `<target-dir>/arm-symbian-e32/tmp` | — |
+| `CARGO_BIN_EXE_app` | — | `<target-dir>/arm-symbian-e32/<profile>/app` | — |
+| `CARGO_MANIFEST_DIR`, `CARGO_MANIFEST_PATH`, `CARGO_PKG_NAME`, `CARGO_PRIMARY_PACKAGE=1`, `RUSTUP_TOOLCHAIN` | yes | yes | yes |
+
+`PROFILE`, `TARGET` and `OUT_DIR` do not reach the linker. Neither does anything else of
+symdev's, except what the user's shell exports.
+
+**The runner.**
+
+* `cargo run --release -- a b` runs `rec-run --exe build/cargo/arm-symbian-e32/release/app a
+  b` from the project root. The path is relative and is the hard link.
+* `cargo test --release` runs `rec-run --exe <absolute …/out/smoke-<hash>>`.
+* Both get `CARGO_MANIFEST_DIR`; only the test gets `CARGO_BIN_EXE_app`; neither gets
+  `CARGO_BIN_NAME`.
+* So a `.sisx` written next to the `-o` path is next to what `cargo test` hands the runner,
+  but not next to what `cargo run` hands it. The hard link carries the image only.
+
+Trimmed fixtures (paths normalised to `/work/app`): `fixtures/{release,dev}-{bin,test}.
+{argv,env}`, `release-bin-flavor.argv`, `release-example.{argv,env}`, `run.{argv,env}`,
+`test-run.{argv,env}`.
+
+#### 1.2 The same bytes from rustc's inputs
+
+**Method.** `base.sh` builds each example in the staticlib shape with `symdev-030`, using
+the 0.3.0 target spec. `toshape.py` then converts it, the spec gets `"executables": true`, and
+`q2.sh … release` builds and links it from rustc's inputs. For release those inputs are the
+LTO object and `libcompiler_builtins-<hash>.rlib`. They take the staticlib's place on 0.3.0's
+line, after `-l:euser.dso -l:drtaeabi.dso` and before the shims and the libcalls rlib.
+
+| examples | result (`.exe` compressed / uncompressed) |
+|---|---|
+| `hello`, `ui`, `async` | **equal** (masked): 975 / 1 348, 10 288 / 17 028, 18 360 / 33 892 |
+| `alloc` `atomics` `cleanup` `files` `fmt` `hello-raw` `locale` `notes` `panic` `query` `shim` `spawnee` `time` `ui-list` | **equal** (masked), every one |
+| `net`, `tls` | uncompressed equal (17 616, 25 920); compressed 10 504 against 10 506 and 13 938 against 13 920 |
+
+**`net` and `tls`.** Their `.text` is the same size with different bytes; `.rodata` and
+`.data` are equal.
+
+* The cause is the target-spec edit, not the bin shape. Cargo hashes the spec into every
+  unit, so `net`'s build has two `core` units: `268f…` from the old spec and `0b2c…` from the
+  new one.
+* New crate hashes give new v0 symbol names, and the code-unit order follows them. In `net`,
+  `with_session` and `to_socket_addrs::first` swap places.
+* Proof: `symdev-030` rebuilt `net` and `tls` in the **staticlib** shape with the **new** spec
+  (`out/spec/`), and both images equal the bin-shape ones exactly.
+* Experiment 113 met the same pair of orders: these are its checkout and prebuilt numbers.
+
+**Time.** With the SDK crates already built, cargo takes 7.9–10.7 s per example and the
+spike link 0.5 s (1.6 s for a GUI program, whose shim GCCE compiles). The first build of a
+fresh target directory also builds `core` and `alloc`, as before.
+
+**Answer.** Linking rustc's own inputs gives `symdev build` 0.3.0's images: 19 of 19
+`no_std` examples are byte-equal once the target spec is the same. Changing the spec moves
+two images (`net`, `tls`) by reordering code; their uncompressed sizes are unchanged. The
+`std` examples are in 1.4.
+
+#### 1.3 libcalls as an ordinary dependency
+
+`q3.sh` is `q2.sh` with `SPIKE_NO_LIBCALLS`, so the separate archive leaves the line. It is
+compared with 1.2's images (the same spec). `addlibcalls.py` makes `symbian-libcalls` a path
+dependency of the example and adds `use symbian_libcalls as _;`, so rustc links it. Each
+variant adds to the one before.
+
+| variant | `hello` | `files` | `atomics` | `async` | `tls` |
+|---|---|---|---|---|---|
+| today (separate archive) | 975 / 1 348 | 8 289 / 14 292 | 8 796 / 15 848 | 18 360 / 33 892 | 13 938 / 25 920 |
+| V1 plain dependency | 1 708 / 3 384 | 9 036 / 16 276 | 8 891 / 15 944 | 18 461 / 33 976 | 14 002 / 25 968 |
+| V2 `#![no_builtins]` | equal | 8 976 / 16 324 | 8 841 / 16 000 | 18 447 / 34 048 | 13 976 / 26 008 |
+| V3 `[profile.release.package.symbian-libcalls] codegen-units = 16` | equal | 8 300 / 14 356 | 8 732 / 16 000 | 18 356 / 34 048 | 13 913 / 26 140 |
+| V4 `-Zprofile-rustflags`: that package gets `-Zdefault-visibility=hidden` | = V3 | = V3 | = V3 | = V3 | = V3 |
+
+**Why no variant keeps the bytes.**
+
+* **V1.** Under LTO the crate is part of the program, and its `#[no_mangle]` entry points
+  become exported globals of a `-shared` link. Each one is a `--gc-sections` root, so `hello`
+  carries all of them: +2 036 bytes.
+* **V2.** `#![no_builtins]` takes the crate out of LTO. rustc then passes
+  `libsymbian_libcalls-<hash>.rlib` after the object, members are pulled on demand, and
+  `hello` is equal again. But the crate is compiled under the application's profile, with one
+  codegen unit, so `files` pulls the atomics with `memcmp`.
+* **V3 and V4.** The `-v` line shows `-C codegen-units=16` and the visibility flag arriving,
+  so the remaining difference is code generation. Cargo gives every dependency of a fat-LTO
+  binary `-C linker-plugin-lto`. The excluded crate's object code then comes from LLVM's
+  pre-link pipeline: its members carry `.llvmbc`, `AtomicLock`'s `Drop` is no longer inlined
+  (`__atomic_exchange_1` calls `…AtomicLock…drop` instead of `RFastLock::Signal`), and every
+  `__atomic_*` grows 4 bytes.
+* Cargo allows no per-package `lto`, so nothing in `Cargo.toml` turns that off for one crate.
+
+**What does work: the linker runs today's build itself.** `bin/nested-libcalls` (a hook in
+`rec-ld`) runs 0.3.0's `cargo rustc --profile libcalls -p symbian-libcalls --lib … --
+-Zdefault-visibility=hidden` from inside the linker, while cargo's own build is running, with
+the same `--target-dir build/cargo`.
+
+* No lock wait and no deadlock.
+* 7.1 s the first time (`core` and `alloc` for the `libcalls` profile), 0.03 s when fresh.
+* The rlib lands where `LibcallArchive::path` expects it.
+* Rebuilt by the same command run directly (source touched), the rlib is byte-equal to the
+  nested one (`rec/nested.rlib`).
+
+The 1.2 images already link that archive.
+
+**Answer.** No: libcalls cannot be an ordinary dependency without changing bytes. The
+smallest working alternative is for `symdev-ld` to run `LibcallArchive::cargo_args` itself
+and link its rlib as today. A `rust-sdk` that ships the archive prebuilt
+(`prebuilt/lib/`, like the shims) can skip that step later.
+
+#### 1.4 The patched `std` from configuration alone
+
+**Setup.** `sdk1/symbian-rs/examples/std-hello`. First `symdev-030 build` in the old shape
+(21 s): it copies the patched source to `build/rust-src` (82 MB) and gives the baseline
+image. Each variant then runs `cargo build --release` with no
+`__CARGO_TESTS_ONLY_SRC_ROOT`, and the result is the path cargo prints for
+`Compiling std`.
+
+| # | configuration | result |
+|---|---|---|
+| H1 | `.cargo/config.toml` `[env] __CARGO_TESTS_ONLY_SRC_ROOT = { value = "build/rust-src/library", relative = true }` | **no**: `std` from the toolchain's `rust-src`, `error: none of the predicates in this cfg_select evaluated to true`. `[env]` reaches the processes cargo starts, not cargo |
+| H2 | `[target.arm-symbian-e32] rustflags = ["--sysroot", "<project>/build/sysroot"]` | **no**, the same: cargo finds the `build-std` source without the target's flags |
+| H3 | a toolchain directory: copied `bin/rustc` and `bin/cargo`, `lib/librustc_driver-*.so` **hard-linked**, everything else symlinked, `lib/rustlib/src/rust` → the patched copy | **yes**; `rustc --print sysroot` names the directory. With only symlinks it names the nightly again: rustc takes its sysroot from the canonical path of `librustc_driver` |
+| H3a | H3 through rustup (a scratch `RUSTUP_HOME`): `rustup toolchain link symdev-std <dir>`, `rust-toolchain.toml` `channel = "symdev-std"` | **yes**, `Compiling std v0.0.0 (<dir>/lib/rustlib/src/rust/library/std)` |
+| H3b | H3 named by `rust-toolchain.toml` `path = "<absolute dir>"` | **yes**, no `rustup` link needed. `path = "<relative>"` → rustup `error: relative path toolchain` |
+| H4 | `[build] rustc = "./rustc-std"`, a wrapper `exec rustc --sysroot <project>/build/sysroot "$@"`; `build/sysroot/lib/rustlib/x86_64-unknown-linux-gnu` → the nightly's, `lib/rustlib/src/rust` → the patched copy | **yes**, 12 s. The path is relative to the directory that holds `.cargo/` (it also builds from `src/`). Host crates (`symbian-macros`) build through the same sysroot |
+
+**The whole route, H4.** `std-hello` in the bin shape, with H4 and `linker = "symdev-ld"` in
+its `.cargo/config.toml`, built by plain `cargo build --release` (12 s) and linked by the
+spike. The image is 70 351 / 124 920 against 0.3.0's 70 441 / 124 212.
+
+* `.text` is equal in size (0x1902c); `.rodata` is 712 bytes longer.
+* The difference is 36 of `std`'s panic-location strings, which now read
+  `build/sysroot/lib/rustlib/src/rust/library/std/src/…` instead of
+  `build/rust-src/library/std/src/…`.
+* With those paths remapped back (`--remap-path-prefix` in the wrapper), the image is
+  124 200 against 124 212: `.rodata` 8 bytes shorter, in the order of merged strings.
+* The old staticlib shape built through the same wrapper gives the same 124 200
+  (`out/q4/h4r-lib-stdhello.exe`), so the bin shape is not the cause.
+* `cargo -v` shows the cause: the `-C metadata` of `std`, `core`, `compiler_builtins` and the
+  application differ between the two routes, because cargo hashes the `std` source path.
+  That is experiment 113's path dependence again.
+
+**Answer.** Yes: a `language = "rust-std"` project can build from configuration alone. H4 is
+the configuration that needs neither rustup state nor an absolute path in the project. The
+patched source must exist before cargo starts, because cargo resolves `build-std` before any
+build script runs, so symdev materialises it ahead of time (once per SDK and nightly, not
+per build). A `RUSTC` variable in the environment overrides `build.rustc` (observed: with `RUSTC=rustc`, `std` came from the toolchain's source and failed as in H1). A `rust-std`
+image differs from 0.3.0's by path-dependent bytes only: `std`'s path strings and the order
+that crate hashes give.
+
+#### 1.5 The `dev` profile
+
+`q2.sh … dev` on `hello`, `ui` and `async`. The workspace's `[profile.dev]` is `panic =
+"abort"` alone. The objects carry DWARF (`-C debuginfo=2`). 0.3.0's line ends with
+`--strip-debug`, so the ELF that reaches elf2e32 has none.
+
+| variant | result (`.exe` compressed / uncompressed) |
+|---|---|
+| default `dev` | **does not link**: `undefined symbol: strlen`, referenced by `alloc::ffi::c_str::CString::from_raw` (`hello`, `async`); `symrs_list_destroy` (`ui`). Without LTO every `GLOBAL DEFAULT` function of a pulled rlib member is exported by the `-shared` link, so it is a `--gc-sections` root and its references must resolve |
+| `[profile.dev] lto = true` | links: `hello` 16 940 / 44 772, `ui` 49 420 / 131 308, `async` 80 104 / 230 516 |
+| target spec `"default-visibility": "hidden"`, default `dev` (no LTO, incremental) | **links**: `hello` 16 908 / 44 568, `ui` 49 390 / 131 140, `async` 79 878 / 230 504 |
+
+* **The spec key.** `"default-visibility": "hidden"` is the one rustc's target-spec reader
+  lists; `default-hidden-visibility` is refused as an unknown field.
+* **Release is unchanged.** With that key, the release images of all 19 `no_std` examples are
+  byte-equal to 1.2's (`out/q5d`).
+* **elf2e32 and DWARF.** `SPIKE_KEEP_DEBUG` keeps the DWARF: `hello.elf` is 3 751 928 bytes
+  instead of 202 656 (`.debug_info` 1 082 485, `.debug_str` 1 376 786, `.debug_line` 572 056
+  …). Our elf2e32 accepts it, and the `.exe` of `hello` and of `ui` is byte-equal to the
+  stripped link's.
+* **In EKA2L1.** The no-LTO dev `hello` was packaged by `symdev-030` and run by experiment
+  113's `runshot.py` (`emu.sh`). The log shows `Trying to display: Hello from Rust SDK (19
+  chars)`; screenshot `shots/dev-hello-1.png`; our PID was killed.
+
+**Answer.** As 0.3.0 links, a `dev` build does not link at all. With the target spec's
+`"default-visibility": "hidden"` it links, runs, and leaves release bytes alone; the image is
+about 33 times `hello`'s release size. elf2e32 accepts DWARF, but the line strips it, and
+nothing on the phone reads it. `[profile.dev]` keeps `panic = "abort"` and needs no `lto`.
+`debug = false` would only save compile time, and that was not measured.
+
+#### 1.6 Telling a test binary from the main one
+
+The table in 1.1 is the observation. `CARGO_BIN_NAME` is set only for a binary target: the
+`[[bin]]` (`app`) or an example (`demo`). An integration test has none, but has
+`CARGO_TARGET_TMPDIR` and `CARGO_BIN_EXE_<bin>`. The output name agrees: `out/<bin>` for a
+binary, `out/<test>-<hash>` for a test. The design's guess, "an output in `deps/`", does not
+apply here: this cargo has no `deps/`.
+
+**Answer.**
+
+* `CARGO_BIN_NAME` equal to the package's `[[bin]]` → the main binary.
+* `CARGO_BIN_NAME` absent and `CARGO_TARGET_TMPDIR` present → a test.
+* Anything else, an example included, is refused by name until it is needed.
+* The runner cannot use the same signal: it sees `CARGO_BIN_EXE_<bin>` only for a test, so
+  `symdev-ld` records the kind beside the image.
+
+#### 1.7 A self-signed key without a password, with the original tools
+
+This was asked for the plan, not by §11. `symdev package` refuses a `SYMDEV_SIGN_PASSWORD`
+shorter than 4 characters even for `mode = "self-signed"` (`SisPackage::validate_password`),
+so a `cargo build` that signs would fail in a fresh shell. The SDK's own tools ran through
+Wine in `signing/`, on experiment 8's `hello.sis`.
+
+* **The usage.** `makekeys` prints `[-password <password> <At least 4 characters>]`: the
+  option is optional.
+* **No `-password`.** `makekeys -cert -expdays 3650 -len 2048 -dname "<experiment 8's>"
+  nopw.key nopw.cer` warns "the private key should be encrypted with the -password option",
+  then asks "Do you want to use a password (y/n)?".
+* **The answer.** With no answer (stdin at EOF) it asks for a PEM pass phrase and ends in
+  "** Error writing to key file". Answering `n` gives "Created key", "Created certificate":
+  `nopw.key` is 1 192 bytes of `BEGIN DSA PRIVATE KEY` with no `Proc-Type: 4,ENCRYPTED`
+  header.
+* **Signing.** `signsis hello.sis hello-nopw.sisx nopw.cer nopw.key`, four positionals and no
+  pass phrase, exits 0. The result is 5 180 bytes, and `file` calls it a Symbian
+  installation file (Symbian OS 9.x).
+
+The `.sisx` was not installed anywhere.
+
+#### Answers (§1)
+
+1. **Argv and environment.** Release: 13 arguments, the LTO object and `compiler_builtins`'s
+   rlib between `--as-needed -Bstatic` / `-Bdynamic -z noexecstack -o <out> --gc-sections
+   --strip-debug`. Dev: `symbols.o`, the codegen units and 11 rlibs, no `--strip-debug`.
+   `-flavor gnu` comes first unless the linker's name ends in `-ld`. Cargo's new layout puts
+   `-o` in `build/<pkg>/<hash>/out/` and hard-links a binary up. `cargo test` needs
+   `panic-abort-tests`; `src/main.rs` needs `#![no_main]`.
+2. **Same bytes.** Yes: 19 of 19 `no_std` examples are byte-equal on the same target spec.
+   The spec edit itself reorders `net` and `tls`, with the same uncompressed size.
+3. **libcalls.** Not as an ordinary dependency (+2 036 bytes for `hello`, at best +64 for
+   `files`), because cargo cannot take one crate out of LTO's code generation. `symdev-ld`
+   runs today's separate `cargo rustc` from inside the build instead: no deadlock, same rlib.
+4. **Patched `std`.** Yes, from configuration: `[build] rustc` naming a wrapper that passes
+   `--sysroot` to a materialised sysroot (rustup's `path`/linked toolchain also works). Images
+   differ from 0.3.0's by path-dependent bytes only.
+5. **Dev.** It does not link on 0.3.0's line until the target spec says `"default-visibility":
+   "hidden"`. Then it links, `hello` runs in EKA2L1, and release bytes are unchanged; elf2e32
+   accepts DWARF, and the line strips it.
+6. **Test or main.** `CARGO_BIN_NAME` names the binary; a test has none but has
+   `CARGO_TARGET_TMPDIR`.
+
+**Evidence (§1).** 2026-10-03, this host, branch `cargo-run`. All of it is outside git, in
+`~/src/cargo-run-scratch/`:
+
+* Scripts and drivers: `env.sh`, `bin/{rec-ld,symdev-ld,rec-run,nested-libcalls,lld-log,
+  fake-cargo,symdev-030,symdev-spike}`, `driver-src/` (the spike's three switches in
+  `crates/symdev-build/src/driver/rust_link.rs`), `toshape.py`, `addlibcalls.py`, `base.sh`,
+  `all.sh`, `q2.sh`, `q3.sh`, `e32cmp.py`, `secs.py`.
+* Recordings and fixtures: `rec/`, `fixtures/`.
+* Images and logs: `out/{base,q2,spec,q3/*,q4,q5,q5a,q5a-dbg,q5d,q5e}/`; `base*.txt`,
+  `q2-rest.txt`, `q5d-rest.txt`.
+* Projects: `q1/app`, `sdk1/` (`std-hello` with H3/H4 files), `q4/{tc-copy,rustup}`.
+* Emulator and signing: `emu.sh`, `runshot.py`, `shots/`, `signing/`.
+
+### 2. An emulator profile (cargo-run Task 10)
+
+**The emulator.** `~/src/EKA2L1-wt/cargo-run`, branch `cargo-run`: the `symdev` integration
+branch (`d07d5ac`) with `dev/data-dir` (`a3ec972`) and `dev/control-events` (`c323b64`,
+carrying `dev/control-server` and `dev/control-input`) merged. The two merges conflicted only
+in the option lists of `qt/src/thread.cpp` and `qt/include/qt/cmdhandler.h`; both options
+were kept. Built in `~/src/EKA2L1-wt-build/cargo-run` (1 458 steps, exit 0), started through
+`~/src/cargo-run-scratch/bin/eka2l1-symdev`, which sets the environment of `~/.local/bin/eka2l1`.
+`--help` lists `--data-dir` and `--control`. `emulator.info` answers
+`{"name":"EKA2L1","version":"cargo-run-a5d9df3","protocol":1,"paused":false,
+"device":{"manufacturer":"Nokia","model":"N00","firmware":"RM-469","os":"epoc93fp2"}}`.
+
+* **`--help` alone uses the default data folder.** Run with no `--data-dir`, it rotated the
+  user's `~/.local/share/EKA2L1/EKA2L1.log` into `EKA2L1_TakeThis.log`. Every later run here
+  passed `--data-dir`.
+
+**The profile.** The user's data folder holds `config.yml` and `data/{devices.yml,drives/
+{c,d,e,z},roms/rm-469}`; `z` is 208 MB, `c` 17 MB, `roms/rm-469` 51 MB. The profile made by
+hand at `~/src/cargo-run-scratch/profiles/rm-469/`:
+
+| Path in the profile | What it is |
+|---|---|
+| `config.yml` | a copy, with `log-filter: "*:info Emulated.Stdout:trace Kernel:trace"` |
+| `data/devices.yml` | a copy |
+| `data/roms/rm-469`, `data/drives/z` | **symbolic links** to the user's |
+| `data/drives/c` | a copy |
+| `data/drives/d`, `data/drives/e` | empty directories |
+
+`setsid eka2l1-symdev --data-dir <profile> --control $XDG_RUNTIME_DIR/symdev-probe.sock`,
+under the agent lock, driven by `probe10.py` (the README's protocol, Python standard
+library):
+
+* **Ready at once.** The first `emulator.info` already named the device; the log says
+  `[Frontend.Control]: Control server listening on /run/user/1000/symdev-probe.sock`.
+* **The links work.** The ROM and drive Z were read through them, and nothing under the
+  user's folder was newer than a marker file touched before the run (`find -newer`, `-L`
+  for Z and the ROM), in either of two runs.
+* `package.install` of experiment 114 §1.5's `hello.sisx` → `{}`. The files went to the
+  profile: `data/drives/e/sys/bin/hello.exe`,
+  `data/drives/e/private/10003a3f/import/apps/hello_reg.rsc`, and the registry under
+  `data/drives/c/sys/install/sisregistry/ef9f2cab/`.
+* `app.launch` `0xef9f2cab` → `{"pid":107}`. `hello` shows its note and ends by itself after
+  five seconds: `event.app_exited` `{"uid":4020186283,"pid":107,"name":"hello[ef9f2cab]0001",
+  "exit_type":"kill","exit_reason":0,"exit_category":"None"}`. `screen.capture` right after
+  it: `-32002 There is no screen 0` (the device reboots after an app exits, README). `app.kill`
+  then: `-32002 No app with UID 0xEF9F2CAB is running`.
+* `examples/panic` (`0xe00006a8`): `event.app_exited` with `"exit_type":"panic",
+  "exit_reason":-2,"exit_category":"RUST"`, and in the log (needs `Kernel:trace`)
+  `T …/kernel/src/thread.cpp:542 [Kernel]: Thread Main panicked with category: RUST and exit
+  code: -2 `.
+* **What the emulator wrote into the profile:** `EKA2L1.log` (the log of this instance), its
+  Qt settings `EKA2L1/EKA2L1.ini`, copies of the shipped `patch/`, `resources/`, `scripts/`,
+  `compat/` and `bindings/`, `cache/`, `data/j2me/`, `config.yml` and `data/devices.yml`
+  rewritten (every key spelled out; the device list unchanged), and on drive C
+  `system/data/sms_settings.dat`.
+* **Guest output.** A log line is `<level> <source>:<line> [<class>]: <text>`. An InfoPrint is
+  `I …/notifier.cpp:111 [Service.Notifier]: Trying to display: Hello from Rust SDK (19
+  chars)`. `RDebug::Print` is logged by the kernel's `debug_print` as class
+  `Emulated.Stdout` at trace level, so its line is `T … [Emulated.Stdout]: <text>`. No
+  program in the Rust SDK calls `RDebug`, so no such line was seen in these runs.
+* **Ending it.** `kill -9` of our PID (its `comm` is `eka2l1_qt` once the wrapper has
+  exec'd; `bash` for the first instant). The socket file stays behind after `kill -9`; the
+  README says the next instance replaces a socket nobody listens on.
+
+**Answer.** A profile is a data folder of its own: copies of `config.yml`, `devices.yml` and
+drive C, empty D and E, and links to the user's ROM and drive Z, which the emulator reads
+and does not write. Installs, logs and settings stay in the profile.
+
+**Evidence.** `~/src/cargo-run-scratch/`: `exec/t10-probe.sh`, `exec/t10-probe2.sh`,
+`exec/probe10.py`, `profiles/{probe-hello.log,probe-panic.log,EKA2L1-hello.log,rm-469/}`;
+`~/src/EKA2L1-wt-build/cargo-run/{build.sh,build.log}`.
+
+### 3. The same bytes, all 21 examples, at one path (cargo-run Task 18)
+
+**Method.** `~/src/cargo-run-scratch/t18/bytes.sh`. One tree path, `t18/tree`, holds first
+`git archive 3086f1d` (0.3.0: the `staticlib` shape and 0.3.0's target spec), built example
+by example with `bin/symdev-030 build`, and then `git archive` of this branch, built with
+plain `cargo build --release` through this branch's `symdev-ld` (`bin7/`, made by `symdev
+setup-linker`). The two `std` examples go through `symdev build`, which materialises the
+sysroot and then runs the same `cargo build --release`. `t18/symdiff.py` compares the two
+ELFs of each pair by section and by symbol, with crate hashes stripped.
+
+| examples | result (`.exe` compressed / uncompressed, 0.3.0 → branch) |
+|---|---|
+| `alloc` `hello` `hello-raw` `panic` `shim` `spawnee` | **equal** (masked): 3 774 / 5 940, 975 / 1 348, 807 / 1 084, 2 029 / 2 972, 4 461 / 7 112, 2 609 / 4 412 |
+| the 13 `no_std` examples that write a test report | `.text` larger by 60–192 bytes, nothing else: `async` 18 360 / 33 892 → 18 374 / 33 976, `atomics` 8 796 / 15 848 → 8 823 / 15 976, `cleanup` 4 272 / 6 828 → 4 314 / 6 948, `files` 8 289 / 14 292 → 8 359 / 14 396, `fmt` 107 754 / 262 412 → 107 737 / 262 532, `locale` 8 109 / 13 288 → 8 107 / 13 384, `net` 10 506 / 17 616 → 10 507 / 17 676, `notes` 11 435 / 19 020 → 11 469 / 19 088, `query` 12 642 / 20 936 → 12 708 / 21 128, `time` 10 159 / 16 552 → 10 168 / 16 632, `tls` 13 920 / 25 920 → 13 921 / 26 044, `ui` 10 288 / 17 028 → 10 323 / 17 096, `ui-list` 11 158 / 18 580 → 11 233 / 18 660 |
+| `std-hello`, `std-net` | 70 257 / 124 212 → 70 238 / 124 664; 51 595 / 92 776 → 51 475 / 93 056 |
+
+* **The report examples.** In each, exactly two symbols change size: `Report::record` grows
+  8 bytes, and the one function that inlines `report!` and `finish` (`E32Main`,
+  `symrs_app_construct`, `main` or `Form::report`) grows 52–184 bytes. Both are this
+  branch's changes to `symbian_std::test_report`, not the build path: `uid3!()` makes the
+  UID3 a literal where `Report::new` parsed `SYMDEV_UID3`'s text at run time (about −110
+  bytes, §2 of the wip notes), and a case's `state` (`symbian-test`) adds a field, a JSON
+  key and the finished-case filters (about +170 to +300). Every other symbol keeps its size;
+  `net` and `tls` also reorder code, as §1.2 found for the spec edit.
+* **The `std` examples.** `.rodata` +672 and +504 bytes: `std`'s panic-location strings now
+  name `build/sysroot/lib/rustlib/src/rust/library/…` instead of `build/rust-src/library/…`
+  (§1.4). `.text` −192 and −204: `Report::finish` +168 (the state), `main` −144 or +64, and
+  `std::panicking::begin_panic`'s payload helpers (−192) no longer linked.
+* **Time.** A cold `cargo build --release` (no target directory, no libcalls build) of
+  `hello` takes 15.5 s, of `ui` 16.5 s; after `touch src/main.rs`, 0.9 s and 2.1 s (`ui`'s
+  link compiles the GUI shim with GCCE). In the shared workspace every later example took
+  8–9 s, the two `std` ones 18–19 s.
+
+**Answer.** Plain cargo through `symdev-ld` gives 0.3.0's bytes wherever the program did
+not change: six examples are equal, and the other fifteen differ only by this branch's own
+SDK changes (the report's UID3 literal and case state) and, for `std`, by the sysroot's path
+strings.
+
+### 4. `cargo run` and `cargo test` on the emulator (cargo-run Task 18)
+
+**Method.** `t18/runs.sh`, under the agent lock, in `t18/tree` with this branch's `symdev`
+(`6d75fbb`), `SYMDEV_EKA2L1=eka2l1-symdev` (§2's build) and a fresh `XDG_DATA_HOME`, so the
+profile is made anew from the user's firmware. Screenshots are of the window whose
+`_NET_WM_PID` is the instance's PID (`t18/shoot.py`, the `eka2l1-host` skill's method).
+
+* **`cargo run --release` in `hello`, no emulator running.** The runner said `created
+  profile rm-469`, `starting an emulator on profile rm-469`, `emulator-1 is Nokia N00
+  (RM-469)`, and printed `Hello from Rust SDK (19 chars)` 2.0 s after the command; status 0
+  after 6.6 s (the program waits 5 s). The line is the note's text from the log's
+  `[Service.Notifier]: Trying to display:` (the runner prints those and `Emulated.Stdout`
+  lines). The window shows the app list, not the note: EKA2L1 logs an `InfoPrint` and
+  draws nothing, as §1.5's screenshot already showed.
+* **A second `cargo run` with `emulator-1` up:** the line after 0.51 s, status 0 after
+  5.27 s. Spec §1's "seconds" holds; the run is the program's own five.
+* **`cargo run --release` in `ui`:** the "Bars" screen (`bars=3 keys=0 cmd=0`); after F1 F1
+  sent to the window, `bars=4 keys=0 cmd=1`. A SIGINT to the run's process group, as Ctrl+C
+  sends it: status 130, and `symdev devices` still lists `emulator-1` with the same PID.
+* **`cargo test --release --no-fail-fast`** in a copy of `async` (`asyncbroken`, its own
+  UID3) with `tests/broken.rs` = `passes`, `fails` (`Err(Evidence::msg("on purpose"))`),
+  `panics` (`panic!`) and `later`, besides `tests/executor.rs`:
+
+  ```
+  running 4 tests
+  test passes ... ok
+  test fails ... FAILED
+  test panics ... FAILED
+  test later ... not run
+
+  failures:
+      fails: on purpose
+      panics: panicked: RUST -2
+
+  test result: FAILED. 1 passed; 2 failed; 1 not run
+  ```
+
+  `executor`: `test block_on_returns_what_the_future_produced ... ok`, `test result: ok. 1
+  passed; 0 failed`. cargo ends with status 101 and `1 target failed: --test broken`.
+  `later` sits in the same module after `panics`: a test in another file is another
+  program, which a panic does not reach.
+* **Two devices, no terminal.** `symdev emulator start rm-469` → `emulator-2`. `cargo run
+  --release < /dev/null`: status 1, `error: several devices: emulator-1, emulator-2, profile
+  rm-469; set SYMDEV_DEVICE to one of them`. With `SYMDEV_DEVICE=emulator-2`: status 0 and
+  the note. `symdev emulator stop` ended both; the user's `~/.local/share/EKA2L1` had nothing
+  newer than a marker file from before the runs.
+* **Found on the way.** Both instances run on the one profile, so they share its data
+  folder (log, drives). The spec's registry allows it and nothing broke here, but a second
+  instance of a profile should get a folder of its own or be refused (open).
+
+**Answer.** `cargo run` picks or starts a device, installs, launches, prints what the app
+shows and ends with its status; Ctrl+C stops the app and not the emulator. `cargo test`
+prints `libtest`'s lines, attributes a panic to the test that was running and reports the
+rest as not run.
+
+**Evidence (§3–4).** `~/src/cargo-run-scratch/t18/`: `bytes.sh`, `bytes.out`, `symdiff.py`,
+`symdiff.out`, `cold.sh`, `logs/`, `base/`, `new/`, `runs.sh`, `runs.log`, `runs/{hello,ui,
+ui-2,hello-1,hello-2,hello-3}.png`, `runs/*.out`, `hello-shot.sh`, `async-broken-src/`.
+
+### Conclusion
+
+`cargo build`, `cargo run` and `cargo test` work in a symdev Rust project as the design
+says, with the changes §1 forced on it: the project is a `[[bin]]` with `#![no_main]`, the
+target spec says `"executables": true` and `"default-visibility": "hidden"`, cargo needs
+`panic-abort-tests`, `symdev-ld` runs the libcalls build itself, a `rust-std` project builds
+through `symdev-rustc` and a sysroot `symdev build` makes, and `symdev-ld` writes
+`<profile>/<bin>.sisx` for `cargo run`. The images are 0.3.0's where the program did not
+change (§3). A device is an EKA2L1 with `--control` on a profile of its own (§2), chosen
+and started by the runner, and it outlives the run (§4).
+
+### 5. Acceptance (spec §10; cargo-run Task 19)
+
+**Staging** (`~/src/cargo-run-scratch/accept/stage.sh`, as §4 of experiment 113): a `file://`
+source with `symdev;0.4.0` (this branch's release build with `SYMDEV_RELEASE=1`, so it has no
+checkout to fall back on), `rust-sdk;0.4.0` (this branch's tree cut with the 0.4.0 recipe's
+include list, plus experiment 113's `prebuilt/`; the shims have not changed since), the SDK
+(SHA-256 `cbec6da8…`, the private bucket's) and the **decoy** `gcce;12.1.0`. The index is
+signed with `install.sh`'s test key. The packages branch's `install.sh` (`cargo-run`, 3fe6a76)
+installs from it.
+
+**The run** (`accept.sh`, `accept-ui.sh`, under the agent lock): `env -i` with an empty
+`HOME`, `PATH` = that home's `.local/bin`, the developer's `cargo` and a host `cc`;
+`RUSTUP_HOME`/`CARGO_HOME` of the developer's rustup; `DISPLAY`, `XAUTHORITY` and
+`XDG_RUNTIME_DIR` of the session; `SYMDEV_EKA2L1` = §2's build, `SYMDEV_EKA2L1_DATA` = the
+user's EKA2L1 (for the firmware); `sources.toml` naming the staged source. No
+`SYMDEV_SIGN_PASSWORD` at any point.
+
+| step | result |
+|---|---|
+| `install.sh` | verified the index signature, installed `symdev 0.4.0`, linked `~/.local/bin/symdev`, `symdev-ld`, `symdev-rustc` |
+| `symdev new accept --lang rust` | installed `rust-sdk;0.4.0` |
+| `cargo run` | built (`dev`) in 15.9 s, `symdev-ld` installing `sdk;s60-3rd-fp2;1.1` on its way (rustc shows it as `warning: linker stderr: installing …`); `created profile rm-469`, `starting an emulator on profile rm-469`, `emulator-1 is Nokia N00 (RM-469)`, `Hello from Rust SDK (19 chars)`; status 0 |
+| `cargo test` | `running 1 test`, `test arithmetic ... ok`, `test result: ok. 1 passed; 0 failed`; status 0 |
+| installed | `cache`, `emulators`, `rust-sdk`, `sdk`, `symdev`: no GCCE, the decoy never ran |
+| an Avkon app | `symdev new acceptui` given `examples/ui`'s source, icon, locales and `[ui]` section: `cargo run` showed the "Bars" screen (`accept/out/accept-ui.png`, the instance's window); SIGINT to the runner, status 130; `symdev emulator stop emulator-1` |
+
+The scaffold's own window shows the app list: its note is an `InfoPrint`, which EKA2L1 logs and
+does not draw (§4). The user's `~/.local/share/EKA2L1` had nothing newer than a marker file.
+
+**Found on the way.** (1) A release build that is not `SYMDEV_RELEASE=1` still falls back to the
+checkout it was built from, so the first staging used the checkout's SDK; the recipe's
+`build.sh` sets the variable. (2) The `--help` probe of `has_control` ran EKA2L1 with a scratch
+`HOME`, which also hides `~/.Xauthority` when `XAUTHORITY` is unset; it now passes the cookie's
+path (d1eaa33). (3) An empty `HOME` has no host `cc`, which build scripts need (README:
+requirements).
+
+**Answer.** From an empty home, `install.sh`, `symdev new --lang rust`, `cargo run` and `cargo
+test` work with no GCCE and no signing password; the app runs on an emulator symdev started
+and the test passes.
+
+## 115. The `emulator` and `firmware;rm-469` packages (emulator-packages, symdev 0.4.0)
+
+**Question.** The design (`docs/superpowers/specs/2026-10-03-emulator-firmware-packages-design.md`)
+ships EKA2L1 as `emulator;<yyyy.mm.dd>`, made from the AppImage the fork's CI builds, and the
+E52 firmware as `firmware;rm-469;1` in the private bucket. §1 records what the plan needs
+before anything is built: the CI and its artifact, the AppImage's layout and how to start
+it, the firmware's size and layout, and what EKA2L1 writes. Only reading and inspecting:
+no emulator ran, no CI was started, nothing was pushed. §2 onwards are the real runs of the
+finished work.
+
+**Setup.** 2026-10-03, branch `cargo-run` of symdev (worktree `~/worktrees/symdev/cargo-run`).
+Scratch `~/src/emu-pkg-scratch/`. The fork's state was read with `gh api` (GET only).
+
+### 1. Observations before the plan
+
+#### 1.1 The fork's CI
+
+* `.github/workflows/build.yml` of the integration branch (`symdev`, `d07d5ac`, the same file
+  upstream has): workflow `C/C++ CI`, on `push`, `pull_request` and `workflow_dispatch`;
+  concurrency group `<workflow>-<ref>`. Job `build-desktop`, matrix label `linux` on
+  `ubuntu-latest`: Qt 6 and SDL 2 from apt (`qt6-base-dev`, `qt6-base-private-dev`,
+  `qt6-multimedia-dev`, `libqt6svg6-dev`, …), `cmake -B build -DCI=ON
+  -DEKA2L1_ENABLE_UNEXPECTED_EXCEPTION_HANDLER=ON -DEKA2L1_NO_TERMINAL=ON
+  -DEKA2L1_ENABLE_DISCORD_RICH_PRESENCE=ON -DCMAKE_BUILD_TYPE=Release`, targets `eka2l1_qt`
+  and `ekatests`, `ctest`, then `scripts/generate_appimage.sh` with
+  `APPIMAGE_EXTRACT_AND_RUN=1` and `QMAKE=/usr/bin/qmake6`.
+* `generate_appimage.sh` downloads `linuxdeploy`, `linuxdeploy-plugin-qt` and
+  `linuxdeploy-plugin-appimage` from their `continuous` releases (not pinned), copies
+  `build/bin/.` to `eka2l1.AppDir/usr/bin/` and runs linuxdeploy with
+  `--executable=bin/eka2l1_qt --plugin=qt --output appimage`.
+* **Artifact:** name `eka2l1-<git short sha>-linux`, one file `build/eka2l1-qt-x64.AppImage`
+  (`actions/upload-artifact@v7`, no `retention-days`: the repository's default applies).
+* **The fork has never run it.** `4akloon/EKA2L1` (public, fork of `EKA2L1/EKA2L1`) lists the
+  workflow as `active`, but its only run is one `Dependency Graph` run (master `c396ac8`) and it
+  has 0 artifacts, although `symdev` (`d07d5ac`, pushed 09:02Z) and the `dev/*` branches were
+  pushed. A push may therefore start nothing; whoever pushes checks that a run appears.
+* Upstream `master` is `fbf0060` (2026-10-03 13:45Z); the fork's `master` is `c396ac8`.
+* Our open PRs and the fork's branch heads: #724 `fix/command-list-overflow` `7ff9a13`, #726
+  `fix/cli-install-then-run` `2338a37`, #727 `fix/property-cancel-during-wipeout` `e836a07`,
+  #728 `fix/applist-no-localisable-rsc` `f7b7888`, #766 `dev/data-dir` `a3ec972`, #767
+  `dev/anim-window-lifetime` `681a9ef`, #768 `dev/applist-reload` `25de6ec`, #769
+  `dev/applist-lock` `c597988`, #770 `dev/control-server` `d1cdb4a`, #771
+  `dev/control-input` `89e61e2`, #772 `dev/control-events` `c323b64`. #770, #771 and #772 are
+  stacked (each branch contains the one before); the others are independent. Merging
+  `dev/data-dir` with `dev/control-events` conflicts only in the option lists of
+  `qt/src/thread.cpp` and `qt/include/qt/cmdhandler.h` (experiment 114 §2).
+
+#### 1.2 The AppImage's layout
+
+No fork artifact exists yet, so the layout was read from the upstream AppImage on this host
+(`~/Downloads/EKA2L1-Linux-x86_64.AppImage.unpatched`, 94 452 216 bytes, SHA-256
+`d8f6c8fe2ff2486e3862992ca48667aaf3ae5c48b7eb8a554ded031591a5fb85`), built by the same
+workflow and script (Qt 6.4.2 "by GCC 13.2.0": Ubuntu 24.04's apt Qt). It was **not run**:
+the squashfs starts where the ELF runtime ends (`e_shoff + e_shnum × e_shentsize` = 944 632),
+and `unsquashfs -o 944632 -d appimage-upstream <file>` extracted it (zstd, 786 inodes).
+
+* Root: `AppRun -> usr/bin/eka2l1_qt` (**a symbolic link**; no `apprun-hooks/`, no
+  `AppRun.wrapped`), `.DirIcon`, `duck_tank.png` and `eka2l1.desktop` (links into `usr/share`).
+* `usr/bin/`: `eka2l1_qt` and what EKA2L1's build puts beside it (`compat/`, `patch/`,
+  `resources/`, `scripts/`, `tools/`, `panic.json`, `libscripting.a`, icons, desktop file)
+  and `qt.conf` written by linuxdeploy-plugin-qt: `Prefix = ../`, `Plugins = plugins`.
+* `eka2l1_qt` has `RUNPATH $ORIGIN/../lib`. So `usr/bin/eka2l1_qt` started directly finds the
+  bundled libraries (`usr/lib/`, 187 files) and Qt its plugins (`usr/plugins/`: platforms
+  `libqxcb.so` only, xcbglintegrations, imageformats, iconengines, multimedia `ffmpeg` and
+  `gstreamer`, tls, networkinformation, platforminputcontexts) without any environment.
+* **Starting `AppRun` would break symdev's liveness check:** `/proc/<pid>/comm` is the name
+  `execve` was given, `AppRun`, and `device::is_eka2l1` keeps a registry entry only while the
+  comm contains `eka2l1`. Started as `usr/bin/eka2l1_qt`, the comm is `eka2l1_qt`, as with
+  today's wrapper (experiment 114 §2).
+* Not bundled, so the host provides them: glibc, `libstdc++`, `libgcc_s`, `libGL`/`libGLX`/
+  `libEGL`, `libX11`, `libxcb`, fontconfig/freetype, `libz`.
+* **glibc floor: 2.38.** The newest `GLIBC_` version any bundled ELF needs (`objdump -T`) is
+  `GLIBC_2.38` (Ubuntu 24.04's `libxml2`, `libxkbcommon`, `libx264`, `libXcursor`, …). This
+  host has 2.43. symdev's other packages run on glibc 2.28 (GCCE is built on AlmaLinux 8,
+  toolchain spec §6; symdev is static musl).
+* Sizes: extracted 254 MB (`usr/lib` 203 MB, `usr/bin` 41 MB, `usr/translations` 5 MB,
+  `usr/share` 3.7 MB, `usr/plugins` 2 MB); as `tar | gzip -6` 101 116 507 bytes.
+* Notices: `usr/share/doc/<package>/copyright` for each of the 167 Ubuntu packages linuxdeploy
+  took files from. 35 are not in the machine-readable (DEP-5) format; 96 mention a GPL. Qt's
+  multimedia plugin `libffmpegmediaplugin.so` pulls Ubuntu's FFmpeg (`libavcodec60` …), which
+  pulls `libx264`, `libx265` (GPL-2.0+), `libzvbi`, `libcodec2` and more. EKA2L1's own
+  `LICENSE` (GPL-3.0; the sources say "version 3 … or any later version") is **not** in the
+  AppImage. `bundle-licences.txt` and `primary-licences.txt` in the scratch list them.
+* This host's session is Wayland (`XDG_SESSION_TYPE=wayland`) with XWayland on `DISPLAY=:0`;
+  the bundle has only the xcb platform plugin.
+
+#### 1.3 What EKA2L1 does with a data folder (read in the source, not run)
+
+* `--data-dir <folder>` (EKA2L1#766; its PR text in `~/src/EKA2L1-wt/data-dir.PR.md`) copies
+  the shipped `patch/`, `resources/`, `scripts/` (and `compat/` if missing) from beside the
+  executable into the folder at start, keeps Qt's settings in `<folder>/EKA2L1/EKA2L1.ini`
+  and resolves every data path under the folder. So a profile needs nothing from the package
+  but the program: the copies land in the profile.
+* `config.yml`: every option is read on its own and falls back to its default when missing
+  (`get_yaml_value` in `src/emu/config/src/config.cpp`). A `config.yml` holding only
+  `log-filter:` is valid by this reading, with `device: 0` and `data-storage: data`.
+* **EKA2L1 writes drive Z at every start** for Symbian 9.3 FP1 and later (`state.cpp` of the
+  Qt frontend): if `Z:\sys\bin\avkonfep.dll` exists and `avkonfep.dll.bak` does not, it moves
+  the DLL to `.bak`; then it copies `patch\avkonfep_general.dll` over it, a path written with
+  a backslash that fails on Linux (the PR text says so). The owner's Z of RM-469 has
+  `sys/bin/avkonfep.dll.bak` (129 014 bytes, 2026-09-18 17:02, the install) and no
+  `avkonfep.dll`: in that state only the failing copy is tried, which matches experiment
+  114 §2 (nothing under the linked Z changed). A firmware package made from it carries that
+  state; whether a read-only Z changes anything is §2's question.
+* `devices.yml` is rewritten at start (the owner's has mtime 18:36, the `--help` run of
+  experiment 114 §2), so a profile keeps its own copy.
+
+#### 1.4 The firmware
+
+The owner's EKA2L1 data folder (`~/.local/share/EKA2L1/data`, read only):
+
+| Path | Contents |
+|---|---|
+| `devices.yml` (124 bytes) | `RM-469:` with `platver: epoc93fp2`, `manufacturer: Nokia`, `firmcode: RM-469`, `model: N00`, `machine-uid: 0`, `isolated-drives: false`; no other device |
+| `roms/rm-469/` | `SYM.ROM`, 51 MB |
+| `drives/z/rm-469/` | 208 MB, 15 595 files, 0 symlinks; one directory is literally named `z:` |
+| `drives/c/` | 17 MB of the owner's state (installs, settings): not firmware |
+
+`tar` of `roms/rm-469`, `drives/z/rm-469` and `devices.yml` through `gzip -6`: 135 187 159
+bytes. The symdev package format keeps symlinks and file modes (0644/0755) and nothing else.
+
+#### 1.5 EKA2L1's corresponding source
+
+The integration copy (`~/src/EKA2L1-wt/integration`) has 40 submodules in `.gitmodules`, 47
+counting nested ones, among them FFmpeg (`src/external/ffmpeg`, 115 MB, built and linked
+statically by EKA2L1's own CMake), Boost, LuaJIT, mbedTLS, SDL's controller database and
+dynarmic. Checked out without `.git` and `build/`: 711 MB.
+
+**What §1 settles for the plan.** symdev starts `<package>/usr/bin/eka2l1_qt`, not `AppRun`;
+the package root is the extracted tree as it is. The firmware package is `roms/rm-469/`,
+`drives/z/rm-469/` and the RM-469 entry of `devices.yml`, about 135 MB packed. The fork's
+CI has to be started and checked by whoever pushes. Two things go to the owner: the glibc
+floor (2.38 against symdev's 2.28) and the corresponding source, which must cover the
+Ubuntu libraries the AppImage bundles (FFmpeg, x264, x265, …), not only Qt.
+
+### 2. The fork CI's Linux job, rehearsed on the rebuilt branch (plan Task 3)
+
+2026-10-03. `~/src/emu-pkg-scratch/rehearsal/run.sh`: a clone of the rebuilt `symdev`
+(`29d5f58` = upstream `fbf0060` + the eleven PRs + the package-list CI commit) with its
+submodules, built in `ubuntu:24.04` with `build.yml`'s Linux apt list and cmake flags, then
+`ctest`, `scripts/generate_appimage.sh` and the package-list step as a script. One addition
+to the job: `git config --global --add safe.directory "*"` (the container runs as root on a
+mount owned by uid 1000; `actions/checkout` does the same on the runner). No apt package had
+to be added and no source change was needed against Ubuntu's Qt 6.4.2 (GCC 13.3.0).
+
+* Wall clock 11 min 40 s with `--parallel 16` (apt, clone and FFmpeg included); 489 compiler
+  warnings, no error. `ctest`: 2/2 passed (`ekatests` 3.65 s).
+* `out/eka2l1-qt-x64.AppImage` 95 668 728 bytes, SHA-256 `86bfbfd3…a268`;
+  `eka2l1-qt-x64.packages.tsv` 10 287 bytes, SHA-256 `ab0ef7a7…7d01`: 167 binary packages
+  (`<name>:amd64`, version, source, source version) from 131 source packages. No bundled
+  file was without an owner.
+* Extracted with `--appimage-extract` (only the AppImage runtime ran): the layout of §1.2
+  exactly. `AppRun -> usr/bin/eka2l1_qt` (a link, no `apprun-hooks/`), `qt.conf`
+  `Prefix = ../`, `Plugins = plugins`, `RUNPATH $ORIGIN/../lib`, 187 files in `usr/lib`, the
+  same eight plugin folders, 167 `usr/share/doc/*/copyright`. glibc floor `GLIBC_2.38`.
+  257 MB extracted. The runtime creates the folders with mode 0700; the package format
+  writes 0755 anyway.
+
+### 3. A profile made from a read-only firmware package (plan Task 6)
+
+2026-10-03. The host build of the rebuilt branch (`~/src/EKA2L1-wt-build/emulator-pkg`,
+`symdev-50a419f`) on a hand-made profile: `data/roms/rm-469` and `data/drives/z` linked into
+a copy of the staged `firmware;rm-469;1` tree (plan Task 5), `devices.yml` the package's
+`device.yml`, empty drives C, D and E, `config.yml` holding only symdev's log filter. Run
+under `strace -f -e trace=%file` and the agent lock, driven through `--control` by
+`probe.py` (install `hello.sisx`, launch `0xef9f2cab`). Scratch: `~/src/emu-pkg-scratch/exp115/`.
+
+* **Run 1, package read-only (`chmod -R a-w`):** EKA2L1 opens `SYM.ROM` with
+  `O_RDWR|O_CREAT` (`EACCES`), `set_device` fails ("device index is out of range"), the log
+  says "No device has been set up, skipping user-side initialisation", and the control
+  socket never appears (`NO SOCKET` after 120 s). The source explains the open:
+  `kernel.cpp` maps the ROM with `common::map_file(path, prot_read_write, 0, true)`, and
+  `virtualmem.cpp` opens a read-write mapping with `O_RDWR | O_CREAT` and maps it
+  `MAP_PRIVATE` ("On Linux this is always private"): the guest may write its copy of the
+  ROM, the file is never written. Nothing else touched the package.
+* **Run 2, package writable as symdev installs it (files 0644, folders 0755):**
+  1. Boots with an empty C and a one-line `config.yml`: `emulator.info` answers at once
+     with `device {manufacturer Nokia, model N00, firmware RM-469, os epoc93fp2}`, and
+     `apps.list` lists the ROM's apps.
+  2. Write-mode calls on the package (through the profile's links; strace shows the paths
+     EKA2L1 passed, so a grep for the package's own path finds nothing): exactly two,
+     `openat(…/data/roms//rm-469/SYM.ROM, O_RDWR|O_CREAT)`. No rename, unlink, mkdir or
+     write-mode open under drive Z: `Z:\sys\bin\avkonfep.dll` is only `stat`ed (the package
+     carries the `.bak` state of §1.3), and `Z:\stubcached` exists in the package (EKA2L1
+     writes it on Z when it is missing, after installing the ROM's SIS stubs into C —
+     `package/src/manager.cpp`; with it present a new profile's C gets no stub registry,
+     and installing a SIS still works). SHA-256 of all 15 597 package files before and
+     after: **0 changed**.
+  3. `package.install` of hello answers `{}`, `app.launch` gives pid 108, and
+     `event.app_exited` comes with `exit_type kill`, `exit_reason 0`. `screen.capture` 20 s
+     after the launch answered `There is no screen 0` (under strace; Task 13 looks at the
+     window). The log's only errors are the usual "Unable to patch export" lines of the
+     patch DLLs. Drive C afterwards: `sys/install/sisregistry/ef9f2cab/` and
+     `System/Data/sms_settings.dat`.
+
+**Ruling: links.** EKA2L1 writes nothing into the ROM or drive Z; it only needs the ROM
+file to be writable to open it, and symdev installs package files 0644. The spec's rule
+("if it writes, the profile gets copies instead") therefore keeps links; read-only package
+files would stop the boot, so symdev must never make an installed firmware read-only. A
+firmware package must carry `Z:\stubcached` (the staged RM-469 does), or EKA2L1 writes it.
+
+### 4. `cargo run` and `cargo test` on the packaged emulator and firmware (plan Task 13)
+
+2026-10-03, 21:40Z. symdev of this branch (`7fa31ec`+, release build), with **no**
+`SYMDEV_EKA2L1` or `SYMDEV_EKA2L1_DATA`, `LD_LIBRARY_PATH` and `QT_PLUGIN_PATH` unset, and
+none of this host's software-GL variables. Two `file://` sources staged by a scratch stager
+(`~/src/emu-pkg-scratch/stage/`): `public` with `emulator;2026.10.03` (the rehearsal tree of
+plan Task 10, packed 102 819 047 bytes) and `private` with `firmware;rm-469;1` (plan Task 5's
+tree, packed 133 668 334 bytes, the same SHA-256 `032b6e1d…` as the publisher's dry run).
+The toolchain came from the developer's variables (cargo-run's `env.sh`, GCCE route,
+`SYMDEV_RUST_SDK` = this branch's `symbian-rs`); only the emulator and the firmware came from
+the packages. Script `~/src/emu-pkg-scratch/exp115/run13.sh`, run under the agent lock.
+
+* `symdev emulator start rm-469`: `installing firmware;rm-469;1 (133.7 MB) from private…`,
+  `created profile rm-469`, `installing emulator;2026.10.03 (102.8 MB) from public…`,
+  `emulator-1`, rc 0, 3 s in all. The process: comm `eka2l1_qt`, exe
+  `<SYMDEV_HOME>/emulator/2026.10.03/usr/bin/eka2l1_qt`. `symdev devices`: `emulator-1  Nokia
+  N00 (RM-469)  pid …  profile rm-469`. The profile's `data/roms/rm-469` and `data/drives/z`
+  are links into `<SYMDEV_HOME>/firmware/rm-469/1/`.
+* `symdev new t13 --lang rust`, then `cargo run`: built in 16.9 s, `Running symdev run --exe
+  …/debug/t13`, `Hello from Rust SDK (19 chars)`, rc 0. `cargo test`: `test arithmetic ... ok`,
+  `test result: ok. 1 passed`, rc 0. `symdev emulator stop emulator-1`: rc 0.
+* The PID-bound screenshot (`~/src/emu-pkg-scratch/exp115/shots/t13-hello.png`) is this
+  instance's EKA2L1 window: the app list (Zip manager; the ROM's apps are system apps, which
+  the list hides) with `Device N00 (RM-469 - S60v3 FP2)`. EKA2L1's log has no error but the
+  usual "Unable to patch export" lines; it created a GLX 4.6 context. **No software-GL
+  variable was needed** on this host: the package imposes none and the user sets none.
+* **The packages are unchanged:** after both runs every file of the installed
+  `emulator;2026.10.03` and `firmware;rm-469;1` has the SHA-256 of the tree it was packed
+  from; the only extra file is each package's `.symdev-package.toml` receipt. (The plan's
+  check, files newer than a marker touched before the start, counts the install itself:
+  16 257.)
+* Started again with this host's `LD_LIBRARY_PATH` (its own Qt 6.8.3 and sysroot) and
+  `QT_PLUGIN_PATH` exported: rc 0, and the process's `environ` holds neither variable.
+* No emulator was left running; the owner's `~/.local/share/EKA2L1` has nothing newer than
+  the run.
+
+### 5. The acceptance, staged (plan Task 15; spec §6)
+
+2026-10-03, 23:44Z. symdev of this branch (`bf85b46`, release build) packed as `symdev;0.4.0`
+and staged with the packages branch's `install.sh` (`777a48f`) into two `file://` sources
+signed with a throwaway key (`~/src/emu-pkg-scratch/accept/stage.sh`): `public` with
+`symdev;0.4.0` (3 223 471 bytes), `rust-sdk;0.4.0` (424 442) and `emulator;2026.10.03`
+(102 819 047, SHA-256 `7dc84337…`); `private` with `sdk;s60-3rd-fp2;1.1` (4 941 155) and
+`firmware;rm-469;1` (133 668 334, `032b6e1d…`). `accept.sh` took the agent lock, then ran
+`inner.sh` under `bwrap` with an empty tmpfs over the owner's `~/.local/share/EKA2L1`, in an
+empty `HOME`, with `env -i` (no `SYMDEV_*` toolchain variable, no `SYMDEV_EKA2L1`, no
+`SYMDEV_EKA2L1_DATA`, no GL variable).
+
+* The owner's folder as seen inside: 0 entries. `install.sh` rc 0: verified the index
+  signature, installed symdev 0.4.0, linked `symdev`, `symdev-ld`, `symdev-rustc`.
+* `symdev new accept --lang rust` rc 0, `installing rust-sdk;0.4.0 (0.4 MB) from public…`.
+* `cargo run` rc 0 in 24.1 s (the hello line after 19.4 s), from nothing installed:
+  `installing sdk;s60-3rd-fp2;1.1 (4.9 MB) from private…` (from the linker), `installing
+  firmware;rm-469;1 (133.7 MB) from private…`, `created profile rm-469`, `installing
+  emulator;2026.10.03 (102.8 MB) from public…`, `starting an emulator on profile rm-469`,
+  `emulator-1 is Nokia N00 (RM-469)`, `Hello from Rust SDK (19 chars)`.
+* `cargo test` rc 0: `test arithmetic ... ok`, `test result: ok. 1 passed; 0 failed`.
+  `symdev devices`: `emulator-1  Nokia N00 (RM-469)  pid …  profile rm-469`; stopped with
+  `symdev emulator stop emulator-1`.
+* Installed: `emulator`, `emulators` (the profile `rm-469`), `firmware`, `rust-sdk`, `sdk`,
+  `symdev`, and the linker's cache; no `gcce`.
+* `accept rc=0`; the owner's `~/.local/share/EKA2L1` has 0 files newer than the run; no
+  `eka2l1_qt` left running.
+* The PID-bound screenshot (`~/src/emu-pkg-scratch/accept/out/accept.png`) is the packaged
+  EKA2L1's window: the app list with `Device N00 (RM-469 - S60v3 FP2)`, as in §4.
+* Seen in passing, not this plan's: the private SDK's install message, printed by
+  `symdev-ld`, reaches the user as rustc's `warning: linker stderr: installing sdk;…`
+  (`linker_messages`).

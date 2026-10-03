@@ -73,17 +73,20 @@ pub const SCHEMA: u32 = 1;
 /// The directory every example writes its result into.
 pub const RESULTS_DIR: &str = "E:\\symdev\\results";
 
-/// One case: a name, whether it passed, and for a failure what went wrong.
+/// One case: a name, whether it passed, and for a failure what went wrong. `state` is
+/// `pending` or `running` for a case `symbian-test` has listed but not finished, so a
+/// panic, which ends the process, leaves the file saying which case it hit.
 struct Case {
     name: String,
     ok: bool,
     detail: String,
+    state: Option<&'static str>,
 }
 
 /// The result of one example run, built case by case and written out at the end.
 ///
 /// ```ignore
-/// let mut report = Report::new("files");
+/// let mut report = symbian_std::report!("files");
 /// report.check("write", written == BYTES.len());
 /// report.check_detail("read", got == 4000, detail!("{got} of 4000"));
 /// report.checked("rename", fs::rename(FROM, TO));
@@ -96,16 +99,10 @@ pub struct Report {
 }
 
 impl Report {
-    /// A report for `app` (a short name, only for a human reading the file), taking the
-    /// application's UID3 — which names the file — from `SYMDEV_UID3`, the manifest value
-    /// `symdev build` puts in cargo's environment. Prefer this to [`Report::with_uid3`]:
-    /// writing the UID a second time in the source is how it drifts from `symdev.toml`,
-    /// and the only symptom is `symdev test` waiting for a file nobody writes.
-    pub fn new(app: &str) -> Self {
-        Self::with_uid3(app, uid3_from_env())
-    }
-
-    /// A report for an application that names its own UID3.
+    /// A report for `app` (a short name, only for a human reading the file) whose file is
+    /// named by `uid3`. Prefer [`crate::report!`], which takes the UID3 from the
+    /// application's `symdev.toml`: writing the UID a second time in the source is how it
+    /// drifts, and the only symptom is `symdev test` waiting for a file nobody writes.
     pub fn with_uid3(app: &str, uid3: u32) -> Self {
         Self {
             app: String::from(app),
@@ -165,22 +162,51 @@ impl Report {
             name: String::from(name),
             ok,
             detail: String::from(detail),
+            state: None,
         });
     }
 
-    /// How many cases passed.
+    /// Lists a case that has not run yet (`"state":"pending"`).
+    pub fn pending(&mut self, name: &str) {
+        self.record(name, false, "");
+        if let Some(case) = self.cases.last_mut() {
+            case.state = Some("pending");
+        }
+    }
+
+    /// Marks a listed case as the one running now (`"state":"running"`).
+    pub fn running(&mut self, name: &str) {
+        if let Some(case) = self.cases.iter_mut().find(|c| c.name == name) {
+            case.state = Some("running");
+        }
+    }
+
+    /// Finishes a listed case: its verdict and detail, and no state.
+    pub fn settle(&mut self, name: &str, ok: bool, detail: &str) {
+        if let Some(case) = self.cases.iter_mut().find(|c| c.name == name) {
+            case.ok = ok;
+            case.detail = String::from(detail);
+            case.state = None;
+        }
+    }
+
+    /// How many finished cases passed.
     pub fn passed(&self) -> usize {
-        self.cases.iter().filter(|c| c.ok).count()
+        self.finished().filter(|c| c.ok).count()
     }
 
-    /// How many cases failed.
+    /// How many finished cases failed.
     pub fn failed(&self) -> usize {
-        self.cases.len() - self.passed()
+        self.finished().filter(|c| !c.ok).count()
     }
 
-    /// Whether the run passed: every case passed and there was at least one.
+    /// Whether the run passed: every case finished and passed, and there was at least one.
     pub fn is_pass(&self) -> bool {
-        self.failed() == 0 && !self.cases.is_empty()
+        self.failed() == 0 && !self.cases.is_empty() && self.finished().count() == self.cases.len()
+    }
+
+    fn finished(&self) -> impl Iterator<Item = &Case> {
+        self.cases.iter().filter(|c| c.state.is_none())
     }
 
     /// `E:\symdev\results\<uid3>.json`.
@@ -202,38 +228,13 @@ impl Report {
     /// Returns whether the run passed, so an example can map it to its own exit code
     /// as well as to the file.
     pub fn finish(&self) -> Result<bool> {
-        fs::create_dir_all(RESULTS_DIR)?;
-        fs::write(&self.path(), self.to_json().as_bytes())?;
+        self.save()?;
         Ok(self.is_pass())
     }
-}
 
-/// `SYMDEV_UID3` as `symdev build` sets it, parsed at compile time. A build that did not
-/// set it (a hand `cargo build`) gets 0, which makes the missing value obvious in the
-/// file name rather than silently writing somebody else's report.
-const fn uid3_from_env() -> u32 {
-    match option_env!("SYMDEV_UID3") {
-        Some(text) => parse_hex_u32(text.as_bytes()),
-        None => 0,
+    /// Writes the report as it stands, creating `E:\symdev\results` if needed.
+    pub fn save(&self) -> Result<()> {
+        fs::create_dir_all(RESULTS_DIR)?;
+        fs::write(&self.path(), self.to_json().as_bytes())
     }
-}
-
-/// `0x` followed by hex digits, at compile time. Anything else is 0.
-const fn parse_hex_u32(bytes: &[u8]) -> u32 {
-    if bytes.len() < 3 || bytes[0] != b'0' || (bytes[1] != b'x' && bytes[1] != b'X') {
-        return 0;
-    }
-    let mut value: u32 = 0;
-    let mut i = 2;
-    while i < bytes.len() {
-        let digit = match bytes[i] {
-            b'0'..=b'9' => bytes[i] - b'0',
-            b'a'..=b'f' => bytes[i] - b'a' + 10,
-            b'A'..=b'F' => bytes[i] - b'A' + 10,
-            _ => return 0,
-        };
-        value = value * 16 + digit as u32;
-        i += 1;
-    }
-    value
 }

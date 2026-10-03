@@ -24,6 +24,7 @@
 //! cd symbian-rs/examples/spawnee && symdev build && symdev package && symdev run
 //! ```
 #![no_std]
+#![no_main]
 
 use symbian_std::fs;
 use symbian_sys::des16::{TPtr16_ctor, TPtr16Storage};

@@ -15,6 +15,7 @@
 //! refuse to build, or fold it into something else. Nothing is written: the program has
 //! no report, and `symdev test` has nothing to run.
 #![no_std]
+#![no_main]
 
 extern crate alloc;
 
