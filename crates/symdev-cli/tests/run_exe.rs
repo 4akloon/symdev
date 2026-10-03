@@ -281,3 +281,15 @@ fn a_second_ctrl_c_ends_a_runner_waiting_on_the_emulator() {
     };
     assert_eq!(status.and_then(|s| s.code()), Some(130));
 }
+
+/// Every case passed, and then the process panicked: the run is not a pass.
+#[test]
+fn a_panic_after_the_last_case_fails_the_run() {
+    let cases = report("{\"name\":\"a\",\"ok\":true}");
+    let then = vec![exited("panic", -2, "RUST")];
+    let fake = device_writing(tempfile::tempdir().unwrap(), false, then, Some(cases));
+    fake.register(1);
+    let (code, out, err) = run_test(&fake);
+    assert_eq!(code, 1, "{out}{err}");
+    assert!(out.contains("panicked: RUST -2"), "{out}");
+}

@@ -146,12 +146,21 @@ impl Runner {
                 ),
             }],
         };
-        let (text, passed) = LibtestPrint::lines(&lines);
+        let (mut text, passed) = LibtestPrint::lines(&lines);
+        // Every case passed, and the program then ended badly (a panic after the last
+        // case): the run is not a pass either.
+        let ended_badly = passed && exit.code != 0;
+        if ended_badly {
+            text.push(format!(
+                "error: the test program ended with {} after its last test",
+                exit.message.as_deref().unwrap_or("a failure")
+            ));
+        }
         for line in text {
             writeln!(out, "{line}").map_err(|e| Error::Other(format!("stdout: {e}")))?;
         }
         Ok(AppExit {
-            code: if passed { 0 } else { 1 },
+            code: if passed && !ended_badly { 0 } else { 1 },
             message: None,
         })
     }
