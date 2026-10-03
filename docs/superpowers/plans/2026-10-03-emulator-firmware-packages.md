@@ -1217,3 +1217,93 @@ Expected: no failure lines, `0` clippy lines, `0` `not ok`. A developer's
 `PUBLISH_SIGNING_KEY` in the environment makes one existing publisher test fail (cargo-run
 notes); run the gate with `env -u PUBLISH_SIGNING_KEY`. Leave `~/src/emu-pkg-scratch/firmware/tree`
 for Task 6. Commit the symdev wip file too.
+
+### Task 6: A profile made from a read-only firmware package (experiment 115 §3)
+
+The spec: "Whether EKA2L1 writes into Z: or the ROM is observed first, with the package files
+read-only; if it writes, the profile gets copies instead." It also leaves open whether the
+firmware boots with an empty drive C and a `config.yml` holding only symdev's log filter.
+This task answers all three before Task 7 writes the code. It uses Task 1's host build, so
+that only the firmware side is new.
+
+**Files:**
+- Outside git: `~/src/emu-pkg-scratch/exp115/{pkg,profile,probe.py,run6.sh,run6.log,strace.txt}`
+- Modify: `docs/research/experiment-backlog.md` (experiment 115 §3)
+
+**Interfaces:**
+- Consumes: Task 5's staged tree, Task 1's `eka2l1-emupkg`.
+- Produces: the ruling **links** or **copies** for Task 7, and whether an empty C boots.
+
+- [ ] **Step 1: Make the package and the profile by hand**
+
+```bash
+X=~/src/emu-pkg-scratch/exp115; rm -rf $X/pkg $X/profile; mkdir -p $X/pkg $X/profile/data/roms
+cp -a ~/src/emu-pkg-scratch/firmware/tree $X/pkg/rm-469 && chmod -R a-w $X/pkg/rm-469
+P=$X/pkg/rm-469; D=$X/profile/data
+mkdir -p $D/drives/c $D/drives/d $D/drives/e
+cp $P/device.yml $D/devices.yml
+ln -s $P/roms/rm-469 $D/roms/rm-469
+ln -s $P/drives/z $D/drives/z
+printf 'log-filter: "*:info Emulated.Stdout:trace Kernel:trace"\n' > $X/profile/config.yml
+cp ~/src/cargo-run-scratch/exec/probe10.py $X/probe.py
+```
+
+`$P/drives/z` is the folder that holds `rm-469/`; EKA2L1 finds Z under
+`data/drives/z/<firmware>`, as in the owner's layout. That layout is why
+`EmulatorProfile::create` links the whole `drives/z` today.
+
+- [ ] **Step 2: Run it under strace and the agent lock**
+
+`run6.sh`:
+
+```bash
+#!/usr/bin/env bash
+# run6.sh — experiment 115 §3: Task 1's EKA2L1 on a profile made from the read-only firmware
+# package; every file call traced; hello installed and launched through the control socket.
+X=~/src/emu-pkg-scratch/exp115; S=$XDG_RUNTIME_DIR/symdev-exp115.sock; rm -f $S
+touch $X/marker
+setsid strace -f -e trace=%file -o $X/strace.txt ~/src/emu-pkg-scratch/bin/eka2l1-emupkg \
+  --data-dir $X/profile --control $S > $X/emu.out 2>&1 & pid=$!
+echo "pid $pid"
+python3 $X/probe.py $S ~/src/cargo-run-scratch/tree/symbian-rs/examples/hello/build/hello.sisx 0xef9f2cab $X/shots
+sleep 2; kill -9 $pid; for c in $(pgrep -P $pid); do kill -9 $c; done
+grep -E "$X/pkg" $X/strace.txt | grep -E 'O_WRONLY|O_RDWR|O_CREAT|rename|unlink|mkdir' > $X/pkg-writes.txt
+echo "write attempts on the package: $(wc -l < $X/pkg-writes.txt)"
+find -L $X/pkg -newer $X/marker | head
+grep -iE 'error|fail|denied' $X/profile/EKA2L1.log | head -20
+ls -R $X/profile/data/drives/c | head -30
+```
+
+```bash
+flock ~/.local/share/EKA2L1/.symdev-agent.lock bash ~/src/emu-pkg-scratch/exp115/run6.sh > ~/src/emu-pkg-scratch/exp115/run6.log 2>&1
+```
+
+Kill only the PID the script started and its children. `pgrep -P` lists only that PID's
+children, so the owner's own emulator is never matched. Check `pgrep -f '^.*emupkg.*exp115'`
+is empty afterwards.
+
+- [ ] **Step 3: Read the answers and rule**
+
+From `run6.log`, `probe.py`'s JSON lines, `strace.txt` and `EKA2L1.log`:
+
+1. **Boots with empty C and a one-line config?** `emulator.info` names `RM-469` and
+   `apps.list` answers. If not, record the last log lines and stop: Task 7 cannot be written
+   without the answer, so report to the lead (the fix is a seed for C in the firmware
+   package, which changes the recipe).
+2. **Write attempts into the package** (`pkg-writes.txt`). Expected from §1.3: one
+   failing open of `…/sys/bin/avkonfep.dll` for writing (the backslash copy may not even
+   reach it), and no rename, because the staged Z already holds the `.bak`. Each line is
+   recorded.
+3. **Did a write attempt change behaviour?** `package.install` of hello answers `{}`, the
+   launch gives a pid, `event.app_exited` comes with `exit_type kill`, and the log shows no
+   error on Z or the ROM beyond the known avkonfep copy.
+
+**Ruling:** if 1 and 3 hold, Task 7 uses **links** (as written). If anything in 3 fails
+because Z or the ROM is read-only, Task 7 uses **copies**: the variant given in Task 7
+step 3. The profile then costs 259 MB each, and the rest of the plan is unchanged. Write
+the ruling, with the evidence, as experiment 115 §3, and into the wip file.
+
+- [ ] **Step 4: Commit** the experiment record and the wip file:
+  `Record experiment 115 §3: a profile made from a read-only firmware package.`
+  Restore write permission on the scratch copy afterwards (`chmod -R u+w
+  ~/src/emu-pkg-scratch/exp115/pkg`) so that later `rm -rf` works.
