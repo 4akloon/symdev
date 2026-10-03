@@ -1766,3 +1766,244 @@ git add crates/symdev-emulator/src/device.rs crates/symdev-emulator/src/device/e
   crates/symdev-cli/src/run/device_pick.rs
 git commit -m "Start either the user's EKA2L1 as it is or a packaged one without the host's library paths."
 ```
+
+### Task 9: `Provision` resolves the emulator and the firmware; every command uses it
+
+**Files:**
+- Create: `crates/symdev-cli/src/provision/emulator.rs`, `crates/symdev-cli/src/provision/emulator/tests.rs`
+- Modify: `crates/symdev-cli/src/provision.rs` (`mod emulator;`)
+- Modify: `crates/symdev-cli/src/devices_cmd.rs` (`profiles`, `make_profiles`,
+  `profiles_or_make`, `eka2l1_with_control(&Provision)`, `list(&Provision)`, `start(&str, &Provision)`)
+- Modify: `crates/symdev-cli/src/run/device_pick.rs` (`pick_device(terminal, &Provision)`, lazy profiles)
+- Modify: `crates/symdev-cli/src/run.rs`, `crates/symdev-cli/src/test_cmd.rs`, `crates/symdev-cli/src/main.rs`
+- Create: `crates/symdev-cli/tests/emulator_packages.rs`
+- Modify: `crates/symdev-cli/tests/run.rs` (`run_without_any_device_…`)
+
+**Interfaces:**
+- Consumes: `Pins::emulator`, `Pins::firmware`, `Device::ALL`, `EmulatorPackage`,
+  `FirmwarePackage` (Task 4); `Firmware` (Task 7); `Eka2l1` (Task 8).
+- Produces: `Provision::eka2l1(&self) -> Result<Eka2l1, Error>`,
+  `Provision::firmwares(&self) -> Result<Vec<Firmware>, Error>`. A profile is made only when
+  a start needs one: nothing is running, or `SYMDEV_DEVICE` names a profile. A fake
+  running device in the CLI tests therefore never reaches a source.
+
+- [ ] **Step 1: Write the failing unit tests**, `provision/emulator/tests.rs`
+
+```rust
+use std::collections::BTreeMap;
+use std::ffi::OsString;
+use std::path::Path;
+
+use symdev_emulator::device::Eka2l1;
+use symdev_sdk::Pins;
+
+use crate::provision::Provision;
+
+fn provision(offline: bool, vars: &[(&str, &Path)]) -> Provision {
+    let vars: BTreeMap<String, OsString> = vars
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.as_os_str().to_owned()))
+        .collect();
+    Provision::from_lookup(offline, None, move |key| vars.get(key).cloned())
+}
+
+/// No HOME and no SYMDEV_HOME: any look at the packages would be an error.
+#[test]
+fn symdev_eka2l1_is_started_as_it_is_and_no_package_is_looked_at() {
+    let p = provision(false, &[("SYMDEV_EKA2L1", Path::new("/u/eka2l1"))]);
+    assert_eq!(p.eka2l1().unwrap(), Eka2l1::User("/u/eka2l1".into()));
+}
+
+#[test]
+fn symdev_eka2l1_data_gives_its_firmwares_and_no_package_is_looked_at() {
+    let user = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(user.path().join("data/roms/rm-469")).unwrap();
+    let p = provision(false, &[("SYMDEV_EKA2L1_DATA", user.path())]);
+    let names: Vec<String> = p.firmwares().unwrap().iter().map(|f| f.name().to_string()).collect();
+    assert_eq!(names, ["rm-469"]);
+}
+
+#[test]
+fn symdev_eka2l1_data_without_a_firmware_names_the_package_instead() {
+    let user = tempfile::tempdir().unwrap();
+    let p = provision(false, &[("SYMDEV_EKA2L1_DATA", user.path())]);
+    let e = p.firmwares().unwrap_err().to_string();
+    assert!(e.contains("no firmware in data/roms/"), "{e}");
+    assert!(e.contains("firmware;rm-469;1"), "{e}");
+}
+
+#[test]
+fn without_the_variables_offline_names_the_install_commands() {
+    let home = tempfile::tempdir().unwrap();
+    let p = provision(true, &[("HOME", home.path())]);
+    let e = p.eka2l1().unwrap_err().to_string();
+    let install = format!("symdev sdk install {}", Pins::emulator().shell_word());
+    assert!(e.contains(&install), "{e}");
+    let e = p.firmwares().unwrap_err().to_string();
+    assert!(e.contains("symdev sdk install 'firmware;rm-469;1'"), "{e}");
+}
+```
+
+- [ ] **Step 2: Write the failing CLI tests**, `crates/symdev-cli/tests/emulator_packages.rs`
+
+```rust
+//! `symdev emulator start` and `symdev devices` against a `file://` source holding the
+//! emulator and firmware packages (emulator packages spec §5, Review Focus 2, 4, 5).
+use std::path::{Path, PathBuf};
+
+use predicates::prelude::*;
+use symdev_sdk::{Host, Pins};
+
+mod common;
+use common::bin;
+use common::repo::World;
+
+const DEVICE_YML: &str = "RM-469:\n  platver: epoc93fp2\n  firmcode: RM-469\n";
+
+fn with_firmware(world: &mut World) {
+    world.add(
+        "firmware;rm-469;1",
+        Host::Any,
+        &[
+            ("device.yml", DEVICE_YML, false),
+            ("roms/rm-469/SYM.ROM", "rom", false),
+            ("drives/z/rm-469/sys/bin/avkonfep.dll.bak", "dll", false),
+        ],
+    );
+}
+
+/// An EKA2L1 whose `--help` lists `--data-dir` only: one without the control server.
+fn old_eka2l1(dir: &Path) -> PathBuf {
+    let path = dir.join("old-eka2l1");
+    std::fs::write(&path, "#!/bin/sh\necho '  --data-dir <dir>'\n").unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+fn profile(world: &World) -> PathBuf {
+    world.tmp.path().join("data/symdev/emulators/rm-469")
+}
+
+#[test]
+fn emulator_start_installs_the_firmware_package_and_makes_its_profile() {
+    let mut world = World::new();
+    with_firmware(&mut world);
+    world
+        .bin()
+        .env("SYMDEV_EKA2L1", old_eka2l1(world.tmp.path()))
+        .args(["emulator", "start", "rm-469"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("installing firmware;rm-469;1"))
+        .stderr(predicate::str::contains("created profile rm-469"));
+    let package = world.package_dir("firmware;rm-469;1");
+    let data = profile(&world).join("data");
+    assert_eq!(std::fs::read_link(data.join("roms/rm-469")).unwrap(), package.join("roms/rm-469"));
+    assert_eq!(std::fs::read_link(data.join("drives/z")).unwrap(), package.join("drives/z"));
+    assert_eq!(std::fs::read_to_string(data.join("devices.yml")).unwrap(), DEVICE_YML);
+}
+
+#[test]
+fn an_old_symdev_eka2l1_is_named_with_the_way_to_the_package() {
+    let mut world = World::new();
+    with_firmware(&mut world);
+    world
+        .bin()
+        .env("SYMDEV_EKA2L1", old_eka2l1(world.tmp.path()))
+        .args(["emulator", "start", "rm-469"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("SYMDEV_EKA2L1 ("))
+        .stderr(predicate::str::contains("has no --control"))
+        .stderr(predicate::str::contains(format!(
+            "unset SYMDEV_EKA2L1 to use the {} package",
+            Pins::emulator()
+        )));
+}
+
+#[test]
+fn without_symdev_eka2l1_the_emulator_package_is_installed_and_probed() {
+    let mut world = World::new();
+    with_firmware(&mut world);
+    let emulator = Pins::emulator();
+    world.add(
+        emulator.as_str(),
+        Host::X86_64Linux,
+        &[("usr/bin/eka2l1_qt", "#!/bin/sh\necho '  --data-dir <dir>'\n", true)],
+    );
+    world
+        .bin()
+        .args(["emulator", "start", "rm-469"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(format!("installing {emulator}")))
+        .stderr(predicate::str::contains("the emulator package's"))
+        .stderr(predicate::str::contains("usr/bin/eka2l1_qt has no --control"));
+}
+
+#[test]
+fn the_default_eka2l1_folder_is_not_read_without_symdev_eka2l1_data() {
+    let world = World::new();
+    let default = world.tmp.path().join("data/EKA2L1");
+    std::fs::create_dir_all(default.join("data/roms/rm-469")).unwrap();
+    std::fs::write(default.join("data/devices.yml"), DEVICE_YML).unwrap();
+    let before: Vec<_> = walk(&default);
+    world
+        .bin()
+        .args(["emulator", "start", "rm-469"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("firmware;rm-469;1 was not found"))
+        .stderr(predicate::str::contains("SYMDEV_EKA2L1_DATA"));
+    assert!(!profile(&world).exists());
+    assert_eq!(walk(&default), before);
+}
+
+#[test]
+fn an_existing_profile_needs_no_firmware_package() {
+    let home = tempfile::tempdir().unwrap();
+    let emulators = home.path().join("data/symdev/emulators/rm-469");
+    std::fs::create_dir_all(&emulators).unwrap();
+    bin()
+        .env("XDG_DATA_HOME", home.path().join("data"))
+        .args(["--offline", "devices"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("profile rm-469"))
+        .stderr(predicate::str::contains("installing").not());
+}
+
+/// Every path under `dir` with its modification time, sorted.
+fn walk(dir: &Path) -> Vec<(PathBuf, std::time::SystemTime)> {
+    let mut found = Vec::new();
+    let mut todo = vec![dir.to_path_buf()];
+    while let Some(d) = todo.pop() {
+        for e in std::fs::read_dir(&d).unwrap().flatten() {
+            let meta = e.metadata().unwrap();
+            if meta.is_dir() {
+                todo.push(e.path());
+            }
+            found.push((e.path(), meta.modified().unwrap()));
+        }
+    }
+    found.sort();
+    found
+}
+```
+
+`crates/symdev-cli/tests/run.rs`: `run_without_any_device_says_to_install_a_firmware` becomes
+`run_without_any_device_names_the_firmware_package_and_symdev_eka2l1_data`, asserting
+`firmware;rm-469;1` and `SYMDEV_EKA2L1_DATA` in stderr instead of `install a firmware in
+EKA2L1` (`bin()`'s `sources.toml` has no source, so the lookup fails without a network).
+
+- [ ] **Step 3: Run them and see them fail**
+
+```bash
+cargo test -p symdev-cli --offline --test emulator_packages > /tmp/t9.log 2>&1; grep -E "^error|test result|FAILED|panicked" /tmp/t9.log
+cargo test -p symdev-cli --offline --bin symdev provision::emulator > /tmp/t9u.log 2>&1; grep -E "^error|test result" /tmp/t9u.log
+```
+
+Expected: the unit tests do not compile (`no method named eka2l1`). The CLI tests fail: no
+install line, the old "missing emulator: SYMDEV_EKA2L1" error, profiles not made from the
+package.
