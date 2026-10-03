@@ -4378,3 +4378,49 @@ build script runs, so symdev materialises it ahead of time (once per SDK and nig
 per build). A `RUSTC` variable in the environment overrides `build.rustc` (observed: with `RUSTC=rustc`, `std` came from the toolchain's source and failed as in H1). A `rust-std`
 image differs from 0.3.0's by path-dependent bytes only: `std`'s path strings and the order
 that crate hashes give.
+
+#### 1.5 The `dev` profile
+
+`q2.sh … dev` on `hello`, `ui` and `async`. The workspace's `[profile.dev]` is `panic =
+"abort"` alone. The objects carry DWARF (`-C debuginfo=2`). 0.3.0's line ends with
+`--strip-debug`, so the ELF that reaches elf2e32 has none.
+
+| variant | result (`.exe` compressed / uncompressed) |
+|---|---|
+| default `dev` | **does not link**: `undefined symbol: strlen`, referenced by `alloc::ffi::c_str::CString::from_raw` (`hello`, `async`); `symrs_list_destroy` (`ui`). Without LTO every `GLOBAL DEFAULT` function of a pulled rlib member is exported by the `-shared` link, so it is a `--gc-sections` root and its references must resolve |
+| `[profile.dev] lto = true` | links: `hello` 16 940 / 44 772, `ui` 49 420 / 131 308, `async` 80 104 / 230 516 |
+| target spec `"default-visibility": "hidden"`, default `dev` (no LTO, incremental) | **links**: `hello` 16 908 / 44 568, `ui` 49 390 / 131 140, `async` 79 878 / 230 504 |
+
+* **The spec key.** `"default-visibility": "hidden"` is the one rustc's target-spec reader
+  lists; `default-hidden-visibility` is refused as an unknown field.
+* **Release is unchanged.** With that key, the release images of all 19 `no_std` examples are
+  byte-equal to 1.2's (`out/q5d`).
+* **elf2e32 and DWARF.** `SPIKE_KEEP_DEBUG` keeps the DWARF: `hello.elf` is 3 751 928 bytes
+  instead of 202 656 (`.debug_info` 1 082 485, `.debug_str` 1 376 786, `.debug_line` 572 056
+  …). Our elf2e32 accepts it, and the `.exe` of `hello` and of `ui` is byte-equal to the
+  stripped link's.
+* **In EKA2L1.** The no-LTO dev `hello` was packaged by `symdev-030` and run by experiment
+  113's `runshot.py` (`emu.sh`). The log shows `Trying to display: Hello from Rust SDK (19
+  chars)`; screenshot `shots/dev-hello-1.png`; our PID was killed.
+
+**Answer.** As 0.3.0 links, a `dev` build does not link at all. With the target spec's
+`"default-visibility": "hidden"` it links, runs, and leaves release bytes alone; the image is
+about 33 times `hello`'s release size. elf2e32 accepts DWARF, but the line strips it, and
+nothing on the phone reads it. `[profile.dev]` keeps `panic = "abort"` and needs no `lto`.
+`debug = false` would only save compile time, and that was not measured.
+
+#### 1.6 Telling a test binary from the main one
+
+The table in 1.1 is the observation. `CARGO_BIN_NAME` is set only for a binary target: the
+`[[bin]]` (`app`) or an example (`demo`). An integration test has none, but has
+`CARGO_TARGET_TMPDIR` and `CARGO_BIN_EXE_<bin>`. The output name agrees: `out/<bin>` for a
+binary, `out/<test>-<hash>` for a test. The design's guess, "an output in `deps/`", does not
+apply here: this cargo has no `deps/`.
+
+**Answer.**
+
+* `CARGO_BIN_NAME` equal to the package's `[[bin]]` → the main binary.
+* `CARGO_BIN_NAME` absent and `CARGO_TARGET_TMPDIR` present → a test.
+* Anything else, an example included, is refused by name until it is needed.
+* The runner cannot use the same signal: it sees `CARGO_BIN_EXE_<bin>` only for a test, so
+  `symdev-ld` records the kind beside the image.
