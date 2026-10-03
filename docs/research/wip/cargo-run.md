@@ -160,3 +160,26 @@ OPEN DECISION for the owner (2–3 options + recommendation), mark the dependent
 Options to weigh: per-project key password in an ignored file made by `symdev new`;
 `cargo build` stops at `.exe` and prints how to set the variable; passwordless self-signed
 key ONLY if the original makekeys/signsis are observed to allow it (check first).
+
+## Phase 2 — plan (docs/superpowers/plans/2026-10-03-cargo-build-run.md), written in chunks
+Code facts gathered: CLI = `crates/symdev-cli/src/main.rs` (209 l, `Commands` in cli.rs;
+`package_project`, `run_project` in main.rs; `package_artifacts` in artifacts.rs assumes
+`cwd/build`); `RustBuild` (driver/rust_build.rs) fields gcce/sdk/cargo/rustc/name/std/linker/ui;
+`LinkInputs{archive,shims,libcalls}`; `link_line(linker, archive, shims, libcalls, elf, map)`;
+`shim_archives(project,cwd,prebuilt)` writes under build/; `SisPackage` (package.rs) generates
+an UNENCRYPTED PKCS#8 key per package when no pair — password unused for it, yet
+`validate_password` demands ≥4. Emulator crate: `Eka2l1Backend`, `EmulatorData`, `TestReport`
+(schema 1, ignores unknown fields), crate-private `Json` parser. No `unsafe` in host crates;
+`ctrlc` not in the offline cache (libc 0.2.189 and toml 1.1.6 are). install.sh lives in
+`~/projects/symdev-packages`. EKA2L1: control README `~/src/EKA2L1-wt/control-server/src/emu/
+control/README.md` (dev/control-events; protocol 1: emulator.info, apps.list, app.launch,
+app.kill, package.install/remove, events.subscribe app_exited, exit_type kill/terminate/panic);
+`--data-dir` on dev/data-dir (a3ec972); the `symdev` integration branch has NEITHER yet.
+Log filter key `log-filter`, `Emulated.Stdout:trace` for RDebug, `Kernel:trace` for panics.
+Task list (19): 1 fixtures+LinkerArgs/LinkKind/CargoOutput; 2 link rustc inputs (symdev-build);
+3 packaging type + D1 signing decision; 4 symdev-ld role + setup-linker; 5 target spec +
+uid3!/report! macros; 6 symbian-test crate; 7 project shape + symdev new; 8 migrate 21 examples;
+9 rust-std via symdev-rustc + sysroot; 10 EKA2L1 build with --control/--data-dir + profiles;
+11 device registry + choice + `symdev devices/emulator`; 12 control client; 13 runner
+(`symdev run --exe`, `symdev run`); 14 cargo test path (report, libtest printer, symdev test);
+15 symdev build = cargo build; 16 old-shape error; 17 CI; 18 exp 114 real runs; 19 acceptance.
