@@ -70,7 +70,13 @@ fn build_rust(m: &Manifest, root: &Path, provision: &Provision) -> Result<ExitCo
         read("src/main.rs"),
         read(".cargo/config.toml"),
     );
-    if let Some(old) = OldShape::detect(&cargo, &main, &config, &m.package.name) {
+    if let Some(old) = OldShape::detect(
+        &cargo,
+        &main,
+        &config,
+        &m.package.name,
+        m.language.has_std(),
+    ) {
         return Err(Error::Other(old.message()));
     }
     let rust = RustProject::resolve(m, root, provision, true)?;

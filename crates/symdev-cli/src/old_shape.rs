@@ -10,8 +10,15 @@ pub(crate) struct OldShape {
 
 impl OldShape {
     /// `Some` when `Cargo.toml` still builds a `staticlib`; the edits list only what each
-    /// file still needs.
-    pub fn detect(cargo_toml: &str, main_rs: &str, config: &str, package: &str) -> Option<Self> {
+    /// file still needs. `std` is a `language = "rust-std"` project, which also names
+    /// `symdev-rustc` as its rustc.
+    pub fn detect(
+        cargo_toml: &str,
+        main_rs: &str,
+        config: &str,
+        package: &str,
+        std: bool,
+    ) -> Option<Self> {
         if !cargo_toml.contains("\"staticlib\"") {
             return None;
         }
@@ -20,13 +27,23 @@ impl OldShape {
              [[bin]]\nname = \"{package}\"\npath = \"src/main.rs\"\ntest = false"
         )];
         if !main_rs.contains("#![no_main]") {
-            edits.push(
-                "src/main.rs: add `#![no_main]` on the line after `#![no_std]` (the \
-                 `#[symbian_std::main]` attribute keeps `fn main`)"
-                    .into(),
-            );
+            edits.push(format!(
+                "src/main.rs: add `#![no_main]` {} (the `#[symbian_std::main]` attribute keeps \
+                 `fn main`)",
+                if std {
+                    "after the crate's `//!` comment"
+                } else {
+                    "on the line after `#![no_std]`"
+                }
+            ));
         }
         let mut config_lines = Vec::new();
+        if std && !config.contains("rustc = \"build/symdev-rustc\"") {
+            config_lines.push(
+                "under [build]: rustc = \"build/symdev-rustc\" (symdev build makes it, with the \
+                 patched std in build/sysroot)",
+            );
+        }
         if !config.contains("panic-abort-tests") {
             config_lines.push("under [unstable]: panic-abort-tests = true");
         }
@@ -70,7 +87,7 @@ mod tests {
             target-dir = \"build/cargo\"\n\n[unstable]\nbuild-std = [\"core\", \"alloc\"]\n\
             build-std-features = [\"optimize_for_size\"]\njson-target-spec = true\n";
         let main = "#![no_std]\n\nuse symbian_core::Result;\n";
-        let m = super::OldShape::detect(cargo, main, config, "hello")
+        let m = super::OldShape::detect(cargo, main, config, "hello", false)
             .unwrap()
             .message();
         for want in [
@@ -91,6 +108,23 @@ mod tests {
     #[test]
     fn a_project_in_the_new_shape_is_left_alone() {
         let cargo = "[package]\nname = \"hello\"\n\n[[bin]]\nname = \"hello\"\npath = \"src/main.rs\"\ntest = false\n";
-        assert!(super::OldShape::detect(cargo, "#![no_std]\n#![no_main]\n", "", "hello").is_none());
+        assert!(
+            super::OldShape::detect(cargo, "#![no_std]\n#![no_main]\n", "", "hello", false)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn a_0_3_0_rust_std_project_is_also_told_to_name_symdev_rustc() {
+        let cargo = "[package]\nname = \"stdhello\"\n\n[lib]\npath = \"src/main.rs\"\n\
+            crate-type = [\"staticlib\"]\n";
+        let m = super::OldShape::detect(cargo, "", "", "stdhello", true)
+            .unwrap()
+            .message();
+        assert!(m.contains("rustc = \"build/symdev-rustc\""), "{m}");
+        let m = super::OldShape::detect(cargo, "", "", "stdhello", false)
+            .unwrap()
+            .message();
+        assert!(!m.contains("symdev-rustc"), "{m}");
     }
 }
