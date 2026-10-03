@@ -55,3 +55,21 @@ Spike evidence: ~/src/rust-lld-spike/ (experiment 109 §1, §5).
   symdev's `SdkIncludeCaseFold`; on the published SDK it writes the same 260 links as symdev's
   `build/sdk-include-casefold`, `find -printf '%p -> %l'` identical).
 - Next: `recipes/symdev/0.2.0/` (recipe.toml copy of 0.1.0 + prebuilt.sh), workflow step.
+- **packages: `recipes/symdev/0.2.0/prebuilt.sh <symdev-src> <gcce> <epocroot> <out-dir>`**
+  (committed): drift guard on the tag's `RustBuild::SHIM_OPTIONS`; casefold overlay; the
+  10 shims with the `[ui]` argv minus `-DSYMRS_UID3`; check `U symrs_uid3` in avkon; TARGET2
+  rewrite; `ar crD`; runtime members `ar x` + `objcopy --strip-debug` + `ar crD`; closure
+  link (GNU ld, shims `--whole-archive`, 17 SDK DSOs, full libsupc++/libgcc) → map →
+  `runtime_closure.py` exact; second link against `lib/` only → `nm -D --undefined-only`
+  must equal the first; NOTICE + COPYING3 + COPYING.RUNTIME (`tools/notices/gcc-12.1.0/`,
+  from the pinned gcc-12.1.0.tar.xz, sha256 62fd6348…).
+- **Run 1, published gcce;12.1.0 + published SDK** (`~/src/rl-shims-scratch/run1/`), 2.2 s:
+  libsymrs.a 19 294, libsymrs_ui.a 59 174, libsupc++.a 7 736, libgcc.a 4 172 = **90 376 B**.
+  All 10 objects byte-identical to symdev's own per-application objects of the `examples/ui`
+  build (TARGET2-rewritten the same way; avkon = the no-define compile) → the recipe's argv
+  is symdev's. Runtime archives byte-identical to the spike's. Closure: del_ops,
+  eh_personality ← symrs_active; _thumb1_case_uqi ← symrs_note; pr-support ← eh_personality.
+- **Run 2, the spike's toolchain** (symlink prefix `~/src/rl-shims-scratch/spike-gcce`:
+  g++ of `~/gcc-builds/gcc-12.1.0` with its as 2.35, ar/ld/nm/objcopy of binutils 2.29.1)
+  + `~/sdk/S60_3rd_FP2`: **90 592 B, all four archives byte-identical to the spike's
+  `prebuilt/lib`** — the spike's numbers reproduced exactly.
