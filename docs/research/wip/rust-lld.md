@@ -106,6 +106,8 @@ Do NOT edit: `crates/symdev-build/src/driver/{rust_build,libcalls}.rs`, `crates/
   ui: "Bars", `bars=3 keys=0 cmd=0`; F1 F1 → `bars=4 keys=0 cmd=1`; vs gnu-ui-cmd-{1,2}:
   84 px each, all in bbox (527,157)-(554,165) = the status-pane clock. Shots:
   `~/src/rl-scratch/shots/stubs-{hello,shim}-1.png`, `stubs-ui-cmd-{1,2}.png`.
+  async: `symdev test --emulator` → `asyncdemo: 15 passed`, exit 0 (300 ms sleep 328 ms,
+  together 312, sequence 625, race 109); log `~/src/rl-scratch/stubs/async-test.log`.
 ## Dead ends
 - lld options for an 8-byte PLT: none. `.plt`/`.got` stay 0x120/0x4c on hello with each of
   `-z now`, `-z lazy`, `--pic-veneer`, `-z noseparate-code`, `--no-rosegment`,
