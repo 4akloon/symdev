@@ -229,5 +229,15 @@ Ledger (git-ignored): `.superpowers/sdd/2026-10-03-cargo-build-run/progress.md`.
   (`TestModule`, text scanner; lifetimes and strings guarded, 2 extra tests), report case
   `state` pending/running + `pending/running/settle/save`. Compile check of the expansion in
   `exec/t6check` (scratch lib crate, phone target): builds. Recipes list no crates → unchanged.
-NEXT: Task 7 — `task-start <plan> 7` (project shape + symdev new). Decide the symdev.toml
-relink question there (see OPEN above).
+- Task 7 done: scaffold writes [[bin]] (test = false), [[test]] smoke (harness = false),
+  dev-dep symbian-test, config panic-abort-tests + linker/runner, tests/smoke.rs; hello example
+  is a bin with `#![no_main]`; symbian-rs/.cargo/config.toml has linker/runner. Real project
+  (`exec/t7-project.sh`, bin7/ = branch symdev + setup-linker): `symdev new t7`, `cargo build
+  --release` 15.8 s, `cargo test --no-run` 8.7 s; `.sisx` at build/, profile dir, and
+  `out/smoke-<hash>.sisx`. Findings → two extra changes (commit after 764d94e):
+  (1) `cargo test` links the main bin in the dev profile too and overwrote build/t7.sisx
+  (18 152 B debug over 2 300 B release) → `CargoOutput::is_release`; build/ copies only from
+  release. (2) OPEN closed: `ManifestDependency` — `#[main]` and `uid3!()` emit a discarded
+  `include_str!` of symdev.toml; `exec/t7-relink.sh`: editing only `vendor` → `Compiling t7`,
+  new .sisx; image EQUAL 975/1348.
+NEXT: Task 8 — `task-start <plan> 8` (other 18 no_std examples in the new shape).

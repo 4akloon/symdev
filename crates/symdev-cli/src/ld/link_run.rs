@@ -87,8 +87,11 @@ impl LinkRun {
                 .unwrap_or_default();
             let beside = out.profile_dir().join(&bin);
             copy(&sisx, &beside.with_extension("sisx"))?;
-            LinkRecord { kind }
+            LinkRecord { kind: kind.clone() }
                 .write(&PathBuf::from(format!("{}.symdev.toml", beside.display())))?;
+        }
+        // 0.3.0's `build/<app>.exe` and `build/<name>.sisx`, from the release build only.
+        if kind == LinkKind::Main && out.is_release() {
             let build = root.join("build");
             copy(exe, &build.join(format!("{}.exe", package.app())))?;
             copy(

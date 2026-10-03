@@ -208,3 +208,11 @@ fn a_link_record_says_main_or_names_the_test() {
         assert_eq!(super::LinkRecord::read(&p).unwrap().kind, kind);
     }
 }
+
+#[test]
+fn only_a_release_link_is_the_one_build_keeps() {
+    let release = CargoOutput::of(Path::new(&format!("{OUT}/app"))).unwrap();
+    assert!(release.is_release());
+    let dev = "/work/app/build/cargo/arm-symbian-e32/debug/build/app/0123456789abcdef/out/app";
+    assert!(!CargoOutput::of(Path::new(dev)).unwrap().is_release());
+}

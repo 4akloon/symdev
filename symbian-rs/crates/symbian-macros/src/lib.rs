@@ -24,6 +24,7 @@ use proc_macro::TokenStream;
 mod cursor;
 mod entry;
 mod fast_write;
+mod manifest_dependency;
 mod manifest_uid3;
 mod signature;
 mod strings;
@@ -78,10 +79,16 @@ use entry::Entry;
 /// `symrs_app_create` calls this `main`.
 #[proc_macro_attribute]
 pub fn main(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    let generated = match Entry::parse(&attribute.to_string(), &item.to_string()) {
+    let mut generated = match Entry::parse(&attribute.to_string(), &item.to_string()) {
         Ok(entry) => entry.wrapper(),
         Err(message) => compile_error(&message),
     };
+    // symdev-ld reads symdev.toml; this makes cargo relink when it changes.
+    if let Some(dir) = std::env::var_os("CARGO_MANIFEST_DIR") {
+        generated.push_str(&manifest_dependency::ManifestDependency::of(
+            std::path::Path::new(&dir),
+        ));
+    }
     // The user's function is passed through as the token stream it arrived as, so a
     // diagnostic about its body still points at the body. The generated wrapper is
     // the only thing this attribute writes, and its tokens carry the call site — the
@@ -156,14 +163,11 @@ pub fn uid3(input: TokenStream) -> TokenStream {
         ));
     };
     match manifest_uid3::ManifestUid3::read(std::path::Path::new(&dir)) {
-        // The `include_str!` makes rustc track symdev.toml, so an edited UID3 recompiles the
-        // crate (as `strings!()` tracks its locales files); its value is discarded.
+        // `ManifestDependency` makes rustc track symdev.toml, so an edited UID3 recompiles
+        // the crate (as `strings!()` tracks its locales files).
         Ok(uid3) => tokens(&format!(
-            "{{ const _: &str = ::core::include_str!({:?}); 0x{uid3:08x}_u32 }}",
-            std::path::Path::new(&dir)
-                .join("symdev.toml")
-                .display()
-                .to_string()
+            "{{ {}0x{uid3:08x}_u32 }}",
+            manifest_dependency::ManifestDependency::of(std::path::Path::new(&dir))
         )),
         Err(message) => tokens(&compile_error(&message)),
     }

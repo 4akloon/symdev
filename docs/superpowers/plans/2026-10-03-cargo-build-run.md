@@ -1773,7 +1773,7 @@ git commit -m "Add symbian-test, which runs a module of tests on the phone and m
     and `[target.arm-symbian-e32] linker = "symdev-ld"`, `runner = "symdev run --exe"`.
   - `src/main.rs` with `#![no_main]`; `tests/smoke.rs`.
 
-- [ ] **Step 1: Write the failing test** — in `scaffold_rust/tests.rs`, change
+- [x] **Step 1: Write the failing test** — in `scaffold_rust/tests.rs`, change
   `rust_project_has_cargo_files_and_no_mmp` to:
 
 ```rust
@@ -1793,12 +1793,12 @@ git commit -m "Add symbian-test, which runs a module of tests on the phone and m
     assert!(smoke.contains("#[symbian_test::tests]") && smoke.contains("#![no_main]"), "{smoke}");
 ```
 
-- [ ] **Step 2: Run it to see it fail**
+- [x] **Step 2: Run it to see it fail**
 
 Run: `cargo test -p symdev-cli --offline scaffold_rust`
 Expected: FAIL on `staticlib`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `cargo_manifest(name)` writes, in place of `autobins = false` and the `[lib]` table:
 
@@ -1858,7 +1858,7 @@ the doc comment's last paragraph says the bin needs it because the attribute kee
 `symbian-rs/.cargo/config.toml`: add `panic-abort-tests = true` and the `[target.arm-symbian-e32]`
 table above.
 
-- [ ] **Step 4: Run the tests and a real project**
+- [x] **Step 4: Run the tests and a real project**
 
 Run: `cargo test -p symdev-cli --offline`; expected: pass. Then, with the GCCE environment of
 experiment 114 (`~/src/cargo-run-scratch/env.sh`, `SYMDEV_RUST_SDK` = this worktree's
@@ -1873,7 +1873,7 @@ ls build/t7.sisx build/cargo/arm-symbian-e32/release/t7.sisx
 Expected: both `.sisx` exist; `cargo test --no-run` prints `Executable tests/smoke.rs
 (…/out/smoke-<hash>)` and a `…/out/smoke-<hash>.sisx` exists beside it.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/symdev-cli/src/scaffold_rust.rs crates/symdev-cli/src/scaffold_rust \

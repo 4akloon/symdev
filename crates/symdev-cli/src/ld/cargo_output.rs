@@ -43,6 +43,13 @@ impl CargoOutput {
         &self.profile_dir
     }
 
+    /// Whether cargo is linking the `release` profile: the build `symdev build` runs, and
+    /// the one whose image and `.sisx` go to the project's `build/`. `cargo test` also
+    /// links the main binary in the `dev` profile, which must not replace them.
+    pub fn is_release(&self) -> bool {
+        self.profile_dir.file_name().is_some_and(|n| n == "release")
+    }
+
     pub fn work_dir(&self) -> PathBuf {
         self.with_suffix(".symdev")
     }
