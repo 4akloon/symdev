@@ -139,6 +139,16 @@ Scratch: `~/src/emu-pkg-scratch/`. Read-only observations go to experiment 115 �
   the files listed under Checksums-Sha256; tar --sort=name --mtime=@0 … | gzip -n -9.
   Then publish public --dry-run (rehearsal prefix + source) → record sizes.
 
+- Tasks 11 (dsc + source.sh + dry run) and 12 (emulator.yml) written + committed.
+  build.sh now fetches shallow (init + fetch --depth 1 <commit> + submodule --depth 1).
+- Remaining design: 13 = exp 115 §4 real runs with the rehearsal package via file://
+  sources (scratch stager generic `<repo> <id>=<tree>@<host>`), emulator start, cargo run,
+  cargo test, LD_LIBRARY_PATH run, comm/exe check, package files unchanged; 14 = docs
+  (README row, licensing.md, symdev-emulator README, toolchain spec §2 row; CLAUDE.md
+  wording only proposed); 15 = staged acceptance (bwrap --tmpfs ~/.local/share/EKA2L1,
+  install.sh, two file:// sources) + gates + push symdev cargo-run → STOP L1; 16 = pin
+  artifact.toml to CI run, rebuild, rerun 13/15 → STOP L2–L4; lead real-bucket acceptance.
+
 ## Next step
 
-Write Task 11 (source) into the plan, then 12–16 and the lead's acceptance.
+Write Tasks 13–16 and the lead's acceptance into the plan; then self-review.
