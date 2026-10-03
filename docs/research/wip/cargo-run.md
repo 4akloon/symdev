@@ -456,3 +456,18 @@ Final: minor (deferred): the registered PID relies on setsid exec'ing in place (
 Final: minor (deferred): a drive-C symlink written as an absolute path inside C is copied as is and points at the user's file — emulator_profile.rs:131-136
 Final: minor (deferred): .sisx freshness by mtime fails on a filesystem where cargo copies instead of hard-linking — exe_target.rs:52-58
 Final: Ruling: Minor 7 (symbian-rs and std-example lockfiles still pin symdev-locale 0.3.0) is part of Task 19's version bump, not a review fix: committed with it — cost if wrong: none
+
+## Lead verification (2026-10-03 ~21:15)
+
+- main merged into cargo-run (fab5721): 944 tests, clippy 0, fmt clean, no .rs over 300.
+- Draft PR https://github.com/4akloon/symdev/pull/17: CI green (check, examples, examples-key).
+- Lead reran accept.sh (empty HOME, file:// staging, no SYMDEV_SIGN_PASSWORD): install rc 0,
+  `cargo run` printed "Hello from Rust SDK (19 chars)" after 18.9 s, rc 0; `cargo test`
+  "test arithmetic ... ok", rc 0; emulator stopped. accept-ui.sh: Bars screen
+  (accept/out/accept-ui.png); SIGINT to the runner's group → runner exited in 1 s with 130,
+  emulator stayed until `symdev emulator stop`. accept-ui.sh's own `kill -INT -- -$job` targets
+  the `cd … && setsid … &` subshell (no such group) — a script bug, not symdev's.
+- Waiting for the owner: C++ `symdev run`/`test` now need the --control EKA2L1 (spec said C++
+  unchanged); how users get that EKA2L1 for 0.4.0 (today only the scratch wrapper
+  ~/src/cargo-run-scratch/bin/eka2l1-symdev); merge + release 0.4.0 (packages branch
+  ~/worktrees/symdev-packages/cargo-run 3fe6a76 unpushed, recipe commit placeholder).
