@@ -1304,7 +1304,7 @@ S=~/src/cargo-run-scratch; cargo build --release --offline -p symdev-cli
 mkdir -p $S/bin4 && ./target/release/symdev setup-linker --dir $S/bin4
 . $S/env.sh; cd $S/tree/symbian-rs/examples/hello && touch src/main.rs
 env -u RUSTUP_TOOLCHAIN PATH=$S/bin4:$PATH SYMDEV_SIGN_PASSWORD=scratch cargo build --release
-python3 $S/e32cmp.py ../../build/../examples/hello/build/cargo/arm-symbian-e32/release/hello $S/out/q2/hello.exe
+python3 $S/e32cmp.py build/cargo/arm-symbian-e32/release/hello $S/out/q2/hello.exe
 ls build/cargo/arm-symbian-e32/release/hello.sisx build/hello.sisx
 ```
 
