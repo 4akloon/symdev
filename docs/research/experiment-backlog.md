@@ -4701,3 +4701,138 @@ requirements).
 **Answer.** From an empty home, `install.sh`, `symdev new --lang rust`, `cargo run` and `cargo
 test` work with no GCCE and no signing password; the app runs on an emulator symdev started
 and the test passes.
+
+## 115. The `emulator` and `firmware;rm-469` packages (emulator-packages, symdev 0.4.0)
+
+**Question.** The design (`docs/superpowers/specs/2026-10-03-emulator-firmware-packages-design.md`)
+ships EKA2L1 as `emulator;<yyyy.mm.dd>`, made from the AppImage the fork's CI builds, and the
+E52 firmware as `firmware;rm-469;1` in the private bucket. §1 records what the plan needs
+before anything is built: the CI and its artifact, the AppImage's layout and how to start
+it, the firmware's size and layout, and what EKA2L1 writes. Only reading and inspecting:
+no emulator ran, no CI was started, nothing was pushed. §2 onwards are the real runs of the
+finished work.
+
+**Setup.** 2026-10-03, branch `cargo-run` of symdev (worktree `~/worktrees/symdev/cargo-run`).
+Scratch `~/src/emu-pkg-scratch/`. The fork's state was read with `gh api` (GET only).
+
+### 1. Observations before the plan
+
+#### 1.1 The fork's CI
+
+* `.github/workflows/build.yml` of the integration branch (`symdev`, `d07d5ac`, the same file
+  upstream has): workflow `C/C++ CI`, on `push`, `pull_request` and `workflow_dispatch`;
+  concurrency group `<workflow>-<ref>`. Job `build-desktop`, matrix label `linux` on
+  `ubuntu-latest`: Qt 6 and SDL 2 from apt (`qt6-base-dev`, `qt6-base-private-dev`,
+  `qt6-multimedia-dev`, `libqt6svg6-dev`, …), `cmake -B build -DCI=ON
+  -DEKA2L1_ENABLE_UNEXPECTED_EXCEPTION_HANDLER=ON -DEKA2L1_NO_TERMINAL=ON
+  -DEKA2L1_ENABLE_DISCORD_RICH_PRESENCE=ON -DCMAKE_BUILD_TYPE=Release`, targets `eka2l1_qt`
+  and `ekatests`, `ctest`, then `scripts/generate_appimage.sh` with
+  `APPIMAGE_EXTRACT_AND_RUN=1` and `QMAKE=/usr/bin/qmake6`.
+* `generate_appimage.sh` downloads `linuxdeploy`, `linuxdeploy-plugin-qt` and
+  `linuxdeploy-plugin-appimage` from their `continuous` releases (not pinned), copies
+  `build/bin/.` to `eka2l1.AppDir/usr/bin/` and runs linuxdeploy with
+  `--executable=bin/eka2l1_qt --plugin=qt --output appimage`.
+* **Artifact:** name `eka2l1-<git short sha>-linux`, one file `build/eka2l1-qt-x64.AppImage`
+  (`actions/upload-artifact@v7`, no `retention-days`: the repository's default applies).
+* **The fork has never run it.** `4akloon/EKA2L1` (public, fork of `EKA2L1/EKA2L1`) lists the
+  workflow as `active`, but its only run is one `Dependency Graph` run (master `c396ac8`) and it
+  has 0 artifacts, although `symdev` (`d07d5ac`, pushed 09:02Z) and the `dev/*` branches were
+  pushed. A push may therefore start nothing; whoever pushes checks that a run appears.
+* Upstream `master` is `fbf0060` (2026-10-03 13:45Z); the fork's `master` is `c396ac8`.
+* Our open PRs and the fork's branch heads: #724 `fix/command-list-overflow` `7ff9a13`, #726
+  `fix/cli-install-then-run` `2338a37`, #727 `fix/property-cancel-during-wipeout` `e836a07`,
+  #728 `fix/applist-no-localisable-rsc` `f7b7888`, #766 `dev/data-dir` `a3ec972`, #767
+  `dev/anim-window-lifetime` `681a9ef`, #768 `dev/applist-reload` `25de6ec`, #769
+  `dev/applist-lock` `c597988`, #770 `dev/control-server` `d1cdb4a`, #771
+  `dev/control-input` `89e61e2`, #772 `dev/control-events` `c323b64`. #770, #771 and #772 are
+  stacked (each branch contains the one before); the others are independent. Merging
+  `dev/data-dir` with `dev/control-events` conflicts only in the option lists of
+  `qt/src/thread.cpp` and `qt/include/qt/cmdhandler.h` (experiment 114 §2).
+
+#### 1.2 The AppImage's layout
+
+No fork artifact exists yet, so the layout was read from the upstream AppImage on this host
+(`~/Downloads/EKA2L1-Linux-x86_64.AppImage.unpatched`, 94 452 216 bytes, SHA-256
+`d8f6c8fe2ff2486e3862992ca48667aaf3ae5c48b7eb8a554ded031591a5fb85`), built by the same
+workflow and script (Qt 6.4.2 "by GCC 13.2.0": Ubuntu 24.04's apt Qt). It was **not run**:
+the squashfs starts where the ELF runtime ends (`e_shoff + e_shnum × e_shentsize` = 944 632),
+and `unsquashfs -o 944632 -d appimage-upstream <file>` extracted it (zstd, 786 inodes).
+
+* Root: `AppRun -> usr/bin/eka2l1_qt` (**a symbolic link**; no `apprun-hooks/`, no
+  `AppRun.wrapped`), `.DirIcon`, `duck_tank.png` and `eka2l1.desktop` (links into `usr/share`).
+* `usr/bin/`: `eka2l1_qt` and what EKA2L1's build puts beside it (`compat/`, `patch/`,
+  `resources/`, `scripts/`, `tools/`, `panic.json`, `libscripting.a`, icons, desktop file)
+  and `qt.conf` written by linuxdeploy-plugin-qt: `Prefix = ../`, `Plugins = plugins`.
+* `eka2l1_qt` has `RUNPATH $ORIGIN/../lib`. So `usr/bin/eka2l1_qt` started directly finds the
+  bundled libraries (`usr/lib/`, 187 files) and Qt its plugins (`usr/plugins/`: platforms
+  `libqxcb.so` only, xcbglintegrations, imageformats, iconengines, multimedia `ffmpeg` and
+  `gstreamer`, tls, networkinformation, platforminputcontexts) without any environment.
+* **Starting `AppRun` would break symdev's liveness check:** `/proc/<pid>/comm` is the name
+  `execve` was given, `AppRun`, and `device::is_eka2l1` keeps a registry entry only while the
+  comm contains `eka2l1`. Started as `usr/bin/eka2l1_qt`, the comm is `eka2l1_qt`, as with
+  today's wrapper (experiment 114 §2).
+* Not bundled, so the host provides them: glibc, `libstdc++`, `libgcc_s`, `libGL`/`libGLX`/
+  `libEGL`, `libX11`, `libxcb`, fontconfig/freetype, `libz`.
+* **glibc floor: 2.38.** The newest `GLIBC_` version any bundled ELF needs (`objdump -T`) is
+  `GLIBC_2.38` (Ubuntu 24.04's `libxml2`, `libxkbcommon`, `libx264`, `libXcursor`, …). This
+  host has 2.43. symdev's other packages run on glibc 2.28 (GCCE is built on AlmaLinux 8,
+  toolchain spec §6; symdev is static musl).
+* Sizes: extracted 254 MB (`usr/lib` 203 MB, `usr/bin` 41 MB, `usr/translations` 5 MB,
+  `usr/share` 3.7 MB, `usr/plugins` 2 MB); as `tar | gzip -6` 101 116 507 bytes.
+* Notices: `usr/share/doc/<package>/copyright` for each of the 167 Ubuntu packages linuxdeploy
+  took files from. 35 are not in the machine-readable (DEP-5) format; 96 mention a GPL. Qt's
+  multimedia plugin `libffmpegmediaplugin.so` pulls Ubuntu's FFmpeg (`libavcodec60` …), which
+  pulls `libx264`, `libx265` (GPL-2.0+), `libzvbi`, `libcodec2` and more. EKA2L1's own
+  `LICENSE` (GPL-3.0; the sources say "version 3 … or any later version") is **not** in the
+  AppImage. `bundle-licences.txt` and `primary-licences.txt` in the scratch list them.
+* This host's session is Wayland (`XDG_SESSION_TYPE=wayland`) with XWayland on `DISPLAY=:0`;
+  the bundle has only the xcb platform plugin.
+
+#### 1.3 What EKA2L1 does with a data folder (read in the source, not run)
+
+* `--data-dir <folder>` (EKA2L1#766; its PR text in `~/src/EKA2L1-wt/data-dir.PR.md`) copies
+  the shipped `patch/`, `resources/`, `scripts/` (and `compat/` if missing) from beside the
+  executable into the folder at start, keeps Qt's settings in `<folder>/EKA2L1/EKA2L1.ini`
+  and resolves every data path under the folder. So a profile needs nothing from the package
+  but the program: the copies land in the profile.
+* `config.yml`: every option is read on its own and falls back to its default when missing
+  (`get_yaml_value` in `src/emu/config/src/config.cpp`). A `config.yml` holding only
+  `log-filter:` is valid by this reading, with `device: 0` and `data-storage: data`.
+* **EKA2L1 writes drive Z at every start** for Symbian 9.3 FP1 and later (`state.cpp` of the
+  Qt frontend): if `Z:\sys\bin\avkonfep.dll` exists and `avkonfep.dll.bak` does not, it moves
+  the DLL to `.bak`; then it copies `patch\avkonfep_general.dll` over it, a path written with
+  a backslash that fails on Linux (the PR text says so). The owner's Z of RM-469 has
+  `sys/bin/avkonfep.dll.bak` (129 014 bytes, 2026-09-18 17:02, the install) and no
+  `avkonfep.dll`: in that state only the failing copy is tried, which matches experiment
+  114 §2 (nothing under the linked Z changed). A firmware package made from it carries that
+  state; whether a read-only Z changes anything is §2's question.
+* `devices.yml` is rewritten at start (the owner's has mtime 18:36, the `--help` run of
+  experiment 114 §2), so a profile keeps its own copy.
+
+#### 1.4 The firmware
+
+The owner's EKA2L1 data folder (`~/.local/share/EKA2L1/data`, read only):
+
+| Path | Contents |
+|---|---|
+| `devices.yml` (124 bytes) | `RM-469:` with `platver: epoc93fp2`, `manufacturer: Nokia`, `firmcode: RM-469`, `model: N00`, `machine-uid: 0`, `isolated-drives: false`; no other device |
+| `roms/rm-469/` | `SYM.ROM`, 51 MB |
+| `drives/z/rm-469/` | 208 MB, 15 595 files, 0 symlinks; one directory is literally named `z:` |
+| `drives/c/` | 17 MB of the owner's state (installs, settings): not firmware |
+
+`tar` of `roms/rm-469`, `drives/z/rm-469` and `devices.yml` through `gzip -6`: 135 187 159
+bytes. The symdev package format keeps symlinks and file modes (0644/0755) and nothing else.
+
+#### 1.5 EKA2L1's corresponding source
+
+The integration copy (`~/src/EKA2L1-wt/integration`) has 40 submodules in `.gitmodules`, 47
+counting nested ones, among them FFmpeg (`src/external/ffmpeg`, 115 MB, built and linked
+statically by EKA2L1's own CMake), Boost, LuaJIT, mbedTLS, SDL's controller database and
+dynarmic. Checked out without `.git` and `build/`: 711 MB.
+
+**What §1 settles for the plan.** symdev starts `<package>/usr/bin/eka2l1_qt`, not `AppRun`;
+the package root is the extracted tree as it is. The firmware package is `roms/rm-469/`,
+`drives/z/rm-469/` and the RM-469 entry of `devices.yml`, about 135 MB packed. The fork's
+CI has to be started and checked by whoever pushes. Two things go to the owner: the glibc
+floor (2.38 against symdev's 2.28) and the corresponding source, which must cover the
+Ubuntu libraries the AppImage bundles (FFmpeg, x264, x265, …), not only Qt.
