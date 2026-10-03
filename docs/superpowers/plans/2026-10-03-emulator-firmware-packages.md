@@ -3451,3 +3451,104 @@ secret; and the 90-day limit on the fork's artifacts.
 git add .github/workflows/emulator.yml README.md
 git commit -m "Build the emulator recipe on pull requests and publish it from main."
 ```
+
+### Task 13: The packaged emulator runs `cargo run` and `cargo test` (experiment 115 §4)
+
+The spec's real check: "the extracted AppImage starts with `--data-dir` and `--control`,
+answers `apps.list`, installs and launches `hello`; whether Z:/ROM are written". This task
+runs it through symdev itself, with the two packages served from `file://` sources.
+
+**Files:**
+- Outside git: `~/src/emu-pkg-scratch/stage/{stager/,public/,private/}`,
+  `~/src/emu-pkg-scratch/exp115/{run13.sh,run13.log,shots/}`
+- Modify: `docs/research/experiment-backlog.md` (experiment 115 §4)
+
+**Interfaces:**
+- Consumes: Tasks 4–9 (symdev), Task 10's `$E/prefix`, Task 5's staged firmware tree.
+- Produces: the evidence that the package route works on this host, or the failures that
+  send work back to Tasks 7–10.
+
+- [ ] **Step 1: A stager for any packages** (scratch, research tool)
+
+Copy `~/src/cargo-run-scratch/accept/stager` to `~/src/emu-pkg-scratch/stage/stager`. Change
+its `main` to take `<repo> <id>=<tree>@<host>…` (host `x86_64-linux` or `any`), pack each
+tree with `ReproducibleTarGz::pack` as it does now, and write an unsigned `index.toml`. Its
+`Cargo.toml` names this branch's `crates/symdev-sdk` by path. Then:
+
+```bash
+S=~/src/emu-pkg-scratch/stage; rm -rf $S/public $S/private
+(cd $S/stager && cargo run --quiet --release --offline -- $S/public \
+  'emulator;<V>'=$HOME/src/emu-pkg-scratch/emulator/prefix@x86_64-linux)
+(cd $S/stager && cargo run --quiet --release --offline -- $S/private \
+  'firmware;rm-469;1'=$HOME/src/emu-pkg-scratch/firmware/tree@any)
+```
+
+- [ ] **Step 2: Write `run13.sh`**
+
+```bash
+#!/usr/bin/env bash
+# run13.sh — experiment 115 §4: symdev of this branch, no SYMDEV_EKA2L1 / SYMDEV_EKA2L1_DATA,
+# the emulator and firmware packages from file:// sources (public, private), on this host.
+# Starts an emulator, runs cargo run and cargo test of a fresh project, checks the process
+# and the packages, then repeats the start with the host's Qt library paths exported.
+set -u
+X=~/src/emu-pkg-scratch/exp115; S=~/src/emu-pkg-scratch/stage; W=~/worktrees/symdev/cargo-run
+T=$X/t13; rm -rf $T; mkdir -p $T/bin $T/config/symdev $X/shots
+cargo build --release --offline -p symdev-cli --manifest-path $W/Cargo.toml --target-dir $X/target > $T/build.log 2>&1
+cp $X/target/release/symdev $T/bin/ && $T/bin/symdev setup-linker $T/bin
+printf 'builtin = false\n\n[[source]]\nname = "public"\nurl = "file://%s/public"\n\n[[source]]\nname = "private"\nurl = "file://%s/private"\n' $S $S \
+  > $T/config/symdev/sources.toml
+unset SYMDEV_EKA2L1 SYMDEV_EKA2L1_DATA SYMDEV_DEVICE LD_LIBRARY_PATH QT_PLUGIN_PATH
+export PATH=$T/bin:$PATH SYMDEV_HOME=$T/home XDG_DATA_HOME=$T/data XDG_CONFIG_HOME=$T/config XDG_CACHE_HOME=$T/cache
+touch $X/marker13
+symdev emulator start rm-469; echo "start rc=$?"
+pid=$(sed -n 's/^pid = //p' $XDG_RUNTIME_DIR/symdev/devices/emulator-1.toml)
+echo "comm: $(cat /proc/$pid/comm)  exe: $(readlink /proc/$pid/exe)"
+symdev devices
+cd $T && symdev new t13 --lang rust > new.log 2>&1; cd $T/t13
+cargo run > $T/run.out 2>&1 & job=$!
+for _ in $(seq 1 600); do grep -q 'Hello from Rust SDK' $T/run.out && break; kill -0 $job 2>/dev/null || break; sleep 0.25; done
+python3 ~/src/cargo-run-scratch/t18/shoot.py $pid $X/shots/t13-hello.png
+wait $job; echo "cargo run rc=$?"; grep -v '^\s*Compiling' $T/run.out
+cargo test > $T/test.out 2>&1; echo "cargo test rc=$?"; grep -v '^\s*Compiling' $T/test.out
+symdev emulator stop emulator-1; echo "stop rc=$?"
+echo "package files newer than the start: $(find $SYMDEV_HOME/emulator $SYMDEV_HOME/firmware -newer $X/marker13 -type f | wc -l)"
+export LD_LIBRARY_PATH=/home/genius/.local/eka2l1-sysroot/usr/lib/x86_64-linux-gnu:/home/genius/.local/Qt/6.8.3/gcc_64/lib
+export QT_PLUGIN_PATH=/home/genius/.local/Qt/6.8.3/gcc_64/plugins
+symdev emulator start rm-469; echo "start with the host's Qt paths rc=$?"
+pid=$(sed -n 's/^pid = //p' $XDG_RUNTIME_DIR/symdev/devices/emulator-1.toml)
+tr '\0' '\n' < /proc/$pid/environ | grep -cE '^(LD_LIBRARY_PATH|QT_PLUGIN_PATH)=' 
+symdev emulator stop emulator-1
+```
+
+The project builds against the toolchain variables already in the developer's environment
+(`SYMDEV_EPOCROOT` and the rest). Only the emulator and firmware come from the packages.
+This host's software-GL variables (`QT_OPENGL`, `LIBGL_ALWAYS_SOFTWARE`, `GALLIUM_DRIVER`,
+`MESA_LOADER_DRIVER_OVERRIDE`, `__GLX_VENDOR_LIBRARY_NAME`, `QT_QPA_PLATFORM=xcb`, from
+`~/.local/bin/eka2l1`) are **not** set on the first run. If the window stays black or EKA2L1
+exits, rerun with them exported. Record which is needed: the package imposes none, and
+the user sets them in his shell (spec §5).
+
+- [ ] **Step 3: Run it under the agent lock**
+
+```bash
+flock ~/.local/share/EKA2L1/.symdev-agent.lock bash ~/src/emu-pkg-scratch/exp115/run13.sh > ~/src/emu-pkg-scratch/exp115/run13.log 2>&1
+```
+
+Expected in `run13.log`:
+- `installing firmware;rm-469;1 (… MB) from private…`, `created profile rm-469`,
+  `installing emulator;<V> (… MB) from public…`, `emulator-1`, `start rc=0`;
+- `comm: eka2l1_qt` and `exe:` under `$T/home/emulator/<V>/usr/bin/eka2l1_qt`;
+- `Hello from Rust SDK (19 chars)` in the run output and `cargo run rc=0`; `test … ok`,
+  `cargo test rc=0`;
+- `package files newer than the start: 0`;
+- `start with the host's Qt paths rc=0` and `0` from the `environ` count.
+
+Look at `shots/t13-hello.png` (the Read tool shows it). It must be this instance's window
+with the app list or the app. A failure here goes back to the task that owns it (7–10)
+with a failing test first. Record every line above, the timings, the screenshot's path and
+the GL finding as experiment 115 §4. Check that `~/.local/share/EKA2L1` has nothing newer
+than `$X/marker13` (`find ~/.local/share/EKA2L1 -newer … | wc -l` is `0`).
+
+- [ ] **Step 4: Commit** the experiment record and the wip file:
+  `Record experiment 115 §4: cargo run and cargo test on the packaged emulator and firmware.`
