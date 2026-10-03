@@ -234,4 +234,9 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   rc 0 (1 passed); emulator stopped with symdev emulator stop; packages: emulator emulators firmware
   rust-sdk sdk symdev, no gcce; owner's EKA2L1 files newer than the run: 0; accept rc=0).
   Shot ~/src/emu-pkg-scratch/accept/out/accept.png: the packaged EKA2L1's window, device
-  "N00 (RM-469 - S60v3 FP2)". No eka2l1_qt left. Next: exp 115 §5 text, final gates, review.
+  "N00 (RM-469 - S60v3 FP2)". No eka2l1_qt left. §5 written (067d31f). Final gates green on both
+  trees (symdev: 56 test results ok, clippy 0, fmt ok, no .rs over 300; packages: cargo test ok,
+  clippy 0, fmt ok, firmware-stage ok, install.sh.test dash all passed, emulator-build 8 ok after
+  packages 8d1ea23 fixed its tiny EKA2L1). Whole-branch review dispatched (fresh reviewer, range
+  2694821..067d31f) but its result had not arrived when this agent handed back. NOT yet READY FOR
+  L1. Next: read the review, fix Critical/Important test-first, rerun gates, then write READY FOR L1.
