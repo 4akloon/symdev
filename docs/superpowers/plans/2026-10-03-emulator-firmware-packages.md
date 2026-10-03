@@ -3075,3 +3075,103 @@ git add pkgtools/Cargo.toml Cargo.lock pkgtools/src/main.rs pkgtools/src/emulato
 git add recipes/emulator/<V>/notices-extra.txt   # if step 8 made it
 git commit -m "Add the emulator;<V> recipe: the fork CI's AppImage taken by its SHA-256, extracted, checked and given its notices."
 ```
+
+### Task 11: The corresponding source archive (Ubuntu part: D1 = A)
+
+All in `~/worktrees/symdev-packages/cargo-run`. This uses the publisher's existing
+source-archive mechanism unchanged: `publish public --source-code <tar.gz>` uploads the
+archive as `src/emulator/<V>/<sha256>.tar.gz` and names it in the index's `source-code`.
+
+**Files:**
+- Create: `pkgtools/src/dsc.rs` (`Dsc`, with its tests); Modify: `pkgtools/src/main.rs` (`dsc-files`)
+- Create: `recipes/emulator/<V>/source.sh`
+- Modify: `.github/workflows/tests.yml` only if a test of `source.sh` is added (none: it needs the network)
+
+**Interfaces:**
+- Consumes: build.sh's working directory (`./eka2l1-src`, `./artifact/`), Task 10.
+- Produces: `pkgtools dsc-files <file.dsc>` prints `<sha256>  <name>` per file of its
+  `Checksums-Sha256` field (the `sha256sum -c` format). `source.sh <out.tar.gz>` writes the
+  archive: `<name>/eka2l1/` (the fork commit and every submodule at its recorded commit),
+  `<name>/recipe/`, `<name>/ubuntu/<source>/` (D1 = A), and `<name>/SHA256SUMS`.
+
+- [ ] **Step 1: Write the failing tests** at the end of `pkgtools/src/dsc.rs`
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::Dsc;
+
+    const SIGNED: &str = "-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA512\n\nFormat: 3.0 (quilt)\nSource: x264\nVersion: 2:0.164.3108+git31e19f9-1\nChecksums-Sha1:\n 1111111111111111111111111111111111111111 100 x264_0.164.orig.tar.gz\nChecksums-Sha256:\n aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 100 x264_0.164.orig.tar.gz\n bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 20 x264_0.164-1.debian.tar.xz\nFiles:\n 0123 100 x264_0.164.orig.tar.gz\n\n-----BEGIN PGP SIGNATURE-----\nxx\n-----END PGP SIGNATURE-----\n";
+
+    #[test]
+    fn lists_the_sha256_of_every_file_and_nothing_else() {
+        let dsc = Dsc::parse(SIGNED).unwrap();
+        assert_eq!(
+            dsc.sha256sums(),
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  x264_0.164.orig.tar.gz\n\
+             bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  x264_0.164-1.debian.tar.xz\n"
+        );
+    }
+
+    #[test]
+    fn a_dsc_without_sha256_checksums_is_refused() {
+        let e = Dsc::parse("Source: x\nFiles:\n 0123 1 x.tar.gz\n").unwrap_err();
+        assert!(e.to_string().contains("Checksums-Sha256"), "{e}");
+    }
+
+    #[test]
+    fn a_file_name_with_a_path_is_refused() {
+        let text = "Checksums-Sha256:\n aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 1 ../x.tar.gz\n";
+        let e = Dsc::parse(text).unwrap_err();
+        assert!(e.to_string().contains("../x.tar.gz"), "{e}");
+    }
+}
+```
+
+Run `cargo test --locked -p pkgtools dsc` (with `mod dsc;` in `main.rs`). Expected:
+unresolved `Dsc`.
+
+- [ ] **Step 2: Implement** `pkgtools/src/dsc.rs` (above the tests)
+
+```rust
+//! `Dsc`: the files of a Debian source package and their SHA-256s, from its `.dsc`
+//! (Debian Policy §5.4: the `Checksums-Sha256` field, one ` <sha256> <size> <name>` per line).
+
+use crate::tool_error::{Result, ToolError};
+
+pub struct Dsc {
+    files: Vec<(String, String)>,
+}
+
+impl Dsc {
+    pub fn parse(text: &str) -> Result<Dsc> {
+        let mut lines = text.lines().skip_while(|l| *l != "Checksums-Sha256:");
+        if lines.next().is_none() {
+            return Err(ToolError::new("the .dsc has no Checksums-Sha256 field"));
+        }
+        let mut files = Vec::new();
+        for line in lines.take_while(|l| l.starts_with(' ')) {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            let [sha, _size, name] = fields[..] else {
+                return Err(ToolError::new(format!("`{line}` is not ` <sha256> <size> <name>`")));
+            };
+            let hex = sha.len() == 64 && sha.chars().all(|c| c.is_ascii_hexdigit());
+            if !hex || name.contains('/') || name.starts_with('.') {
+                return Err(ToolError::new(format!("`{line}`: not a sha256 and a plain file name")));
+            }
+            files.push((sha.to_string(), name.to_string()));
+        }
+        Ok(Dsc { files })
+    }
+
+    /// `<sha256>  <name>` per file, as `sha256sum -c` reads it.
+    pub fn sha256sums(&self) -> String {
+        self.files.iter().map(|(sha, name)| format!("{sha}  {name}\n")).collect()
+    }
+}
+```
+
+`main.rs`: `DscFiles { #[arg(value_name = "file.dsc")] dsc: PathBuf }` ("Print the files of
+a Debian source package with their SHA-256s, from its .dsc, in sha256sum -c format"). The
+arm reads the file, prints `Dsc::parse(..)?.sha256sums()` and returns 0, or prints `error:
+<path>: <e>` and returns 1. Run step 1's command; expected `test result: ok`.
