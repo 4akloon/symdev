@@ -4337,3 +4337,44 @@ The 1.2 images already link that archive.
 smallest working alternative is for `symdev-ld` to run `LibcallArchive::cargo_args` itself
 and link its rlib as today. A `rust-sdk` that ships the archive prebuilt
 (`prebuilt/lib/`, like the shims) can skip that step later.
+
+#### 1.4 The patched `std` from configuration alone
+
+**Setup.** `sdk1/symbian-rs/examples/std-hello`. First `symdev-030 build` in the old shape
+(21 s): it copies the patched source to `build/rust-src` (82 MB) and gives the baseline
+image. Each variant then runs `cargo build --release` with no
+`__CARGO_TESTS_ONLY_SRC_ROOT`, and the result is the path cargo prints for
+`Compiling std`.
+
+| # | configuration | result |
+|---|---|---|
+| H1 | `.cargo/config.toml` `[env] __CARGO_TESTS_ONLY_SRC_ROOT = { value = "build/rust-src/library", relative = true }` | **no**: `std` from the toolchain's `rust-src`, `error: none of the predicates in this cfg_select evaluated to true`. `[env]` reaches the processes cargo starts, not cargo |
+| H2 | `[target.arm-symbian-e32] rustflags = ["--sysroot", "<project>/build/sysroot"]` | **no**, the same: cargo finds the `build-std` source without the target's flags |
+| H3 | a toolchain directory: copied `bin/rustc` and `bin/cargo`, `lib/librustc_driver-*.so` **hard-linked**, everything else symlinked, `lib/rustlib/src/rust` → the patched copy | **yes**; `rustc --print sysroot` names the directory. With only symlinks it names the nightly again: rustc takes its sysroot from the canonical path of `librustc_driver` |
+| H3a | H3 through rustup (a scratch `RUSTUP_HOME`): `rustup toolchain link symdev-std <dir>`, `rust-toolchain.toml` `channel = "symdev-std"` | **yes**, `Compiling std v0.0.0 (<dir>/lib/rustlib/src/rust/library/std)` |
+| H3b | H3 named by `rust-toolchain.toml` `path = "<absolute dir>"` | **yes**, no `rustup` link needed. `path = "<relative>"` → rustup `error: relative path toolchain` |
+| H4 | `[build] rustc = "./rustc-std"`, a wrapper `exec rustc --sysroot <project>/build/sysroot "$@"`; `build/sysroot/lib/rustlib/x86_64-unknown-linux-gnu` → the nightly's, `lib/rustlib/src/rust` → the patched copy | **yes**, 12 s. The path is relative to the directory that holds `.cargo/` (it also builds from `src/`). Host crates (`symbian-macros`) build through the same sysroot |
+
+**The whole route, H4.** `std-hello` in the bin shape, with H4 and `linker = "symdev-ld"` in
+its `.cargo/config.toml`, built by plain `cargo build --release` (12 s) and linked by the
+spike. The image is 70 351 / 124 920 against 0.3.0's 70 441 / 124 212.
+
+* `.text` is equal in size (0x1902c); `.rodata` is 712 bytes longer.
+* The difference is 36 of `std`'s panic-location strings, which now read
+  `build/sysroot/lib/rustlib/src/rust/library/std/src/…` instead of
+  `build/rust-src/library/std/src/…`.
+* With those paths remapped back (`--remap-path-prefix` in the wrapper), the image is
+  124 200 against 124 212: `.rodata` 8 bytes shorter, in the order of merged strings.
+* The old staticlib shape built through the same wrapper gives the same 124 200
+  (`out/q4/h4r-lib-stdhello.exe`), so the bin shape is not the cause.
+* `cargo -v` shows the cause: the `-C metadata` of `std`, `core`, `compiler_builtins` and the
+  application differ between the two routes, because cargo hashes the `std` source path.
+  That is experiment 113's path dependence again.
+
+**Answer.** Yes: a `language = "rust-std"` project can build from configuration alone. H4 is
+the configuration that needs neither rustup state nor an absolute path in the project. The
+patched source must exist before cargo starts, because cargo resolves `build-std` before any
+build script runs, so symdev materialises it ahead of time (once per SDK and nightly, not
+per build). A `RUSTC` variable in the environment overrides `build.rustc`. A `rust-std`
+image differs from 0.3.0's by path-dependent bytes only: `std`'s path strings and the order
+that crate hashes give.
