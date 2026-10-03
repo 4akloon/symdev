@@ -4011,7 +4011,8 @@ default — rust-lld, the shims compiled by GCCE (the checkout has no `prebuilt/
 **On the prebuilt route — experiment 112's own inputs — every uncompressed size equals
 experiment 112's.** The checkout route equals it in both columns for 17 of 18 and for the
 scaffold `hello` (975 / 1 348) and the leave probe (`apps/probe`, 4 464 / 7 112). The GNU
-column equals experiment 112's GNU column throughout. The bold cells:
+column equals experiment 112's GNU column for all 18 it lists (`shim` here is
+`examples/shim`, `-12`; experiment 112's probe is the scaffold `apps/probe`). The bold cells:
 
 * **`notes`, checkout, +8 uncompressed.** One more `.ARM.exidx` entry (42 against 41, `readelf
   -u`): `__gnu_thumb1_case_uqi`'s `CANTUNWIND`. GCCE's whole `libgcc.a` holds
@@ -4025,3 +4026,37 @@ column equals experiment 112's GNU column throughout. The bold cells:
 * `std-hello` and `std-net` are not in experiment 112. `std-net`'s two rust-lld images differ
   by 8 bytes of `.rodata` (0x3de0 / 0x3de8: source-path strings), with 24 exception-index
   entries each.
+
+### 4. Without GCCE
+
+**Staging.** A `file://` source (`stage/repo`, written by `stager/` with `symdev-sdk`'s
+`ReproducibleTarGz` and an unsigned index, as the CLI tests' `World` does) offers three
+packages:
+
+* `rust-sdk;0.2.0` (418 395 B): this branch's tree, cut with the 0.3.0 recipe's include list,
+  plus `symbian-rs/prebuilt/` from the `rust-shims` run1 set.
+* `sdk;s60-3rd-fp2;1.1`: the installed SDK repacked. Its SHA-256 equals the private bucket's
+  archive, `cbec6da8…`.
+* A **decoy** `gcce;12.1.0`: stub `g++`/`ld` scripts that print `DECOY` and fail.
+
+**The run.** `nogcce.sh` runs `symdev-rl3-release` under `env -i` with only `HOME`, `PATH` and
+a scratch `SYMDEV_HOME`/`XDG_*`. It runs inside `bwrap --dev-bind / / --tmpfs ~/gcc-builds`,
+under `strace -f -e trace=execve,openat`. Four projects:
+
+* `symdev new nohello --lang rust` and `symdev build`.
+* `noui`: `examples/ui`'s source, icon, locales and `[ui]` section on a scaffold.
+* `noprobe` (`nogcce-probe.sh`): experiment 109's probe on a scaffold.
+
+| | result |
+|---|---|
+| installed | `symdev new` installed `rust-sdk;0.2.0`, `symdev build` `sdk;s60-3rd-fp2;1.1`; `$SYMDEV_HOME` = `cache`, `rust-sdk`, `sdk` — no `gcce`, the decoy never ran |
+| GCCE touched | 0 trace lines with `gcc-builds` or `arm-none-symbianelf` |
+| linkers run | symdev ran the nightly's `rust-lld` twice per program (the other three runs per build are the host toolchain linking cargo build scripts) |
+| images | `nohello` 975 / 1 348, `noui` 10 291 / 17 028, `noprobe` 4 464 / 7 112 |
+| SDK fix cache | two directories under `cache/sdk-lld`, one per set of files (console, GUI) |
+
+`noui` equals experiment 112's `ui` uncompressed; the compressed 10 291 against 10 288 is its
+other name and UID3 (`0xe99c709c`, also the `--defsym` value). One mistake of the first run is
+recorded: `noui`'s first build failed because the script added a `symbian-core` dependency
+the scaffold already has (`duplicate key`); fixed by hand, `nogcce-ui.sh` rebuilt it in the
+same sandbox.
