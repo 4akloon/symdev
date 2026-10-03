@@ -9,7 +9,8 @@ fn checkout_sdk_is_found_and_has_the_target() {
     assert!(sdk.crate_dir("symbian-std").join("Cargo.toml").is_file());
     assert!(RustSdk::HELLO_MAIN.contains("#[symbian_std::main]"));
     assert!(RustSdk::HELLO_MAIN.contains("fn main() -> Result<()>"));
-    assert!(!RustSdk::HELLO_MAIN.contains("no_main"));
+    // A binary cargo links through symdev-ld (experiment 114 §1.1).
+    assert!(RustSdk::HELLO_MAIN.contains("#![no_main]"));
 }
 
 /// A release build (`SYMDEV_RELEASE` set when it is compiled) has no checkout to fall
