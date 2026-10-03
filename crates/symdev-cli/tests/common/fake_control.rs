@@ -63,6 +63,7 @@ impl FakeDevice {
         std::fs::set_permissions(&script, mode).unwrap();
         let mut sleeper = spawn(&script);
         let hold = sleeper.stdin.take();
+        settle(sleeper.id());
         Self {
             env,
             socket,
@@ -162,4 +163,19 @@ fn spawn(script: &Path) -> Child {
 /// `rm-469`: drive E of the profile under `XDG_DATA_HOME` (`<env>/data`).
 pub fn report_path(env: &Path) -> PathBuf {
     env.join("data/symdev/emulators/rm-469/data/drives/e/symdev/results/e1234567.json")
+}
+
+/// Waits until the device process's `comm` is its own. `spawn` returns once the exec has
+/// closed the parent's close-on-exec pipe, and the kernel sets the new `comm` a moment after
+/// that: under load a runner was seen reading the test thread's name there
+/// (`a_running_app_i`), and dropping the fake as no EKA2L1.
+fn settle(pid: u32) {
+    for _ in 0..500 {
+        let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+        if comm.trim() == "eka2l1-fake" {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    panic!("the fake device {pid} never became eka2l1-fake");
 }
