@@ -13,7 +13,7 @@ Scratch: `~/src/emu-pkg-scratch/`. Read-only observations go to experiment 115 �
 - [x] read symdev-packages (publish/, recipes/gcce/12.1.0, workflows)
 - [x] read EKA2L1 copies and fork CI build.yml
 - [x] experiment 115 §1 written + committed (experiment-backlog.md end)
-- [ ] plan written, self-reviewed, committed, pushed
+- [x] plan written, self-reviewed, committed, pushed (16 tasks + lead acceptance)
 
 ## Facts
 - Fork CI (`integration` copy, branch symdev d07d5ac, `.github/workflows/build.yml`): job
@@ -151,7 +151,18 @@ Scratch: `~/src/emu-pkg-scratch/`. Read-only observations go to experiment 115 �
 
 - All 16 tasks + lead acceptance written and committed.
 
+- Self-review done: spec coverage (§2–§6 each mapped), placeholders (only the computed
+  <V>/<C>/<c>/<run>), names consistent across tasks, RF tests in owning tasks. Fixes:
+  rehearsal package-list script copied after clone; fake AppImage uses pkgtools as ELF;
+  setup-linker without arg; L4 note (packages branch carries unreleased 0.4.0 recipe →
+  merging starts symdev.yml); lazy profiles in pick_device.
+- Spec places found wrong/incomplete: corresponding source = 167 Ubuntu pkgs not just Qt
+  (D1); CLAUDE.md "GPL/MIT only" vs bundle; glibc 2.38 (F1); today's code reads the
+  default EKA2L1 folder without SYMDEV_EKA2L1_DATA; AppRun can't be the entry (comm);
+  fork CI never ran (push may start nothing).
+
 ## Next step
 
-Self-review the plan against the spec (coverage, placeholders, type consistency, review
-focus), fix inline, commit, push cargo-run, hand back.
+None for the planning task: hand back to the lead. Execution waits for the owner's review
+of the plan and D1; recommended execution: one agent (superpowers:executing-plans), tasks
+1 → 15, stop before L1; final whole-branch review.
