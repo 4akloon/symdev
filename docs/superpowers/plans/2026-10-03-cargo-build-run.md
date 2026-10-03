@@ -350,3 +350,231 @@ fn an_output_outside_cargos_observed_layout_is_refused() {
 
 Run: `cargo test -p symdev-cli --offline ld::tests`
 Expected: compile errors, `LinkerArgs`, `CargoLinkEnv`, `LinkKind`, `CargoOutput` not found.
+
+- [ ] **Step 4: Implement** — `crates/symdev-cli/src/ld.rs`
+
+```rust
+//! The `symdev-ld` role: cargo's linker for `arm-symbian-e32` (design spec §4).
+mod cargo_link_env;
+mod cargo_output;
+mod link_kind;
+mod linker_args;
+
+pub(crate) use cargo_link_env::CargoLinkEnv;
+pub(crate) use cargo_output::CargoOutput;
+pub(crate) use link_kind::LinkKind;
+pub(crate) use linker_args::LinkerArgs;
+
+#[cfg(test)]
+mod tests;
+```
+
+`crates/symdev-cli/src/ld/linker_args.rs`:
+
+```rust
+//! `LinkerArgs`: rustc's argv to cargo's linker, as experiment 114 §1.1 recorded it.
+use std::ffi::OsString;
+use std::path::PathBuf;
+
+use symdev_core::{Error, Result};
+
+/// The inputs, in rustc's order, and the `-o` path. Every other argument rustc was seen
+/// to pass is either already on 0.3.0's line (`--gc-sections`, `--strip-debug`) or means
+/// nothing to it (`--as-needed`, `-Bstatic`, `-Bdynamic`, `-z noexecstack`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LinkerArgs {
+    pub inputs: Vec<PathBuf>,
+    pub output: PathBuf,
+    /// rustc's `-L <tmp>/raw-dylibs`: empty for every program observed. `LinkRun`
+    /// refuses a non-empty one, which would mean a `raw-dylib` import nobody has seen.
+    pub raw_dylibs: Vec<PathBuf>,
+}
+
+impl LinkerArgs {
+    pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Self> {
+        let mut words = Vec::new();
+        for a in args {
+            words.push(a.into_string().map_err(|a| {
+                Error::Other(format!("symdev-ld: an argument is not UTF-8: {}", a.to_string_lossy()))
+            })?);
+        }
+        let mut rest = words.as_slice();
+        if let [flavor, gnu, tail @ ..] = rest
+            && flavor == "-flavor" && gnu == "gnu"
+        {
+            rest = tail;
+        }
+        let (mut inputs, mut output, mut raw_dylibs) = (Vec::new(), None, Vec::new());
+        let mut it = rest.iter();
+        while let Some(word) = it.next() {
+            match word.as_str() {
+                "--as-needed" | "-Bstatic" | "-Bdynamic" | "--gc-sections" | "--strip-debug" => {}
+                "-z" => match it.next().map(String::as_str) {
+                    Some("noexecstack") => {}
+                    other => return Err(unseen(&format!("-z {}", other.unwrap_or("")))),
+                },
+                "-L" => raw_dylibs.push(PathBuf::from(value(&mut it, "-L")?)),
+                "-o" if output.is_none() => output = Some(PathBuf::from(value(&mut it, "-o")?)),
+                w if !w.starts_with('-') && (w.ends_with(".o") || w.ends_with(".rlib")) => {
+                    inputs.push(PathBuf::from(w))
+                }
+                w => return Err(unseen(w)),
+            }
+        }
+        let output = output.ok_or_else(|| {
+            Error::Other("symdev-ld: rustc passed no `-o`; symdev-ld is cargo's linker".into())
+        })?;
+        if inputs.is_empty() {
+            return Err(Error::Other("symdev-ld: rustc passed no object or rlib".into()));
+        }
+        Ok(Self { inputs, output, raw_dylibs })
+    }
+}
+
+fn value<'a>(it: &mut impl Iterator<Item = &'a String>, flag: &str) -> Result<&'a String> {
+    it.next()
+        .ok_or_else(|| Error::Other(format!("symdev-ld: `{flag}` without a value")))
+}
+
+fn unseen(word: &str) -> Error {
+    Error::Other(format!(
+        "symdev-ld: rustc passed `{word}`, which experiment 114 never saw it pass for \
+         arm-symbian-e32; TODO: support it once observed (not observed). Report it with the \
+         command that produced it."
+    ))
+}
+```
+
+`crates/symdev-cli/src/ld/cargo_link_env.rs`:
+
+```rust
+//! `CargoLinkEnv`: the variables cargo gives rustc, and rustc its linker (exp. 114 §1.1).
+use std::path::PathBuf;
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct CargoLinkEnv {
+    pub bin_name: Option<String>,
+    pub crate_name: Option<String>,
+    pub target_tmpdir: Option<String>,
+    pub manifest_dir: Option<PathBuf>,
+}
+
+impl CargoLinkEnv {
+    /// From `(name, value)` pairs — `std::env::vars()` in `LinkRun`, a fixture in tests.
+    pub fn from_pairs(pairs: impl IntoIterator<Item = (String, String)>) -> Self {
+        let mut env = Self::default();
+        for (k, v) in pairs {
+            match k.as_str() {
+                "CARGO_BIN_NAME" => env.bin_name = Some(v),
+                "CARGO_CRATE_NAME" => env.crate_name = Some(v),
+                "CARGO_TARGET_TMPDIR" => env.target_tmpdir = Some(v),
+                "CARGO_MANIFEST_DIR" => env.manifest_dir = Some(PathBuf::from(v)),
+                _ => {}
+            }
+        }
+        env
+    }
+}
+```
+
+`crates/symdev-cli/src/ld/link_kind.rs`:
+
+```rust
+//! `LinkKind`: what `symdev-ld` is linking (experiment 114 §1.6).
+use symdev_core::{Error, Result};
+
+use super::CargoLinkEnv;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum LinkKind {
+    /// The project's `[[bin]]`: `CARGO_BIN_NAME` is the package name.
+    Main,
+    /// A `tests/<name>.rs` with `harness = false`: no `CARGO_BIN_NAME`, a
+    /// `CARGO_TARGET_TMPDIR`. Linked as a console program even in an Avkon project.
+    Test { name: String },
+}
+
+impl LinkKind {
+    pub fn of(env: &CargoLinkEnv, package: &str) -> Result<Self> {
+        match (&env.bin_name, &env.target_tmpdir, &env.crate_name) {
+            (Some(bin), _, _) if bin == package => Ok(Self::Main),
+            (Some(bin), _, _) => Err(Error::Other(format!(
+                "symdev-ld: cargo is linking the binary `{bin}`, but symdev.toml's package is \
+                 `{package}`: a symdev project has one [[bin]], named after the package; \
+                 examples and further binaries are not supported"
+            ))),
+            (None, Some(_), Some(name)) => Ok(Self::Test { name: name.clone() }),
+            _ => Err(Error::Other(
+                "symdev-ld: neither CARGO_BIN_NAME (a binary) nor CARGO_TARGET_TMPDIR (a test) \
+                 is set; symdev-ld is cargo's linker, run `cargo build`"
+                    .into(),
+            )),
+        }
+    }
+}
+```
+
+`crates/symdev-cli/src/ld/cargo_output.rs`:
+
+```rust
+//! `CargoOutput`: rustc's `-o` in cargo's build-directory layout (experiment 114 §1.1):
+//! `<target-dir>/<triple>/<profile>/build/<package>/<16 hex>/out/<file>`.
+use std::path::{Path, PathBuf};
+
+use symdev_core::{Error, Result};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CargoOutput {
+    path: PathBuf,
+    profile_dir: PathBuf,
+}
+
+impl CargoOutput {
+    pub fn of(path: &Path) -> Result<Self> {
+        let up: Vec<&Path> = path.ancestors().take(6).collect();
+        let name = |i: usize| up.get(i).and_then(|p| p.file_name()).and_then(|n| n.to_str());
+        let hash_ok = name(2).is_some_and(|h| h.len() == 16 && h.bytes().all(|b| b.is_ascii_hexdigit()));
+        if name(1) != Some("out") || !hash_ok || name(4) != Some("build") || up.len() < 6 {
+            return Err(Error::Other(format!(
+                "symdev-ld: rustc's output {} is not in cargo's \
+                 <profile>/build/<package>/<hash>/out/ layout; TODO: another cargo layout \
+                 (not observed)",
+                path.display()
+            )));
+        }
+        Ok(Self { path: path.to_path_buf(), profile_dir: up[5].to_path_buf() })
+    }
+
+    pub fn path(&self) -> &Path { &self.path }
+
+    /// Where cargo hard-links the main binary, and so where `cargo run`'s path points.
+    pub fn profile_dir(&self) -> &Path { &self.profile_dir }
+
+    pub fn work_dir(&self) -> PathBuf { self.with_suffix(".symdev") }
+    pub fn sisx(&self) -> PathBuf { self.with_suffix(".sisx") }
+    pub fn record(&self) -> PathBuf { self.with_suffix(".symdev.toml") }
+
+    fn with_suffix(&self, suffix: &str) -> PathBuf {
+        let mut s = self.path.clone().into_os_string();
+        s.push(suffix);
+        PathBuf::from(s)
+    }
+}
+```
+
+Add `mod ld;` to `crates/symdev-cli/src/main.rs`, after `mod cli;`. The module is unused by
+`main` until Task 4; add `#[allow(dead_code)]` on the `mod ld;` line with the comment `//
+Task 4 wires the symdev-ld role`, and remove it in Task 4.
+
+- [ ] **Step 5: Run the tests to see them pass**
+
+Run: `cargo test -p symdev-cli --offline ld::tests`
+Expected: 10 passed. Then `cargo fmt --all` and `cargo clippy -p symdev-cli --all-targets
+--offline` — zero warnings.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add crates/symdev-cli/src/main.rs crates/symdev-cli/src/ld.rs crates/symdev-cli/src/ld
+git commit -m "Read rustc's linker argv and cargo's variables as experiment 114 recorded them."
+```
