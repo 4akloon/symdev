@@ -49,3 +49,9 @@ Spike evidence: ~/src/rust-lld-spike/ (experiment 109 §1, §5).
   ELF32 objects; refuses non-ELF/ELF64/BE/non-ARM/non-REL/bad entsize/out of bounds). On the
   10 real shim objects: common 3 (active, f32, leave), UI 7 (avkon 1, list 3, note 1, query 2)
   = the spike's counts; output byte-identical to the spike's `fix-target2.py` on all 10.
+- **packages: `tools/runtime_closure.py`** (12 tests; parses the GNU ld map's "Archive member
+  included" section, fails on a needed-but-not-shipped or shipped-but-unneeded member;
+  checked on the real `uidemo.exe.map`) and **`tools/sdk_casefold.py`** (6 tests; the rule of
+  symdev's `SdkIncludeCaseFold`; on the published SDK it writes the same 260 links as symdev's
+  `build/sdk-include-casefold`, `find -printf '%p -> %l'` identical).
+- Next: `recipes/symdev/0.2.0/` (recipe.toml copy of 0.1.0 + prebuilt.sh), workflow step.
