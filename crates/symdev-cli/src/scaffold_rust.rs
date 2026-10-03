@@ -116,11 +116,15 @@ fn cargo_manifest(name: &str) -> String {
 }
 
 /// What `symdev build` passes on the cargo command line, so a hand `cargo build` (or
-/// `cargo clippy`) in the project does the same. The target spec is relative to the
-/// project, wherever cargo is run from in it (experiment 110 c).
+/// `cargo clippy`) in the project does the same once `build/rust-sdk` exists: a fresh
+/// clone, or one after `rm -rf build`, has no link until a `symdev build` makes it. The
+/// target spec is relative to the project, wherever cargo is run from in it (experiment
+/// 110 c).
 fn cargo_config() -> String {
     format!(
-        "# Kept in step with `symdev build` (RustBuild::cargo_args).\n\
+        "# Kept in step with `symdev build` (RustBuild::cargo_args). The Rust SDK is reached\n\
+         # through build/rust-sdk, a link `symdev build` makes: in a fresh clone or after\n\
+         # `rm -rf build`, run `symdev build` once before cargo or rust-analyzer.\n\
          [build]\n\
          target = \"{}\"\n\
          target-dir = \"build/cargo\"\n\
@@ -195,6 +199,8 @@ mod tests {
         let config = read(".cargo/config.toml");
         let target = "target = \"build/rust-sdk/symbian-rs/targets/arm-symbian-e32.json\"";
         assert!(config.contains(target), "{config}");
+        // A fresh clone has no link until a build makes it (review 0.2.0, minor 4).
+        assert!(config.contains("run `symdev build` once"), "{config}");
         let tree = sdk.root().parent().unwrap().display().to_string();
         assert!(!cargo.contains(&tree) && !config.contains(&tree));
         let link = std::fs::read_link(root.join("build/rust-sdk")).unwrap();

@@ -168,7 +168,9 @@ installed like GCCE. A Rust project names its SDK only through the link `build/r
 (`build/rust-sdk/symbian-rs/crates/…` in `Cargo.toml`, `build/rust-sdk/symbian-rs/targets/…` in
 `.cargo/config.toml`), which `symdev new --lang rust` makes and every `symdev build` points at the
 SDK it resolved, so an upgrade or an uninstalled package never leaves a stale path in the project;
-when the link moves to another SDK, `build/cargo` is rebuilt from scratch. `symdev build` stops,
+when the link moves to another SDK, `build/cargo` is rebuilt from scratch. `build/` is not
+committed, so in a fresh clone, or after `rm -rf build`, run `symdev build` once before a hand
+`cargo build`, `cargo clippy` or rust-analyzer: until then they cannot find the SDK's crates. `symdev build` stops,
 with the exact lines to change, when the project still names another SDK by absolute path (as
 symdev 0.1.0 scaffolds did) or its `rust-toolchain.toml` names another nightly than the SDK's.
 
