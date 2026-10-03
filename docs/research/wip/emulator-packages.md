@@ -100,6 +100,17 @@ Scratch: `~/src/emu-pkg-scratch/`. Read-only observations go to experiment 115 �
 
 ## Dead ends
 
+## Plan progress
+- Written + committed: header, constraints, "what exp 115 changed", D1, F1, lead steps L1–L4,
+  review focus, file structure.
+- Task list: 1 integration rebuild; 2 (D1=A) CI package list commit; 3 docker CI rehearsal;
+  4 symdev-sdk pins/packages/hints; 5 firmware recipe + pkgtools device-entry; 6 observe
+  profile from read-only firmware package (exp 115 §3); 7 Firmware + profile from package +
+  check(); 8 Eka2l1 enum + env; 9 Provision + wiring + CLI tests; 10 emulator recipe +
+  pkgtools emulator-tree/notices; 11 (D1=A) source.sh + pkgtools dsc; 12 emulator.yml;
+  13 packaged emulator real run (exp 115 §4); 14 docs/licensing; 15 staged acceptance
+  (exp 115 §5) → STOP L1; 16 pin to CI artifact → STOP L2–L4; lead real-bucket acceptance.
+
 ## Next step
 
-Write the plan: header, D1, global constraints, review focus, file map, then tasks.
+Write Task 1 onward into the plan.
