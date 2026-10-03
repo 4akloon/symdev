@@ -177,3 +177,7 @@ the 0.3.0 bump in the same release, rust-sdk 0.2.0 has no script/prebuilt); gate
 (0 warnings), `cargo fmt --all --check`; every .rs ≤ 300 lines; superpowers:verification-
 before-completion; report to the lead (commits, behaviour, sizes table, no-GCCE evidence,
 emulator evidence, experiment 113, the packages-repo API section above).
+- Gates after review items + exp 113 (HEAD at this commit's parent): `cargo test --workspace
+  --offline` 869 passed 0 failed; clippy 0 warnings; fmt clean; all changed .rs ≤ 300 lines.
+  Logs: ~/src/rl-driver-scratch/gate-{test,clippy}.log. NEXT: superpowers:requesting-code-review
+  base 04f8e7d.
