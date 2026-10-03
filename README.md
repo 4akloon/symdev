@@ -111,8 +111,8 @@ that is cut off is not resumed, and the next build downloads it again from the s
 
 Each `SYMDEV_*` toolchain variable that is set overrides its package path, field by field, so an
 environment that sets all of them installs nothing; a C++ project builds as before, and a Rust
-project links with rust-lld, which needs a home for its SDK fix cache (`SYMDEV_HOME`, else
-`HOME`; see [Linking Rust programs](#linking-rust-programs)) unless `SYMDEV_RUST_LINKER=gnu`
+project links with rust-lld, which needs a home for its SDK fix cache (`SYMDEV_HOME`, `XDG_DATA_HOME`
+or `HOME`; see [Linking Rust programs](#linking-rust-programs)) unless `SYMDEV_RUST_LINKER=gnu`
 keeps GNU ld. `SYMDEV_AR` overrides
 the `ar` that otherwise sits beside the linker, and `SYMDEV_ELF2E32` an external post-linker in
 place of the native one.
