@@ -274,4 +274,7 @@ NEXT: Task 10 — `task-start <plan> 10` (EKA2L1 with --control/--data-dir; prof
   No Rust code calls RDebug → no Emulated.Stdout line seen. Socket file stays after kill -9.
 - Task 10 done: `device::EmulatorProfile` (at/dir/name/log_file/data/create/root_from_env),
   `EmulatorData::root()`. Extra tests: root/xdg, drive-C link leaving C refused.
-NEXT: Task 11 — `task-start <plan> 11` (device registry + choice).
+- Task 11 done: DeviceId, RegistryEntry (TOML via toml::Table), DeviceRegistry (live never
+  signals; drops non-EKA2L1 PIDs and silent sockets), is_eka2l1, DeviceChoice/Choice/Offer,
+  DevicePrompt. Tests split into device/tests/{choice,profile}.rs (+2 extra: id, round trip).
+NEXT: Task 12 — `task-start <plan> 12` (control client, instance start/stop, symdev devices).

@@ -1163,6 +1163,7 @@ version = "0.3.0"
 dependencies = [
  "symdev-core",
  "tempfile",
+ "toml",
 ]
 
 [[package]]

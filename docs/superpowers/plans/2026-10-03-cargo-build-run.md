@@ -2203,7 +2203,7 @@ git commit -m "Give each emulator profile its own drives and log filter, referen
     &str, offers: &[Offer]) -> Result<Option<Offer>>` (`q` → `None`; a number out of range or
     anything else → error, and the caller asks again).
 
-- [ ] **Step 1: Write the failing tests** — the rules of spec §5 as a table
+- [x] **Step 1: Write the failing tests** — the rules of spec §5 as a table
 
 ```rust
 use std::path::PathBuf;
@@ -2285,12 +2285,12 @@ fn the_next_id_is_the_lowest_free_one() {
 }
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `cargo test -p symdev-emulator --offline device`
 Expected: compile errors.
 
-- [ ] **Step 3: Implement** the five types to the interfaces above. `decide` in this order:
+- [x] **Step 3: Implement** the five types to the interfaces above. `decide` in this order:
   `requested` (an id among `running`; else a profile, `Use` of its first running instance
   or `Start`; else `Refuse` listing running ids and profiles); exactly one running →
   `Use`; none running and one profile → `Start`; no running and no profile → `Refuse("no
@@ -2300,9 +2300,9 @@ Expected: compile errors.
   of them")`. Entries are files named `<id>.toml`; `live` deletes the file of an entry it
   drops.
 
-- [ ] **Step 4: Run the tests**: `cargo test -p symdev-emulator --offline`; all pass.
+- [x] **Step 4: Run the tests**: `cargo test -p symdev-emulator --offline`; all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/symdev-emulator
