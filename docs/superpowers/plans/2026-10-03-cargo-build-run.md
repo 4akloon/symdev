@@ -926,15 +926,17 @@ git commit -m "Package a project from an image and the resources beside it, as a
 
 - [ ] **Step 6 (needs D1; Option A shown): Ask for the password only for an encrypted key of the user's**
 
-Tests first, in `crates/symdev-build/src/package/tests.rs`:
+Tests first, in `crates/symdev-build/src/package/tests/validation.rs` (a child of
+`package/tests.rs`, whose helpers `fake_pkg()` and `hello_exe_bytes()` it reaches as
+`super::`):
 
 ```rust
 #[test]
 fn a_generated_self_signed_pair_needs_no_password() {
     let dir = tempfile::tempdir().unwrap();
-    let pkg = SisPackage { password: String::new(), ..sample() };
+    let pkg = SisPackage { password: String::new(), ..super::fake_pkg() };
     let exe = dir.path().join("hello.exe");
-    std::fs::write(&exe, crate::package::tests::tiny_e32()).unwrap();
+    std::fs::write(&exe, super::hello_exe_bytes()).unwrap();
     assert!(pkg.package(&[symdev_core::Artifact::exe(exe)]).is_ok());
 }
 
@@ -944,16 +946,15 @@ fn an_encrypted_key_of_the_users_still_needs_four_characters() {
     let (cer, key) = (dir.path().join("a.cer"), dir.path().join("a.key"));
     std::fs::write(&cer, "-----BEGIN CERTIFICATE-----\n").unwrap();
     std::fs::write(&key, "-----BEGIN DSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\n").unwrap();
-    let pkg = SisPackage { password: "ab".into(), cert: Some(cer), key: Some(key), ..sample() };
+    let pkg = SisPackage { password: "ab".into(), cert: Some(cer), key: Some(key), ..super::fake_pkg() };
     let exe = dir.path().join("hello.exe");
-    std::fs::write(&exe, crate::package::tests::tiny_e32()).unwrap();
+    std::fs::write(&exe, super::hello_exe_bytes()).unwrap();
     let e = pkg.package(&[symdev_core::Artifact::exe(exe)]).unwrap_err().to_string();
     assert!(e.contains("at least 4 characters"), "{e}");
 }
 ```
 
-(`sample()` and `tiny_e32()` are the helpers `package/tests.rs` already uses to build a
-`SisPackage` and a minimal image; reuse them, adding `pub(crate)` if needed.) Implement in
+Implement in
 `SisPackage::package`: replace `self.validate_password()?;` with
 
 ```rust
@@ -968,7 +969,8 @@ fn an_encrypted_key_of_the_users_still_needs_four_characters() {
 
 The doc comment cites experiment 114 §1.7: the original `makekeys` allows an unencrypted key
 and `signsis` signs with it with no pass phrase. Change `tests/package.rs`'s
-`package_missing_sign_password` into `package_without_a_password_signs_with_a_generated_pair`
+`package_missing_sign_password` (and any test in `package/tests/validation.rs` that expects
+the old refusal for a generated pair) into `package_without_a_password_signs_with_a_generated_pair`
 (expects success and a `.sisx`). Run `cargo test --workspace --offline` and commit: "Ask for
 a signing password only for an encrypted key the project supplies."
 
