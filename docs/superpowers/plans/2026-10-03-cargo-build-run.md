@@ -2938,3 +2938,119 @@ git -C ~/projects/symdev-packages checkout -b cargo-run   # once
 git -C ~/projects/symdev-packages add install.sh recipes/symdev/0.4.0
 git -C ~/projects/symdev-packages commit -m "Link symdev-ld and symdev-rustc on install, and add the 0.4.0 recipe."
 ```
+
+### Task 18: Experiment 114, the real runs
+
+Every number here goes into experiment 114 §3 onwards in `docs/research/experiment-backlog.md`,
+in the format of §1, with a conclusion and an evidence list. Scratch:
+`~/src/cargo-run-scratch/t18/`. The emulator is used under the agent lock, one run at a
+time. Only PIDs symdev started are stopped (`symdev emulator stop`); the user's EKA2L1 is
+never touched.
+
+**Files:**
+- Modify: `docs/research/experiment-backlog.md`, `docs/research/wip/cargo-run.md`
+
+- [ ] **Step 1: The same bytes, all 21, at one path** (spec §10)
+
+```bash
+T=~/src/cargo-run-scratch/t18/tree; mkdir -p $T ~/src/cargo-run-scratch/t18/{base,new}
+git archive 3086f1d | tar -x -C $T            # 0.3.0: staticlib shape, 0.3.0 spec
+# build every example with bin/symdev-030 (SYMDEV_RUST_SDK=$T/symbian-rs); copy build/*.exe to t18/base/
+mv $T ~/src/cargo-run-scratch/t18/tree-030 && mkdir -p $T && git archive HEAD | tar -x -C $T   # same path
+# build every example with plain `cargo build --release` (this branch's symdev-ld on PATH); copy build/*.exe to t18/new/
+```
+
+Compare each pair with `e32cmp.py`. Expected: the 19 `no_std` images equal. Where the spec
+keys move code order (experiment 114 §1.2: `net`, `tls`), the uncompressed sizes are equal;
+explain each difference by section and cause. The two `std` images differ by `std`'s path
+strings (§1.4); give the sizes. Record times: a cold `cargo build --release`, and a warm one
+after `touch src/main.rs`, for `hello` and `ui`.
+
+- [ ] **Step 2: `cargo run` on `hello` and on `ui`, with PID-bound screenshots**
+
+From a fresh profile: `cargo run --release` in `examples/hello`; it starts `emulator-1`.
+Record:
+* the log line `Hello from Rust SDK (19 chars)` as the runner printed it;
+* the exit status (0);
+* a screenshot of the window whose `_NET_WM_PID` is the instance's PID (the `eka2l1-host`
+  skill's method; experiment 113's `runshot.py` shows it).
+
+`examples/ui`: `cargo run --release`, then the screen with "Bars". Send F1 F1 (`XSendEvent`,
+as experiment 113) and take the second screen. Ctrl+C in the terminal: status 130, the
+instance still alive (`symdev devices`).
+
+- [ ] **Step 3: A second `cargo run` in seconds**
+
+With `emulator-1` up, run `cargo run --release` again in `examples/hello` and time it from
+the command to the log line. Record the seconds; spec §1 claims "seconds".
+
+- [ ] **Step 4: `cargo test` on `async`, with a failing test and a panicking one**
+
+Copy `examples/async` to `t18/async-broken/` (not committed). Add `tests/broken.rs` with
+three tests in order:
+* `passes` → `Ok(())`;
+* `fails` → `Err(Evidence::msg("on purpose"))`;
+* `panics` → `panic!("on purpose")`.
+
+Add a `tests/later.rs` whose `#[test]` comes after `panics` and so must be reported
+`not run`. `cargo test --release`: record the printed lines and the status. Expected:
+`test fails ... FAILED`, then `test panics ... FAILED` with `panicked: RUST <reason>` (the
+`RUST` category is experiment 100's), then `not run` for any later case, and a non-zero
+status. `executor` passes.
+
+- [ ] **Step 5: Several devices and no terminal**
+
+`symdev emulator start rm-469` twice, then `cargo run --release < /dev/null` in
+`examples/hello`. Record the error: it lists both ids and names `SYMDEV_DEVICE`. Then
+`SYMDEV_DEVICE=emulator-2 cargo run --release < /dev/null` runs there. Stop both with `symdev
+emulator stop`.
+
+- [ ] **Step 6: Write it up and commit**
+
+Write experiment 114 §3 onwards and its conclusion. Each spec claim this tested gets its
+observed result or the difference from it. Then:
+
+```bash
+git add docs/research/experiment-backlog.md docs/research/wip/cargo-run.md
+git commit -m "Record experiment 114's real runs of cargo build, run and test."
+```
+
+### Task 19: Acceptance, version 0.4.0, and the gates
+
+**Files:**
+- Modify: `Cargo.toml` (workspace `version = "0.4.0"`), `Cargo.lock`
+- Modify: `README.md` (Rust projects: `cargo build`, `cargo run`, `cargo test`,
+  `symdev devices`, `symdev emulator`, `symdev setup-linker`; `SYMDEV_DEVICE`),
+  `symbian-rs/examples/README.md`, `docs/superpowers/specs/2026-10-03-cargo-build-run.md`
+  (§3, §4.4–4.5, §6.1 and §11 updated to experiment 114's observations, with the deviations
+  of this plan's head)
+
+- [ ] **Step 1: Docs and version.** Bump the version: `Pins::rust_sdk()` follows it, so the
+  build wants `rust-sdk;0.4.0`. Update the README and the spec as listed; a fact that
+  changed cites experiment 114.
+
+- [ ] **Step 2: Acceptance** (spec §10), as experiment 113 §4 staged its no-GCCE run:
+  * a `file://` source with this branch's `symdev` (release build) as `symdev;0.4.0`, the
+    `rust-sdk;0.4.0` cut by the packages branch's recipe (with `prebuilt/`), and the SDK;
+  * an empty `HOME` and scratch `XDG_*`;
+  * the packages branch's `install.sh` pointed at it;
+  * `symdev new accept --lang rust`, then `cd accept`, then `cargo run`.
+
+  Expect the app on the screen (PID-bound screenshot) and status 0, then `cargo test`
+  passing `smoke`. With D1 = A, no `SYMDEV_SIGN_PASSWORD` is set at any point. With B or C,
+  follow that option. Record it as experiment 114's acceptance section and commit.
+
+- [ ] **Step 3: Gates**
+
+```bash
+cargo test --workspace --offline
+cargo clippy --workspace --all-targets --offline     # zero warnings
+cargo fmt --all --check
+git ls-files '*.rs' | xargs wc -l | awk '$1 > 300 && $2 != "total"'   # prints nothing
+cargo +nightly-2026-09-19 test --offline --manifest-path symbian-rs/crates/symbian-macros/Cargo.toml
+```
+
+- [ ] **Step 4: Review.** Use `superpowers:verification-before-completion`, then
+  `superpowers:requesting-code-review` with base `main`. Fix every Critical and Important
+  finding, rerun the gates, push the branch `cargo-run` (`git push origin cargo-run`). Do
+  not merge, tag or publish; the owner decides the release.
