@@ -5,6 +5,7 @@ use std::process::{Command, Stdio};
 
 use symdev_core::{Error, Result};
 
+pub mod device;
 mod json;
 mod results;
 

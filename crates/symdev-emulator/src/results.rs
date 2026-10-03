@@ -58,6 +58,11 @@ impl EmulatorData {
         }
     }
 
+    /// The data folder itself: `config.yml` and `data/` are in it.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
     /// `<data>/data/drives/e`: the host side of the emulated drive E:, as the tree on
     /// this host really is — `~/.local/share/EKA2L1/data/drives/e/` holds `sys/bin`,
     /// `private` and everything a SIS installs.

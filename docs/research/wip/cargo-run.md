@@ -267,3 +267,11 @@ NEXT: Task 10 — `task-start <plan> 10` (EKA2L1 with --control/--data-dir; prof
   folder and ROTATED its logs (~/.local/share/EKA2L1/EKA2L1.log rewritten 18:36:01; the old
   EKA2L1_TakeThis.log of 16:39, 48 067 B, was replaced by the 17:03 log). config.yml and data/
   untouched. Lesson: always pass `--data-dir <scratch>`, even for `--help`. Report to the owner.
+  Step 2 observed (exp 114 §2 written): the hand profile (links for ROM + Z, copied C,
+  empty D/E, config with our log-filter) works; user's folder untouched in both runs; hello
+  exits by itself (kill/0/None), panic example → exit_type panic, -2, RUST; panic log line
+  `T …thread.cpp:542 [Kernel]: Thread Main panicked with category: RUST and exit code: -2 `.
+  No Rust code calls RDebug → no Emulated.Stdout line seen. Socket file stays after kill -9.
+- Task 10 done: `device::EmulatorProfile` (at/dir/name/log_file/data/create/root_from_env),
+  `EmulatorData::root()`. Extra tests: root/xdg, drive-C link leaving C refused.
+NEXT: Task 11 — `task-start <plan> 11` (device registry + choice).

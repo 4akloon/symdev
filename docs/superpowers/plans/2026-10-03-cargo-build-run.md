@@ -2057,7 +2057,7 @@ git commit -m "Build rust-std projects with plain cargo through symdev-rustc and
   - `EmulatorProfile::root_from_env() -> Result<PathBuf>`: `$XDG_DATA_HOME/symdev/emulators`,
     else `~/.local/share/symdev/emulators`.
 
-- [ ] **Step 1: Build the emulator** (the `eka2l1-host` skill: build command, translations,
+- [x] **Step 1: Build the emulator** (the `eka2l1-host` skill: build command, translations,
   staging by name)
 
 In `~/src/EKA2L1-wt/integration`, merge `dev/data-dir` and then `dev/control-events` into
@@ -2077,7 +2077,7 @@ lines) with `exec ~/src/EKA2L1-wt-build/integration/bin/eka2l1_qt "$@"`. Do not 
 `~/.local/bin/eka2l1`; the user runs it.
 Check: `eka2l1-symdev --help | grep -E -- '--control|--data-dir'` prints both.
 
-- [ ] **Step 2: Observe a profile** (record every result in experiment 114 §2)
+- [x] **Step 2: Observe a profile** (record every result in experiment 114 §2)
 
 The user's emulator data, as observed on this host:
 `~/.local/share/EKA2L1/data/{devices.yml,drives/{c,d,e,z},roms/rm-469}`; `z` is 208 MB,
@@ -2115,7 +2115,7 @@ Probe it with the README's netcat line: `emulator.info` (expect `device.firmware
 Then `kill -9` that PID only. If the links are refused, record the error and copy what
 was refused instead, saying so in the record.
 
-- [ ] **Step 3: Write the failing test** — `device/tests.rs`
+- [x] **Step 3: Write the failing test** — `device/tests.rs`
 
 ```rust
 use std::path::Path;
@@ -2161,12 +2161,12 @@ Adjust the expected layout to Step 2's observation before writing the code; the 
 the record of what the emulator accepts. `EmulatorData::at` takes the directory that holds
 `data/` (today's convention); keep it.
 
-- [ ] **Step 4: Run it to see it fail**, then **implement** `EmulatorProfile` (copy `c` with
+- [x] **Step 4: Run it to see it fail**, then **implement** `EmulatorProfile` (copy `c` with
   a recursive copy that refuses links pointing outside it; `std::os::unix::fs::symlink` for
   the references; `config.yml` line-replaced, the original line kept as a comment), then
   run it to see it pass: `cargo test -p symdev-emulator --offline device`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/symdev-emulator/src docs/research/experiment-backlog.md

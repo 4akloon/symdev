@@ -4551,5 +4551,5 @@ drive C, empty D and E, and links to the user's ROM and drive Z, which the emula
 and does not write. Installs, logs and settings stay in the profile.
 
 **Evidence.** `~/src/cargo-run-scratch/`: `exec/t10-probe.sh`, `exec/t10-probe2.sh`,
-`exec/probe10.py`, `profiles/{probe.log,probe-panic.log,EKA2L1-hello.log,rm-469/}`;
+`exec/probe10.py`, `profiles/{probe-hello.log,probe-panic.log,EKA2L1-hello.log,rm-469/}`;
 `~/src/EKA2L1-wt-build/cargo-run/{build.sh,build.log}`.
