@@ -1584,9 +1584,9 @@ clippy still needs.
 This is temporary; Task 9 replaces it. `crates/symdev-cli/tests/run.rs`'s
 `run_with_a_profile_to_start_and_no_emulator_names_symdev_eka2l1` now sets
 `SYMDEV_EKA2L1_DATA` to `user` (its `XDG_DATA_HOME/EKA2L1`) instead of relying on the default
-folder. Every other CLI test that made a firmware under `XDG_DATA_HOME/EKA2L1` does the same:
-`grep -rln 'EKA2L1' crates/symdev-cli/tests` lists them, among them `tests/test_cmd.rs`
-and `tests/common/fake_control.rs`.
+folder. It is the only CLI test that relied on the default: `tests/test_cmd.rs` already sets
+the variable, and the fake devices of `tests/common/fake_control.rs` need no firmware.
+`grep -rn 'EKA2L1' crates/symdev-cli/tests` confirms it at execution.
 
 - [ ] **Step 5: Run the tests and the gates** (Task 4 step 4's three commands). Expected: all
   pass, 0 clippy lines.
@@ -2154,10 +2154,12 @@ pub(crate) fn pick_device(terminal: bool, provision: &Provision) -> Result<Regis
     if profiles.is_empty() && wants_profile {
         profiles = devices.make_profiles(provision.firmwares()?)?;
     }
-    // … the DeviceChoice and the match on the offer as before; Offer::Profile calls
-    // eka2l1_with_control(provision) …
-}
 ```
+
+The rest of the function stays as it is, from `let choice = DeviceChoice {` to the end,
+except that the `Offer::Profile` arm calls `eka2l1_with_control(provision)?` and passes
+`&eka2l1` to `EmulatorInstance::start`. Add `use symdev_emulator::device::DeviceId;` and
+`use crate::provision::Provision;`.
 
 `run.rs`: `pub(crate) fn run(exe: Option<PathBuf>, args: Vec<String>, provision: &Provision)`
 passes it to `pick_device`. `test_cmd.rs`: `test_project(m, emulator, provision:
