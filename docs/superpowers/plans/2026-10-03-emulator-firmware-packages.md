@@ -3175,3 +3175,80 @@ impl Dsc {
 a Debian source package with their SHA-256s, from its .dsc, in sha256sum -c format"). The
 arm reads the file, prints `Dsc::parse(..)?.sha256sums()` and returns 0, or prints `error:
 <path>: <e>` and returns 1. Run step 1's command; expected `test result: ok`.
+
+- [ ] **Step 3: Write `recipes/emulator/<V>/source.sh`**
+
+```bash
+#!/usr/bin/env bash
+# The corresponding source of emulator;<V>, one archive for `publish public --source-code`:
+#   <name>/eka2l1/     the fork commit and every submodule at its recorded commit (git archive)
+#   <name>/recipe/     this recipe directory
+#   <name>/ubuntu/<source>/   each Ubuntu source package of the artifact's package list at its
+#                      exact version, from Launchpad, checked against its .dsc (plan D1 = A)
+#   <name>/SHA256SUMS  of every file above
+#
+#   source.sh <out.tar.gz>      (in build.sh's directory, after build.sh)
+set -euo pipefail
+if [ $# -ne 1 ]; then echo "usage: source.sh <out.tar.gz>" >&2; exit 2; fi
+out=$1
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+pkgtools=${PKGTOOLS:-"cargo run --release --quiet --manifest-path $here/../../../Cargo.toml -p pkgtools --"}
+id=$(sed -n 's/^id = "\(.*\)"$/\1/p' "$here/recipe.toml")
+name="${id//;/-}-source"
+[ -d eka2l1-src ] || { echo "error: no ./eka2l1-src: run build.sh here first" >&2; exit 1; }
+rm -rf src-out && mkdir -p "src-out/$name/eka2l1" "src-out/$name/recipe"
+(cd eka2l1-src && git archive --format=tar HEAD &&
+  git submodule foreach --quiet --recursive 'git archive --format=tar --prefix="$displaypath/" HEAD') |
+  tar -x -i -C "src-out/$name/eka2l1"
+cp -R "$here/." "src-out/$name/recipe/"
+lp=https://launchpad.net/ubuntu/+archive/primary/+sourcefiles
+if [ -f artifact/eka2l1-qt-x64.packages.tsv ]; then
+  cut -f3,4 artifact/eka2l1-qt-x64.packages.tsv | sort -u | while IFS=$'\t' read -r src ver; do
+    dir="src-out/$name/ubuntu/$src"
+    dsc="${src}_${ver#*:}.dsc"
+    mkdir -p "$dir"
+    curl -fsSL --retry 3 -o "$dir/$dsc" "$lp/$src/$ver/$dsc"
+    $pkgtools dsc-files "$dir/$dsc" > "$dir/SHA256SUMS"
+    while read -r _ file; do
+      curl -fsSL --retry 3 -o "$dir/$file" "$lp/$src/$ver/$file"
+    done < "$dir/SHA256SUMS"
+    (cd "$dir" && sha256sum -c --quiet SHA256SUMS)
+  done
+fi
+(cd "src-out/$name" && find . -type f ! -path ./SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -C src-out -cf - "$name" | gzip -n -9 > "$out"
+echo "wrote $out ($(stat -c %s "$out") bytes)"
+```
+
+Launchpad keeps every published version's files under
+`+sourcefiles/<source>/<version>/<file>`. The `.dsc`'s name drops the epoch (`2:0.164…` →
+`x264_0.164…dsc`). Observe the first package by hand before the whole run:
+`curl -fsSIL "$lp/<src>/<ver>/<dsc>" | head -3` must end in a `200`. If it answers 404, try
+`https://launchpad.net/ubuntu/+archive/primary/+files/<file>`. Record which form works, and
+use only that one, in the script and in the notes.
+
+- [ ] **Step 4: Make the archive from the rehearsal and dry-run the publish**
+
+```bash
+E=~/src/emu-pkg-scratch/emulator; P=~/worktrees/symdev-packages/cargo-run
+cp $P/recipes/emulator/<V>/source.sh $E/recipe/
+(cd $E/work && PKGTOOLS=$P/target/release/pkgtools bash $E/recipe/source.sh $E/source.tar.gz) > $E/source.log 2>&1; echo "EXIT=$?" >> $E/source.log
+cd $E && env -u PUBLISH_PUBLIC_URL -u PUBLISH_SIGNING_KEY cargo run --release --quiet \
+  --manifest-path $P/Cargo.toml -p publish -- public 'emulator;<V>' --from $E/prefix \
+  --source-code $E/source.tar.gz --recipe $E/recipe/recipe.toml --dry-run > $E/dry-run.toml 2> $E/dry-run.log
+cat $E/dry-run.log; grep -A3 'id = "emulator' $E/dry-run.toml
+```
+
+Expected: `EXIT=0` in `source.log`. `dry-run.log` says `packed emulator;<V>: …` with the
+package's size, then `would upload emulator/<V>/<sha>.tar.gz`, `would upload
+src/emulator/<V>/<sha>.tar.gz` and `would upload index.toml`. The printed index has the
+licence of Task 10 and a `source-code` key. Record in the wip file: the package's packed
+size, the source archive's size, how many Ubuntu source packages it holds, and the time.
+These sizes are D1's "cost" column, measured.
+
+- [ ] **Step 5: Gates and commit** (Task 10 step 9's gate commands)
+
+```bash
+git add pkgtools/src/dsc.rs pkgtools/src/main.rs recipes/emulator/<V>/source.sh
+git commit -m "Write the emulator package's corresponding source: the fork commit with its submodules, the recipe, and every bundled Ubuntu source package at its exact version."
+```
