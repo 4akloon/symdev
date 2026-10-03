@@ -45,3 +45,7 @@ Spike evidence: ~/src/rust-lld-spike/ (experiment 109 §1, §5).
   symbianelf copies it into `.dynsym` as LOCAL ABS and still emits the `R_ARM_ABS32`, same
   error. lld with `-Bsymbolic` resolves it statically (spike §5). So: `--defsym` is an lld-only
   mechanism; the compile-time define stays the GNU path. Kept the spike's plain declaration.
+- **packages: `tools/target2_abs32.py` + `tests/target2_abs32_test.py`** (13 tests, synthetic
+  ELF32 objects; refuses non-ELF/ELF64/BE/non-ARM/non-REL/bad entsize/out of bounds). On the
+  10 real shim objects: common 3 (active, f32, leave), UI 7 (avkon 1, list 3, note 1, query 2)
+  = the spike's counts; output byte-identical to the spike's `fix-target2.py` on all 10.
