@@ -56,6 +56,19 @@ Do NOT edit: `crates/symdev-build/src/driver/{rust_build,libcalls}.rs`, `crates/
   CANTUNWIND entry lld writes for its `__ARMv4PILongBXThunk_RunThread` (GNU's veneer has none);
   code size equal.
 
+- Step 1 (resume 3): `cargo test -p symdev-elf2e32 --offline` → 60 passed, incl. experiment_109
+  lld golden (`experiment_109_lld_hello_matches_the_image_that_ran_in_eka2l1`, hex fixtures).
+- Step 2, the exidx difference — CORRECTION of the earlier "thunk entry" reading: GNU also
+  has a 16-B veneer for `_E32Startup`'s `bls RunThread` (`.emb_text.__stub` 0x10 in
+  gnu/hello/hello.exe.map), so the thunk itself costs the same. The extra lld entry sits at
+  the END of `__cpp_initialize__aeabi_` (0x82e8+0x48 = 0x8330), i.e. it is lld's
+  terminating sentinel; the thunk merely starts there. Rerun 2026-10-03 (link2.py, place=end):
+  exidx entries GNU|stubs: hello 7|8, async 27|30, shim 18|21, ui 38|42. shim diff: lld
+  keeps `_Unwind_GetLanguageSpecificData` and `_Unwind_GetDataRelBase` (same inline
+  0x80a8b0b0 as `_Unwind_GetRegionStart`) — GNU merges identical adjacent entries inside one
+  input `.ARM.exidx`, lld only drops whole duplicate input sections — plus the sentinel.
+  Sizes unchanged from the first table (hello 968|975|1044 …; uncompressed hello 1340|1348,
+  shim 7092|7112).
 ## Dead ends
 - lld options for an 8-byte PLT: none. `.plt`/`.got` stay 0x120/0x4c on hello with each of
   `-z now`, `-z lazy`, `--pic-veneer`, `-z noseparate-code`, `--no-rosegment`,
@@ -63,7 +76,8 @@ Do NOT edit: `crates/symdev-build/src/driver/{rust_build,libcalls}.rs`, `crates/
   `--pic-veneer`, `--nmagic`). lld's ARM PLT entry is fixed 16 B (12 B code + d4d4d4d4 trap
   padding) + 4 B `.got.plt` slot, header 32 B + 3 reserved GOT words.
 
-## Next step
-Part B: investigate lld options for an 8-byte PLT (record dead ends), then the --wrap stub
-mechanism (ImportStubs: tiny ELF REL writer in symdev-elf2e32, two-pass link: first lld
-link → JUMP_SLOT symbols → stubs → relink with --wrap).
+## Next step (resume 3, 2026-10-03)
+Steps: (1) confirm lld golden test + all goldens pass (`cargo test -p symdev-elf2e32 --offline`,
+CARGO_TARGET_DIR=~/src/rl-scratch/target); (2) hello +7 B exidx thunk: try link order / lld
+options, record each; (3) prove hello/async/leave probe/ui with stubs in EKA2L1 + bwrap no-GCCE
++ 15 examples; (4) rebase on main, experiment 112 in backlog; (5) gates.
