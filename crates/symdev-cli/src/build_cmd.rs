@@ -76,7 +76,16 @@ fn build_rust(m: &Manifest, root: &Path, provision: &Provision) -> Result<ExitCo
         format!("{}.exe", m.package.name),
         format!("{}.sisx", m.package.name),
     ] {
-        println!("{}", build.join(file).display());
+        let path = build.join(file);
+        if !path.is_file() {
+            // cargo found nothing to do, so symdev-ld did not run to write it again.
+            return Err(Error::Other(format!(
+                "{} is missing and cargo had nothing to relink: touch src/main.rs (or remove \
+                 build/cargo) and build again",
+                path.display()
+            )));
+        }
+        println!("{}", path.display());
     }
     Ok(ExitCode::SUCCESS)
 }
