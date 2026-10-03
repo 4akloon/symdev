@@ -114,6 +114,12 @@ Scratch: `~/src/emu-pkg-scratch/`. Read-only observations go to experiment 115 �
 - Tasks 1–4 written + committed (Task 4: Device::ALL, Pins, EmulatorPackage, FirmwarePackage,
   catalog bypass, tests in manager/tests/bypass.rs).
 
+- Tasks 5–8 written + committed. Ruling for Task 9: profile creation is LAZY in pick_device
+  (only when no emulator runs, or SYMDEV_DEVICE names a profile) — otherwise fake_control
+  tests (running fake, no profile, no sources.toml → builtin source) would hit the network.
+  `Devices::profiles()` = existing only; `Devices::make_profiles(firmwares)` creates.
+  list()/start() make on first need (as 0.4.0 cargo-run did).
+
 ## Next step
 
-Write Task 5 (firmware recipe + pkgtools device-entry) into the plan, then 6–16.
+Write Task 9 (Provision::eka2l1/firmwares + wiring + CLI tests), then 10–16.
