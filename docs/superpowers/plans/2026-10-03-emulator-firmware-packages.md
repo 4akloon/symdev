@@ -2963,3 +2963,113 @@ echo "built $id in $prefix"
 
 Without D1 = A, delete the `packages-sha256` line: build.sh then neither checks nor lists
 packages.
+
+- [ ] **Step 7: Test the driver**, `tests/emulator-build.test`
+
+A fake AppImage is a shell script that answers `--appimage-extract` with the observed
+layout. Its `eka2l1_qt` is a copy of `/bin/true`, a real ELF file that needs glibc.
+
+```sh
+#!/bin/sh
+# build.sh of the emulator recipe against a fake artifact and a tiny local EKA2L1 git repo:
+# the built tree, and the refusals (zeros, a changed AppImage, a changed package list).
+#
+#   sh tests/emulator-build.test
+set -eu
+root=$(cd "$(dirname "$0")/.." && pwd)
+recipe=$(ls -d "$root"/recipes/emulator/*/ | tail -n 1)
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+cargo build --release --quiet --manifest-path "$root/Cargo.toml" -p pkgtools
+export PKGTOOLS="$root/target/release/pkgtools"
+failures=0
+check() { name=$1; shift; if "$@"; then echo "ok - $name"; else echo "not ok - $name"; failures=$((failures + 1)); fi; }
+
+# The fake artifact.
+mkdir -p "$tmp/art"
+cat > "$tmp/art/eka2l1-qt-x64.AppImage" <<'APPIMAGE'
+#!/bin/sh
+[ "$1" = --appimage-extract ] || exit 9
+mkdir -p squashfs-root/usr/bin squashfs-root/usr/share/doc/libfoo1
+cp /bin/true squashfs-root/usr/bin/eka2l1_qt
+printf '[Paths]\nPrefix = ../\nPlugins = plugins\n' > squashfs-root/usr/bin/qt.conf
+ln -s usr/bin/eka2l1_qt squashfs-root/AppRun
+echo copyright > squashfs-root/usr/share/doc/libfoo1/copyright
+APPIMAGE
+printf 'libfoo1:amd64\t1\tfoo\t1\n' > "$tmp/art/eka2l1-qt-x64.packages.tsv"
+(cd "$tmp/art" && sh ./eka2l1-qt-x64.AppImage --appimage-extract)
+floor=$("$PKGTOOLS" emulator-tree "$tmp/art/squashfs-root" --glibc 0.0 2>&1 | sed -n 's/.*needs GLIBC_\([0-9.]*\),.*/\1/p')
+rm -rf "$tmp/art/squashfs-root"
+
+# The tiny EKA2L1.
+git init --quiet "$tmp/eka"; echo "GPL-3" > "$tmp/eka/LICENSE"
+git -C "$tmp/eka" add LICENSE; git -C "$tmp/eka" -c user.name=t -c user.email=t@t commit --quiet -m x
+commit=$(git -C "$tmp/eka" rev-parse HEAD)
+
+# A copy of the recipe whose artifact.toml names the fake.
+stage() {
+  rm -rf "$tmp/r" "$tmp/work" "$tmp/out"; mkdir -p "$tmp/work"; cp -R "$recipe" "$tmp/r"
+  sha() { sha256sum "$tmp/art/$1" | cut -d' ' -f1; }
+  sed -i -e "s/^commit = .*/commit = \"$commit\"/" -e 's/^run = .*/run = "1"/' \
+    -e "s/^appimage-sha256 = .*/appimage-sha256 = \"$(sha eka2l1-qt-x64.AppImage)\"/" \
+    -e "s/^packages-sha256 = .*/packages-sha256 = \"$(sha eka2l1-qt-x64.packages.tsv)\"/" \
+    -e "s/^glibc = .*/glibc = \"$floor\"/" "$tmp/r/artifact.toml"
+}
+build() { (cd "$tmp/work" && EMULATOR_ARTIFACT_DIR="$tmp/art" EKA2L1_GIT="$tmp/eka" bash "$tmp/r/build.sh" "$tmp/out") > "$tmp/log" 2>&1; }
+
+stage; build
+check "the tree is built" test -L "$tmp/out/AppRun" -a -f "$tmp/out/usr/bin/eka2l1_qt"
+check "with EKA2L1's licence" grep -q GPL-3 "$tmp/out/share/doc/eka2l1/COPYING"
+check "and the bundled list" grep -q 'usr/share/doc/libfoo1/copyright' "$tmp/out/share/doc/eka2l1/BUNDLED.tsv"
+stage; sed -i 's/^run = .*/run = "0"/' "$tmp/r/artifact.toml"
+check "zeros are refused" sh -c "! (cd '$tmp/work' && EMULATOR_ARTIFACT_DIR='$tmp/art' bash '$tmp/r/build.sh' '$tmp/out') 2>&1 | grep -q 'still has zeros'" 
+stage; echo '# changed' >> "$tmp/art/eka2l1-qt-x64.AppImage"
+check "a changed AppImage is refused" sh -c "! (cd '$tmp/work' && EMULATOR_ARTIFACT_DIR='$tmp/art' EKA2L1_GIT='$tmp/eka' bash '$tmp/r/build.sh' '$tmp/out') > '$tmp/log' 2>&1"
+check "and nothing is built" test ! -e "$tmp/out"
+[ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }
+```
+
+The zeros check uses `! ( … ) | grep`, which tests grep's status. Write it as two lines if
+that reads unclearly: run the build into `$tmp/log`, then `grep -q 'still has zeros'
+"$tmp/log"`. Run `sh tests/emulator-build.test`; expected: only `ok` lines. Add the step
+`- name: The emulator recipe's build.sh` / `run: sh tests/emulator-build.test` to
+`.github/workflows/tests.yml`. It needs no network: the fake repo has no submodules.
+
+- [ ] **Step 8: Build the package from the rehearsal AppImage**
+
+```bash
+E=~/src/emu-pkg-scratch/emulator; rm -rf $E; mkdir -p $E/work
+P=~/worktrees/symdev-packages/cargo-run; cp -R $P/recipes/emulator/<V> $E/recipe
+R=~/src/emu-pkg-scratch/rehearsal/out
+sed -i -e 's/^run = .*/run = "rehearsal"/' \
+  -e "s/^appimage-sha256 = .*/appimage-sha256 = \"$(sed -n 's/  eka2l1-qt-x64.AppImage$//p' $R/SHA256SUMS)\"/" \
+  -e "s/^packages-sha256 = .*/packages-sha256 = \"$(sed -n 's/  eka2l1-qt-x64.packages.tsv$//p' $R/SHA256SUMS)\"/" \
+  $E/recipe/artifact.toml
+(cd $E/work && EMULATOR_ARTIFACT_DIR=$R EKA2L1_GIT=~/src/EKA2L1-wt/emulator-pkg \
+  PKGTOOLS=$P/target/release/pkgtools bash $E/recipe/build.sh $E/prefix) > $E/build.log 2>&1; echo "EXIT=$?" >> $E/build.log
+```
+
+The recipe copy lives in scratch because `run = "rehearsal"` must never be committed.
+`EKA2L1_GIT` is the local copy, since `<C>` is not on the fork before L1. Expected: `EXIT=0`,
+`glibc floor 2.38`, and `wrote share/doc/eka2l1: COPYING, <n> licence files, <m> bundled
+packages`. Each submodule `emulator-notices` reports without a licence file gets read by
+hand. Its licence file (or the header that carries the licence) goes into
+`recipes/emulator/<V>/notices-extra.txt`, one path per line with a `#` comment naming the
+licence, in the real recipe, not the scratch copy. Then copy it to `$E/recipe/` and run
+again. Record the tree's size (`du -sh $E/prefix`), `<n>` and `<m>` in the wip file.
+
+- [ ] **Step 9: Gates and commit** (packages worktree; `env -u PUBLISH_SIGNING_KEY` as in Task 5)
+
+```bash
+cargo test --locked > /tmp/t10-all.log 2>&1; grep -E "FAILED|^error" /tmp/t10-all.log
+cargo clippy --all-targets --locked > /tmp/t10-clippy.log 2>&1; grep -cE "^(warning|error)" /tmp/t10-clippy.log
+cargo fmt --all --check && sh tests/emulator-build.test | grep -c '^not ok'
+git add pkgtools/Cargo.toml Cargo.lock pkgtools/src/main.rs pkgtools/src/emulator_tree.rs \
+  pkgtools/src/emulator_tree/glibc_version.rs pkgtools/src/emulator_tree/tool.rs \
+  pkgtools/src/emulator_tree/tests.rs pkgtools/src/emulator_notices.rs \
+  pkgtools/src/emulator_notices/submodules.rs pkgtools/src/emulator_notices/bundled_list.rs \
+  pkgtools/src/emulator_notices/tests.rs recipes/emulator/<V>/recipe.toml \
+  recipes/emulator/<V>/artifact.toml recipes/emulator/<V>/build.sh tests/emulator-build.test \
+  .github/workflows/tests.yml
+git add recipes/emulator/<V>/notices-extra.txt   # if step 8 made it
+git commit -m "Add the emulator;<V> recipe: the fork CI's AppImage taken by its SHA-256, extracted, checked and given its notices."
+```
