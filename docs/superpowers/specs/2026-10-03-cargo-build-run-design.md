@@ -1,6 +1,7 @@
 # `cargo build`, `cargo run`, `cargo test` for symdev Rust projects — design
 
-Status: approved in conversation with the owner on 2026-10-03; target release symdev 0.4.0
+Status: approved in conversation with the owner on 2026-10-03, implemented on branch `cargo-run`
+(plan `docs/superpowers/plans/2026-10-03-cargo-build-run.md`, experiment 114); target release symdev 0.4.0
 (with `rust-sdk;0.4.0`). Role model: the esp-rs toolchain (cargo links through a custom linker,
 `runner = "espflash flash --monitor"`), with Flutter's device model (`flutter devices`,
 `flutter run` picks or asks).
@@ -35,17 +36,29 @@ runner without a linker (`cargo run` needs a `bin`, and `cargo build` would not 
 ## 3. Project shape
 
 - The crate is an ordinary binary: `[[bin]]` from `src/main.rs`, `test = false` (no `libtest`
-  without `std`). Today's `[lib] crate-type = ["staticlib"]` goes.
+  without `std`). Today's `[lib] crate-type = ["staticlib"]` goes. `src/main.rs` needs
+  `#![no_main]`: `#[symbian_std::main]` keeps `fn main`, which rustc would otherwise take for the
+  program's entry and refuse (E0580, experiment 114 §1.1).
 - The target spec `symbian-rs/targets/arm-symbian-e32.json` gets `"executables": true`, so rustc
-  builds binaries for it. Its `linker-flavor` stays `gnu-lld`.
+  builds binaries for it, and `"default-visibility": "hidden"`, without which a `dev` build does
+  not link (release bytes do not change; experiment 114 §1.5). Its `linker-flavor` stays
+  `gnu-lld`.
 - `.cargo/config.toml` written by `symdev new`:
   - `[build] target = "build/rust-sdk/symbian-rs/targets/arm-symbian-e32.json"`,
     `target-dir = "build/cargo"`;
-  - `[unstable] build-std`, `build-std-features`, `json-target-spec` as today;
+  - `[unstable] build-std`, `build-std-features`, `json-target-spec` as today, and
+    `panic-abort-tests = true` (without it `cargo test` builds `core` twice: E0152);
   - `[target.arm-symbian-e32] linker = "symdev-ld"`, `runner = "symdev run --exe"`.
 - Compile-time values that `symdev build` passes through the environment today
-  (`SYMDEV_UID3`) come from `symdev.toml` instead, read by a build script or macro of the Rust
-  SDK through `CARGO_MANIFEST_DIR`, so a plain `cargo build` sees the same values.
+  (`SYMDEV_UID3`) come from `symdev.toml` instead, read by a proc macro of the Rust SDK through
+  `CARGO_MANIFEST_DIR` (`symbian_std::uid3!()`, `report!`): a dependency's build script sees its
+  own manifest directory, not the application's (experiment 114 §1). `#[symbian_std::main]` and
+  `uid3!()` also name `symdev.toml` in a discarded `include_str!`, so an edit to it alone
+  relinks.
+- A `language = "rust-std"` project's config also names `[build] rustc =
+  "build/symdev-rustc"`, the `symdev-rustc` role, which runs rustc with `--sysroot
+  build/sysroot`: the patched `std` source and the host libraries, which `symdev build`
+  materialises (experiment 114 §1.4, H4). Such projects build with cargo too.
 - `symdev build` on a Rust project runs `cargo build --release` in the project root; there is
   one build path.
 
@@ -62,12 +75,21 @@ role; `install.sh` makes the link, `symdev setup-linker` makes it for a checkout
 3. It links exactly as `symdev build` 0.3.0 does after cargo: `LldLine`, the linker script, the
    shims (prebuilt or compiled), libcalls, two rust-lld links around `ImportStubs`, the
    `R_ARM_JUMP_SLOT` check, then elf2e32 (experiments 109, 112, 113).
+   libcalls cannot be an ordinary dependency without changing bytes, so `symdev-ld` runs
+   0.3.0's separate `cargo rustc` for them itself, nested in cargo's build (experiment 114
+   §1.3). Each link works in its own `<out>.symdev/` directory: `cargo test` links several at
+   once.
 4. It writes the E32 image at the `-o` path, then the resources, the icon and the signed
-   `.sisx` next to it (`<out>.sisx`), and copies the main binary's `.sisx` to
-   `build/<name>.sisx` as today.
-5. A test binary (§7) is linked as a console program even in an Avkon project. How
-   `symdev-ld` tells it from the main binary (expected: `CARGO_CRATE_NAME` and an output in
-   `deps/`) is observed in the spike, not assumed.
+   `.sisx` next to it (`<out>.sisx`) and `<out>.symdev.toml` (main binary or test). cargo
+   hard-links the main binary to `<target-dir>/<triple>/<profile>/<bin>`, and `cargo run` hands
+   the runner that path, so `symdev-ld` also writes `<profile>/<bin>.sisx` and its record. A
+   release link copies the image and `.sisx` to `build/<name>.exe` and `build/<name>.sisx` as
+   today (`cargo test` also links the main binary in the `dev` profile, which must not
+   replace them).
+5. A test binary (§7) is linked as a console program even in an Avkon project. Observed
+   (experiment 114 §1.6): `CARGO_BIN_NAME` names the main binary; a test has none but has
+   `CARGO_TARGET_TMPDIR`; this cargo has no `deps/` (it links each unit in
+   `build/<package>/<hash>/out/`). Anything else, an example included, is refused by name.
 6. Packages the build needs (SDK, rust-sdk) are installed the way `symdev build` installs them.
 
 ## 5. Devices
@@ -101,7 +123,9 @@ A device is, in phase 1, an emulator; a phone is a later device kind.
 Cargo runs `symdev run --exe <exe> [args…]` for `cargo run` and for each test binary.
 
 1. It takes `<exe>.sisx` next to the image and reads UID3 from the E32 header. No `.sisx` is an
-   error: the binary was not linked by `symdev-ld`; check `.cargo/config.toml`.
+   error: the binary was not linked by `symdev-ld`; check `.cargo/config.toml`. A `.sisx` older
+   than its image is refused (the last link stopped after the image). `cargo run` passes a path
+   relative to the working directory, `cargo test` an absolute one (experiment 114 §1.1).
 2. It picks a device (§5). Starting an instance: EKA2L1 in its own session (`setsid`), so the
    terminal's Ctrl+C never reaches it, with `--data-dir <profile>` and `--control <socket>`;
    ready when `apps.list` answers.
@@ -179,7 +203,8 @@ devices and no terminal; the emulator closed during a run; an old-shape project.
 
 ## 11. First spike (before the plan's tasks)
 
-The plan starts with a spike that answers, by observation:
+Answered by experiment 114 §1 (2026-10-03); the sections above carry its observations. The
+plan starts with a spike that answers, by observation:
 
 1. rustc's exact linker argv for this target with `linker-flavor: gnu-lld`, for the main binary
    and a `harness = false` test, in `dev` and `release` profiles;
