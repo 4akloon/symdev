@@ -1,11 +1,15 @@
-//! `LogTail`: the guest's `RDebug` lines from the emulator's log as they are written. An
-//! `RDebug::Print` is logged as `T <source>:<line> [Emulated.Stdout]: <text>` (experiment 114
-//! §2); the text after the marker is what the app printed.
+//! `LogTail`: what the app prints and shows, from the emulator's log as it is written
+//! (experiment 114 §2). An `RDebug::Print` is logged as `T <source>:<line> [Emulated.Stdout]:
+//! <text>`, and a `User::InfoPrint` note as `I <source>:<line> [Service.Notifier]: Trying to
+//! display: <text>`; the text after the marker is the line printed.
 use std::io::{Read, Seek, SeekFrom};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
-const MARKER: &str = "[Emulated.Stdout]: ";
+const MARKERS: [&str; 2] = [
+    "[Emulated.Stdout]: ",
+    "[Service.Notifier]: Trying to display: ",
+];
 
 pub(crate) struct LogTail {
     path: PathBuf,
@@ -53,7 +57,11 @@ impl LogTail {
         let complete: Vec<u8> = self.partial.drain(..=end).collect();
         String::from_utf8_lossy(&complete)
             .lines()
-            .filter_map(|l| l.split_once(MARKER).map(|(_, text)| text.to_string()))
+            .filter_map(|l| {
+                MARKERS
+                    .iter()
+                    .find_map(|m| l.split_once(m).map(|(_, text)| text.to_string()))
+            })
             .collect()
     }
 }

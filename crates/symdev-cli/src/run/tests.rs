@@ -159,3 +159,20 @@ fn the_running_case_takes_the_panic_and_pending_ones_are_not_run() {
         ]
     );
 }
+
+#[test]
+fn the_log_tail_also_gives_the_notes_the_app_shows() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = dir.path().join("EKA2L1.log");
+    std::fs::write(&log, "").unwrap();
+    let mut tail = super::LogTail::from_end(&log);
+    std::fs::write(
+        &log,
+        "I /s/notifier.cpp:111 [Service.Notifier]: Trying to display: Hello from Rust SDK (19 chars)\n",
+    )
+    .unwrap();
+    assert_eq!(
+        tail.poll(),
+        vec!["Hello from Rust SDK (19 chars)".to_string()]
+    );
+}
