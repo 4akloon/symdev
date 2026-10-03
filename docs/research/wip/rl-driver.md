@@ -143,7 +143,9 @@ cf127b8). **Still to do (review items, all Minor):**
 - #5 DONE (commit after cf127b8; tests driver/tests/rust_lld_link.rs: stub rust-lld + golden ELFs)
 - #6 DONE (90fcf00), #7+#8 DONE (ArMember/ElfSectionHeader/TestSection own files, checked_add,
   `//` long names; all 10 SDK urel .lib read: TARGET2 in usrt2_2 1, libcrt0 1, exiflib 33)
-- #9, #11, #12 DONE (see git log). All review items closed. NEXT: experiment 113 §3–§5.
+- #9, #11, #12 DONE (see git log). All review items closed. Exp 113 §3–§5 + conclusion written (5049161). NEXT: gates, then
+  fresh whole-branch review (base 04f8e7d), fixes, then REBUILD final binary and re-check a few
+  images (masked equal) — exp 113 Evidence promises 'a re-check note below'; then gates again.
 - (was #5) `rust_lld_link.rs`: run the `jump_slots()` check on the final ELF in BOTH paths (also the
   rename path); wrap rust-lld errors with "first/second rust-lld link" + gnu way out; add the
   ELF path to the `ImportStubs::from_first_link` error; `io` helper calls in rust_lld_link.rs
