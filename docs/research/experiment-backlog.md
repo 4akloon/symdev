@@ -4328,9 +4328,10 @@ the same `--target-dir build/cargo`.
 * No lock wait and no deadlock.
 * 7.1 s the first time (`core` and `alloc` for the `libcalls` profile), 0.03 s when fresh.
 * The rlib lands where `LibcallArchive::path` expects it.
+* Rebuilt by the same command run directly (source touched), the rlib is byte-equal to the
+  nested one (`rec/nested.rlib`).
 
-It is the same invocation as today, so it is the same archive; the 1.2 images already link
-that archive.
+The 1.2 images already link that archive.
 
 **Answer.** No: libcalls cannot be an ordinary dependency without changing bytes. The
 smallest working alternative is for `symdev-ld` to run `LibcallArchive::cargo_args` itself
