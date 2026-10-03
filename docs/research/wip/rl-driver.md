@@ -184,3 +184,10 @@ emulator evidence, experiment 113, the packages-repo API section above).
 - Running (2026-10-03): whole-branch review agent (base 04f8e7d, head b8fbedd); re-check job
   `~/src/rl-driver-scratch/recheck.sh` PID 4066899, log `recheck.txt` (final binary at HEAD,
   relinks hello/async/ui/notes/shim lld, ui/notes prebuilt, hello/ui gnu; masked cmp vs exp 113).
+- Re-check done: 9/9 images equal (masked) with the binary at b8fbedd (exp 113 note, d6e74eb).
+  Branch merges cleanly onto main ffa090b (`git merge-tree --write-tree main HEAD`).
+- HANDBACK at d6e74eb+notes: the whole-branch review (base 04f8e7d, head b8fbedd) was still
+  running when the report was due. NEXT: get its findings (re-run superpowers:requesting-code-review
+  base 04f8e7d if lost), fix Critical/Important, re-run `cargo test --workspace --offline` and
+  `cargo clippy --workspace --all-targets --offline`, and redo `~/src/rl-driver-scratch/recheck.sh`
+  if a fix touches the link path.
