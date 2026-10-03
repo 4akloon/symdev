@@ -3711,3 +3711,92 @@ id." Commit and push that too. Then report to the lead: D1 still open (if it is)
 experiment 115 §2–§5 in one line each, and the three branch heads.
 
 ## Phase B — after L1 (the lead pushed `symdev` and the fork's CI is green)
+
+### Task 16: The recipe pinned to the CI's artifact
+
+**Files:**
+- Modify (packages worktree): `recipes/emulator/<V>/artifact.toml`
+- Modify: `docs/research/experiment-backlog.md` (experiment 115 §6), the wip file
+
+**Interfaces:**
+- Consumes: the run id the lead gives after L1.
+- Produces: an `artifact.toml` with no zeros; the package and source built from the CI's
+  artifact, which is what L2 publishes.
+
+- [ ] **Step 1: Fetch the artifact and compare it with the rehearsal**
+
+```bash
+C=~/src/emu-pkg-scratch/ci; rm -rf $C; mkdir -p $C
+gh run view <run> -R 4akloon/EKA2L1 --json headSha,conclusion,jobs --jq '.headSha, .conclusion'
+gh run download <run> -R 4akloon/EKA2L1 -n eka2l1-<c>-linux -D $C/artifact
+(cd $C/artifact && sha256sum eka2l1-qt-x64.AppImage eka2l1-qt-x64.packages.tsv)
+gh run view <run> -R 4akloon/EKA2L1 --log | grep -m2 -E 'Image: |Version: '   # the runner image
+(cd $C && $C/artifact/eka2l1-qt-x64.AppImage --appimage-extract > /dev/null)
+diff <(cd ~/src/emu-pkg-scratch/rehearsal/x/squashfs-root && find . | sort) <(cd $C/squashfs-root && find . | sort)
+diff ~/src/emu-pkg-scratch/rehearsal/out/eka2l1-qt-x64.packages.tsv $C/artifact/eka2l1-qt-x64.packages.tsv
+~/worktrees/symdev-packages/cargo-run/target/release/pkgtools emulator-tree $C/squashfs-root --glibc 2.38
+```
+
+Expected: `headSha` is `<C>`, `conclusion` `success`. The file lists are equal. The package
+lists are equal, or differ only in versions (the runner image moved): record each
+difference. Record the runner image. `glibc floor 2.38`. A different floor stops the task:
+F1 goes to the owner again. A different layout stops the task too; report to the lead.
+
+- [ ] **Step 2: Fill in `artifact.toml`** in the packages worktree: `run = "<run>"`, the two
+  SHA-256s from step 1, and the `glibc` value `emulator-tree` printed. `commit` and
+  `artifact` are already `<C>` and `eka2l1-<c>-linux`.
+
+- [ ] **Step 3: Build exactly as the workflow will**
+
+```bash
+E=~/src/emu-pkg-scratch/emulator-ci; P=~/worktrees/symdev-packages/cargo-run; rm -rf $E; mkdir -p $E/work
+(cd $E/work && GH_TOKEN=$(gh auth token) PKGTOOLS=$P/target/release/pkgtools \
+  bash $P/recipes/emulator/<V>/build.sh $E/prefix && \
+  PKGTOOLS=$P/target/release/pkgtools bash $P/recipes/emulator/<V>/source.sh $E/source.tar.gz) > $E/build.log 2>&1
+echo "EXIT=$?"; tail -3 $E/build.log
+cd $E && env -u PUBLISH_PUBLIC_URL -u PUBLISH_SIGNING_KEY cargo run --release --quiet --manifest-path $P/Cargo.toml \
+  -p publish -- public 'emulator;<V>' --from $E/prefix --source-code $E/source.tar.gz \
+  --recipe $P/recipes/emulator/<V>/recipe.toml --dry-run > dry-run.toml 2> dry-run.log; cat dry-run.log
+```
+
+This time the artifact comes through `gh run download` and the source through the fork's
+GitHub URL (no `EMULATOR_ARTIFACT_DIR`, no `EKA2L1_GIT`). Expected: `EXIT=0` and the dry
+run's `packed …` and `would upload …` lines.
+
+- [ ] **Step 4: Rerun the real checks with the CI's package**
+
+Point Task 13's stager at `$E/prefix` instead of the rehearsal's (`emulator;<V>` only),
+then rerun `run13.sh` (Task 13 step 3) and the acceptance (Task 15 steps 1–3, with
+`$E/prefix` in `stage.sh`). Expected: the same results as experiment 115 §4 and §5. Record
+them as experiment 115 §6, with the run id, the hashes, the package and source sizes, and
+whether this host needed the GL variables.
+
+- [ ] **Step 5: Commit, do not push, stop**
+
+```bash
+cd ~/worktrees/symdev-packages/cargo-run
+git add recipes/emulator/<V>/artifact.toml
+git commit -m "Pin emulator;<V> to the fork CI's run <run> and the SHA-256 of its AppImage."
+```
+
+Commit symdev's experiment record and the wip file on `cargo-run` and push that branch.
+Then stop, and report to the lead: the packages branch is ready for L4 → L2, and the
+firmware for L3. Include the dry run's sizes and the one open question, whether the
+workflow's own token can download the fork's artifact (Task 12).
+
+## For the lead, after L2 and L3: the acceptance against the real buckets
+
+Not for implementing agents. After `emulator;<V>` is in the public index (L2) and
+`firmware;rm-469;1` in the private one (L3):
+
+1. Rerun Task 15's `accept.sh` with `SYMDEV_INSTALL_URL` unset (the real `install.sh`
+   source). `sources.toml` gets the built-in public source plus the private source as the
+   toolchain spec §2 shows. The private keys come from the owner's environment
+   (`SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID`, `SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY`). The
+   `symdev;0.4.0` and `rust-sdk;0.4.0` packages must be published first: that is the 0.4.0
+   release, outside this plan. Until then, keep the staged `public` source for those two and
+   add the real buckets as further sources.
+2. Expected as in experiment 115 §5. `installing emulator;<V> … from public`, `installing
+   firmware;rm-469;1 … from private`. Record it as experiment 115 §7.
+3. `Pins::emulator()` in the 0.4.0 release is `emulator;<V>`. A later rebuild of the
+   integration branch is a new recipe directory, a new version and a new pin.
