@@ -2029,3 +2029,138 @@ git add crates/symdev-build/src/std_sysroot.rs crates/symdev-build/src/std_src.r
 git restore --staged symbian-rs/examples/std-hello/Cargo.lock symbian-rs/examples/std-net/Cargo.lock 2>/dev/null
 git commit -m "Build rust-std projects with plain cargo through symdev-rustc and a materialised sysroot."
 ```
+
+### Task 10: An EKA2L1 with `--control` and `--data-dir`, and emulator profiles
+
+**Files:**
+- Outside git: `~/src/EKA2L1-wt/integration` (branch `symdev`) and its build in
+  `~/src/EKA2L1-wt-build/integration`; a launch wrapper `~/src/cargo-run-scratch/bin/eka2l1-symdev`
+- Create: `crates/symdev-emulator/src/device.rs`, `crates/symdev-emulator/src/device/emulator_profile.rs` (`EmulatorProfile`)
+- Test: `crates/symdev-emulator/src/device/tests.rs`
+- Modify: `docs/research/experiment-backlog.md` (experiment 114 §2: the profile layout, as observed)
+
+**Interfaces:**
+- Consumes: nothing from earlier tasks.
+- Produces:
+  - An EKA2L1 that `SYMDEV_EKA2L1` names and that answers `emulator.info` with `"protocol":1`.
+  - `EmulatorProfile::at(root: &Path, name: &str) -> EmulatorProfile` with `dir()`, `name()`,
+    `log_file()`, `data()` (an `EmulatorData` over the profile, so `result_file(uid3)` is
+    the profile's drive E:), and `EmulatorProfile::create(&self, from: &EmulatorData,
+    firmware: &str) -> Result<()>`.
+  - `EmulatorProfile::root_from_env() -> Result<PathBuf>`: `$XDG_DATA_HOME/symdev/emulators`,
+    else `~/.local/share/symdev/emulators`.
+
+- [ ] **Step 1: Build the emulator** (the `eka2l1-host` skill: build command, translations,
+  staging by name)
+
+In `~/src/EKA2L1-wt/integration`, merge `dev/data-dir` and then `dev/control-events` into
+`symdev`; it carries `dev/control-server` and `dev/control-input`, as `git merge-base
+--is-ancestor` shows. Fetch them from the `fork` remote if this clone lacks them. Resolve
+conflicts by keeping both features; do not edit their behaviour. Build:
+
+```bash
+PATH=~/.local/eka2l1-tools/bin:~/.local/eka2l1-tools/cmake/bin:$PATH \
+LIBRARY_PATH=~/.local/eka2l1-sysroot/usr/lib/x86_64-linux-gnu \
+ninja -C ~/src/EKA2L1-wt-build/integration eka2l1_qt
+git -C ~/src/EKA2L1-wt/integration checkout -- src/emu/qt/translations
+```
+
+`~/src/cargo-run-scratch/bin/eka2l1-symdev` is `~/.local/bin/eka2l1` (the same environment
+lines) with `exec ~/src/EKA2L1-wt-build/integration/bin/eka2l1_qt "$@"`. Do not change
+`~/.local/bin/eka2l1`; the user runs it.
+Check: `eka2l1-symdev --help | grep -E -- '--control|--data-dir'` prints both.
+
+- [ ] **Step 2: Observe a profile** (record every result in experiment 114 §2)
+
+The user's emulator data, as observed on this host:
+`~/.local/share/EKA2L1/data/{devices.yml,drives/{c,d,e,z},roms/rm-469}`; `z` is 208 MB,
+`c` 17 MB, `roms/rm-469` 51 MB, and `devices.yml` names `RM-469`.
+
+The hypothesis to test is a profile at `~/src/cargo-run-scratch/profiles/rm-469/` with:
+
+* `data/devices.yml` copied.
+* `data/roms/rm-469` and `data/drives/z` as **links** to the user's: referenced, not copied
+  (spec §5).
+* `data/drives/c` copied.
+* `data/drives/{d,e}` empty.
+* `config.yml` copied from `~/.local/share/EKA2L1/config.yml`, with `log-filter:` set to
+  `"*:info Emulated.Stdout:trace Kernel:trace"`.
+
+Then run it, under the agent lock:
+
+```bash
+flock ~/.local/share/EKA2L1/.symdev-agent.lock sh -c '
+  setsid ~/src/cargo-run-scratch/bin/eka2l1-symdev --data-dir ~/src/cargo-run-scratch/profiles/rm-469 \
+    --control $XDG_RUNTIME_DIR/symdev-probe.sock > ~/src/cargo-run-scratch/profiles/run.log 2>&1 & echo $! > ~/src/cargo-run-scratch/profiles/pid'
+```
+
+Probe it with the README's netcat line: `emulator.info` (expect `device.firmware`
+`RM-469`), `package.install` of Task 7's `t7.sisx` (absolute path), `app.launch` with its
+UID, and `apps.list`. Record:
+
+* which files the emulator wrote into the profile, and where the log is;
+* the exact shape of a guest `RDebug` line (the class `Emulated.Stdout`), which the runner
+  will match;
+* where the installed `sys/bin/t7.exe` landed;
+* that the user's `~/.local/share/EKA2L1` did not change (`find -newer` on a marker file).
+
+Then `kill -9` that PID only. If the links are refused, record the error and copy what
+was refused instead, saying so in the record.
+
+- [ ] **Step 3: Write the failing test** — `device/tests.rs`
+
+```rust
+use std::path::Path;
+
+use super::EmulatorProfile;
+use crate::EmulatorData;
+
+#[test]
+fn a_profile_references_the_rom_and_drive_z_and_owns_c_d_e() {
+    let user = tempfile::tempdir().unwrap();
+    let d = user.path().join("EKA2L1/data");
+    for p in ["drives/c/private", "drives/d", "drives/e", "drives/z/sys", "roms/rm-469"] {
+        std::fs::create_dir_all(d.join(p)).unwrap();
+    }
+    std::fs::write(d.join("devices.yml"), "RM-469:\n  firmcode: RM-469\n").unwrap();
+    std::fs::write(user.path().join("EKA2L1/config.yml"), "log-filter: \"*:trace Emulated.Stdout:off\"\nother: 1\n").unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let p = EmulatorProfile::at(root.path(), "rm-469");
+    p.create(&EmulatorData::at(&user.path().join("EKA2L1")), "rm-469").unwrap();
+    let data = p.dir().join("data");
+    assert_eq!(std::fs::read_link(data.join("roms/rm-469")).unwrap(), d.join("roms/rm-469"));
+    assert_eq!(std::fs::read_link(data.join("drives/z")).unwrap(), d.join("drives/z"));
+    assert!(data.join("drives/c/private").is_dir() && data.join("drives/e").is_dir());
+    let config = std::fs::read_to_string(p.dir().join("config.yml")).unwrap();
+    assert!(config.contains("log-filter: \"*:info Emulated.Stdout:trace Kernel:trace\""), "{config}");
+    assert!(config.contains("other: 1"));
+    assert_eq!(p.data().result_file(0xe1234567), data.join("drives/e/symdev/results/e1234567.json"));
+    let again = p.create(&EmulatorData::at(&user.path().join("EKA2L1")), "rm-469").unwrap_err();
+    assert!(again.to_string().contains("already exists"), "{again}");
+}
+
+#[test]
+fn a_firmware_the_user_has_not_installed_is_named() {
+    let user = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let e = EmulatorProfile::at(root.path(), "rm-469")
+        .create(&EmulatorData::at(user.path()), "rm-469").unwrap_err().to_string();
+    assert!(e.contains("rm-469") && e.contains("install the firmware in EKA2L1"), "{e}");
+}
+```
+
+Adjust the expected layout to Step 2's observation before writing the code; the test is
+the record of what the emulator accepts. `EmulatorData::at` takes the directory that holds
+`data/` (today's convention); keep it.
+
+- [ ] **Step 4: Run it to see it fail**, then **implement** `EmulatorProfile` (copy `c` with
+  a recursive copy that refuses links pointing outside it; `std::os::unix::fs::symlink` for
+  the references; `config.yml` line-replaced, the original line kept as a comment), then
+  run it to see it pass: `cargo test -p symdev-emulator --offline device`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add crates/symdev-emulator/src docs/research/experiment-backlog.md
+git commit -m "Give each emulator profile its own drives and log filter, referencing the user's ROM."
+```
