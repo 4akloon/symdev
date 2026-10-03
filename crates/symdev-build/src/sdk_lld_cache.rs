@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 use symdev_core::{Error, Result};
 use symdev_elf2e32::{StrtabPadding, Target2Rewrite};
 
+use crate::file_error;
 use crate::sdk_lld_copy::SdkLldCopy;
 
 /// Copies of the SDK files a rust-lld link names, fixed so lld takes them (experiment 109
@@ -60,7 +61,7 @@ impl SdkLldCache {
                         epocroot.display()
                     ))
                 })?;
-            let bytes = fs::read(&path).map_err(|e| at(&path, e))?;
+            let bytes = fs::read(&path).map_err(|e| file_error(&path, e))?;
             files.insert((dir, name.clone()), (path, bytes));
         }
         let dir = self.root.join(Self::key(epocroot, &files)?);
@@ -72,7 +73,7 @@ impl SdkLldCache {
             .all(|(d, name)| dir.join(d).join(name).is_file());
         if existed && !complete {
             // A copy someone pruned by hand: made again, whole.
-            fs::remove_dir_all(&dir).map_err(|e| at(&dir, e))?;
+            fs::remove_dir_all(&dir).map_err(|e| file_error(&dir, e))?;
         }
         if !complete {
             // A rename that loses to another build's copy keeps that copy (`make`).
@@ -91,7 +92,7 @@ impl SdkLldCache {
         let made = Self::write(&staging, files).and_then(|()| {
             fs::rename(&staging, dir).or_else(|e| match dir.is_dir() {
                 true => Ok(()),
-                false => Err(at(dir, e)),
+                false => Err(file_error(dir, e)),
             })
         });
         if staging.exists() {
@@ -102,13 +103,12 @@ impl SdkLldCache {
 
     fn write(staging: &Path, files: &BTreeMap<(&str, String), (PathBuf, Vec<u8>)>) -> Result<()> {
         for d in Self::DIRS {
-            fs::create_dir_all(staging.join(d)).map_err(|e| at(staging, e))?;
+            fs::create_dir_all(staging.join(d)).map_err(|e| file_error(staging, e))?;
         }
         for ((d, name), (source, bytes)) in files {
-            let fixed = Self::fix(name, bytes)
-                .map_err(|e| Error::Other(format!("{}: {e}", source.display())))?;
+            let fixed = Self::fix(name, bytes).map_err(|e| file_error(source, e))?;
             let path = staging.join(d).join(name);
-            fs::write(&path, fixed).map_err(|e| at(&path, e))?;
+            fs::write(&path, fixed).map_err(|e| file_error(&path, e))?;
         }
         Ok(())
     }
@@ -129,7 +129,9 @@ impl SdkLldCache {
         epocroot: &Path,
         files: &BTreeMap<(&str, String), (PathBuf, Vec<u8>)>,
     ) -> Result<String> {
-        let root = epocroot.canonicalize().map_err(|e| at(epocroot, e))?;
+        let root = epocroot
+            .canonicalize()
+            .map_err(|e| file_error(epocroot, e))?;
         let mut h = Sha256::new();
         h.update(Self::RULES.as_bytes());
         h.update(b"\n");
@@ -144,10 +146,6 @@ impl SdkLldCache {
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-fn at(path: &Path, e: std::io::Error) -> Error {
-    Error::Other(format!("{}: {e}", path.display()))
 }
 
 #[cfg(test)]

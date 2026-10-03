@@ -7,12 +7,12 @@
 //! `E32Main` of its own that a console application must not be given.
 use std::path::{Path, PathBuf};
 
-use symdev_core::{Error, Project, RemotePath, Result};
+use symdev_core::{Project, RemotePath, Result};
 use symdev_elf2e32::Target2Rewrite;
 
 use super::{CompileFlags, CompileIncludes, RustBuild, arg, io};
 use crate::resources::SdkIncludeCaseFold;
-use crate::{RustLinker, RustPrebuilt};
+use crate::{RustLinker, RustPrebuilt, file_error};
 
 impl RustBuild {
     /// Where the shim object for `source` goes: `build/shims/<stem>.o`, under the
@@ -136,11 +136,9 @@ impl RustBuild {
             return Ok(Vec::new());
         };
         if matches!(self.linker, RustLinker::Lld { .. }) {
-            let at =
-                |e: &dyn std::fmt::Display| Error::Other(format!("{}: {e}", archive.display()));
-            let bytes = std::fs::read(&archive).map_err(|e| at(&e))?;
-            let fixed = Target2Rewrite::archive(&bytes).map_err(|e| at(&e))?;
-            std::fs::write(&archive, fixed.bytes()).map_err(|e| at(&e))?;
+            let bytes = std::fs::read(&archive).map_err(|e| file_error(&archive, e))?;
+            let fixed = Target2Rewrite::archive(&bytes).map_err(|e| file_error(&archive, e))?;
+            std::fs::write(&archive, fixed.bytes()).map_err(|e| file_error(&archive, e))?;
         }
         Ok(vec![archive])
     }

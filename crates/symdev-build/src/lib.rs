@@ -41,3 +41,12 @@ pub use std_src::StdSrc;
 pub use strings_resources::StringsResources;
 pub use toolchain::{Epocroot, GcceTools, Toolchain, ToolchainOverrides};
 pub use ui_resources::UiResources;
+
+/// `error`, prefixed with the file it concerns: every file error of the rust-lld link and
+/// its SDK cache reads `<path>: <what>`.
+pub(crate) fn file_error(
+    path: &std::path::Path,
+    error: impl std::fmt::Display,
+) -> symdev_core::Error {
+    symdev_core::Error::Other(format!("{}: {error}", path.display()))
+}

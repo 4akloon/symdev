@@ -6,7 +6,7 @@ use symdev_core::{Error, RemotePath, Result};
 use symdev_elf2e32::{ElfImage, ImportStubs};
 
 use super::{Linker, LldLine, RustBuild, arg};
-use crate::{RustLld, RustPrebuilt, SdkLldCache};
+use crate::{RustLld, RustPrebuilt, SdkLldCache, file_error};
 
 impl RustBuild {
     /// Links `build/<name>.elf` with rust-lld, as experiment 112 §8 lays out: the first
@@ -48,12 +48,12 @@ impl RustBuild {
         let first = lld_line.adapt(line)?;
         self.run_link("first", &first, cwd)?;
         let stubs = ImportStubs::from_first_link(&Self::elf_at(&first_elf)?)
-            .map_err(|e| at(&first_elf, e))?;
+            .map_err(|e| file_error(&first_elf, e))?;
         if stubs.functions().is_empty() {
-            std::fs::rename(&first_elf, elf).map_err(|e| at(elf, e))?;
+            std::fs::rename(&first_elf, elf).map_err(|e| file_error(elf, e))?;
         } else {
             let object = elf.with_file_name("import_stubs.o");
-            std::fs::write(&object, stubs.object()).map_err(|e| at(&object, e))?;
+            std::fs::write(&object, stubs.object()).map_err(|e| file_error(&object, e))?;
             let second = LldLine::second_link(&first, elf, &object, stubs.functions())?;
             self.run_link("second", &second, cwd)?;
         }
@@ -81,8 +81,8 @@ impl RustBuild {
     }
 
     fn elf_at(path: &Path) -> Result<ElfImage> {
-        let bytes = std::fs::read(path).map_err(|e| at(path, e))?;
-        ElfImage::parse(bytes).map_err(|e| at(path, e))
+        let bytes = std::fs::read(path).map_err(|e| file_error(path, e))?;
+        ElfImage::parse(bytes).map_err(|e| file_error(path, e))
     }
 
     /// What a rust-lld link needs before cargo runs: the SDK's linker script, and rust-lld
@@ -133,9 +133,4 @@ impl RustBuild {
         }
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     }
-}
-
-/// `error`, prefixed with the file it concerns.
-fn at(path: &Path, error: impl std::fmt::Display) -> Error {
-    Error::Other(format!("{}: {error}", path.display()))
 }
