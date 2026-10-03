@@ -2,6 +2,8 @@
 //! program is and whether a GUI one links at all.
 use std::path::Path;
 
+use symdev_core::Result;
+
 use super::rust_build::APP_CREATE;
 use super::{E32MAIN, RustBuild, arg};
 use crate::rust_sdk::RustSdk;
@@ -47,14 +49,14 @@ impl RustBuild {
         libcalls: Option<&Path>,
         elf: &Path,
         map: &Path,
-    ) -> Vec<String> {
+    ) -> Result<Vec<String>> {
         let ui_libraries: Vec<String> = match self.ui {
             Some(_) => RustSdk::UI_LIBRARIES.iter().map(|l| (*l).into()).collect(),
             None => Vec::new(),
         };
         let mut args = self
             .gcce
-            .link_args(&self.name, archive, elf, map, &ui_libraries);
+            .link_args(&self.name, archive, elf, map, &ui_libraries)?;
         let after = args
             .windows(2)
             .position(|w| w[0] == "-u" && w[1] == "_E32Startup")
@@ -96,7 +98,7 @@ impl RustBuild {
             .position(|a| a == "-lsupc++")
             .unwrap_or(args.len());
         args.splice(at..at, Self::sdk_libraries());
-        args
+        Ok(args)
     }
 
     /// The DSOs the SDK's own crates and shim import, under `--as-needed` so that an

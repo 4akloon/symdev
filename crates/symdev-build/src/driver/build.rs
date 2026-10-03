@@ -127,7 +127,7 @@ impl BuildBackend for GcceBuild {
                 &map,
                 &mmp.dso_libraries(),
                 std::slice::from_ref(&build_dir),
-            );
+            )?;
             if objs.len() > 1 {
                 let first = arg(obj);
                 if let Some(pos) = link.iter().position(|a| a == &first) {

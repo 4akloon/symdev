@@ -144,7 +144,7 @@ fn the_toolchain_variables_come_from_the_lookup() {
     assert!(p.needed(Device::NokiaE52, Language::Cpp).is_empty());
     // Nothing is left to the packages, so no HOME is needed to find them.
     let tools = p.toolchain(Device::NokiaE52).unwrap();
-    assert_eq!(tools.gxx, tmp.path());
+    assert_eq!(tools.gcce().unwrap().gxx, tmp.path());
     assert_eq!(tools.epocroot, tmp.path());
 }
 

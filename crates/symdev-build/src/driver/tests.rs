@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use super::*;
+use crate::toolchain::GcceTools;
 
 mod build;
 mod compile;
@@ -44,12 +45,14 @@ fn fake_at(epocroot: PathBuf) -> GcceBuild {
         env: LocalEnv,
         tools: Toolchain {
             epocroot,
-            gxx: PathBuf::from("/gcc/bin/arm-none-symbianelf-g++"),
-            ld: PathBuf::from("/gcc/binutils/bin/arm-none-symbianelf-ld"),
-            ar: None,
             elf2e32: Some(PathBuf::from("/gcc/elf2e32")),
-            gcc_lib: PathBuf::from("/gcc/lib/gcc/arm-none-symbianelf/12.1.0"),
-            gcc_target_lib: PathBuf::from("/gcc/arm-none-symbianelf/lib"),
+            gcce: Some(GcceTools {
+                gxx: PathBuf::from("/gcc/bin/arm-none-symbianelf-g++"),
+                ld: PathBuf::from("/gcc/binutils/bin/arm-none-symbianelf-ld"),
+                ar: None,
+                gcc_lib: PathBuf::from("/gcc/lib/gcc/arm-none-symbianelf/12.1.0"),
+                gcc_target_lib: PathBuf::from("/gcc/arm-none-symbianelf/lib"),
+            }),
         },
         uid3: 0xe79e4cf9,
         capabilities: Vec::new(),

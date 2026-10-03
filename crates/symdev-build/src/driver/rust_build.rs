@@ -229,7 +229,7 @@ impl BuildBackend for RustBuild {
         let elf = build_dir.join(format!("{}.elf", self.name));
         let map = build_dir.join(format!("{}.exe.map", self.name));
         self.gcce.run_tool(
-            &self.link_args(&archive, shim.as_deref(), Some(&libcalls), &elf, &map),
+            &self.link_args(&archive, shim.as_deref(), Some(&libcalls), &elf, &map)?,
             &cwd,
         )?;
         RequiredCapability::check(&elf, &self.gcce.capabilities, &format!("{}.exe", self.name))?;

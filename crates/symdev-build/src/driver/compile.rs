@@ -70,9 +70,10 @@ impl GcceBuild {
         obj: &Path,
     ) -> Result<Vec<String>> {
         let epoc = &self.tools.epocroot;
+        let gcce = self.tools.gcce()?;
         let language = SourceLanguage::of(source)?;
         let mut args = vec![
-            arg(&self.tools.gxx),
+            arg(&gcce.gxx),
             "-O2".into(),
             "-fexceptions".into(),
             "-march=armv5t".into(),
@@ -141,7 +142,7 @@ impl GcceBuild {
         }
         args.extend([
             "-I".into(),
-            arg(&self.tools.gcc_lib.join("include")),
+            arg(&gcce.gcc_lib.join("include")),
             "-o".into(),
             arg(obj),
             arg(source),

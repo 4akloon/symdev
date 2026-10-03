@@ -30,5 +30,5 @@ pub use rust_sdk_link::RustSdkLink;
 pub use rust_toolchain_file::RustToolchainFile;
 pub use std_src::StdSrc;
 pub use strings_resources::StringsResources;
-pub use toolchain::{Epocroot, Toolchain, ToolchainOverrides};
+pub use toolchain::{Epocroot, GcceTools, Toolchain, ToolchainOverrides};
 pub use ui_resources::UiResources;

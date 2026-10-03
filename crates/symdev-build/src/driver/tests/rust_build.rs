@@ -83,8 +83,8 @@ fn link_args_add_e32main_gc_sections_and_the_helper_dsos_before_the_archive() {
         Path::new("/p/build/hello.elf"),
         Path::new("/p/build/hello.exe.map"),
     );
-    let got = b.link_args(a, None, None, elf, map);
-    let mut want = b.gcce.link_args("hello", a, elf, map, &[]);
+    let got = b.link_args(a, None, None, elf, map).unwrap();
+    let mut want = b.gcce.link_args("hello", a, elf, map, &[]).unwrap();
     let at = want.iter().position(|x| x == "_E32Startup").unwrap();
     assert_eq!(want[at - 1], "--entry");
     assert_eq!(&want[at + 1..at + 3], &s(&["-u", "_E32Startup"])[..]);
@@ -128,7 +128,7 @@ fn link_args_add_e32main_gc_sections_and_the_helper_dsos_before_the_archive() {
     assert_eq!(got[euser - 1], lib);
 
     // The C++ line gets neither: it is byte-verified against the SDK's own.
-    let cpp = b.gcce.link_args("hello", a, elf, map, &[]);
+    let cpp = b.gcce.link_args("hello", a, elf, map, &[]).unwrap();
     assert!(!cpp.contains(&"--gc-sections".to_string()));
     let cpp_archive = cpp
         .iter()
@@ -151,7 +151,7 @@ fn shim_objects_follow_the_archive_and_keep_the_dso_ordering() {
     };
     let shim = b.shim_archive(&project);
     assert_eq!(shim, PathBuf::from("/p/build/shims/libsymrs.a"));
-    let got = b.link_args(a, Some(&shim), None, elf, map);
+    let got = b.link_args(a, Some(&shim), None, elf, map).unwrap();
     let archive = got.iter().position(|x| x == &a.display().to_string());
     let at = got.iter().position(|x| x == "/p/build/shims/libsymrs.a");
     let euser = got.iter().position(|x| x == "-l:euser.dso");

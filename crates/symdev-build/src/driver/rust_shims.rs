@@ -107,7 +107,11 @@ impl RustBuild {
 
     /// `ar cr <archive> <objects…>`, the one archiver invocation.
     pub fn ar_args(&self, archive: &Path, objects: &[PathBuf]) -> Result<Vec<String>> {
-        let mut args = vec![arg(&self.gcce.tools.ar()?), "cr".into(), arg(archive)];
+        let mut args = vec![
+            arg(&self.gcce.tools.gcce()?.ar()?),
+            "cr".into(),
+            arg(archive),
+        ];
         args.extend(objects.iter().map(|o| arg(o)));
         Ok(args)
     }

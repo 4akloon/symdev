@@ -54,12 +54,15 @@ fn every_set_override_wins_over_the_packages() {
     let (g, s) = (gcce(&tmp.path().join("gcce")), sdk(&tmp.path().join("sdk")));
     let t = Toolchain::resolve(&o, Some(&g), Some(&s)).unwrap();
     assert_eq!(t.epocroot, tmp.path());
-    assert_eq!(t.gxx, tmp.path().join("g++"));
-    assert_eq!(t.ld, tmp.path().join("ld"));
-    assert_eq!(t.ar().unwrap(), tmp.path().join("ar"));
+    assert_eq!(t.gcce().unwrap().gxx, tmp.path().join("g++"));
+    assert_eq!(t.gcce().unwrap().ld, tmp.path().join("ld"));
+    assert_eq!(t.gcce().unwrap().ar().unwrap(), tmp.path().join("ar"));
     assert_eq!(t.elf2e32, Some(tmp.path().join("elf2e32")));
-    assert_eq!(t.gcc_lib, tmp.path().join("gcc-lib"));
-    assert_eq!(t.gcc_target_lib, tmp.path().join("target-lib"));
+    assert_eq!(t.gcce().unwrap().gcc_lib, tmp.path().join("gcc-lib"));
+    assert_eq!(
+        t.gcce().unwrap().gcc_target_lib,
+        tmp.path().join("target-lib")
+    );
     assert!(!o.needs_gcce() && !o.needs_sdk());
 }
 
@@ -71,18 +74,18 @@ fn with_nothing_set_every_field_comes_from_the_packages() {
     assert!(o.needs_gcce() && o.needs_sdk());
     let t = Toolchain::resolve(&o, Some(&g), Some(&s)).unwrap();
     assert_eq!(t.epocroot, tmp.path().join("sdk"));
-    assert_eq!(t.gxx, g.gxx());
-    assert_eq!(t.ld, g.ld());
+    assert_eq!(t.gcce().unwrap().gxx, g.gxx());
+    assert_eq!(t.gcce().unwrap().ld, g.ld());
     assert_eq!(
-        t.ar().unwrap(),
+        t.gcce().unwrap().ar().unwrap(),
         g.ld().with_file_name("arm-none-symbianelf-ar")
     );
     assert_eq!(
         t.elf2e32, None,
         "the native post-linker unless SYMDEV_ELF2E32 is set"
     );
-    assert_eq!(t.gcc_lib, g.gcc_lib());
-    assert_eq!(t.gcc_target_lib, g.gcc_target_lib());
+    assert_eq!(t.gcce().unwrap().gcc_lib, g.gcc_lib());
+    assert_eq!(t.gcce().unwrap().gcc_target_lib, g.gcc_target_lib());
 }
 
 #[test]
@@ -102,10 +105,10 @@ fn only_gxx_set_still_takes_the_linker_and_libraries_from_gcce() {
     );
     assert!(!o.needs_sdk());
     let t = Toolchain::resolve(&o, Some(&g), None).unwrap();
-    assert_eq!(t.gxx, gxx);
-    assert_eq!(t.ld, g.ld());
-    assert_eq!(t.gcc_lib, g.gcc_lib());
-    assert_eq!(t.gcc_target_lib, g.gcc_target_lib());
+    assert_eq!(t.gcce().unwrap().gxx, gxx);
+    assert_eq!(t.gcce().unwrap().ld, g.ld());
+    assert_eq!(t.gcce().unwrap().gcc_lib, g.gcc_lib());
+    assert_eq!(t.gcce().unwrap().gcc_target_lib, g.gcc_target_lib());
 }
 
 #[test]
@@ -187,4 +190,17 @@ fn check_refuses_a_set_path_before_anything_is_installed() {
     let e = o.check().unwrap_err().to_string();
     assert!(e.starts_with("SYMDEV_LD is set to "), "{e}");
     assert!(ToolchainOverrides::default().check().is_ok());
+}
+
+#[test]
+fn a_build_without_gcce_needs_only_the_sdk_and_says_so_if_gcce_is_asked_for() {
+    // A Rust build linked by rust-lld with the Rust SDK's prebuilt shims (experiment 113).
+    let tmp = tempfile::tempdir().unwrap();
+    let s = sdk(&tmp.path().join("sdk"));
+    let t = Toolchain::without_gcce(&ToolchainOverrides::default(), Some(&s)).unwrap();
+    assert_eq!(t.epocroot, tmp.path().join("sdk"));
+    assert_eq!(t.elf2e32, None);
+    let e = t.gcce().err().unwrap().to_string();
+    assert!(e.contains("without GCCE"), "{e}");
+    assert!(e.contains("symdev sdk install 'gcce;12.1.0'"), "{e}");
 }
