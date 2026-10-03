@@ -278,6 +278,14 @@ name = "symbian-sys"
 version = "0.1.0"
 
 [[package]]
+name = "symbian-test"
+version = "0.1.0"
+dependencies = [
+ "symbian-macros",
+ "symbian-std",
+]
+
+[[package]]
 name = "symbian-ui"
 version = "0.1.0"
 dependencies = [

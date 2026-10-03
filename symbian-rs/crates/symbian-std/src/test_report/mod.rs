@@ -73,11 +73,14 @@ pub const SCHEMA: u32 = 1;
 /// The directory every example writes its result into.
 pub const RESULTS_DIR: &str = "E:\\symdev\\results";
 
-/// One case: a name, whether it passed, and for a failure what went wrong.
+/// One case: a name, whether it passed, and for a failure what went wrong. `state` is
+/// `pending` or `running` for a case `symbian-test` has listed but not finished, so a
+/// panic, which ends the process, leaves the file saying which case it hit.
 struct Case {
     name: String,
     ok: bool,
     detail: String,
+    state: Option<&'static str>,
 }
 
 /// The result of one example run, built case by case and written out at the end.
@@ -159,22 +162,51 @@ impl Report {
             name: String::from(name),
             ok,
             detail: String::from(detail),
+            state: None,
         });
     }
 
-    /// How many cases passed.
+    /// Lists a case that has not run yet (`"state":"pending"`).
+    pub fn pending(&mut self, name: &str) {
+        self.record(name, false, "");
+        if let Some(case) = self.cases.last_mut() {
+            case.state = Some("pending");
+        }
+    }
+
+    /// Marks a listed case as the one running now (`"state":"running"`).
+    pub fn running(&mut self, name: &str) {
+        if let Some(case) = self.cases.iter_mut().find(|c| c.name == name) {
+            case.state = Some("running");
+        }
+    }
+
+    /// Finishes a listed case: its verdict and detail, and no state.
+    pub fn settle(&mut self, name: &str, ok: bool, detail: &str) {
+        if let Some(case) = self.cases.iter_mut().find(|c| c.name == name) {
+            case.ok = ok;
+            case.detail = String::from(detail);
+            case.state = None;
+        }
+    }
+
+    /// How many finished cases passed.
     pub fn passed(&self) -> usize {
-        self.cases.iter().filter(|c| c.ok).count()
+        self.finished().filter(|c| c.ok).count()
     }
 
-    /// How many cases failed.
+    /// How many finished cases failed.
     pub fn failed(&self) -> usize {
-        self.cases.len() - self.passed()
+        self.finished().filter(|c| !c.ok).count()
     }
 
-    /// Whether the run passed: every case passed and there was at least one.
+    /// Whether the run passed: every case finished and passed, and there was at least one.
     pub fn is_pass(&self) -> bool {
-        self.failed() == 0 && !self.cases.is_empty()
+        self.failed() == 0 && !self.cases.is_empty() && self.finished().count() == self.cases.len()
+    }
+
+    fn finished(&self) -> impl Iterator<Item = &Case> {
+        self.cases.iter().filter(|c| c.state.is_none())
     }
 
     /// `E:\symdev\results\<uid3>.json`.
@@ -196,8 +228,13 @@ impl Report {
     /// Returns whether the run passed, so an example can map it to its own exit code
     /// as well as to the file.
     pub fn finish(&self) -> Result<bool> {
-        fs::create_dir_all(RESULTS_DIR)?;
-        fs::write(&self.path(), self.to_json().as_bytes())?;
+        self.save()?;
         Ok(self.is_pass())
+    }
+
+    /// Writes the report as it stands, creating `E:\symdev\results` if needed.
+    pub fn save(&self) -> Result<()> {
+        fs::create_dir_all(RESULTS_DIR)?;
+        fs::write(&self.path(), self.to_json().as_bytes())
     }
 }

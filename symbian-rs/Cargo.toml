@@ -20,6 +20,7 @@ members = [
     "crates/symbian-runtime",
     "crates/symbian-macros",
     "crates/symbian-fmt",
+    "crates/symbian-test",
     "examples/async",
     "examples/hello",
     "examples/locale",

@@ -27,6 +27,7 @@ mod fast_write;
 mod manifest_uid3;
 mod signature;
 mod strings;
+mod test_module;
 
 #[cfg(test)]
 mod tests;
@@ -164,6 +165,16 @@ pub fn uid3(input: TokenStream) -> TokenStream {
                 .display()
                 .to_string()
         )),
+        Err(message) => tokens(&compile_error(&message)),
+    }
+}
+
+/// A module of `#[test] fn name() -> Result<(), symbian_test::Evidence>` becomes the
+/// program's `E32Main`, run on the device by `cargo test` (design spec §7).
+#[proc_macro_attribute]
+pub fn tests(_attribute: TokenStream, item: TokenStream) -> TokenStream {
+    match test_module::TestModule::expand(&item.to_string()) {
+        Ok(out) => tokens(&out),
         Err(message) => tokens(&compile_error(&message)),
     }
 }

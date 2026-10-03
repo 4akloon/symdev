@@ -33,6 +33,11 @@ pub(super) fn document(report: &Report) -> String {
         } else {
             "\",\"ok\":false"
         });
+        if let Some(state) = case.state {
+            out.push_str(",\"state\":\"");
+            out.push_str(state);
+            out.push('"');
+        }
         if !case.detail.is_empty() {
             out.push_str(",\"detail\":\"");
             escape_into(&mut out, &case.detail);

@@ -1526,7 +1526,7 @@ git commit -m "Let rustc link executables for the target and read UID3 from symd
     before that case runs). A finished case has no `state`. symdev's reader ignores unknown
     fields today, so old readers still read the file.
 
-- [ ] **Step 1: Write the failing tests** — end of `test_module.rs`
+- [x] **Step 1: Write the failing tests** — end of `test_module.rs`
 
 ```rust
 #[cfg(test)]
@@ -1561,12 +1561,12 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `cargo +nightly-2026-09-19 test --offline --manifest-path symbian-rs/crates/symbian-macros/Cargo.toml`
 Expected: `TestModule` not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `test_module.rs` works on the item's text, like `entry.rs` (`Entry::parse` takes
 `item.to_string()`), so its unit tests run outside a macro expansion. A small scanner skips
@@ -1741,12 +1741,12 @@ Result<()>` (what `finish` does, returning nothing). `finish` calls `save`. `jso
 `,"state":"<s>"` after `ok` when the case has one. `passed`/`failed`/`is_pass` count only
 cases without a state.
 
-- [ ] **Step 4: Run the tests and build the crate for the phone**
+- [x] **Step 4: Run the tests and build the crate for the phone**
 
 Run Step 2's command, expected all pass. Then, in `symbian-rs`: `cargo build --release -p
 symbian-test` (the workspace config targets the phone). Expected: builds.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add symbian-rs/Cargo.toml symbian-rs/Cargo.lock symbian-rs/crates/symbian-test \

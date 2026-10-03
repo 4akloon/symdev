@@ -225,4 +225,9 @@ Ledger (git-ignored): `.superpowers/sdd/2026-10-03-cargo-build-run/progress.md`.
   (capabilities, vendor, version, [ui] text): cargo sees no input change, and symdev-ld reads
   symdev.toml. Candidate fix: `#[symbian_std::main]` emits the same discarded
   `include_str!` of symdev.toml, so every app crate depends on it. Decide in Task 7.
-NEXT: Task 6 — `task-start <plan> 6` (symbian-test crate).
+- Task 6 done: `symbian-test` (Case, Evidence, ensure, __run), `#[symbian_test::tests]`
+  (`TestModule`, text scanner; lifetimes and strings guarded, 2 extra tests), report case
+  `state` pending/running + `pending/running/settle/save`. Compile check of the expansion in
+  `exec/t6check` (scratch lib crate, phone target): builds. Recipes list no crates → unchanged.
+NEXT: Task 7 — `task-start <plan> 7` (project shape + symdev new). Decide the symdev.toml
+relink question there (see OPEN above).
