@@ -7,6 +7,10 @@ use crate::{IndexSigningKey, Result, SdkError, TrustedKeys};
 /// How a signature line starts; `ed25519 <base64 of the 64-byte signature>` follows.
 const PREFIX: &str = "# symdev-signature: ";
 const ALGORITHM: &str = "ed25519 ";
+/// U+FEFF, which some editors put before a file's first line.
+const BOM: char = '\u{feff}';
+/// Why a refused index is refused, unless something likelier is seen.
+const TAMPERED: &str = "it may have been tampered with";
 
 /// An `index.toml` as a source serves it: an optional first line
 /// `# symdev-signature: ed25519 <base64>` and the body, exactly the bytes after that
@@ -66,24 +70,38 @@ impl SignedIndex {
 
     /// The body, if one of `keys` signed it. Otherwise an error naming `url`, the index's
     /// URL: the index is unsigned, its signature line is malformed, or the signature does
-    /// not verify (the body changed after signing, or another key signed it).
+    /// not verify (the body changed after signing, or another key signed it). A signature
+    /// line hidden behind a byte-order mark, or ending in CRLF, is named as such: an editor
+    /// or a checkout, more likely than tampering.
     pub fn verify(&self, keys: &TrustedKeys, url: &str) -> Result<&str> {
         let refuse = |detail: String| SdkError::UntrustedIndex {
             url: url.to_string(),
             detail,
         };
         let Some(line) = &self.line else {
+            let cause = match self.body.strip_prefix(BOM) {
+                Some(rest) if rest.starts_with(PREFIX) => {
+                    "a byte-order mark (U+FEFF) precedes its signature line, likely added by \
+                     an editor that saved it as UTF-8 with BOM, which changed the signed bytes"
+                }
+                _ => TAMPERED,
+            };
             return Err(refuse(format!(
                 "the index is unsigned (its first line is not `{PREFIX}{ALGORITHM}…`), but \
-                 this source accepts only an index signed by {}; it may have been tampered \
-                 with, so it was not used",
+                 this source accepts only an index signed by {}; {cause}, so it was not used",
                 keys.describe()
             )));
         };
         let signature = Self::signature(line).map_err(|why| {
+            let cause = match line.ends_with('\r') {
+                true => {
+                    "the line ends in CRLF, likely because a checkout or an editor converted \
+                     the index's line endings, which changed the signed bytes"
+                }
+                false => TAMPERED,
+            };
             refuse(format!(
-                "the index's signature line is malformed ({why}); it may have been tampered \
-                 with, so it was not used"
+                "the index's signature line is malformed ({why}); {cause}, so it was not used"
             ))
         })?;
         if keys.signed(self.body.as_bytes(), &signature) {

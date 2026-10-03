@@ -19,16 +19,16 @@ const MAX_TEXT_BYTES: u64 = 10 * 1024 * 1024;
 ///
 /// The proxy comes from `ALL_PROXY` / `HTTPS_PROXY` / `HTTP_PROXY` and `NO_PROXY` (ureq's
 /// environment support). Connecting may take 30 s, the server's answer (its response
-/// headers) 60 s, and the body a minute plus its size at 32 KiB/s ([`HttpTimeouts`]):
+/// headers) 60 s, and the body a minute plus its size at 16 KiB/s ([`HttpTimeouts`]):
 /// the index's `size` for a download, the 10 MiB cap for an index. ureq has no idle
 /// timeout, so a server that sends the headers and then stalls is given up on once a
-/// 32 KiB/s link would have delivered the whole body (35 minutes for the 67 MB GCCE), not
-/// after an hour. A whole request may take an hour, or longer when its body may. A
-/// download stops as soon as it passes its limit. An `https` source sends no plain-HTTP request, so no redirect can downgrade it
-/// (the index is checked by nothing but TLS), and a signed request follows no redirect at
-/// all. A non-2xx answer (a redirect not followed too) is `SdkError::Forbidden` for 403
-/// and otherwise `SdkError::Fetch` whose `detail` is exactly `HTTP <code>`, so a caller can
-/// tell a missing object (`HTTP 404`) apart.
+/// 16 KiB/s link would have delivered the whole body (70 minutes for the 67 MB GCCE). A
+/// whole request may take an hour, or longer when its body may. A download stops as soon
+/// as it passes its limit. An `https` source sends no plain-HTTP request, so no redirect
+/// can downgrade it, and a signed request follows no redirect at all. A non-2xx answer (a
+/// redirect not followed too) is `SdkError::Forbidden` for 403 and otherwise
+/// `SdkError::Fetch` whose `detail` is exactly `HTTP <code>`, so a caller can tell a
+/// missing object (`HTTP 404`) apart.
 pub struct HttpFetch {
     agent: Agent,
     signer: Option<SigV4>,

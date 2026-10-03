@@ -56,6 +56,9 @@ impl<'a> LibcallArchive<'a> {
             RustSdk::LIBCALLS_PROFILE.into(),
             "-p".into(),
             RustSdk::LIBCALLS_CRATE.into(),
+            // The one target the arguments after `--` go to: cargo refuses them for
+            // several, should the crate ever gain a binary.
+            "--lib".into(),
             "--manifest-path".into(),
             arg(&self.sdk.libcalls_manifest()),
             "--target".into(),

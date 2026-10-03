@@ -204,14 +204,18 @@ There is no `update`: ids are immutable. When a symdev release pins `gcce;14.2.0
 build installs it beside `gcce;12.1.0`, which stays until uninstalled.
 
 **Network.** `ureq` with rustls, proxy from the environment, and timeouts: 30 s to connect,
-60 s for the server's answer, and for the body a minute plus its size at 32 KiB/s — the
+60 s for the server's answer, and for the body a minute plus its size at 16 KiB/s — the
 index's `size` for an archive, the 10 MiB cap for an index (`HttpTimeouts`, symdev 0.2.0).
 ureq 3.4.2 has no idle timeout; its `timeout_recv_body` is a total for the body, set per
-request, so a server that sends its headers and then stalls is dropped once a 32 KiB/s
-link would have delivered everything (35 minutes for the 67 MB `gcce;12.1.0`) instead of
-after the hour that 0.1.0 allowed. A whole request may take an hour, or connect + answer +
-body when that is longer. A download stops one byte past the index's `size`. An `https` source sends no plain-HTTP request, a redirect included (the
-index has no hash of its own to check), and a signed request follows no redirect (review
+request, so a server that sends its headers and then stalls is dropped once a 16 KiB/s
+link would have delivered everything (70 minutes for the 67 MB `gcce;12.1.0`). The rate is
+a floor for a stalled body, not a speed requirement: 0.1.0's hour let GCCE through a link
+of about 19 KB/s, and a 32 KiB/s floor (the first 0.2.0 draft) would have shut such a link
+out for good, since a failed download's `.part` is deleted and the next build starts it
+from zero (review 0.2.0, minor 1). A whole request may take an hour, or connect + answer +
+body when that is longer. A download stops one byte past the index's `size`. An `https`
+source sends no plain-HTTP request, a redirect included (an index from a source without a
+key has nothing but TLS to check it, §15), and a signed request follows no redirect (review
 M1, M2, 2026-10-02). Sources with
 `auth = "s3"` sign requests with AWS Signature V4 (region `auto` for R2). The signer is our
 own, GET and PUT only (PUT is for `publish`, §6), built on the workspace's `hmac` and
@@ -455,6 +459,11 @@ Rust for a C++ project.
   the directory holding `.cargo/` (any cwd); `-Zbuild-std` and the spec work through the
   link, cargo canonicalising the spec's path; and cargo keeps outputs built from the old tree
   when the link moves to one with older mtimes, so a re-point removes `build/cargo` first.
+  A project inside that directory — the SDK's own `symbian-rs/examples/*` built against
+  their checkout — gets no link (and loses one a 0.2.0 development build made): it names
+  the SDK by relative paths, and a link to an ancestor is a cycle that `grep -R`, `find -L`
+  and the like walk again (review 0.2.0, minor 2). A scaffold placed there would not build
+  anyway: cargo refuses it as an unlisted member of the tree's workspace.
   Before cargo runs, `symdev build` refuses (and does not rewrite) a project that still names
   another SDK by absolute path — listing each `file:line` with the line as it is and as it
   should be — and one whose `rust-toolchain.toml` names a channel other than the SDK's (a
@@ -674,7 +683,7 @@ and M1–M10 are the whole-branch review of 669dae1, as elsewhere in this spec.
 **Open follow-ups** (beyond §13's)
 
 - Resolved in 0.2.0 (gaps G1): a stalled body is now bounded per request by 60 s plus its
-  size at 32 KiB/s (`HttpTimeouts`, ureq's `timeout_recv_body`); the libcall build runs
+  size at 16 KiB/s (`HttpTimeouts`, ureq's `timeout_recv_body`); the libcall build runs
   `cargo rustc … -- -Zdefault-visibility=hidden`, so a developer's `RUSTFLAGS` no longer drops
   it (experiment 111); both `REQUIRED` lists check every `symbian-rs` workspace member
   (`RustSdkWorkspace`).

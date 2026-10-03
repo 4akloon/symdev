@@ -126,3 +126,71 @@ fn a_directory_in_the_link_s_place_is_left_alone() {
     assert!(err.contains("not a link"), "{err}");
     assert!(root.join("build/rust-sdk/mine").is_dir());
 }
+
+/// The in-repo `symbian-rs/examples/*` built against their own checkout: they name the SDK
+/// by relative paths, and a link to the tree above them would be a cycle that every
+/// link-following tool walks again (review 0.2.0, minor 2).
+#[test]
+fn a_project_inside_the_sdk_tree_gets_no_link() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sdk = sdk_tree(tmp.path(), "symbian-rs");
+    let root = tmp.path().join("symbian-rs/examples/hello");
+    fs::create_dir_all(&root).unwrap();
+    RustSdkLink::of(&root).point_at(&sdk).unwrap();
+    assert!(fs::symlink_metadata(root.join("build/rust-sdk")).is_err());
+}
+
+/// A 0.2.0 development build linked such a project too; only symdev makes a link there.
+#[test]
+fn a_link_left_inside_the_sdk_tree_is_removed() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sdk = sdk_tree(tmp.path(), "symbian-rs");
+    let root = tmp.path().join("symbian-rs/examples/hello");
+    fs::create_dir_all(root.join("build")).unwrap();
+    std::os::unix::fs::symlink(tmp.path(), root.join("build/rust-sdk")).unwrap();
+    RustSdkLink::of(&root).point_at(&sdk).unwrap();
+    assert!(fs::symlink_metadata(root.join("build/rust-sdk")).is_err());
+    assert!(tmp.path().join("symbian-rs/rust-toolchain.toml").is_file());
+}
+
+#[test]
+fn a_project_reached_through_a_link_is_still_inside_the_tree() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sdk = sdk_tree(&tmp.path().join("repo"), "symbian-rs");
+    fs::create_dir_all(tmp.path().join("repo/symbian-rs/examples/hello")).unwrap();
+    std::os::unix::fs::symlink(tmp.path().join("repo"), tmp.path().join("alias")).unwrap();
+    let root = tmp.path().join("alias/symbian-rs/examples/hello");
+    RustSdkLink::of(&root).point_at(&sdk).unwrap();
+    assert!(fs::symlink_metadata(root.join("build/rust-sdk")).is_err());
+}
+
+/// Inside means below the tree, component by component: `sdk-app` is beside `sdk`.
+#[test]
+fn a_project_beside_the_tree_gets_its_link() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sdk = sdk_tree(&tmp.path().join("sdk"), "symbian-rs");
+    let root = tmp.path().join("sdk-app");
+    fs::create_dir_all(&root).unwrap();
+    RustSdkLink::of(&root).point_at(&sdk).unwrap();
+    assert!(fs::read_link(root.join("build/rust-sdk")).is_ok());
+}
+
+/// A build killed between making the temporary link and renaming it leaves it behind; the
+/// next build's swap goes through the same name, so nothing piles up (review 0.2.0, minor 3).
+#[test]
+fn a_temporary_link_a_killed_build_left_is_replaced() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sdk = sdk_tree(&tmp.path().join("rust-sdk/0.2.0"), "symbian-rs");
+    let root = project(tmp.path());
+    fs::create_dir_all(root.join("build")).unwrap();
+    std::os::unix::fs::symlink(tmp.path().join("gone"), root.join("build/rust-sdk.tmp")).unwrap();
+    RustSdkLink::of(&root).point_at(&sdk).unwrap();
+    let target = fs::read_link(root.join("build/rust-sdk")).unwrap();
+    assert_eq!(target, sdk.root().parent().unwrap());
+    let mut names: Vec<_> = fs::read_dir(root.join("build"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["rust-sdk"]);
+}

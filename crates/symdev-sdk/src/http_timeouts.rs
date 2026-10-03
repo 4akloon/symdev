@@ -23,13 +23,13 @@ pub(crate) struct HttpTimeouts {
 
 impl HttpTimeouts {
     /// 30 s to connect, 60 s for the answer, an hour per request; a body gets 60 s plus
-    /// its size at 32 KiB/s (`gcce;12.1.0`, 67 MB: 35 minutes).
+    /// its size at 16 KiB/s (`gcce;12.1.0`, 67 MB: 70 minutes, more than the hour).
     pub(crate) const STANDARD: HttpTimeouts = HttpTimeouts {
         connect: Duration::from_secs(30),
         response: Duration::from_secs(60),
         request: Duration::from_secs(60 * 60),
         body_base: Duration::from_secs(60),
-        body_rate: 32 * 1024,
+        body_rate: 16 * 1024,
     };
 
     /// The longest the body of a `size`-byte download may take: `body_base` plus `size`
@@ -59,21 +59,23 @@ mod tests {
     const S: HttpTimeouts = HttpTimeouts::STANDARD;
 
     #[test]
-    fn a_body_gets_a_minute_plus_its_size_at_32_kib_a_second() {
+    fn a_body_gets_a_minute_plus_its_size_at_16_kib_a_second() {
         assert_eq!(S.body(0), Duration::from_secs(60));
-        assert_eq!(S.body(32 * 1024 * 100), Duration::from_secs(160));
-        assert_eq!(S.body(16 * 1024), Duration::from_millis(60_500));
+        assert_eq!(S.body(16 * 1024 * 100), Duration::from_secs(160));
+        assert_eq!(S.body(8 * 1024), Duration::from_millis(60_500));
     }
 
-    /// The published `gcce;12.1.0` (spec §13): 2 118.8 s, inside the hour.
+    /// The published `gcce;12.1.0` (spec §13) through a 19 KB/s link, which symdev 0.1.0's
+    /// hour let through (review 0.2.0, minor 1): 3 551 s of body, inside its 4 178 s.
     #[test]
-    fn gcce_fits_in_the_hour() {
+    fn gcce_gets_through_a_link_that_0_1_0_allowed() {
         let gcce = 67_463_658;
-        assert_eq!(S.body(gcce).as_secs(), 60 + gcce / (32 * 1024));
-        assert_eq!(S.download(gcce), Duration::from_secs(3600));
+        assert_eq!(S.body(gcce).as_secs(), 60 + gcce / (16 * 1024));
+        assert!(S.body(gcce) > Duration::from_secs(gcce / 19_000 + 1));
+        assert_eq!(S.download(gcce), S.connect + S.response + S.body(gcce));
     }
 
-    /// 200 MB at exactly 32 KiB/s is 6 104 s: the hour would cut a download that keeps up.
+    /// 200 MB at exactly 16 KiB/s is 12 207 s: the hour would cut a download that keeps up.
     #[test]
     fn a_body_longer_than_the_hour_extends_the_request() {
         let size = 200_000_000;
@@ -84,7 +86,7 @@ mod tests {
 
     #[test]
     fn a_huge_size_saturates_instead_of_overflowing() {
-        assert!(S.body(u64::MAX) > Duration::from_secs(u64::MAX / (32 * 1024)));
+        assert!(S.body(u64::MAX) > Duration::from_secs(u64::MAX / (16 * 1024)));
         S.download(u64::MAX);
     }
 }

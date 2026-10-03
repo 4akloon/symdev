@@ -127,3 +127,34 @@ fn split_and_to_text_give_back_the_served_bytes() {
         assert_eq!(SignedIndex::split(text).to_text(), text);
     }
 }
+
+/// A checkout or an editor that converts line endings changes the signed bytes; that, more
+/// likely than tampering, is why such an index fails (review 0.2.0, minor 8).
+#[test]
+fn crlf_line_endings_are_named_as_the_likely_cause() {
+    let text = SignedIndex::sign(PACKAGE, &key(SEED_7))
+        .to_text()
+        .replace('\n', "\r\n");
+    let e = refused(&text, &key(SEED_7).trusted());
+    assert!(e.contains("CRLF"), "{e}");
+}
+
+#[test]
+fn a_byte_order_mark_is_named_as_the_likely_cause() {
+    let signed = SignedIndex::sign(PACKAGE, &key(SEED_7)).to_text();
+    let e = refused(&format!("\u{feff}{signed}"), &key(SEED_7).trusted());
+    assert!(e.contains("byte-order mark"), "{e}");
+}
+
+/// Neither is named where it is not the cause.
+#[test]
+fn other_refusals_name_neither_line_endings_nor_a_byte_order_mark() {
+    for text in [
+        PACKAGE.to_string(),
+        format!("\u{feff}{PACKAGE}"),
+        format!("# symdev-signature: ed25519 not-base64!\n{BODY}"),
+    ] {
+        let e = refused(&text, &key(SEED_7).trusted());
+        assert!(!e.contains("CRLF") && !e.contains("byte-order"), "{e}");
+    }
+}
