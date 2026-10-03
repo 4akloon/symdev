@@ -76,7 +76,7 @@ assumption; every task below is written for the observation:
    `dev/data-dir` + `dev/control-events`.
 8. **Signing in `cargo build` needs an owner decision** (D1 below).
 
-## Open decision for the owner — D1: signing in `cargo build`
+## Decision D1: signing in `cargo build` — the owner chose A (2026-10-03)
 
 `symdev package` refuses a `SYMDEV_SIGN_PASSWORD` shorter than 4 characters, even for
 `[signing] mode = "self-signed"` (`SisPackage::validate_password`,
@@ -103,9 +103,9 @@ variable. Facts for the decision:
 tools allow an unencrypted self-signed key. A is the only option where `symdev new` → `cargo
 run` works with no setup, which the spec's acceptance (§10) requires.
 
-**Depends on D1:** Task 3, step 6, and Task 19's acceptance run. Every other task is
-independent of it. If D1 is not decided when Task 3 is reached, implement steps 1–5, leave
-step 6 unchecked, and go on.
+**Decided: A.** Task 3, step 6 implements A; Task 19's acceptance runs without
+`SYMDEV_SIGN_PASSWORD`. Execution: one agent runs every task in order (superpowers:executing-plans),
+one fresh reviewer checks the whole branch at the end.
 
 ## Review Focus
 
