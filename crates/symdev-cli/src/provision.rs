@@ -2,6 +2,7 @@
 //! The only code that reads `SYMDEV_HOME`, the `XDG_*` directories, the source keys and
 //! `SYMDEV_RUST_SDK`.
 
+mod rust_linker;
 mod rust_sdk;
 
 use std::collections::BTreeMap;
@@ -51,21 +52,40 @@ impl Provision {
     }
 
     /// The toolchain for a build: installs what the set variables leave to the packages.
-    pub fn toolchain(&self, device: Device) -> Result<Toolchain, Error> {
+    /// `gcce` false (a Rust build that rust-lld links with the prebuilt set) leaves GCCE
+    /// out altogether: neither installed nor resolved.
+    pub fn toolchain(&self, device: Device, gcce: bool) -> Result<Toolchain, Error> {
         let o = self.checked_overrides()?;
-        let needed = Self::needed_by(&o, device);
-        if needed.is_empty() {
-            return Toolchain::resolve(&o, None, None);
-        }
-        let home = self.install_missing(&needed)?;
+        let needed = Self::needed_by(&o, device, gcce);
+        let home = match needed.is_empty() {
+            true => None,
+            false => Some(self.install_missing(&needed)?),
+        };
         let (gcce_id, sdk_id) = (Pins::gcce(), Pins::platform_sdk(device));
-        let gcce = o
-            .needs_gcce()
-            .then(|| Gcce::at(home.package_dir(&gcce_id), &gcce_id));
-        let sdk = o
-            .needs_sdk()
-            .then(|| PlatformSdk::at(home.package_dir(&sdk_id), &sdk_id));
-        Toolchain::resolve(&o, gcce.transpose()?.as_ref(), sdk.transpose()?.as_ref())
+        let package = |id: &PackageId| home.as_ref().map(|h| h.package_dir(id));
+        let sdk = match (o.needs_sdk(), package(&sdk_id)) {
+            (true, Some(dir)) => Some(PlatformSdk::at(dir, &sdk_id)?),
+            _ => None,
+        };
+        if !gcce {
+            return Toolchain::without_gcce(&o, sdk.as_ref());
+        }
+        let gcce = match (o.needs_gcce(), package(&gcce_id)) {
+            (true, Some(dir)) => Some(Gcce::at(dir, &gcce_id)?),
+            _ => None,
+        };
+        Toolchain::resolve(&o, gcce.as_ref(), sdk.as_ref())
+    }
+
+    /// Whether a build of a `language` project needs GCCE: a C++ one always, a Rust one
+    /// unless rust-lld links it with its Rust SDK's prebuilt set. For a Rust project this
+    /// resolves the Rust SDK, installing the package if it is missing.
+    pub fn needs_gcce(&self, language: Language) -> Result<bool, Error> {
+        if !language.is_rust() {
+            return Ok(true);
+        }
+        let sdk = self.rust_sdk()?;
+        Ok(self.rust_linker()?.needs_gcce(sdk.prebuilt()?.as_ref()))
     }
 
     /// The EPOCROOT for reading a `bld.inf`, installing the SDK if it is missing. The
@@ -127,14 +147,14 @@ impl Provision {
     /// The packages a build of a `language` project for `device` needs under the current
     /// environment: none for a part whose every field a `SYMDEV_*` variable sets, and the
     /// Rust SDK, first, for a Rust project that finds none outside the packages.
-    pub fn needed(&self, device: Device, language: Language) -> Vec<PackageId> {
+    pub fn needed(&self, device: Device, language: Language) -> Result<Vec<PackageId>, Error> {
         let rust = language.is_rust().then(|| self.needed_rust_sdk());
-        let toolchain = Self::needed_by(&self.overrides(), device);
-        rust.flatten().into_iter().chain(toolchain).collect()
+        let toolchain = Self::needed_by(&self.overrides(), device, self.needs_gcce(language)?);
+        Ok(rust.flatten().into_iter().chain(toolchain).collect())
     }
 
-    fn needed_by(o: &ToolchainOverrides, device: Device) -> Vec<PackageId> {
-        let gcce = o.needs_gcce().then(Pins::gcce);
+    fn needed_by(o: &ToolchainOverrides, device: Device, gcce: bool) -> Vec<PackageId> {
+        let gcce = (gcce && o.needs_gcce()).then(Pins::gcce);
         let sdk = o.needs_sdk().then(|| Pins::platform_sdk(device));
         gcce.into_iter().chain(sdk).collect()
     }

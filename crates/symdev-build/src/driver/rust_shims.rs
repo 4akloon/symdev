@@ -7,10 +7,12 @@
 //! `E32Main` of its own that a console application must not be given.
 use std::path::{Path, PathBuf};
 
-use symdev_core::{Project, RemotePath, Result};
+use symdev_core::{Error, Project, RemotePath, Result};
+use symdev_elf2e32::Target2Rewrite;
 
 use super::{CompileFlags, CompileIncludes, RustBuild, arg, io};
 use crate::resources::SdkIncludeCaseFold;
+use crate::{RustLinker, RustPrebuilt};
 
 impl RustBuild {
     /// Where the shim object for `source` goes: `build/shims/<stem>.o`, under the
@@ -114,6 +116,32 @@ impl RustBuild {
         ];
         args.extend(objects.iter().map(|o| arg(o)));
         Ok(args)
+    }
+
+    /// The shim archives the link names, in order. With the prebuilt set (rust-lld and an
+    /// installed `rust-sdk`) its archives, compiled once; else this application's own,
+    /// compiled now with GCCE — and for rust-lld with their `R_ARM_TARGET2` rewritten to
+    /// `R_ARM_ABS32`, as the prebuilt set's are (experiment 109 §2, change 5). GNU ld's
+    /// archive is left exactly as `ar` wrote it.
+    pub(super) fn shim_archives(
+        &self,
+        project: &Project,
+        cwd: &RemotePath,
+        prebuilt: Option<&RustPrebuilt>,
+    ) -> Result<Vec<PathBuf>> {
+        if let Some(p) = prebuilt {
+            return Ok(p.shims(self.ui.is_some()));
+        }
+        let Some(archive) = self.build_shims(project, cwd)? else {
+            return Ok(Vec::new());
+        };
+        if matches!(self.linker, RustLinker::Lld { .. }) {
+            let bytes = std::fs::read(&archive).map_err(io)?;
+            let fixed = Target2Rewrite::archive(&bytes)
+                .map_err(|e| Error::Other(format!("{}: {e}", archive.display())))?;
+            std::fs::write(&archive, fixed.bytes()).map_err(io)?;
+        }
+        Ok(vec![archive])
     }
 
     /// Compiles every SDK shim source into `build/shims/` and archives the objects.

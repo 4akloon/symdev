@@ -141,9 +141,13 @@ fn the_toolchain_variables_come_from_the_lookup() {
     let vars = whole_toolchain(tmp.path());
     let vars: Vec<_> = vars.iter().map(|(k, v)| (*k, v.as_str())).collect();
     let p = provision(&vars);
-    assert!(p.needed(Device::NokiaE52, Language::Cpp).is_empty());
+    assert!(
+        p.needed(Device::NokiaE52, Language::Cpp)
+            .unwrap()
+            .is_empty()
+    );
     // Nothing is left to the packages, so no HOME is needed to find them.
-    let tools = p.toolchain(Device::NokiaE52).unwrap();
+    let tools = p.toolchain(Device::NokiaE52, true).unwrap();
     assert_eq!(tools.gcce().unwrap().gxx, tmp.path());
     assert_eq!(tools.epocroot, tmp.path());
 }
@@ -174,4 +178,34 @@ fn a_stale_epocroot_still_names_itself() {
         e.contains("SYMDEV_EPOCROOT is set to /nonexistent/symdev/sdk"),
         "{e}"
     );
+}
+
+#[test]
+fn rust_lld_is_the_default_with_its_fix_cache_under_symdev_home() {
+    let p = provision(&[("SYMDEV_HOME", "/opt/symdev")]);
+    match p.rust_linker().unwrap() {
+        symdev_build::RustLinker::Lld { rust_lld, cache } => {
+            assert_eq!(rust_lld, None);
+            let want = symdev_build::SdkLldCache::at(PathBuf::from("/opt/symdev/cache/sdk-lld"));
+            assert_eq!(cache, want);
+        }
+        symdev_build::RustLinker::Gnu => panic!("rust-lld is the default"),
+    }
+    let gnu = provision(&[("SYMDEV_RUST_LINKER", "gnu")])
+        .rust_linker()
+        .unwrap();
+    assert!(
+        matches!(gnu, symdev_build::RustLinker::Gnu),
+        "GNU ld needs no HOME"
+    );
+}
+
+#[test]
+fn a_rust_lld_variable_that_names_nothing_is_refused() {
+    let p = provision(&[
+        ("SYMDEV_HOME", "/opt/symdev"),
+        ("SYMDEV_RUST_LLD", "/no/rust-lld"),
+    ]);
+    let e = p.rust_linker().err().unwrap().to_string();
+    assert!(e.contains("SYMDEV_RUST_LLD is set to /no/rust-lld"), "{e}");
 }

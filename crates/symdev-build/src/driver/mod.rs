@@ -22,6 +22,7 @@ mod module;
 mod resource;
 mod rust_build;
 mod rust_link;
+mod rust_lld_link;
 mod rust_shims;
 mod source;
 mod strings_build;

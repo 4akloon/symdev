@@ -28,7 +28,16 @@ pub fn build_project(m: Manifest, provision: &Provision) -> Result<ExitCode, Err
         .is_rust()
         .then(|| provision.rust_sdk())
         .transpose()?;
-    let tools = provision.toolchain(m.target.device)?;
+    let linker = rust_sdk
+        .as_ref()
+        .map(|_| provision.rust_linker())
+        .transpose()?;
+    // GCCE is left out only when rust-lld links with the Rust SDK's prebuilt set.
+    let gcce = match (&rust_sdk, &linker) {
+        (Some(sdk), Some(linker)) => linker.needs_gcce(sdk.prebuilt()?.as_ref()),
+        _ => true,
+    };
+    let tools = provision.toolchain(m.target.device, gcce)?;
     let epocroot = tools.epocroot.clone();
     let project = crate::current_project()?;
     BuildDir::of(&project.root).create()?;
@@ -59,14 +68,15 @@ pub fn build_project(m: Manifest, provision: &Provision) -> Result<ExitCode, Err
         icons: m.icons,
         secure_id: m.symbian.secure_id,
     };
-    let artifacts = match rust_sdk {
+    let artifacts = match rust_sdk.zip(linker) {
         None => gcce.build(&project)?,
-        Some(sdk) => RustBuild {
+        Some((sdk, linker)) => RustBuild {
             gcce,
             sdk,
             cargo: RustBuild::cargo_from_env(),
             rustc: RustBuild::rustc_from_env(),
             name: m.package.name,
+            linker,
             ui,
             std: m.language.has_std(),
         }

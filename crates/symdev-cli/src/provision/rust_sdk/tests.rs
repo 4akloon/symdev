@@ -227,10 +227,16 @@ fn a_package_in_no_source_says_how_to_do_without_it() {
 fn only_a_rust_project_needs_the_rust_sdk() {
     let w = World::new();
     let p = w.provision(false, None, &[]);
-    let rust = p.needed(symdev_manifest::Device::NokiaE52, Language::Rust);
+    let rust = p
+        .needed(symdev_manifest::Device::NokiaE52, Language::Rust)
+        .unwrap();
     assert_eq!(rust.first(), Some(&Pins::rust_sdk()));
-    let std = p.needed(symdev_manifest::Device::NokiaE52, Language::RustStd);
+    let std = p
+        .needed(symdev_manifest::Device::NokiaE52, Language::RustStd)
+        .unwrap();
     assert_eq!(std.first(), Some(&Pins::rust_sdk()));
-    let cpp = p.needed(symdev_manifest::Device::NokiaE52, Language::Cpp);
+    let cpp = p
+        .needed(symdev_manifest::Device::NokiaE52, Language::Cpp)
+        .unwrap();
     assert!(!cpp.contains(&Pins::rust_sdk()), "{cpp:?}");
 }

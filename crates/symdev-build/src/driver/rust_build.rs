@@ -9,6 +9,7 @@ use std::process::Command;
 use symdev_core::{Artifact, BuildBackend, Error, Project, RemotePath, Result};
 
 use super::{GcceBuild, LibcallArchive, arg, io, produced};
+use crate::RustLinker;
 use crate::foreign_sdk_paths::ForeignSdkPaths;
 use crate::required_capability::RequiredCapability;
 use crate::rust_sdk::RustSdk;
@@ -48,6 +49,8 @@ pub struct RustBuild {
     /// source ([`StdSrc`]) instead of just `core` and `alloc`. Everything after cargo
     /// — the link line, the post-linker, the packaging — is identical.
     pub std: bool,
+    /// rust-lld (the default) or GNU ld (`SYMDEV_RUST_LINKER=gnu`), experiment 113.
+    pub linker: RustLinker,
     /// `[ui]`: present makes this an Avkon application — the `shims/s60` subclasses,
     /// the five extra import libraries, and the `.rsc`/`_reg.rsc`/`.mif` a captioned
     /// application needs. Absent, nothing of the UI is linked or generated.
@@ -216,7 +219,9 @@ impl BuildBackend for RustBuild {
                 self.name
             ),
         )?;
-        let shim = self.build_shims(project, &cwd)?;
+        let prebuilt = self.sdk.prebuilt()?;
+        let prebuilt = self.linker.prebuilt(prebuilt.as_ref());
+        let shims = self.shim_archives(project, &cwd, prebuilt)?;
         self.run_cargo_args(&self.libcalls().cargo_args(), &cwd)?;
         let libcalls = produced(
             self.libcalls().path(project),
@@ -228,10 +233,27 @@ impl BuildBackend for RustBuild {
         )?;
         let elf = build_dir.join(format!("{}.elf", self.name));
         let map = build_dir.join(format!("{}.exe.map", self.name));
-        self.gcce.run_tool(
-            &self.link_args(&archive, shim.as_deref(), Some(&libcalls), &elf, &map)?,
-            &cwd,
-        )?;
+        match &self.linker {
+            RustLinker::Gnu => self.gcce.run_tool(
+                &self.link_args(
+                    &archive,
+                    shims.first().map(PathBuf::as_path),
+                    Some(&libcalls),
+                    &elf,
+                    &map,
+                )?,
+                &cwd,
+            )?,
+            RustLinker::Lld { rust_lld, cache } => self.link_lld(
+                rust_lld.as_deref(),
+                cache,
+                prebuilt,
+                (&archive, &shims, &libcalls),
+                &elf,
+                &map,
+                &cwd,
+            )?,
+        }
         RequiredCapability::check(&elf, &self.gcce.capabilities, &format!("{}.exe", self.name))?;
         let out = build_dir.join(format!("{}.exe", self.name));
         self.gcce

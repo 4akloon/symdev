@@ -15,6 +15,7 @@ pub(super) fn rust() -> RustBuild {
         cargo: PathBuf::from("/rustup/bin/cargo"),
         rustc: PathBuf::from("/rustup/bin/rustc"),
         name: "hello".into(),
+        linker: crate::RustLinker::Gnu,
         ui: None,
         std: false,
     }

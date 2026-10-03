@@ -76,10 +76,10 @@ impl LldLine {
         functions: &[String],
     ) -> Vec<String> {
         let mut out = first.to_vec();
-        if let Some(at) = out.iter().position(|a| a == "-o") {
-            if let Some(output) = out.get_mut(at + 1) {
-                *output = arg(elf);
-            }
+        if let Some(at) = out.iter().position(|a| a == "-o")
+            && let Some(output) = out.get_mut(at + 1)
+        {
+            *output = arg(elf);
         }
         out.push(arg(stubs));
         out.extend(functions.iter().map(|f| format!("--wrap={f}")));

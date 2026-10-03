@@ -75,7 +75,7 @@ impl TestElf {
             placed.push(out.len() as u32);
             out.extend_from_slice(&s.data);
         }
-        while out.len() % 4 != 0 {
+        while !out.len().is_multiple_of(4) {
             out.push(0);
         }
         let shoff = out.len() as u32;

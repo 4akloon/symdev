@@ -42,8 +42,8 @@ rust-sdk/symbian-rs/prebuilt/` (lib: 4172/7736/19294/59174 B).
   TARGET2-rewritten in place for lld only.
 
 ## Status
-- [x] elf2e32 byte types (commit below)  - [x] Toolchain split (71b3f48)  - [x] RustPrebuilt, RustLld (d56811a), SdkLldCache  - [ ] RustLinker
-- [ ] link line + two links  - [ ] CLI + Provision  - [ ] real builds  - [ ] no-GCCE run
+- [x] elf2e32 byte types (commit below)  - [x] Toolchain split (71b3f48)  - [x] RustPrebuilt, RustLld (d56811a), SdkLldCache  - [x] RustLinker
+- [x] link line + two links (LldLine, rust_lld_link.rs)  - [x] CLI + Provision (needs_gcce, toolchain(device, gcce))  - [ ] real builds  - [ ] no-GCCE run
 - [ ] emulator  - [ ] docs + exp 113  - [ ] gates
 
 ## For the packages repo
@@ -71,4 +71,6 @@ all byte-equal to the spike's `dso-fixed/`; `usrt2_2.lib` 1 rewritten = spike's 
 ## Dead ends
 
 ## Next step
-RustLinker enum, then the lld link line (`LldLine` adapt + second link) and RustBuild wiring.
+Real builds. GNU byte-identical check first (main binary vs branch with SYMDEV_RUST_LINKER=gnu,
+argv via SYMDEV_LD wrapper + .exe cmp masking CRC 0x14-0x17 / time 0x24-0x2B), then lld default
+on the four apps + all examples, sizes vs exp 112.

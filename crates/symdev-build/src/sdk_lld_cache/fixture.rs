@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 pub fn elf(e_type: u16, kind: u32, entsize: u32, data: &[u8]) -> Vec<u8> {
     let mut out = vec![0u8; 52];
     out.extend_from_slice(data);
-    while out.len() % 4 != 0 {
+    while !out.len().is_multiple_of(4) {
         out.push(0);
     }
     let shoff = out.len() as u32;
