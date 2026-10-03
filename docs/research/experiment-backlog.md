@@ -4132,3 +4132,9 @@ Outside git, `~/src/rl-driver-scratch/`:
 The baseline tree is `main-src/` (`git archive 04f8e7d`). The binaries were built at
 `f71d1d5`; later commits change only error messages, checks and the cache's lookup order
 (re-checked in the evidence note below).
+
+**Re-check with the reviewed code.** `recheck.sh` rebuilt symdev at `b8fbedd`, after the
+review fixes: error messages, the final `R_ARM_JUMP_SLOT` check on both paths, the cache's
+`urel`-first lookup. It then relinked nine programs: `hello`, `async`, `ui`, `notes` and
+`shim` by default; `ui` and `notes` on the prebuilt route; `hello` and `ui` with GNU ld. All
+nine `.exe` are equal to the ones above, masking the CRC and time (`recheck.txt`).
