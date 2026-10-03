@@ -70,6 +70,8 @@ fn the_libcall_crate_is_built_without_lto() {
 /// `cargo rustc … -- -Zdefault-visibility=hidden`: the flag goes to the one crate that is
 /// linked, and no `RUSTFLAGS`, `CARGO_ENCODED_RUSTFLAGS` or config `rustflags` of the
 /// developer's can replace it, as they replaced `--config build.rustflags` (experiment 111).
+/// `--lib`, because cargo refuses `--` arguments for more than one target, should the crate
+/// ever gain another (review 0.2.0, minor 9).
 #[test]
 fn the_libcall_crate_s_visibility_flag_is_an_argument_of_cargo_rustc() {
     let b = rust();
@@ -84,6 +86,7 @@ fn the_libcall_crate_s_visibility_flag_is_an_argument_of_cargo_rustc() {
             "libcalls",
             "-p",
             "symbian-libcalls",
+            "--lib",
             "--manifest-path",
             &manifest,
             "--target",
