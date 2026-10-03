@@ -14,8 +14,8 @@ fn a_gui_link_names_the_app_entry_and_the_avkon_libraries() {
         Path::new("/p/build/hello.elf"),
         Path::new("/p/build/hello.exe.map"),
     );
-    let console = rust().link_args(a, None, None, elf, map).unwrap();
-    let got = gui().link_args(a, None, None, elf, map).unwrap();
+    let console = rust().link_args(&[a.into()], None, None, elf, map).unwrap();
+    let got = gui().link_args(&[a.into()], None, None, elf, map).unwrap();
 
     // `-u symrs_app_create`, because the references to it run from the shim archive
     // back into the Rust archive, which ld has already passed.

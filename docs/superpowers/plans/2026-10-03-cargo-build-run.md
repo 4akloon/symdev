@@ -611,7 +611,7 @@ Experiment 114 §1.2 proved the rule this task encodes. rustc's inputs take the 
 place in order: the first where the archive stood, the rest right after it, before the
 shims and libcalls. With that rule all 19 `no_std` images are byte-equal.
 
-- [ ] **Step 1: Write the failing tests** — append to `crates/symdev-build/src/driver/tests/rust_build.rs`
+- [x] **Step 1: Write the failing tests** — append to `crates/symdev-build/src/driver/tests/rust_build.rs`
 
 ```rust
 #[test]
@@ -646,12 +646,12 @@ In `the_sdk_owns_the_shim_sources_and_compiles_them_with_the_cpp_argv` and
 directory. That is the reason for the change: two links of one project, under `cargo test`,
 must not share `shims/` or `sdk-include-casefold/`.
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `cargo test -p symdev-build --offline driver::tests`
 Expected: compile errors (`link_args` takes `&Path`; `shim_archives` takes no directory).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `link_inputs.rs` becomes:
 
@@ -770,13 +770,13 @@ impl RustBuild {
 Make `run_cargo_args` `pub(super)` if it is private. Export: `pub use driver::RustcLink;`
 in `lib.rs`.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `cargo test -p symdev-build --offline`
 Expected: all pass, including every pre-existing link test after the `&[a.into()]` call
 changes (the GNU line tests pin that a one-element slice is 0.3.0's line exactly).
 
-- [ ] **Step 5: Check 0.3.0's images did not move**
+- [x] **Step 5: Check 0.3.0's images did not move**
 
 ```bash
 S=~/src/cargo-run-scratch; mkdir -p $S/t2 && git archive HEAD | tar -x -C $S/t2
@@ -789,7 +789,7 @@ for ex in hello ui async; do for b in symdev-030 symdev-t2; do
 
 Expected: `EQUAL` three times (both binaries build the same tree at the same path).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add crates/symdev-build/src

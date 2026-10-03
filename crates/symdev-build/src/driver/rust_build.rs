@@ -175,7 +175,7 @@ impl RustBuild {
         self.run_cargo_in(&self.cargo_args(), cwd, src.as_ref())
     }
 
-    fn run_cargo_args(&self, args: &[String], cwd: &RemotePath) -> Result<()> {
+    pub(super) fn run_cargo_args(&self, args: &[String], cwd: &RemotePath) -> Result<()> {
         self.run_cargo_in(args, cwd, None)
     }
 
@@ -230,7 +230,7 @@ impl BuildBackend for RustBuild {
         )?;
         let prebuilt = self.linker.prebuilt(&self.sdk)?;
         let prebuilt = prebuilt.as_ref();
-        let shims = self.shim_archives(project, &cwd, prebuilt)?;
+        let shims = self.shim_archives(&cwd, prebuilt, &build_dir)?;
         self.run_cargo_args(&self.libcalls().cargo_args(), &cwd)?;
         let libcalls = produced(
             self.libcalls().path(project),
@@ -245,7 +245,7 @@ impl BuildBackend for RustBuild {
         match lld {
             None => self.gcce.run_tool(
                 &self.link_args(
-                    &archive,
+                    std::slice::from_ref(&archive),
                     shims.first().map(PathBuf::as_path),
                     Some(&libcalls),
                     &elf,
@@ -258,7 +258,7 @@ impl BuildBackend for RustBuild {
                 cache,
                 prebuilt,
                 &LinkInputs {
-                    archive: &archive,
+                    rust: std::slice::from_ref(&archive),
                     shims: &shims,
                     libcalls: &libcalls,
                 },

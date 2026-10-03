@@ -27,13 +27,13 @@ fn a_gui_app_with_the_prebuilt_set_links_with_the_experiment_109_line() {
     let shims = [pre.join("libsymrs_ui.a"), pre.join("libsymrs.a")];
     let line = b.link_line(
         &linker,
-        Path::new(ARCHIVE),
+        &[ARCHIVE.into()],
         &shims,
         Some(Path::new(LIBCALLS)),
         Path::new("/p/build/hello.first.elf"),
         Path::new("/p/build/hello.exe.map"),
     );
-    let got = lld_line(Some(b.gcce.uid3)).adapt(line).unwrap();
+    let got = lld_line(Some(b.gcce.uid3)).adapt(line.unwrap()).unwrap();
     let want = "/rust/bin/rust-lld -flavor gnu -L/pre/lib/ -L /pre/lib --target1-abs \
         --no-undefined -nostdlib -shared -Ttext 0x8000 -Tdata 0x400000 -soname \
         hello{000a0000}[e79e4cf9].exe --target1-abs --no-undefined -nostdlib --strip-debug \
@@ -69,9 +69,14 @@ fn a_checkout_build_keeps_the_gcce_runtime_and_defines_no_uid_symbol() {
         Path::new("/p/build/hello.first.elf"),
         Path::new("/p/build/hello.exe.map"),
     );
-    let gnu = b.link_args(archive, Some(&shim), None, elf, map).unwrap();
+    let gnu = b
+        .link_args(&[archive.into()], Some(&shim), None, elf, map)
+        .unwrap();
     let got = lld_line(None)
-        .adapt(b.link_line(&linker, archive, &[shim], None, elf, map))
+        .adapt(
+            b.link_line(&linker, &[archive.into()], &[shim], None, elf, map)
+                .unwrap(),
+        )
         .unwrap();
     // Against the GNU line of the same build: the program, one option fewer, the SDK's
     // directories, and the five rust-lld options at the end.

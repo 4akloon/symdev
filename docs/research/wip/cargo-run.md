@@ -193,4 +193,8 @@ Ledger (git-ignored): `.superpowers/sdd/2026-10-03-cargo-build-run/progress.md`.
 - Task 1 done: `ld/` types + fixtures (hashes match). Ruling: `mod ld;` gets
   `#[allow(dead_code, unused_imports)]` (plan said dead_code only; the re-exports warn) — Task 4
   removes it.
-NEXT: Task 2 — `task-start <plan> 2`, read brief, `cargo test -p symdev-build --offline rustc_link`.
+- Task 2 done: `RustcLink` + `link_rustc_output`; `link_args`/`link_line` take `&[PathBuf]`;
+  shims under a work dir. `exec/t2-images.sh`: hello/ui/async 0.3.0 vs t2 EQUAL. Ruling:
+  `shim_object`/`shim_archive` take `work: &Path` and `shim_archives`/`build_shims` drop
+  `project` (would be unused) — the plan kept `project` in their signatures.
+NEXT: Task 3 — read brief task-3-brief.md; `cargo test -p symdev-cli --offline sisx::tests`.
