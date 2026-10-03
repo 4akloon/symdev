@@ -79,3 +79,33 @@ fn a_file_the_sdk_does_not_have_is_named_with_where_it_was_looked_for() {
     assert!(e.contains("nosuch.dso"), "{e}");
     assert!(e.contains("epoc32/release/armv5/lib"), "{e}");
 }
+
+#[test]
+fn a_file_in_both_directories_is_taken_from_urel_as_the_line_searches_it() {
+    // The line puts `-L…/urel` before `-L…/lib`; on FP2 `exiflib.lib` is in both.
+    let tmp = tempfile::tempdir().unwrap();
+    let epocroot = sdk(&tmp.path().join("sdk"));
+    let armv5 = epocroot.join("epoc32/release/armv5");
+    fs::write(armv5.join("lib/both.lib"), archive(&object(2))).unwrap();
+    fs::write(armv5.join("urel/both.lib"), archive(&object(41))).unwrap();
+    let cache = SdkLldCache::at(tmp.path().join("cache"));
+    let copy = cache.ensure(&epocroot, &names(&["both.lib"])).unwrap();
+    assert!(copy.urel().join("both.lib").is_file());
+    assert!(!copy.lib().join("both.lib").exists());
+}
+
+#[test]
+fn a_copy_that_lost_a_file_is_made_again() {
+    let tmp = tempfile::tempdir().unwrap();
+    let epocroot = sdk(&tmp.path().join("sdk"));
+    let cache = SdkLldCache::at(tmp.path().join("cache"));
+    let wanted = names(&["euser.dso", "usrt2_2.lib"]);
+    let copy = cache.ensure(&epocroot, &wanted).unwrap();
+    fs::remove_file(copy.lib().join("euser.dso")).unwrap();
+    let again = cache.ensure(&epocroot, &wanted).unwrap();
+    assert_eq!(again, copy);
+    assert_eq!(
+        fs::read(again.lib().join("euser.dso")).unwrap(),
+        dso(b"\0\0")
+    );
+}

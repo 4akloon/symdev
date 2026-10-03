@@ -22,7 +22,9 @@ use crate::sdk_lld_copy::SdkLldCopy;
 /// a link names costs a few milliseconds per build.
 ///
 /// A copy is written into a staging directory and renamed into place, so a half-made copy
-/// is never seen; when two builds race, the second rename fails and its copy is dropped.
+/// is never seen; when two builds race, the second rename fails and its copy is dropped. A
+/// copy missing one of its files is made again. A staging directory a killed build left
+/// behind (`.staging-<pid>-<nanos>`) stays until removed by hand: it is never read.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SdkLldCache {
     root: PathBuf,
@@ -33,8 +35,9 @@ impl SdkLldCache {
     pub const DIR: &'static str = "cache/sdk-lld";
     /// Part of every key: change it when a fix rule changes.
     const RULES: &'static str = "symdev sdk-lld 1: dso strtab padding, lib TARGET2";
-    /// The SDK directories a Rust link line names, under `epoc32/release/armv5`.
-    const DIRS: [&'static str; 2] = ["lib", "urel"];
+    /// The SDK directories a Rust link line names, under `epoc32/release/armv5`, in the
+    /// order its `-L` options search them (`exiflib.lib`, for one, is in both).
+    const DIRS: [&'static str; 2] = ["urel", "lib"];
 
     pub fn at(root: PathBuf) -> Self {
         Self { root }
@@ -61,7 +64,14 @@ impl SdkLldCache {
             files.insert((dir, name.clone()), (path, bytes));
         }
         let dir = self.root.join(Self::key(epocroot, &files)?);
-        if !dir.is_dir() {
+        let complete = files
+            .keys()
+            .all(|(d, name)| dir.join(d).join(name).is_file());
+        if !complete {
+            // A copy someone pruned by hand: made again, whole.
+            if dir.exists() {
+                fs::remove_dir_all(&dir).map_err(|e| at(&dir, e))?;
+            }
             self.make(&dir, &files)?;
         }
         Ok(SdkLldCopy::at(dir))
