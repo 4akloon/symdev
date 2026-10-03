@@ -1946,7 +1946,8 @@ git commit -m "Build the no_std examples as binaries that cargo links through sy
 
 The wrapper finds the sysroot from its own path, so that path must be the link's, not
 `symdev`'s. In `~/src/cargo-run-scratch/sdk1/symbian-rs/examples/std-hello`, write
-`build/symdev-rustc` as `#!/bin/sh\necho "$0" >> /tmp/../$HOME/src/cargo-run-scratch/argv0.txt\nexec rustc --sysroot "$(dirname "$0")/sysroot" "$@"`,
+`build/symdev-rustc` as `#!/bin/sh\necho "$0" >> $HOME/src/cargo-run-scratch/argv0.txt\nexec rustc --sysroot "$(dirname "$0")/sysroot" "$@"`
+(and `build/sysroot` as H4 laid it out),
 with `[build] rustc = "build/symdev-rustc"`. Run `cargo build --release` from the project
 and from `src/`. Record `argv0.txt` in `docs/research/wip/cargo-run.md`.
 Expected: an absolute `<project>/build/symdev-rustc` both times. If it is relative, resolve
@@ -2013,16 +2014,11 @@ linker = "symdev-ld"
 runner = "symdev run --exe"
 ```
 
-- [ ] **Step 5: Run the tests and a real `std` build**
+- [ ] **Step 5: Run the tests**
 
-Run Step 3's commands; expected: pass. Then, with the experiment 114 environment:
-`symdev build` once in `symbian-rs/examples/std-hello`. Until Task 15 that is still 0.3.0's
-path, and it makes nothing new, so call `StdSysroot` through a scratch `symdev` built from
-this commit, or run Task 15 first if you prefer. Then plain `cargo build --release`. Expected:
-`Compiling std v0.0.0 (<project>/build/sysroot/lib/rustlib/src/rust/library/std)`, and
-`build/stdhello.sisx`. Its uncompressed size differs from 0.3.0's 124 212 only by `std`'s
-path strings (experiment 114 §1.4: 124 920 at that path length); note the number in the wip
-file.
+Run Step 3's commands; expected: pass. The real `std` build (`Compiling std v0.0.0
+(<project>/build/sysroot/lib/rustlib/src/rust/library/std)` and `build/stdhello.sisx`) needs
+`symdev build` to call `StdSysroot`, which Task 15 does; it is Task 15's Step 5.
 
 - [ ] **Step 6: Commit**
 
