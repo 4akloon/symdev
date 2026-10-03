@@ -3629,3 +3629,269 @@ developer's own flags (environment or config, by cargo's own precedence) reach e
 crate as they do in the application's build. `CARGO_ENCODED_RUSTFLAGS` merging was
 rejected because it drops config-file rustflags (row i), profile rustflags because they
 reach host build scripts and change every crate's metadata (row e).
+
+## 112. elf2e32 reads lld ELFs, and 8-byte import stubs bring an lld link to GNU ld's size (rust-lld RL1–RL2, Rust SDK)
+
+**Question.** Experiment 109 linked Rust applications with `rust-lld` and no GCCE, but
+through a forked elf2e32 and at the price of lld's PLT (+2–8 % `.exe`). Can the product
+elf2e32 read lld ELFs without changing a byte for GNU ld ELFs, and can the PLT go?
+
+**Setup.** Branch `rl-elf2e32` (worktree `~/worktrees/symdev/rl-elf2e32`), 2026-10-03.
+Inputs are experiment 109's: the no-GCCE argv `~/src/rust-lld-spike/nogcce/<app>/argv`
+(hello, async, shim = the leave probe, ui), the spike's GNU argv for the fifteen other
+examples (`logs/gnu-ex-<ex>.argv`), its fixed SDK copies (`dso-fixed/`, `sdk-fixed/`),
+the prebuilt runtime and shims (`prebuilt/lib`), its GNU and lld-PLT images (`e32/`,
+`batch/`). `rust-lld` 23.1.1 from `nightly-2026-09-19`. Scratch: `~/src/rl-scratch/`.
+
+### 1. The product elf2e32 on an lld ELF
+
+`ElfLinker` (`crates/symdev-elf2e32/src/elf/linker.rs`) says which linker wrote an ELF:
+lld appends `Linker: LLD <version>` to `.comment` in every non-relocatable link
+(`rust-lld` writes `Linker: LLD 23.1.1 (…)`); GNU ld 2.29.1 writes no linker string, its
+`.comment` holds only the inputs' compiler strings. `rust-lld -r` writes none either, so
+an lld-relocated object linked by GNU ld is read as GNU's. A missing or stripped
+`.comment` reads as GNU's, which refuses an lld ELF exactly as before (tested).
+
+The five rules of experiment 109 §3 live in `elf/lld.rs`, each labelled *derived from the
+ARM ABI / lld behaviour, verified in EKA2L1 (experiment 109); never observed from the SDK's
+elf2e32* — the narrow exception to "not observed → error" the owner accepted for lld ELFs
+only. For a GNU ELF every rule answers as the observed elf2e32 does:
+
+| rule | lld ELF | call site |
+|---|---|---|
+| (a) | an import slot's word is the addend only for `R_ARM_ABS32`; `GLOB_DAT`/`JUMP_SLOT` resolve to `S` (lld fills `.got.plt` with PLT0) | `relocs.rs`, `code_section.rs` |
+| (b) | no writable `PT_LOAD` (lld drops empty ones): empty data at the `.data` section's address; no `.data` → an error naming the fix | `layout.rs` |
+| (c) | the exception descriptor is looked up in `.symtab` | `layout.rs` |
+| (d) | a symbol-less `R_ARM_RELATIVE` targets the word as linked | `relocs.rs` |
+| (e) | a target one past the code (`.ARM.exidx$$Limit`) is a code relocation | `reloc_section.rs` |
+
+**Golden.** `testdata/hello_lld.elf.hex` is the spike's no-GCCE `hello` relinked with
+`-z max-page-size=0x1000` (22 KB instead of 79 KB, same image); `hello_lld.exe.hex` and
+`hello_lld_uncompressed.exe.hex` are its E32 images, byte-equal (masking time and CRC) to
+the forked elf2e32's `nogcce/hello.exe` that ran in EKA2L1. `elf2e32/tests/experiment_109.rs`:
+the golden, detection both ways, the refusal without `.comment`, and one test per rule —
+`cargo test -p symdev-elf2e32`: 60 passed, every earlier GNU golden unchanged.
+
+**GNU unchanged, lld as the fork.** This elf2e32 on the spike's ELFs: the four GNU ELFs
+give main's images byte for byte, the four lld ELFs the fork's; the fifteen batch examples
+the same for both linkers (`~/src/rl-scratch/cmp/cmp4.sh`, `cmp15.sh`).
+
+### 2. lld has no 8-byte PLT
+
+lld's ARM PLT entry is fixed: 16 bytes (12 of code, `d4d4d4d4` padding) plus a 4-byte
+`.got.plt` slot, after a 32-byte header and three reserved GOT words. On `hello` `.plt` and
+`.got` stay 0x120 / 0x4c with each of `-z now`, `-z lazy`, `--pic-veneer`,
+`-z noseparate-code`, `--no-rosegment`, `--hash-style=sysv`; `--help` lists no ARM PLT
+option. GNU ld's symbianelf PLT entry is 8 bytes, `ldr pc, [pc, #-4]` and a word that
+elf2e32 turns into the import, with no header.
+
+### 3. The stubs: GNU's PLT entry, made outside lld
+
+`ImportStubs` (`crates/symdev-elf2e32/src/import_stubs.rs`) writes GNU ld's entry into an
+object and lets `--wrap` route the calls to it. Two links of the same inputs:
+
+1. **First link**, the experiment 109 line unchanged. `ImportStubs::from_first_link` reads
+   its `R_ARM_JUMP_SLOT` symbols — the imported functions the program *calls* (refused
+   unless `ElfLinker` says lld). Imports only taken by address are `R_ARM_ABS32` and need
+   no stub, as with GNU ld.
+2. **The object.** `ImportStubs::object` writes an ELF32 ARM `ET_REL` directly (≈130
+   lines, no assembler, so no GCCE): section `.text.symdev_import_stubs`, per function
+   `f` at `8 × i` the word `ldr pc, [pc, #-4]` (`0xe51ff004`) and a zero word with an
+   `R_ARM_ABS32` against `__real_f`; `__wrap_f` a hidden global function of size 8;
+   mapping symbols `$a`/`$d`; `EF_ARM_EABI_VER5`. binutils 2.29.1 `objdump` disassembles it
+   as intended. Chosen over `rustc --emit=obj` of a `global_asm!`, which needs a rustc run
+   with the target's `core` per build.
+3. **Second link** = the first line + `stubs.o` + `--wrap=f` per function. Every call to
+   `f` reaches `__wrap_f`; the stub's word, `R_ARM_ABS32` against `__real_f` = `f`, is an
+   ordinary absolute import that elf2e32 reads as GNU's (rule (a) does not even apply).
+   The second link has **no `R_ARM_JUMP_SLOT`, no `.plt`, no `.got.plt`** (checked on every
+   link below). `ldr pc` interworks on ARMv5T, and a Thumb `bl __wrap_f` becomes `blx`.
+
+The driver is `examples/import_stubs.rs` (`import_stubs <first.elf> <stubs.o>`, prints the
+functions); `~/src/rl-scratch/stubs/link2.py <app> [--place=…] [--sandbox]` runs the two
+links and the post-link and prints the sizes.
+
+### 4. Sizes
+
+The four applications (`link2.py`, stubs placed after the other inputs; `.exe`
+compressed, then uncompressed, as symdev writes them):
+
+| | GNU ld | lld + stubs | lld PLT (exp. 109) | stubs |
+|---|---:|---:|---:|---:|
+| `hello` | 968 / 1 340 | 975 / 1 348 | 1 044 / 1 584 | 16 |
+| `async` | 18 431 / 33 948 | **18 360** / 33 892 | 18 577 / 34 684 | 61 |
+| leave probe (`shim`) | 4 452 / 7 092 | 4 464 / 7 112 | 4 572 / 7 552 | 32 |
+| `ui` | 10 315 / 17 092 | **10 288** / 17 028 | 10 511 / 17 936 | 71 |
+
+The stubs cost what GNU's PLT costs, 8 bytes per called import. `async` and `ui` come out
+*smaller* than GNU: GNU ld also gives the image's own global functions PLT entries
+(async 69 − 61 = 8, ui 80 − 71 = 9 — `symbian-libcalls`' `__atomic_*`, the shim's
+`symrs_app_*`), while lld with `-Bsymbolic` calls them directly. The residue against GNU
+is the exception index (section 5).
+
+The fifteen other workspace examples (`~/src/rl-scratch/stubs/ex15.py`: the spike's GNU
+argv remapped to the no-GCCE set as `nogcce-link.py` does, both links in the sandbox of
+section 7, post-linked by this branch's elf2e32, compared with the spike's `batch/`):
+
+| example | GNU ld | lld + stubs | lld PLT | uncompressed GNU / stubs |
+|---|---:|---:|---:|---:|
+| `hello-raw` | 805 | 807 | 867 | 1 080 / 1 084 |
+| `alloc` | 3 765 | 3 774 | 3 848 | 5 932 / 5 940 |
+| `spawnee` | 2 606 | 2 609 | 2 690 | 4 408 / 4 412 |
+| `files` | 8 288 | 8 289 | 8 444 | 14 292 / 14 292 |
+| `cleanup` | 4 265 | 4 272 | 4 368 | 6 824 / 6 828 |
+| `atomics` | 8 837 | 8 796 | 8 949 | 15 920 / 15 848 |
+| `time` | 10 146 | 10 159 | 10 220 | 16 544 / 16 552 |
+| `net` | 10 506 | 10 504 | 10 734 | 17 624 / 17 616 |
+| `tls` | 13 978 | 13 938 | 14 079 | 25 944 / 25 920 |
+| `ui-list` | 11 194 | 11 158 | 11 452 | 18 636 / 18 580 |
+| `notes` | 11 465 | 11 426 | 11 699 | 19 072 / 19 012 |
+| `query` | 12 673 | 12 642 | 12 854 | 20 992 / 20 936 |
+| `panic` | 2 018 | 2 029 | 2 125 | 2 964 / 2 972 |
+| `fmt` | 107 777 | 107 754 | 107 744 | 262 416 / 262 412 |
+| `locale` | 8 122 | 8 109 | 8 250 | 13 296 / 13 288 |
+
+**All fifteen link and post-link; the import words are identical per DLL in every one**
+(`e32cmp.py` against the GNU image). Against GNU the stubs builds lie between −72 and +8
+bytes uncompressed, −41 and +13 compressed. `DT_NEEDED` is identical except `notes` and
+`query`, where GNU keeps `eikcoctl` (experiment 109 §6: `--as-needed` decided before
+`--gc-sections`); neither image imports from it.
+
+### 5. The one known difference: the exception index
+
+`hello` is 8 bytes larger uncompressed than GNU, and its code is the same. The bytes are
+one `.ARM.exidx` entry (`readelf -u`: GNU 7 entries, lld + stubs 8). It is **not** the
+`__ARMv4PILongBXThunk_RunThread` thunk's entry, as first read: GNU ld has the same 16-byte
+veneer for `_E32Startup`'s conditional `bls RunThread` into Thumb (`.emb_text.__stub`,
+0x10, in its map), and the extra entry's address is the *end* of
+`__cpp_initialize__aeabi_`, where the thunk merely starts. It is lld's terminating
+sentinel. A synthetic link with no thunk at all — `f1` with inline unwind data, then `f2`
+with `.cantunwind` — gives 3 entries from rust-lld (a `CANTUNWIND` sentinel at `f2 + 4`)
+and 2 from GNU ld 2.29.1: lld always closes the table, even after a `CANTUNWIND` entry;
+GNU adds a terminator only when the last entry is not one.
+
+In the larger images a second effect adds to it (entries GNU / lld + stubs: hello 7 / 8,
+async 27 / 30, shim 18 / 21, ui 38 / 42). In `shim`, `_Unwind_GetRegionStart`,
+`_Unwind_GetLanguageSpecificData` and `_Unwind_GetDataRelBase` (libgcc's `pr-support.o`)
+carry the same inline data `0x80a8b0b0`: GNU merges identical adjacent entries inside one
+input `.ARM.exidx`, lld only drops whole input sections that duplicate their predecessor,
+so it keeps two entries GNU merged. The sentinel is in every lld image (`hello-raw`,
+`alloc`, `spawnee`, `cleanup`, `time`, `panic`, `files`: 7 entries GNU, 8 lld). The
+`-Bsymbolic` saving outweighs both effects in `async`, `ui` and eight examples; they are
+what is left in the images still 4 to 20 bytes larger than GNU uncompressed.
+
+Attempts (`~/src/rl-scratch/exidx/`: `relink.py <app> <stem> [lld args]` reruns the second
+link and the post-link; `README`):
+
+| attempt | result |
+|---|---|
+| an lld option | none: `--help` has only `--merge-exidx-entries` (the default) and `--no-merge-exidx-entries` |
+| `--no-merge-exidx-entries` | worse: hello 8 → 12 entries, 1 348 → 1 380 bytes; shim 21 → 32 |
+| `--symbol-ordering-file` with `_E32Startup`, so `__cpp_initialize__aeabi_`'s `CANTUNWIND` follows the stubs' and merges | no effect: lld does not reorder the SDK's `.emb_text` input sections (ordering a `.text` symbol, `RunThread`, works) |
+| `--symbol-ordering-file` listing every function with real unwind data first (from the link's own `.ARM.exidx`), so the `CANTUNWIND` runs merge | compensates, does not remove: hello 969 / 1 340 (7 entries), async 18 388 / 33 864, shim 4 455 / 7 096, ui 10 267 / 16 980. Always smaller uncompressed, but compressed `async` grows by 28 bytes against the plain stubs link |
+
+**Decision: the sentinel and the unmerged entries stay, documented as the one known
+difference.** The ordering file moves code away from link order for a few bytes, needs a
+third input from the first link and would need its own emulator proof; it remains an
+option for RL3 if a byte budget ever asks for it.
+
+### 6. In EKA2L1
+
+Each image went in unchanged: `link2.py`'s `final.exe` copied over the spike project's
+`build/<name>.exe`, `symdev package` (this branch's symdev; it packages, it does not build)
+and `symdev run` / `symdev test --emulator`, one run at a time under
+`flock ~/.local/share/EKA2L1/.symdev-agent.lock`, the PID-bound screenshot of
+experiment 109's `runshot.py`, `kill -9` of that PID only. After each run the installed
+`E:\sys\bin\<name>.exe` was `cmp`-equal to `final.exe`. symdev's own post-link of the same
+ELFs gives the same images: `e2e.sh` (the argv `final.exe` is made with) on the GNU ELFs
+gives symdev's GNU `.exe` except the time and the CRC.
+
+| | GNU (experiment 109) | lld + stubs |
+|---|---|---|
+| `hello` | `Trying to display: Hello from Rust SDK (19 chars)` | the same; screenshot 0 pixels from GNU's |
+| leave probe | `lld109 mkdirall=0 trapped=-1 bad=0 ensured=0 sign=-42 alive` | **the same**: the leave is raised through a stubbed `User::LeaveIfError`, caught by the shim's `TRAP`, the process goes on; 0 pixels |
+| `ui` | "Bars", `bars=3 keys=0 cmd=0`; F1, F1 → `bars=4 keys=0 cmd=1` | the same; 84 pixels differ before and after, all in the box (527,157)–(554,165): the status-pane clock |
+| `async` | `symdev test --emulator`: 15 passed | **15 passed** (one 300 ms sleep 328 ms; two together 312; in sequence 625; race 109) |
+
+Screenshots: `~/src/rl-scratch/shots/stubs-{hello,shim}-1.png`, `stubs-ui-cmd-{1,2}.png`
+(GNU's: `~/src/rust-lld-spike/shots/`). The fifteen examples of section 4 were linked and
+post-linked, not run.
+
+### 7. Without GCCE
+
+`link2.py --sandbox` and `ex15.py` run both rust-lld links and `import_stubs` inside
+`bwrap --dev-bind / / --tmpfs ~/gcc-builds` under `strace -f -e trace=%file`. **All 19
+programs link with zero accesses to `~/gcc-builds`**; the files opened are rust-lld's own
+libraries, the fixed SDK copies, `prebuilt/lib`, the Rust archives and `stubs.o`. The four
+sandboxed images equal the unsandboxed ones except the time and the CRC.
+
+### 8. Wiring it into symdev-build (RL3)
+
+Everything below was run by scripts outside symdev; none of it is in `symdev-build` yet.
+What RL3 needs, in the order a build meets it:
+
+* **Opt-in.** GNU ld stays the default and C++/MMP projects keep it (their line is
+  byte-verified against the SDK's). The switch is build configuration, not something the
+  phone needs before launch, so it does not belong in `symdev.toml`: an environment
+  variable beside the other toolchain ones (e.g. `SYMDEV_RUST_LINKER=lld`) or a `symdev
+  build` flag — the owner's call. With it on, a Rust build stops requiring `SYMDEV_GXX`,
+  `SYMDEV_LD`, `SYMDEV_GCC_LIB`, `SYMDEV_GCC_TARGET_LIB` and `SYMDEV_AR`.
+* **Finding rust-lld.** It ships in the pinned nightly's `rustc` component (listed in
+  `lib/rustlib/manifest-rustc-x86_64-unknown-linux-gnu`; no extra component):
+  `$(rustc --print sysroot)/lib/rustlib/<host>/bin/rust-lld`, `<host>` from `rustc -vV`,
+  `rustc` run in the project so `rust-toolchain.toml` picks the nightly
+  (`RustToolchainFile` already checks it is the SDK's). Override: `SYMDEV_RUST_LLD`. Run
+  as `rust-lld -flavor gnu`.
+* **The link line.** `RustBuild::link_args` (`driver/rust_link.rs`) with experiment 109
+  §2's seven changes: no `--default-symver`; `-L` to the fixed DSO cache and the fixed
+  `urel` cache; `-z notext`; `-T symbian-lld.ld` (31 lines, MIT, shipped in `rust-sdk`);
+  `--target2=abs`; `-Bsymbolic`; GUI only `--defsym=symrs_uid3=0x<uid3>`. The GCCE `-L`
+  paths become the `rust-sdk` package's `lib/` (prebuilt `libsupc++.a`/`libgcc.a`
+  closure); `build_shims` and the case-fold overlay are skipped; the shim archive is the
+  package's prebuilt `libsymrs.a` (+ `libsymrs_ui.a` for a GUI program, before it).
+* **The stubs, a second link.** Link once to `<name>.first.elf`; `ImportStubs::
+  from_first_link(&ElfImage::parse(..)?)?`; write `ImportStubs::object()` to
+  `build/import_stubs.o`; link again with that object appended after the other inputs
+  and `--wrap=<f>` for each of `functions()`; check the result has no `R_ARM_JUMP_SLOT`
+  (an error naming the symbol otherwise) and post-link it as today. Both links take the
+  same argv apart from the output, the object and the `--wrap` list; the first one's
+  `.map` can be dropped. If `functions()` is empty the first link is the result. Cost:
+  one more rust-lld run: 0.03 s for `fmt`, the largest (262 KB of code).
+* **SDK fixes, a local cache.** Made once at `symdev sdk install` (or lazily, keyed by
+  the SDK file's hash) under `SYMDEV_HOME`, never shipped — they are SDK bytes: (1) every
+  `.dso` the line names, with the `.strtab` padding after the last NUL zeroed (428 of
+  570 need it; no size or offset changes; `fix-dso.py`); (2) `usrt2_2.lib` with its one
+  `R_ARM_TARGET2` (`callfirstprocessfn.o`) rewritten to `R_ARM_ABS32` in place
+  (`fix-target2.py`); `eexe.lib` is used as is.
+* **Prebuilt shims and runtime** come from the `rust-sdk` package (another agent builds
+  them): `libsymrs.a`/`libsymrs_ui.a` already `TARGET2`-rewritten (3 and 7 relocations),
+  the Avkon shim taking its UID from the `symrs_uid3` symbol, the `libsupc++`/`libgcc`
+  closure of experiment 109 §1.
+* **elf2e32** needs nothing more: `ElfLinker` picks the five rules from `.comment`.
+* **Acceptance**, as here: every example GNU vs lld (import words per DLL, `DT_NEEDED`,
+  sizes), the four emulator runs, a build inside `bwrap --tmpfs` over the GCCE
+  directory. The `.ARM.exidx` sentinel (section 5) is the expected size difference.
+* **Not covered:** a Rust DLL (exports, `edll.lib`), `std` examples, a device.
+
+### Conclusion
+
+**The PLT price is gone.** With 8-byte stubs made by a 130-line object writer and a
+second link, rust-lld produces images within −72…+20 bytes of GNU ld's uncompressed, on
+all nineteen programs; ten of them come out smaller than GNU's. The product elf2e32
+reads them through five rules gated on lld's `.comment` string, labelled as derived from
+the ABI and lld and verified in EKA2L1, and gives GNU ELFs the same bytes as before. In the
+emulator the stubs builds behave as GNU's, including a caught leave and the fifteen async
+tests; no GCCE file is touched. The one known difference is lld's terminating
+`.ARM.exidx` entry (and duplicate entries it does not merge inside one input section),
+which no lld option removes.
+
+**Evidence.** 2026-10-03, this host. Code on branch `rl-elf2e32`:
+`crates/symdev-elf2e32/src/elf/{linker,lld}.rs`, `import_stubs.rs`,
+`import_stubs/{object,tests}.rs`, `examples/import_stubs.rs`,
+`src/elf2e32/tests/experiment_109.rs`, `src/testdata/hello_lld*`. Outside git,
+`~/src/rl-scratch/`: `stubs/link2.py`, `stubs/ex15.py` (+ `ex15.log`),
+`stubs/<app>/{argv,first.elf,stubs.o,final.elf,final.exe,*.strace}`,
+`stubs/ex/<example>/`, `stubs/async-test.log`, `stubs/ld-stubs` (an unused `SYMDEV_LD`
+wrapper: the spike projects cannot be rebuilt, their `Cargo.toml` names the deleted
+spike worktree), `exidx/` (the synthetic link, `relink.py`, `unwound-first.sh`), `cmp/`,
+`golden/`, `shots/`, `runshot.py`. Spike inputs in `~/src/rust-lld-spike/`.

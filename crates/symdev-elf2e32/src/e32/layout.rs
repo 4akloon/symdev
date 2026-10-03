@@ -19,21 +19,26 @@ impl E32Layout {
 
     pub fn from_elf(elf: &ElfImage) -> Result<Self> {
         let code = elf.code_segment()?;
-        let data = elf.data_segment().ok_or_else(|| {
-            Error::Other("TODO: ELF without a writable PT_LOAD (not observed)".into())
-        })?;
+        let data = match elf.data_segment() {
+            Some(data) => data,
+            None => elf.lld_empty_data_segment()?.ok_or_else(|| {
+                Error::Other("TODO: ELF without a writable PT_LOAD (not observed)".into())
+            })?,
+        };
         let entry_point = elf
             .entry()
             .checked_sub(code.vaddr)
             .ok_or_else(|| Error::Other(format!("ELF entry {:#x} below code base", elf.entry())))?;
-        let descriptor = elf
-            .dynamic_symbol(Self::EXCEPTION_DESCRIPTOR_SYMBOL)?
-            .ok_or_else(|| {
-                Error::Other(format!(
-                    "TODO: ELF without {} (not observed)",
-                    Self::EXCEPTION_DESCRIPTOR_SYMBOL
-                ))
-            })?;
+        let descriptor = match elf.dynamic_symbol(Self::EXCEPTION_DESCRIPTOR_SYMBOL)? {
+            Some(descriptor) => Some(descriptor),
+            None => elf.lld_hidden_symbol(Self::EXCEPTION_DESCRIPTOR_SYMBOL)?,
+        };
+        let descriptor = descriptor.ok_or_else(|| {
+            Error::Other(format!(
+                "TODO: ELF without {} (not observed)",
+                Self::EXCEPTION_DESCRIPTOR_SYMBOL
+            ))
+        })?;
         let descriptor = descriptor.checked_sub(code.vaddr).ok_or_else(|| {
             Error::Other(format!(
                 "exception descriptor {descriptor:#x} below code base"

@@ -33,6 +33,15 @@ impl ElfImage {
         self.sections.iter().copied().find(|s| s.kind == kind)
     }
 
+    /// The first section with this name. A name that cannot be read matches nothing, so a
+    /// damaged name table never fails an ELF that does not need the section.
+    pub(super) fn section_named(&self, name: &str) -> Option<ElfSection> {
+        self.sections.iter().copied().find(|s| {
+            self.string(self.section_names, s.name)
+                .is_ok_and(|n| n == name)
+        })
+    }
+
     pub(super) fn string(&self, strtab: usize, at: usize) -> Result<String> {
         let table = self
             .sections

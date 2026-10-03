@@ -44,7 +44,7 @@ impl E32RelocSection {
             if !(base..base + len).contains(&rel.vaddr) {
                 continue;
             }
-            let kind = if code.contains(&rel.target) {
+            let kind = if elf.linker().code_contains(&code, rel.target) {
                 Self::KIND_TEXT
             } else if data.contains(&rel.target) {
                 Self::KIND_DATA

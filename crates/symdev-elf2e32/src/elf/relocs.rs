@@ -35,9 +35,28 @@ impl ElfImage {
                 dso: version.dso.clone(),
                 symbol: self.string(dynsym.link, rel.symbol_name)?,
                 vaddr: rel.vaddr,
+                addend_in_place: self.linker.import_addend_in_place(rel.kind),
             });
         }
         Ok(out)
+    }
+
+    /// Undefined symbols that `R_ARM_JUMP_SLOT` relocations name, in file order: the
+    /// imported functions an lld link calls through its PLT (GNU ld's symbianelf PLT uses
+    /// `R_ARM_GLOB_DAT` instead).
+    pub fn plt_imports(&self) -> Result<Vec<String>> {
+        let dynsym = self
+            .section(Self::SHT_DYNSYM)
+            .ok_or_else(|| Error::Other("ELF has no .dynsym".into()))?;
+        self.dynamic_relocs()?
+            .into_iter()
+            .filter(|rel| {
+                rel.kind == Self::R_ARM_JUMP_SLOT
+                    && rel.symbol != 0
+                    && rel.symbol_section == Self::SHN_UNDEF
+            })
+            .map(|rel| self.string(dynsym.link, rel.symbol_name))
+            .collect()
     }
 
     /// Dynamic relocations against defined symbols (the image's own fixups), in file order.
@@ -56,9 +75,13 @@ impl ElfImage {
                     rel.kind, rel.vaddr
                 )));
             }
+            let target = match self.lld_relative_target(&rel)? {
+                Some(target) => target,
+                None => rel.symbol_value,
+            };
             out.push(ElfLocalReloc {
                 vaddr: rel.vaddr,
-                target: rel.symbol_value,
+                target,
                 absolute: rel.kind != Self::R_ARM_RELATIVE,
                 addend_in_place: rel.kind == Self::R_ARM_ABS32,
             });
