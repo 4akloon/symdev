@@ -31,7 +31,7 @@ jobs:
       # argument of `cargo rustc`, experiment 111.)
       RUSTFLAGS: -D warnings
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # Pinned to workspace.package.rust-version in Cargo.toml — bump both together.
       - name: Install Rust 1.98.1
@@ -41,7 +41,7 @@ jobs:
           rustc --version
 
       - name: Cache cargo registry and target
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -93,7 +93,7 @@ jobs:
       # The self-signed key is generated per run and thrown away with the runner.
       SYMDEV_SIGN_PASSWORD: ci-throwaway
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Rust 1.98.1 and the Rust SDK's nightly
         run: |
@@ -103,7 +103,7 @@ jobs:
             --profile minimal --component rust-src
 
       - name: Cache cargo registry and target
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -117,7 +117,7 @@ jobs:
       # fork's own workflow), can restore this branch's caches, so a cached SDK would be a
       # copy anyone could take. The SDK (about 5 MB) downloads on every run.
       - name: Cache the installed GCCE package
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.local/share/symdev/gcce
           key: symdev-gcce-${{ hashFiles('crates/symdev-sdk/src/pins.rs') }}
@@ -153,7 +153,7 @@ jobs:
             (cd "$dir" && symdev build && symdev package)
           done
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: examples-sisx
           path: |
