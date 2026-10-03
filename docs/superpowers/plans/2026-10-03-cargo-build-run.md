@@ -2477,3 +2477,162 @@ symdev branch)`. `symdev emulator stop <id>` calls `EmulatorInstance::stop`.
 git add crates/symdev-emulator crates/symdev-cli/src/devices_cmd.rs crates/symdev-cli/src/cli.rs crates/symdev-cli/src/main.rs
 git commit -m "Talk to EKA2L1's control server, start emulators of our own, and list them with symdev devices."
 ```
+
+### Task 13: The runner: `symdev run --exe` and `symdev run`
+
+**Files:**
+- Create: `crates/symdev-cli/src/run.rs`, `run/{exe_target,app_exit,runner,log_tail,interrupt,device_pick}.rs`, `run/tests.rs`
+- Modify: `crates/symdev-cli/src/cli.rs` (`Run { exe: Option<PathBuf>, args: Vec<String> }`), `crates/symdev-cli/src/main.rs` (`run_project` goes; `Run` → `run::run`)
+- Modify: `crates/symdev-cli/Cargo.toml` (`ctrlc = "3"`: run `cargo fetch` once online first)
+- Create: `crates/symdev-cli/tests/run_exe.rs`, `crates/symdev-cli/tests/common/fake_control.rs`
+
+**Interfaces:**
+- Consumes: Task 4 (`LinkRecord`, `LinkKind`), Tasks 10–12 (profiles, registry, choice, client, instance).
+- Produces:
+  - `ExeTarget::of(exe: &Path, cwd: &Path) -> Result<ExeTarget>`, with `pub image`, `pub
+    sisx`, `pub uid3: u32` (from the E32 header, offset 8, after checking UID1 `0x1000007a`
+    at offset 0) and `pub kind: LinkKind` (from `<image>.symdev.toml`).
+    `ExeTarget::installed(sisx, uid3)` is for `symdev run` without `--exe`.
+  - `AppExit { pub code: u8, pub message: Option<String> }`, with `AppExit::of(&AppExited)`,
+    `AppExit::interrupted()` (130) and `AppExit::emulator_closed(&DeviceId)`.
+  - `Runner::new(target, device: RegistryEntry, client: ControlClient)` and `run(&mut self,
+    interrupt: &Interrupt, out: &mut dyn Write) -> Result<AppExit>`. Task 14 extends it for
+    tests.
+  - `pick_device(terminal: bool) -> Result<RegistryEntry>` (`run/device_pick.rs`):
+    `SYMDEV_DEVICE`, the registry, profiles (auto-created as in Task 12), `DeviceChoice`, the
+    prompt on stderr/stdin, and `EmulatorInstance::start` for `Choice::Start`.
+
+| `AppExited` | `AppExit` |
+|---|---|
+| `kill`, reason 0, category `None` (ended by itself, README) | 0, no message |
+| `panic`, any | 101, `panicked: <category> <reason>` |
+| `kill` with another category or reason, or `terminate` | 1, `<kill\|terminate>: <category> <reason>` |
+| the control connection closes | 1, `emulator-<n> was closed` |
+| Ctrl+C | 130, no message (the runner sent `app.kill`; the emulator stays) |
+
+- [ ] **Step 1: Write the failing unit tests** — `run/tests.rs`
+
+```rust
+use std::path::Path;
+use std::time::{Duration, SystemTime};
+
+use super::{AppExit, ExeTarget};
+use crate::ld::{LinkKind, LinkRecord};
+use symdev_emulator::control::{AppExited, ExitType};
+
+fn image(dir: &Path, rel: &str, uid3: u32) -> std::path::PathBuf {
+    let p = dir.join(rel);
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    let mut h = vec![0u8; 0x9c];
+    h[0..4].copy_from_slice(&0x1000_007a_u32.to_le_bytes());
+    h[8..12].copy_from_slice(&uid3.to_le_bytes());
+    std::fs::write(&p, h).unwrap();
+    std::fs::write(format!("{}.sisx", p.display()), b"sisx").unwrap();
+    LinkRecord { kind: LinkKind::Main }.write(Path::new(&format!("{}.symdev.toml", p.display()))).unwrap();
+    p
+}
+
+#[test]
+fn a_relative_exe_is_resolved_against_the_working_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let abs = image(dir.path(), "app/build/cargo/arm-symbian-e32/debug/app", 0xe1234567);
+    let t = ExeTarget::of(Path::new("../build/cargo/arm-symbian-e32/debug/app"), &dir.path().join("app/src")).unwrap();
+    assert_eq!(t.image.canonicalize().unwrap(), abs.canonicalize().unwrap());
+    assert_eq!((t.uid3, t.kind), (0xe1234567, LinkKind::Main));
+}
+
+#[test]
+fn a_sisx_older_than_its_image_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let img = image(dir.path(), "out/app", 1);
+    let old = SystemTime::now() - Duration::from_secs(60);
+    std::fs::File::options().write(true).open(format!("{}.sisx", img.display())).unwrap().set_modified(old).unwrap();
+    let e = ExeTarget::of(&img, dir.path()).unwrap_err().to_string();
+    assert!(e.contains("older than") && e.contains("cargo build"), "{e}");
+}
+
+#[test]
+fn an_image_without_a_sisx_was_not_linked_by_symdev_ld() {
+    let dir = tempfile::tempdir().unwrap();
+    let img = image(dir.path(), "out/app", 1);
+    std::fs::remove_file(format!("{}.sisx", img.display())).unwrap();
+    let e = ExeTarget::of(&img, dir.path()).unwrap_err().to_string();
+    assert!(e.contains("symdev-ld") && e.contains(".cargo/config.toml"), "{e}");
+}
+
+#[test]
+fn exits_map_as_the_spec_table_says() {
+    let ev = |t, reason, cat: &str| AppExited { uid: 1, pid: 2, name: "a".into(), exit_type: t, reason, category: cat.into() };
+    assert_eq!(AppExit::of(&ev(ExitType::Kill, 0, "None")), AppExit { code: 0, message: None });
+    assert_eq!(AppExit::of(&ev(ExitType::Panic, 3, "RUST")), AppExit { code: 101, message: Some("panicked: RUST 3".into()) });
+    assert_eq!(AppExit::of(&ev(ExitType::Kill, 0, "Kill")), AppExit { code: 1, message: Some("kill: Kill 0".into()) });
+    assert_eq!(AppExit::of(&ev(ExitType::Terminate, -1, "None")).code, 1);
+    assert_eq!(AppExit::interrupted(), AppExit { code: 130, message: None });
+    let id = symdev_emulator::device::DeviceId::parse("emulator-1").unwrap();
+    assert_eq!(AppExit::emulator_closed(&id).message.as_deref(), Some("emulator-1 was closed"));
+}
+
+#[test]
+fn arguments_after_the_exe_are_refused_until_observed() {
+    let e = super::refuse_arguments(&["a".into()]).unwrap_err().to_string();
+    assert!(e.contains("not observed"), "{e}");
+}
+```
+
+- [ ] **Step 2: Write the failing integration tests** — `tests/run_exe.rs`
+
+`common/fake_control.rs` is Task 12's fake server, plus a channel that reports each method it
+received. It also makes the fake device: `sleep 600` started through a link named
+`eka2l1-fake`, so `/proc/<pid>/comm` says `eka2l1-fake` and passes `is_eka2l1`. Each test sets
+`XDG_RUNTIME_DIR`, `XDG_DATA_HOME` and `HOME` to temp dirs, writes a
+`symdev/devices/emulator-1.toml` naming the fake's socket and the sleeper's PID, sets
+`SYMDEV_DEVICE=emulator-1`, and runs `symdev run --exe <image>`, where `<image>` is built
+as in Step 1. Then it kills the sleeper.
+
+| test | the fake answers | expected |
+|---|---|---|
+| `a_normal_exit_is_status_0` | subscribe, `apps.list` (not running), install, launch `{pid:7}`, then `event.app_exited` pid 7 `kill 0 None` | status 0; methods in that order |
+| `a_panic_is_101_and_prints_its_category_and_reason` | … then `panic 3 RUST` | status 101; stderr has `panicked: RUST 3` |
+| `a_running_app_is_killed_before_the_install` | `apps.list` has `running: true` for the UID | `app.kill` before `package.install` |
+| `ctrl_c_kills_the_app_and_leaves_the_emulator` | launch answers, then nothing | the test sends `kill -INT <child>` after it sees `app.launch`; status 130; `app.kill` received; the sleeper still alive |
+| `a_closed_emulator_is_reported` | after `app.launch`, closes the connection | status 1; stderr has `emulator-1 was closed` |
+| `several_devices_and_no_terminal_is_an_error` | two entries, no `SYMDEV_DEVICE`, stdin not a terminal | status 1; stderr lists both ids and names `SYMDEV_DEVICE` |
+
+- [ ] **Step 3: Run them to see them fail**
+
+Run: `cargo test -p symdev-cli --offline run::tests` and `cargo test -p symdev-cli --offline --test run_exe`.
+
+- [ ] **Step 4: Implement**
+
+`run.rs`: `pub(crate) fn run(exe: Option<PathBuf>, args: Vec<String>) -> Result<ExitCode>`.
+It calls `refuse_arguments(&args)?`; spec §6.6 says passing a command line to an app was
+never observed on the real system. The target is `ExeTarget::of(&exe, &cwd)` or, without
+`--exe`, `ExeTarget::installed(build/<name>.sisx, manifest uid3)`. Then
+`pick_device(std::io::stdin().is_terminal())`, `ControlClient::connect(&device.socket)`, and
+`Interrupt::install()` (`ctrlc::set_handler` storing an `AtomicBool`; cargo `exec`s the
+runner for `cargo run`, so the terminal's SIGINT reaches it). It runs the `Runner`, prints
+the message to stderr, and returns `ExitCode::from(code)`.
+
+`Runner::run`, in order:
+
+1. `subscribe_app_exited`.
+2. If `running(uid3)`, `kill(uid3)` and wait up to 10 s for that exit.
+3. `install(&sisx)`, then `launch(uid3)` → `pid`.
+4. `LogTail::from_end(&device.log)`.
+5. Loop: on `interrupt.raised()`, `kill(uid3)` and return `interrupted()`. On
+   `next_exit(200 ms)` with `pid` → `AppExit::of`; another PID is ignored. On `Err` whose text
+   starts `the emulator closed` → `emulator_closed(&device.id)`. Each round writes
+   `LogTail::poll()`'s new guest lines to `out`.
+
+`LogTail` keeps a byte offset and returns the complete new lines that carry the
+`Emulated.Stdout` marker Task 10 observed. The line's text is printed after the marker, with
+no timestamp.
+
+- [ ] **Step 5: Run the tests**: all pass; `cargo clippy -p symdev-cli --all-targets --offline` clean.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add Cargo.lock crates/symdev-cli
+git commit -m "Run an image on a chosen device as cargo's runner, with the app's exit as the exit code."
+```
