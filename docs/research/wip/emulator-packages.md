@@ -180,3 +180,8 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   branch `symdev` rebuilt (9 merges, 2 conflicts resolved, see ~/src/EKA2L1-wt/emulator-pkg.NOTES.md).
   Host build running: PID 602043, log ~/src/EKA2L1-wt-build/emulator-pkg/build.log (EXIT= at end).
   Next: when EXIT=0, run ekatests (brief step 3), then step 4 --help check under the lock.
+- [x] Task 2 committed on symdev: <C> = 29d5f58aecc8826a7832c3acdce36461021da39f, <c> 29d5f58,
+  <V> = 2026.10.03 (merges-only head 50a419f).
+- [ ] Task 3: ~/src/emu-pkg-scratch/rehearsal/run.sh running, PID 617606 (21:04Z), log run.log
+  (EXIT= at end). Then step 3 (extract + inspect) and exp 115 §2.
+- [ ] Task 4: next, while the builds run.
