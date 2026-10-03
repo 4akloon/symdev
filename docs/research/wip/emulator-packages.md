@@ -184,4 +184,6 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   <V> = 2026.10.03 (merges-only head 50a419f).
 - [ ] Task 3: ~/src/emu-pkg-scratch/rehearsal/run.sh running, PID 617606 (21:04Z), log run.log
   (EXIT= at end). Then step 3 (extract + inspect) and exp 115 §2.
-- [ ] Task 4: next, while the builds run.
+- [x] Task 4: Device::ALL, Pins::emulator (emulator;2026.10.03) / firmware, EmulatorPackage,
+  FirmwarePackage, catalog bypass. Gates green (tests 55 ok, clippy 0, fmt ok).
+- [ ] Task 5: next (packages worktree: pkgtools device-entry + firmware recipe).

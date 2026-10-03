@@ -514,7 +514,7 @@ Task 8: it changes how symdev starts the program.
   - A lookup failure for an `emulator` id names `SYMDEV_EKA2L1`, for a `firmware` id
     `SYMDEV_EKA2L1_DATA`, as an `sdk` id names `SYMDEV_EPOCROOT` today.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `pins.rs`'s test module (keep the existing ones; add `Pins::emulator()` and
 `Pins::firmware(Device::NokiaE52)` to `every_pin_is_a_valid_id`'s array):
@@ -711,7 +711,7 @@ fn a_gcce_found_nowhere_names_no_variable() {
 `Repo::new` writes no index; `write_index()` writes the empty one, so the source is
 searched rather than reported unreadable.
 
-- [ ] **Step 2: Run them and see them fail**
+- [x] **Step 2: Run them and see them fail**
 
 ```bash
 cargo test -p symdev-sdk --offline -- pins:: emulator_package firmware_package bypass > /tmp/t4.log 2>&1; grep -E "^error|test result" /tmp/t4.log
@@ -721,7 +721,7 @@ Expected: compile errors (`no function or associated item named emulator`,
 `unresolved import super::EmulatorPackage`, `no associated item named ALL`). libtest takes several
 filters after `--` and runs what matches any of them.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `crates/symdev-manifest/src/schema.rs`, below `enum Device`:
 
@@ -875,7 +875,7 @@ a source that has it in {file}")); } else if …`. `all()` passes `None`. And:
 
 The `sdk` wording is unchanged, so `manager/tests/lookup.rs` passes as it is.
 
-- [ ] **Step 4: Run the tests and the gates**
+- [x] **Step 4: Run the tests and the gates**
 
 ```bash
 cargo test --workspace --offline > /tmp/t4-all.log 2>&1; grep -cE "^test result: ok" /tmp/t4-all.log; grep -E "FAILED|^error" /tmp/t4-all.log
@@ -887,7 +887,7 @@ Expected: no `FAILED` or `error` line, clippy count `0`, fmt silent. `Pins::emul
 two package types are not yet used outside tests. A `dead_code` warning cannot appear on a
 `pub` item of a library crate; if one does, the item was made private by mistake.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/symdev-manifest/src/schema.rs crates/symdev-sdk/src/pins.rs \
