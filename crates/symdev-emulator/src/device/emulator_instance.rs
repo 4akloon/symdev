@@ -3,7 +3,7 @@
 //! and it outlives the `cargo run` that started it.
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -119,7 +119,14 @@ impl EmulatorInstance {
         let scratch =
             std::env::temp_dir().join(format!("symdev-eka2l1-help-{}", std::process::id()));
         std::fs::create_dir_all(&scratch).map_err(|e| file(&scratch, e))?;
-        let mut child = Command::new(eka2l1)
+        let mut probe = Command::new(eka2l1);
+        // The X cookie defaults to `$HOME/.Xauthority`, which the scratch HOME would hide.
+        if std::env::var_os("XAUTHORITY").is_none()
+            && let Some(home) = std::env::var_os("HOME")
+        {
+            probe.env("XAUTHORITY", PathBuf::from(home).join(".Xauthority"));
+        }
+        let mut child = probe
             .arg("--data-dir")
             .arg(scratch.join("data"))
             .arg("--help")
