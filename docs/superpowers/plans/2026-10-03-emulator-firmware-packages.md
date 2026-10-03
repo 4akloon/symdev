@@ -2511,3 +2511,174 @@ impl EmulatorTreeTool {
 
 with `Command::EmulatorTree { tree, glibc } => EmulatorTreeTool::run(&tree, &glibc, &mut out,
 &mut err),`. Run step 2's command again; expected `test result: ok`.
+
+- [ ] **Step 4: Write the failing notice tests**, `pkgtools/src/emulator_notices/tests.rs`
+
+```rust
+use std::fs;
+use std::path::Path;
+
+use super::EmulatorNotices;
+
+fn write(path: &Path, text: &str) {
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, text).unwrap();
+}
+
+/// EKA2L1's source: its LICENSE, two submodules, one with a nested submodule.
+fn source(src: &Path) {
+    write(&src.join("LICENSE"), "GNU GENERAL PUBLIC LICENSE\nVersion 3\n");
+    write(&src.join(".gitmodules"), "[submodule \"fmt\"]\n\tpath = src/external/fmt\n\turl = x\n[submodule \"dyn\"]\n\tpath = src/external/dynarmic\n\turl = y\n");
+    write(&src.join("src/external/fmt/LICENSE.rst"), "MIT\n");
+    write(&src.join("src/external/dynarmic/LICENSE.txt"), "0BSD\n");
+    write(&src.join("src/external/dynarmic/.gitmodules"), "[submodule \"z\"]\n\tpath = externals/zydis\n\turl = z\n");
+    write(&src.join("src/external/dynarmic/externals/zydis/LICENSE"), "MIT zydis\n");
+}
+
+fn tree(root: &Path) {
+    write(&root.join("usr/share/doc/libfoo1/copyright"), "Format: …\n");
+}
+
+fn notices(src: &Path, tree: &Path, packages: Option<&Path>) -> EmulatorNotices {
+    EmulatorNotices {
+        src: src.to_path_buf(),
+        tree: tree.to_path_buf(),
+        id: "emulator;2026.10.04".into(),
+        commit: "0123456789abcdef0123456789abcdef01234567".into(),
+        packages: packages.map(Path::to_path_buf),
+        extra: Vec::new(),
+    }
+}
+
+#[test]
+fn writes_the_gpl_every_submodules_licence_and_where_the_source_is() {
+    let (src, out) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    source(src.path());
+    tree(out.path());
+    notices(src.path(), out.path(), None).write().unwrap();
+    let doc = out.path().join("share/doc/eka2l1");
+    assert_eq!(fs::read_to_string(doc.join("COPYING")).unwrap(), "GNU GENERAL PUBLIC LICENSE\nVersion 3\n");
+    for f in ["src/external/fmt/LICENSE.rst", "src/external/dynarmic/LICENSE.txt", "src/external/dynarmic/externals/zydis/LICENSE"] {
+        assert!(doc.join("third-party").join(f).is_file(), "{f}");
+    }
+    let source = fs::read_to_string(doc.join("SOURCE.txt")).unwrap();
+    assert!(source.contains("emulator;2026.10.04") && source.contains("0123456789abcdef0123456789abcdef01234567"), "{source}");
+    assert!(source.contains("source-code"), "{source}");
+}
+
+#[test]
+fn a_submodule_without_a_licence_file_is_named_until_listed_as_extra() {
+    let (src, out) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    source(src.path());
+    tree(out.path());
+    fs::remove_file(src.path().join("src/external/fmt/LICENSE.rst")).unwrap();
+    write(&src.path().join("src/external/fmt/README.md"), "MIT, see header\n");
+    let e = notices(src.path(), out.path(), None).write().unwrap_err().to_string();
+    assert!(e.contains("src/external/fmt"), "{e}");
+    let mut n = notices(src.path(), out.path(), None);
+    n.extra = vec!["src/external/fmt/README.md".into()];
+    n.write().unwrap();
+    assert!(out.path().join("share/doc/eka2l1/third-party/src/external/fmt/README.md").is_file());
+}
+
+#[test]
+fn the_bundled_list_points_at_each_packages_copyright_and_refuses_a_missing_one() {
+    let (src, out) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    source(src.path());
+    tree(out.path());
+    let tsv = src.path().join("packages.tsv");
+    write(&tsv, "libfoo1:amd64\t1.2-3\tfoo\t1.2-3\n");
+    notices(src.path(), out.path(), Some(&tsv)).write().unwrap();
+    let list = fs::read_to_string(out.path().join("share/doc/eka2l1/BUNDLED.tsv")).unwrap();
+    assert_eq!(
+        list,
+        "package\tversion\tsource\tsource version\tcopyright\n\
+         libfoo1:amd64\t1.2-3\tfoo\t1.2-3\tusr/share/doc/libfoo1/copyright\n"
+    );
+    write(&tsv, "libbar2:amd64\t2\tbar\t2\n");
+    let e = notices(src.path(), out.path(), Some(&tsv)).write().unwrap_err().to_string();
+    assert!(e.contains("usr/share/doc/libbar2/copyright"), "{e}");
+}
+```
+
+Run `cargo test --locked -p pkgtools emulator_notices` (with `mod emulator_notices;` in
+`main.rs`). Expected: unresolved `EmulatorNotices`.
+
+- [ ] **Step 5: Implement the notices**
+
+`pkgtools/src/emulator_notices.rs`:
+
+```rust
+//! `EmulatorNotices`: `share/doc/eka2l1/` of the emulator package (symdev's emulator packages
+//! spec §3): EKA2L1's GPL-3.0, the licence files of every submodule it builds from, the list of
+//! bundled Ubuntu packages with their copyright files, and where the corresponding source is.
+
+mod bundled_list;
+mod submodules;
+
+use std::fs;
+use std::path::PathBuf;
+
+pub use bundled_list::BundledList;
+pub use submodules::Submodules;
+
+use crate::tool_error::{Result, ToolError};
+
+pub struct EmulatorNotices {
+    /// The fork commit's checkout, submodules included.
+    pub src: PathBuf,
+    /// The extracted AppImage the notices go into.
+    pub tree: PathBuf,
+    pub id: String,
+    pub commit: String,
+    /// The artifact's `eka2l1-qt-x64.packages.tsv` (D1 = A).
+    pub packages: Option<PathBuf>,
+    /// Licence files, relative to `src`, for submodules that have none under a usual name.
+    pub extra: Vec<PathBuf>,
+}
+
+impl EmulatorNotices {
+    /// Writes the notices; returns how many licence files and bundled packages it listed.
+    pub fn write(&self) -> Result<(usize, usize)> {
+        let doc = self.tree.join("share/doc/eka2l1");
+        let third = doc.join("third-party");
+        fs::create_dir_all(&third).map_err(|e| ToolError::io(third.display(), &e))?;
+        copy(&self.src.join("LICENSE"), &doc.join("COPYING"))?;
+        let files = Submodules::read(&self.src)?.licence_files(&self.extra)?;
+        for rel in &files {
+            copy(&self.src.join(rel), &third.join(rel))?;
+        }
+        let bundled = match &self.packages {
+            Some(tsv) => {
+                let list = BundledList::read(tsv, &self.tree)?;
+                let out = doc.join("BUNDLED.tsv");
+                fs::write(&out, list.to_tsv()).map_err(|e| ToolError::io(out.display(), &e))?;
+                list.len()
+            }
+            None => 0,
+        };
+        let text = format!(
+            "{id} is EKA2L1 (GPL-3.0-or-later, COPYING) built by the CI of\n\
+             https://github.com/4akloon/EKA2L1 at commit {commit}, with the libraries listed\n\
+             in BUNDLED.tsv (each one's licence: usr/share/doc/<package>/copyright).\n\n\
+             The corresponding source of everything in this package is the archive the\n\
+             index.toml beside it lists as `source-code` for {id}.\n",
+            id = self.id,
+            commit = self.commit
+        );
+        let out = doc.join("SOURCE.txt");
+        fs::write(&out, text).map_err(|e| ToolError::io(out.display(), &e))?;
+        Ok((files.len(), bundled))
+    }
+}
+
+fn copy(from: &std::path::Path, to: &std::path::Path) -> Result<()> {
+    if let Some(parent) = to.parent() {
+        fs::create_dir_all(parent).map_err(|e| ToolError::io(parent.display(), &e))?;
+    }
+    fs::copy(from, to).map(|_| ()).map_err(|e| ToolError::io(from.display(), &e))
+}
+
+#[cfg(test)]
+mod tests;
+```
