@@ -92,7 +92,7 @@ file). Read the spec and §1 before starting.
 8. **The fork's artifact will expire** (no `retention-days`; the repository default, at
    most 90 days). The recipe's hashes are the lasting record; the package in R2 stays.
 
-## Decision D1 (open, the owner's): what goes out with the public `emulator` package
+## Decision D1: what goes out with the public `emulator` package — the owner chose A (2026-10-03)
 
 The spec asks for "the fork commit as a `git archive` including submodules, plus the source
 of the Qt version linuxdeploy bundled", with a licence field of "at least
@@ -125,7 +125,7 @@ Task 10 and keeps Tasks 2 and 11). Task 10's licence field and Task 14's `licens
 text follow the choice. Everything else is the same for A, B and C. Until the owner
 decides, implement A and stop before L1.
 
-## Finding F1 (for the owner): the emulator needs glibc 2.38
+## Finding F1: the emulator needs glibc 2.38 — accepted by the owner for 0.4.0 (2026-10-03)
 
 The AppImage's libraries need `GLIBC_2.38` (Ubuntu 24.04+, Debian 13+, Fedora 39+, RHEL 10).
 symdev itself is static and GCCE needs glibc 2.28. The spec says a newer floor is "a finding
@@ -134,6 +134,14 @@ for the owner, not a silent rebuild". The plan records the floor in `artifact.to
 requirement. On an older host, the loader's `GLIBC_2.38 not found` reaches the user through
 `EmulatorInstance::start`'s error, which quotes the emulator's last output lines. The fix
 for older hosts (building on an older base) is a later decision.
+
+## Owner decisions (2026-10-03)
+
+- D1 = A (Tasks 2 and 11 run; licence field and `licensing.md` as in A).
+- CLAUDE.md's public-source rule was changed on `main` (d2e3f57): the public source may carry a GPL
+  program with the free libraries it bundles, with corresponding source. Task 14 aligns `licensing.md`.
+- F1 accepted: glibc 2.38 is the emulator's floor for 0.4.0; README states it.
+- Without `SYMDEV_EKA2L1_DATA`, `~/.local/share/EKA2L1` is no longer read (Task 7 deletes `from_env`).
 
 ## Steps reserved for the lead
 
