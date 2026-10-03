@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use super::RustLinker;
 use crate::{RustPrebuilt, RustSdk, SdkLldCache};
@@ -8,6 +8,13 @@ fn lld() -> RustLinker {
         rust_lld: None,
         cache: SdkLldCache::at(PathBuf::from("/home/u/.local/share/symdev/cache/sdk-lld")),
     }
+}
+
+/// A Rust SDK with an empty workspace and no `prebuilt/`, as a source checkout is.
+fn sdk_without_prebuilt() -> (tempfile::TempDir, RustSdk) {
+    let (tmp, sdk) = sdk_with_prebuilt(&[]);
+    std::fs::remove_dir_all(sdk.root().join("prebuilt")).unwrap();
+    (tmp, sdk)
 }
 
 /// A Rust SDK with an empty workspace and `archives` in `prebuilt/lib`.
@@ -26,10 +33,6 @@ fn sdk_with_prebuilt(archives: &[&str]) -> (tempfile::TempDir, RustSdk) {
     }
     let sdk = RustSdk::at(&sdk).unwrap();
     (tmp, sdk)
-}
-
-fn checkout() -> RustSdk {
-    RustSdk::at(Path::new(RustSdk::CHECKOUT.unwrap())).unwrap()
 }
 
 #[test]
@@ -53,7 +56,8 @@ fn only_rust_lld_with_the_prebuilt_set_does_without_gcce() {
     assert!(!lld().needs_gcce(&sdk).unwrap());
     assert_eq!(lld().prebuilt(&sdk).unwrap(), sdk.prebuilt().unwrap());
     // A source checkout has no prebuilt set: rust-lld links shims GCCE compiled.
-    assert!(lld().needs_gcce(&checkout()).unwrap());
+    let (_tmp2, checkout) = sdk_without_prebuilt();
+    assert!(lld().needs_gcce(&checkout).unwrap());
     // GNU ld keeps today's line, shims compiled per application, even beside the set.
     assert!(RustLinker::Gnu.needs_gcce(&sdk).unwrap());
     assert_eq!(RustLinker::Gnu.prebuilt(&sdk).unwrap(), None);
