@@ -19,7 +19,6 @@ impl LinkRecord {
         std::fs::write(path, text).map_err(|e| Error::Other(format!("{}: {e}", path.display())))
     }
 
-    #[allow(dead_code)] // Task 13: the runner reads the record
     pub fn read(path: &Path) -> Result<Self> {
         let bad = |why: &str| {
             Error::Other(format!(

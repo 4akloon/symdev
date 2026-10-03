@@ -31,8 +31,16 @@ pub enum Commands {
     Build,
     Package,
     Deploy,
-    /// Install build/<name>.sisx into EKA2L1 and launch it (SYMDEV_EKA2L1).
-    Run,
+    /// Install and launch on a device until the app ends: with --exe, the image cargo
+    /// built (cargo's runner); without, the project's build/<name>.sisx.
+    Run {
+        /// The image symdev-ld linked; its <image>.sisx is installed.
+        #[arg(long)]
+        exe: Option<std::path::PathBuf>,
+        /// Arguments for the app: refused until observed (design spec §6.6).
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     /// Run the application in EKA2L1 and report what it wrote to
     /// `E:\symdev\results\<uid3>.json` (design spec §11).
     Test {

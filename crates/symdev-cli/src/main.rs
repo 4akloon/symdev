@@ -6,6 +6,7 @@ mod devices_cmd;
 mod ld;
 mod provision;
 mod role;
+mod run;
 mod rust_project;
 mod rustc_wrapper;
 mod scaffold;
@@ -68,7 +69,7 @@ fn main() -> ExitCode {
             }),
         Some(Commands::Build) => manifest().and_then(|m| build_cmd::build_project(m, &provision)),
         Some(Commands::Package) => manifest().and_then(|m| package_project(m, &provision)),
-        Some(Commands::Run) => manifest().and_then(run_project),
+        Some(Commands::Run { exe, args }) => run::run(exe, args),
         Some(Commands::Test { emulator }) => {
             manifest().and_then(|m| test_cmd::test_project(m, emulator))
         }
@@ -164,37 +165,5 @@ fn deploy_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
     }
     let cwd = std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?;
     println!("{}", cwd.join(&sisx).display());
-    Ok(ExitCode::SUCCESS)
-}
-
-fn run_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
-    let uid3 = m
-        .symbian
-        .uid3
-        .ok_or_else(|| Error::Other("uid3 required for run (set symbian.uid3)".into()))?;
-    let cwd = std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?;
-    let sisx = cwd.join("build").join(format!("{}.sisx", m.package.name));
-    if !sisx.is_file() {
-        return Err(Error::Other(format!(
-            "SISX not found: build/{}.sisx (run symdev package)",
-            m.package.name
-        )));
-    }
-    let emulator = symdev_emulator::Eka2l1Backend::from_env()?;
-    let log = cwd.join("build").join("eka2l1.log");
-    let pid_file = cwd.join("build").join("eka2l1.pid");
-    if let Some(old) = symdev_emulator::Eka2l1Backend::previous(&pid_file) {
-        eprintln!(
-            "warning: EKA2L1 from the previous run (pid {old}) is still open; close its window \
-             (it ignores SIGTERM) to avoid two emulators on the same data"
-        );
-    }
-    let pid = emulator.run(&sisx, uid3, &log)?;
-    std::fs::write(&pid_file, pid.to_string()).map_err(|e| Error::Other(e.to_string()))?;
-    println!(
-        "EKA2L1 pid {pid}: installing {} and launching 0x{uid3:08x}",
-        sisx.display()
-    );
-    println!("log: {}", log.display());
     Ok(ExitCode::SUCCESS)
 }
