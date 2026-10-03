@@ -2007,3 +2007,181 @@ cargo test -p symdev-cli --offline --bin symdev provision::emulator > /tmp/t9u.l
 Expected: the unit tests do not compile (`no method named eka2l1`). The CLI tests fail: no
 install line, the old "missing emulator: SYMDEV_EKA2L1" error, profiles not made from the
 package.
+
+- [ ] **Step 4: Implement** `crates/symdev-cli/src/provision/emulator.rs`
+
+```rust
+//! The EKA2L1 and the firmware an emulator runs (emulator packages spec §5): the user's
+//! own through `SYMDEV_EKA2L1` / `SYMDEV_EKA2L1_DATA` first, the pinned packages second.
+
+use symdev_core::Error;
+use symdev_emulator::EmulatorData;
+use symdev_emulator::device::{Eka2l1, Firmware};
+use symdev_manifest::Device;
+use symdev_sdk::{EmulatorPackage, FirmwarePackage, PackageId, Pins};
+
+use super::Provision;
+
+const EKA2L1: &str = "SYMDEV_EKA2L1";
+const DATA: &str = "SYMDEV_EKA2L1_DATA";
+
+impl Provision {
+    /// `SYMDEV_EKA2L1` as it is when set; else the pinned `emulator` package's program,
+    /// installed now if missing, by the rules of every package (`--offline`, keyless and
+    /// unreadable sources, no source read once it is installed).
+    pub fn eka2l1(&self) -> Result<Eka2l1, Error> {
+        if let Some(program) = self.var(EKA2L1) {
+            return Ok(Eka2l1::User(program));
+        }
+        let id = Pins::emulator();
+        let home = self.install_missing(std::slice::from_ref(&id))?;
+        let package = EmulatorPackage::at(home.package_dir(&id), &id)?;
+        Ok(Eka2l1::Package(package.program()))
+    }
+
+    /// What emulator profiles are made from: with `SYMDEV_EKA2L1_DATA`, every firmware
+    /// installed in that EKA2L1 data folder; else the pinned firmware package of every
+    /// supported device, installed now when a configured source has it. A failed lookup
+    /// names both ways (the catalog adds `SYMDEV_EKA2L1_DATA` for a firmware id).
+    pub fn firmwares(&self) -> Result<Vec<Firmware>, Error> {
+        let ids: Vec<PackageId> = Device::ALL.into_iter().map(Pins::firmware).collect();
+        if let Some(dir) = self.var(DATA) {
+            let found = Firmware::in_user_data(&EmulatorData::at(&dir));
+            if found.is_empty() {
+                let names: Vec<&str> = ids.iter().map(PackageId::as_str).collect();
+                return Err(Error::Other(format!(
+                    "{DATA} is {}, which has no firmware in data/roms/: install one in EKA2L1, \
+                     or unset {DATA} to use the {} package",
+                    dir.display(),
+                    names.join(" and ")
+                )));
+            }
+            return Ok(found);
+        }
+        let home = self.install_missing(&ids)?;
+        ids.iter()
+            .map(|id| {
+                let package = FirmwarePackage::at(home.package_dir(id), id)?;
+                Ok(Firmware::Package {
+                    root: package.root().to_path_buf(),
+                    name: package.name().to_string(),
+                })
+            })
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests;
+```
+
+`provision.rs`: `mod emulator;` beside `mod rust_sdk;`. The file is near 300 lines; this
+adds one.
+
+`devices_cmd.rs`. `Devices` gets these three methods; the old `profiles()` that created
+profiles goes away:
+
+```rust
+    /// The profiles that exist, by name. Makes none.
+    pub fn profiles(&self) -> Vec<String> {
+        Self::dirs(&self.profiles_root)
+    }
+
+    /// A profile per firmware of `firmwares`, made now (spec §5: on first need).
+    pub fn make_profiles(&self, firmwares: Vec<Firmware>) -> Result<Vec<String>> {
+        for firmware in firmwares {
+            self.profile(firmware.name()).create(&firmware)?;
+            eprintln!("created profile {}", firmware.name());
+        }
+        Ok(self.profiles())
+    }
+
+    /// The profiles, made from `provision`'s firmware when there are none.
+    pub fn profiles_or_make(&self, provision: &Provision) -> Result<Vec<String>> {
+        match self.profiles() {
+            none if none.is_empty() => self.make_profiles(provision.firmwares()?),
+            some => Ok(some),
+        }
+    }
+```
+
+and `eka2l1_with_control` resolves through `Provision`:
+
+```rust
+/// The EKA2L1 to start, which must have the control server.
+pub(crate) fn eka2l1_with_control(provision: &Provision) -> Result<Eka2l1> {
+    let eka2l1 = provision.eka2l1()?;
+    if EmulatorInstance::has_control(&eka2l1)? {
+        return Ok(eka2l1);
+    }
+    let fix = match &eka2l1 {
+        Eka2l1::User(_) => format!(
+            "unset SYMDEV_EKA2L1 to use the {} package, or point it at an EKA2L1 built from \
+             our fork's symdev branch",
+            Pins::emulator()
+        ),
+        Eka2l1::Package(_) => format!(
+            "the package is damaged: run `symdev sdk uninstall {w} && symdev sdk install {w}`",
+            w = Pins::emulator().shell_word()
+        ),
+    };
+    Err(Error::Other(format!(
+        "{} has no --control: cargo run needs an EKA2L1 with the control server \
+         (EKA2L1#770–#772); {fix}",
+        eka2l1.describe()
+    )))
+}
+```
+
+`list(provision: &Provision)` and `start(profile: &str, provision: &Provision)` call
+`devices.profiles_or_make(provision)?` where they called `profiles()`. `start` passes
+`&eka2l1_with_control(provision)?` to `EmulatorInstance::start`.
+
+`run/device_pick.rs`:
+
+```rust
+pub(crate) fn pick_device(terminal: bool, provision: &Provision) -> Result<RegistryEntry> {
+    let devices = Devices::from_env()?;
+    let running = devices.live()?;
+    let requested = std::env::var("SYMDEV_DEVICE")
+        .ok()
+        .filter(|v| !v.is_empty());
+    // A profile is made only when a start needs one: nothing runs, or SYMDEV_DEVICE names
+    // a profile rather than an emulator id.
+    let wants_profile = running.is_empty()
+        || requested.as_deref().is_some_and(|r| DeviceId::parse(r).is_none());
+    let mut profiles = devices.profiles();
+    if profiles.is_empty() && wants_profile {
+        profiles = devices.make_profiles(provision.firmwares()?)?;
+    }
+    // … the DeviceChoice and the match on the offer as before; Offer::Profile calls
+    // eka2l1_with_control(provision) …
+}
+```
+
+`run.rs`: `pub(crate) fn run(exe: Option<PathBuf>, args: Vec<String>, provision: &Provision)`
+passes it to `pick_device`. `test_cmd.rs`: `test_project(m, emulator, provision:
+&Provision)`. `main.rs`: `run::run(exe, args, &provision)`, `test_cmd::test_project(m,
+emulator, &provision)`, `devices_cmd::list(&provision)`, `devices_cmd::start(&profile,
+&provision)`. Delete Task 7's and Task 8's temporary environment reads in `devices_cmd.rs`.
+After this step, `grep -rn 'SYMDEV_EKA2L1' crates/symdev-cli/src` shows only
+`provision/emulator.rs` and messages.
+
+- [ ] **Step 5: Run the tests and the gates**
+
+Step 3's two commands, then Task 4 step 4's three commands. Expected: all pass, 0 clippy
+lines. If a test under `crates/symdev-cli/tests/` now reaches the built-in source (an
+`installing …` line, or a network error in its output), it lacked a running device or a
+profile and asked for a firmware. Give it a profile directory or `SYMDEV_EKA2L1_DATA`, as
+its intent requires; do not turn the lazy rule off.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add crates/symdev-cli/src/provision.rs crates/symdev-cli/src/provision/emulator.rs \
+  crates/symdev-cli/src/provision/emulator/tests.rs crates/symdev-cli/src/devices_cmd.rs \
+  crates/symdev-cli/src/run/device_pick.rs crates/symdev-cli/src/run.rs \
+  crates/symdev-cli/src/test_cmd.rs crates/symdev-cli/src/main.rs \
+  crates/symdev-cli/tests/emulator_packages.rs crates/symdev-cli/tests/run.rs
+git commit -m "Install the emulator and firmware packages on first need when SYMDEV_EKA2L1 and SYMDEV_EKA2L1_DATA are unset."
+```
