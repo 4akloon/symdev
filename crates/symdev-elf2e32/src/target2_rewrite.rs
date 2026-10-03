@@ -43,7 +43,7 @@ impl Target2Rewrite {
     pub fn archive(bytes: &[u8]) -> Result<Self> {
         let mut out = bytes.to_vec();
         let mut rewritten = 0;
-        for member in ArMembers::read(bytes)? {
+        for member in ArMembers::read(bytes)?.members {
             if member.is_table() {
                 continue;
             }

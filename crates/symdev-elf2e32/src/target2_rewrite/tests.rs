@@ -117,3 +117,43 @@ fn an_archive_error_names_the_member() {
     let e = Target2Rewrite::archive(&cut).err().unwrap().to_string();
     assert!(e.contains("past the end"), "{e}");
 }
+
+#[test]
+fn a_malformed_section_header_table_is_refused_without_panicking() {
+    let err = |bytes: &[u8]| Target2Rewrite::object(bytes).err().unwrap().to_string();
+    let mut wide = object(vec![TestElf::rel(&[(0, TARGET2)])]);
+    wide[0x2e] = 44;
+    assert!(
+        err(&wide).contains("section header size 44"),
+        "{}",
+        err(&wide)
+    );
+    let mut extended = object(vec![]);
+    extended[0x30..0x32].copy_from_slice(&0u16.to_le_bytes());
+    assert!(
+        err(&extended).contains("extended section numbering"),
+        "{}",
+        err(&extended)
+    );
+    let mut far = object(vec![TestElf::rel(&[(0, TARGET2)])]);
+    far[0x20..0x24].copy_from_slice(&u32::MAX.to_le_bytes());
+    assert!(err(&far).contains("past the end"), "{}", err(&far));
+}
+
+#[test]
+fn a_malformed_member_header_is_refused_and_long_names_are_named() {
+    let err = |bytes: &[u8]| Target2Rewrite::archive(bytes).err().unwrap().to_string();
+    let good = object(vec![]);
+    let mut size = TestElf::archive(&[("plain.o/", &good)]);
+    size[8 + 48..8 + 58].copy_from_slice(b"12x4      ");
+    assert!(err(&size).contains("bad size field"), "{}", err(&size));
+    let mut end = TestElf::archive(&[("plain.o/", &good)]);
+    end[8 + 58] = b'!';
+    assert!(err(&end).contains("bad header terminator"), "{}", err(&end));
+    // A name past 15 characters lives in the `//` table; the error gives it, not `/0`.
+    let text: &[u8] = b"not an object";
+    let names: &[u8] = b"a_rather_long_member_name.o/\n";
+    let long = TestElf::archive(&[("//", names), ("/0", text)]);
+    let e = err(&long);
+    assert!(e.contains("`a_rather_long_member_name.o`"), "{e}");
+}

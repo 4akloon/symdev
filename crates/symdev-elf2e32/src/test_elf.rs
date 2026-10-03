@@ -1,12 +1,7 @@
 //! Test-only builders: a minimal ELF32 little-endian ARM file with chosen sections, and an
 //! `ar` archive of chosen members, for the in-place patches' tests.
 
-/// One section of a [`TestElf`]: its type, entry size and contents.
-pub(crate) struct TestSection {
-    pub kind: u32,
-    pub entsize: u32,
-    pub data: Vec<u8>,
-}
+pub(crate) use crate::test_section::TestSection;
 
 /// An ELF32 little-endian ARM file: the 52-byte header, the sections' contents in order,
 /// then the section header table (index 0 the null section).

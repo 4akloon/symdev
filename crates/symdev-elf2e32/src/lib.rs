@@ -1,3 +1,4 @@
+mod ar_member;
 mod ar_members;
 mod def;
 mod deflate;
@@ -6,6 +7,7 @@ mod e32;
 mod elf;
 mod elf2e32;
 mod elf2e32_tool;
+mod elf_section_header;
 mod elf_section_headers;
 mod import_stubs;
 mod libpath;
@@ -13,6 +15,8 @@ mod strtab_padding;
 mod target2_rewrite;
 #[cfg(test)]
 mod test_elf;
+#[cfg(test)]
+mod test_section;
 
 pub use def::{E32DefEntry, E32DefFile};
 pub use deflate::E32Deflate;

@@ -2,15 +2,7 @@
 //! for an in-place patch ([`crate::Target2Rewrite`], [`crate::StrtabPadding`]).
 use symdev_core::{Error, Result};
 
-/// What an in-place patch needs of one section header.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ElfSectionHeader {
-    pub index: usize,
-    pub kind: u32,
-    pub offset: usize,
-    pub size: usize,
-    pub entsize: usize,
-}
+use crate::elf_section_header::ElfSectionHeader;
 
 /// The file type (`e_type`) and every section header, each checked to lie inside the file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,7 +54,8 @@ impl ElfSectionHeaders {
                 Self::SHDR
             ));
         }
-        if shoff + shnum * Self::SHDR > bytes.len() {
+        let table_end = (shnum * Self::SHDR).checked_add(shoff);
+        if table_end.is_none_or(|end| end > bytes.len()) {
             return fail("section header table past the end of the file".into());
         }
         for index in 0..shnum {
