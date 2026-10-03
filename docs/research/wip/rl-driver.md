@@ -95,3 +95,17 @@ on the four apps + all examples, sizes vs exp 112.
 - GNU identity so far: argv identical for every example (58/65 args); exes equal (masked) except
   netdemo (10 499 main / 10 506 branch): its Rust archive differs between the two trees
   (rustc output depends on the source path) — recheck with main binary in the worktree.
+- **Batches done** (`out/{main-gnu,rl3-gnu,rl3-lld}.txt`): all 21 examples rc=0 in all three.
+  GNU on request: ld argv identical 21/21 (58 args console, 65 GUI); exe equal (masked) 17/21;
+  net, tls, std-hello, std-net differ — their Rust archives differ between main-src and the
+  worktree (path-dependent rustc output). Relink with main binary + SYMDEV_RUST_SDK=worktree
+  running (`out/main-gnu-wt.txt`, mode gnu-sdk).
+- **rust-lld default sizes** (`sizes.py`): 17/18 of exp 112's table equal both columns; scaffold
+  hello 975/1348 and exp-109 leave probe (apps/probe) 4464/7112 = exp 112 too. **notes +9/+8**:
+  one more `.ARM.exidx` entry, `__gnu_thumb1_case_uqi` CANTUNWIND — full GCCE libgcc.a puts
+  `_thumb1_case_uqi.o` before `pr-support.o`, so its entry follows `__gxx_personality_v0`'s and
+  cannot merge; exp 112's prebuilt libgcc.a puts it after. Checking with the prebuilt route
+  (`out/pre.txt`: mode pre = staged rust-sdk tree + SYMDEV_RUST_SDK, GCCE vars unset).
+- Mistake caught: `git add -A` swept build-rewritten std-hello/std-net Cargo.lock into 2 commits;
+  restored (main's locks are stale: symdev-locale 0.1.0; chip suggested). Stage by name now.
+- Lesson: `pkill -f` pattern matched my own shell; use `ps | grep -F` and kill exact PIDs.
