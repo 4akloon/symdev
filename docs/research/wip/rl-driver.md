@@ -181,3 +181,6 @@ emulator evidence, experiment 113, the packages-repo API section above).
   --offline` 869 passed 0 failed; clippy 0 warnings; fmt clean; all changed .rs ≤ 300 lines.
   Logs: ~/src/rl-driver-scratch/gate-{test,clippy}.log. NEXT: superpowers:requesting-code-review
   base 04f8e7d.
+- Running (2026-10-03): whole-branch review agent (base 04f8e7d, head b8fbedd); re-check job
+  `~/src/rl-driver-scratch/recheck.sh` PID 4066899, log `recheck.txt` (final binary at HEAD,
+  relinks hello/async/ui/notes/shim lld, ui/notes prebuilt, hello/ui gnu; masked cmp vs exp 113).
