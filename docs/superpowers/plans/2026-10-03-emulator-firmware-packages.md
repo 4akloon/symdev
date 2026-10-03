@@ -634,3 +634,250 @@ mod tests {
     }
 }
 ```
+
+`crates/symdev-sdk/src/manager/tests/bypass.rs` (and `mod bypass;` in `manager/tests.rs`):
+
+```rust
+//! The way around the sources that a failed lookup names, per kind of package.
+
+use super::repo::Repo;
+use super::{id, keyless_private, manager};
+use crate::Host;
+
+#[test]
+fn an_emulator_found_nowhere_names_symdev_eka2l1_and_sources_toml() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut repo = Repo::new(tmp.path().join("repo"));
+    repo.add("gcce;12.1.0", Host::X86_64Linux, &[]);
+    let mut progress = Vec::new();
+    let e = manager(&tmp, vec![repo.source("public")], false, &mut progress)
+        .ensure(&[id("emulator;2026.10.04")])
+        .unwrap_err()
+        .to_string();
+    assert_eq!(
+        e,
+        "emulator;2026.10.04 was not found in the sources searched: `public`; set \
+         SYMDEV_EKA2L1 to your own EKA2L1 with --control and --data-dir, or add a source \
+         that has it in /config/symdev/sources.toml"
+    );
+}
+
+#[test]
+fn a_firmware_behind_a_keyless_private_source_names_the_keys_and_symdev_eka2l1_data() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = Repo::new(tmp.path().join("repo"));
+    let sources = vec![repo.source("public"), keyless_private()];
+    let mut progress = Vec::new();
+    let e = manager(&tmp, sources, false, &mut progress)
+        .ensure(&[id("firmware;rm-469;1")])
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID"), "{e}");
+    assert!(
+        e.contains("or set SYMDEV_EKA2L1_DATA to an EKA2L1 data folder that has this firmware installed"),
+        "{e}"
+    );
+    assert_eq!(e.matches("SYMDEV_EKA2L1_DATA").count(), 1, "{e}");
+}
+
+#[test]
+fn a_gcce_found_nowhere_names_no_variable() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut progress = Vec::new();
+    let e = manager(&tmp, vec![Repo::new(tmp.path().join("r")).source("public")], false, &mut progress)
+        .ensure(&[id("gcce;99.0")])
+        .unwrap_err()
+        .to_string();
+    assert!(!e.contains("SYMDEV_"), "{e}");
+}
+```
+
+`Repo::new(…).source(…)` writes an empty index on creation: check `manager/tests/repo.rs`. If
+it does not, add one package to it as `an_id_found_nowhere…` does.
+
+- [ ] **Step 2: Run them and see them fail**
+
+```bash
+cargo test -p symdev-sdk --offline pins:: emulator_package firmware_package manager::tests::bypass > /tmp/t4.log 2>&1; grep -E "^error|test result" /tmp/t4.log
+```
+
+Expected: compile errors (`no function or associated item named emulator`,
+`unresolved import super::EmulatorPackage`, `no associated item named ALL`). `cargo test`
+takes one filter; run the four filters one after another if the line above is refused.
+
+- [ ] **Step 3: Implement**
+
+`crates/symdev-manifest/src/schema.rs`, below `enum Device`:
+
+```rust
+impl Device {
+    /// Every device symdev supports: what is made once per device (emulator profiles)
+    /// iterates over it.
+    pub const ALL: [Device; 1] = [Device::NokiaE52];
+}
+```
+
+`crates/symdev-sdk/src/pins.rs`, inside `impl Pins` (`<V>` from Task 1):
+
+```rust
+    /// The EKA2L1 `cargo run` starts when `SYMDEV_EKA2L1` is not set: the fork CI's build of
+    /// the integration branch this release was tested with (emulator packages spec §3).
+    pub fn emulator() -> PackageId {
+        PackageId::pinned("emulator;<V>")
+    }
+
+    /// The firmware an emulator profile of `device` is made from when `SYMDEV_EKA2L1_DATA`
+    /// is not set (emulator packages spec §4). Only a private source has it.
+    pub fn firmware(device: Device) -> PackageId {
+        match device {
+            Device::NokiaE52 => PackageId::pinned("firmware;rm-469;1"),
+        }
+    }
+```
+
+`crates/symdev-sdk/src/emulator_package.rs` (above its tests):
+
+```rust
+use std::path::PathBuf;
+
+use crate::{PackageId, Result, SdkError};
+
+/// An installed `emulator;<version>` package: the tree of the fork CI's EKA2L1 AppImage,
+/// extracted (emulator packages spec §3). symdev starts [`Self::PROGRAM`] itself: `AppRun`
+/// is only a link to it, and a process started through the link is named `AppRun`, which
+/// the device registry does not take for an EKA2L1 (experiment 115 §1.2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EmulatorPackage {
+    root: PathBuf,
+}
+
+impl EmulatorPackage {
+    /// The program, relative to the package root. Its `RUNPATH` and `qt.conf` find the
+    /// bundled libraries and Qt plugins without any environment.
+    pub const PROGRAM: &'static str = "usr/bin/eka2l1_qt";
+
+    /// The installed package of `id` (`emulator;…`); checks that the program is there.
+    pub fn at(root: PathBuf, id: &PackageId) -> Result<EmulatorPackage> {
+        if id.kind() != "emulator" {
+            return Err(SdkError::Other(format!(
+                "{id} is not an emulator package id (`emulator;<version>`)"
+            )));
+        }
+        let program = root.join(Self::PROGRAM);
+        if !program.is_file() {
+            return Err(SdkError::Other(format!(
+                "{} is missing from installed {id}; run `symdev sdk uninstall {word} && symdev \
+                 sdk install {word}`",
+                program.display(),
+                word = id.shell_word()
+            )));
+        }
+        Ok(EmulatorPackage { root })
+    }
+
+    pub fn program(&self) -> PathBuf {
+        self.root.join(Self::PROGRAM)
+    }
+}
+```
+
+`crates/symdev-sdk/src/firmware_package.rs` (above its tests):
+
+```rust
+use std::path::{Path, PathBuf};
+
+use crate::{PackageId, Result, SdkError};
+
+/// An installed `firmware;<firmware>;<n>` package (emulator packages spec §4): one
+/// firmware in EKA2L1's data layout, `roms/<firmware>/` and `drives/z/<firmware>/`, and
+/// that device's entry of EKA2L1's `devices.yml` as `device.yml`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FirmwarePackage {
+    root: PathBuf,
+    name: String,
+}
+
+impl FirmwarePackage {
+    /// The installed package of `id`; checks the three parts.
+    pub fn at(root: PathBuf, id: &PackageId) -> Result<FirmwarePackage> {
+        let segments: Vec<&str> = id.segments().collect();
+        let ["firmware", name, _] = segments[..] else {
+            return Err(SdkError::Other(format!(
+                "{id} is not a firmware package id (`firmware;<firmware>;<n>`)"
+            )));
+        };
+        for part in ["device.yml".to_string(), format!("roms/{name}"), format!("drives/z/{name}")] {
+            let path = root.join(&part);
+            if !path.exists() {
+                return Err(SdkError::Other(format!(
+                    "{} is missing from installed {id}; run `symdev sdk uninstall {word} && \
+                     symdev sdk install {word}`",
+                    path.display(),
+                    word = id.shell_word()
+                )));
+            }
+        }
+        Ok(FirmwarePackage {
+            root,
+            name: name.to_string(),
+        })
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// The firmware's folder name in EKA2L1's data (`rm-469`).
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
+```
+
+`lib.rs`: `mod emulator_package;`, `mod firmware_package;`, `pub use
+emulator_package::EmulatorPackage;`, `pub use firmware_package::FirmwarePackage;`, in the
+alphabetical places of the existing lists.
+
+`catalog.rs`: replace `let sdk = id.kind() == "sdk";` with `let bypass = Self::bypass(id);`.
+`keys_hint` takes `bypass: Option<&str>` and appends `", or {way}"`. The final hint becomes
+`if let (Some(way), false) = (bypass, keyless) { message.push_str(&format!("; {way}, or add
+a source that has it in {file}")); } else if …`. `all()` passes `None`. And:
+
+```rust
+    /// The way around the sources for a package of `id`'s kind, named with every failed
+    /// lookup: the user's own copy, through the variable symdev reads before the packages.
+    fn bypass(id: &PackageId) -> Option<&'static str> {
+        match id.kind() {
+            "sdk" => Some("set SYMDEV_EPOCROOT to your own SDK"),
+            "emulator" => Some("set SYMDEV_EKA2L1 to your own EKA2L1 with --control and --data-dir"),
+            "firmware" => Some(
+                "set SYMDEV_EKA2L1_DATA to an EKA2L1 data folder that has this firmware installed",
+            ),
+            _ => None,
+        }
+    }
+```
+
+The `sdk` wording is unchanged, so `manager/tests/lookup.rs` passes as it is.
+
+- [ ] **Step 4: Run the tests and the gates**
+
+```bash
+cargo test --workspace --offline > /tmp/t4-all.log 2>&1; grep -cE "^test result: ok" /tmp/t4-all.log; grep -E "FAILED|^error" /tmp/t4-all.log
+cargo clippy --workspace --all-targets --offline > /tmp/t4-clippy.log 2>&1; grep -cE "^(warning|error)" /tmp/t4-clippy.log
+cargo fmt --all --check
+```
+
+Expected: no `FAILED` or `error` line, clippy count `0`, fmt silent. `Pins::emulator` and the
+two package types are not yet used outside tests. A `dead_code` warning cannot appear on a
+`pub` item of a library crate; if one does, the item was made private by mistake.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add crates/symdev-manifest/src/schema.rs crates/symdev-sdk/src/pins.rs \
+  crates/symdev-sdk/src/emulator_package.rs crates/symdev-sdk/src/firmware_package.rs \
+  crates/symdev-sdk/src/lib.rs crates/symdev-sdk/src/catalog.rs \
+  crates/symdev-sdk/src/manager/tests.rs crates/symdev-sdk/src/manager/tests/bypass.rs
+git commit -m "Pin the emulator and the E52 firmware, read their package layouts, and name SYMDEV_EKA2L1 or SYMDEV_EKA2L1_DATA when no source has them."
+```
