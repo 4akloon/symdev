@@ -86,3 +86,12 @@ on the four apps + all examples, sizes vs exp 112.
   `stage/repo` made by `stager/` from `stage/trees/{rust-sdk (recipe include list from HEAD +
   run1 prebuilt/), sdk (copy of rl-shims-scratch installed SDK, same sha cbec6da8…), gcce
   (DECOY stub)}`. Script `nogcce.sh` → `nogcce.txt`, `nogcce/{new,build}-{hello,ui}.{log,strace}`.
+- **No-GCCE result** (nogcce.sh + nogcce-ui.sh after a script bug: duplicate symbian-core dep):
+  `symdev new` installed rust-sdk;0.2.0 from local, `symdev build` installed sdk only;
+  `$SYMDEV_HOME` = {cache, rust-sdk, sdk}, no gcce (decoy never run); strace: 0 lines with
+  gcc-builds or arm-none-symbianelf; symdev exec'd nightly rust-lld 2× per build (+3 host
+  links by cargo). nohello.exe 975 B (= exp 112), noui.exe 10 291 B (exp 112 ui 10 288; other
+  name/UID). Cache: 2 dirs (console set, GUI set).
+- GNU identity so far: argv identical for every example (58/65 args); exes equal (masked) except
+  netdemo (10 499 main / 10 506 branch): its Rust archive differs between the two trees
+  (rustc output depends on the source path) — recheck with main binary in the worktree.
