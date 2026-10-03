@@ -9,7 +9,7 @@ fn help_lists_only_the_known_commands() {
     // experiment 54) the same day, `test` (the result protocol, experiment 79) on
     // 2026-09-20 and `sdk` (the toolchain manager) on 2026-10-02; the other north-star
     // verbs are still not subcommands. `setup-linker` (cargo's `symdev-ld`, the cargo-run
-    // plan) came on 2026-10-03.
+    // plan) came on 2026-10-03, with `devices` and `emulator`.
     let assert = bin().arg("--help").assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let commands: Vec<_> = stdout
@@ -30,6 +30,8 @@ fn help_lists_only_the_known_commands() {
             "test",
             "freeze",
             "setup-linker",
+            "devices",
+            "emulator",
             "sdk"
         ],
         "{stdout}"

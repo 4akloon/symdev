@@ -4,6 +4,7 @@ mod device_choice;
 mod device_id;
 mod device_prompt;
 mod device_registry;
+mod emulator_instance;
 mod emulator_profile;
 mod registry_entry;
 
@@ -11,6 +12,7 @@ pub use device_choice::{Choice, DeviceChoice, Offer};
 pub use device_id::DeviceId;
 pub use device_prompt::DevicePrompt;
 pub use device_registry::{DeviceRegistry, is_eka2l1};
+pub use emulator_instance::EmulatorInstance;
 pub use emulator_profile::EmulatorProfile;
 pub use registry_entry::RegistryEntry;
 

@@ -2,6 +2,7 @@ mod artifacts;
 mod build_cmd;
 mod build_dir;
 mod cli;
+mod devices_cmd;
 mod ld;
 mod provision;
 mod role;
@@ -21,7 +22,7 @@ use clap::{CommandFactory, Parser};
 use symdev_build::{AppTarget, Epocroot, FrozenExports};
 use symdev_core::{Error, Project};
 
-use cli::{Cli, Commands};
+use cli::{Cli, Commands, EmulatorAction};
 use provision::Provision;
 use role::Role;
 use sisx::ProjectPackage;
@@ -75,6 +76,11 @@ fn main() -> ExitCode {
         Some(Commands::Deploy) => manifest().and_then(deploy_project),
         Some(Commands::Sdk { action }) => sdk_cmd::run(action, &provision),
         Some(Commands::SetupLinker { dir }) => setup_linker::setup_linker(dir),
+        Some(Commands::Devices) => devices_cmd::list(),
+        Some(Commands::Emulator { action }) => match action {
+            EmulatorAction::Start { profile } => devices_cmd::start(&profile),
+            EmulatorAction::Stop { id } => devices_cmd::stop(&id),
+        },
     };
     exit(result)
 }

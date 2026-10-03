@@ -5,8 +5,9 @@ use std::process::{Command, Stdio};
 
 use symdev_core::{Error, Result};
 
+pub mod control;
 pub mod device;
-mod json;
+pub(crate) mod json;
 mod results;
 
 pub use results::{EmulatorData, SCHEMA, TestCase, TestReport, await_report};

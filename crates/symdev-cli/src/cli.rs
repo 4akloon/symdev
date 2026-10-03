@@ -48,12 +48,27 @@ pub enum Commands {
         #[arg(long)]
         dir: Option<std::path::PathBuf>,
     },
+    /// List the running emulators symdev started and the emulator profiles.
+    Devices,
+    /// Start or stop an emulator of symdev's own (design spec §5).
+    Emulator {
+        #[command(subcommand)]
+        action: EmulatorAction,
+    },
     /// Manage the toolchain packages (GCCE, platform SDK) under SYMDEV_HOME, from the
     /// sources listed in ~/.config/symdev/sources.toml.
     Sdk {
         #[command(subcommand)]
         action: SdkAction,
     },
+}
+
+#[derive(Subcommand)]
+pub enum EmulatorAction {
+    /// Start an EKA2L1 on a profile (e.g. rm-469); prints its id.
+    Start { profile: String },
+    /// Stop an emulator symdev started (e.g. emulator-1).
+    Stop { id: String },
 }
 
 #[derive(Subcommand)]

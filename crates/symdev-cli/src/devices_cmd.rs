@@ -1,0 +1,125 @@
+//! `symdev devices`, `symdev emulator start <profile>`, `symdev emulator stop <id>`
+//! (design spec §5), and `Devices`, which the runner shares: the registry, the profiles
+//! (made from the user's installed firmware when there are none) and their liveness.
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+
+use symdev_core::{Error, Result};
+use symdev_emulator::EmulatorData;
+use symdev_emulator::control::ControlClient;
+use symdev_emulator::device::{
+    DeviceId, DeviceRegistry, EmulatorInstance, EmulatorProfile, RegistryEntry, is_eka2l1,
+};
+
+pub(crate) struct Devices {
+    registry: DeviceRegistry,
+    profiles_root: PathBuf,
+}
+
+impl Devices {
+    pub fn from_env() -> Result<Self> {
+        Ok(Self {
+            registry: DeviceRegistry::from_env()?,
+            profiles_root: EmulatorProfile::root_from_env()?,
+        })
+    }
+
+    pub fn registry(&self) -> &DeviceRegistry {
+        &self.registry
+    }
+
+    pub fn profile(&self, name: &str) -> EmulatorProfile {
+        EmulatorProfile::at(&self.profiles_root, name)
+    }
+
+    /// The running emulators symdev started: their PID is an EKA2L1 and their socket
+    /// answers `emulator.info`. Dead entries are dropped, never signalled.
+    pub fn live(&self) -> Result<Vec<RegistryEntry>> {
+        self.registry.live(is_eka2l1, |e| {
+            ControlClient::connect(&e.socket)
+                .and_then(|mut c| c.info())
+                .is_ok()
+        })
+    }
+
+    /// The profiles' names. With none, one is made per firmware in the user's EKA2L1
+    /// (`data/roms/<firmware>`), spec §5 phase 1.
+    pub fn profiles(&self) -> Result<Vec<String>> {
+        let names = Self::dirs(&self.profiles_root);
+        if !names.is_empty() {
+            return Ok(names);
+        }
+        let user = EmulatorData::from_env()?;
+        for firmware in Self::dirs(&user.root().join("data/roms")) {
+            self.profile(&firmware).create(&user, &firmware)?;
+            eprintln!("created profile {firmware}");
+        }
+        Ok(Self::dirs(&self.profiles_root))
+    }
+
+    fn dirs(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .map(|d| {
+                d.flatten()
+                    .filter(|e| e.path().is_dir())
+                    .filter_map(|e| e.file_name().into_string().ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        names.sort();
+        names
+    }
+}
+
+/// `SYMDEV_EKA2L1`, which must have the control server.
+pub(crate) fn eka2l1_with_control() -> Result<PathBuf> {
+    let eka2l1 = symdev_emulator::Eka2l1Backend::from_env()?.eka2l1;
+    if !EmulatorInstance::has_control(&eka2l1)? {
+        return Err(Error::Other(format!(
+            "SYMDEV_EKA2L1 ({}) has no --control: cargo run needs an EKA2L1 with the control \
+             server (EKA2L1#770–#772, our fork's symdev branch)",
+            eka2l1.display()
+        )));
+    }
+    Ok(eka2l1)
+}
+
+pub(crate) fn list() -> Result<ExitCode> {
+    let devices = Devices::from_env()?;
+    let profiles = devices.profiles()?;
+    for e in devices.live()? {
+        println!("{}  {}  pid {}  profile {}", e.id, e.name, e.pid, e.profile);
+    }
+    for p in profiles {
+        println!("profile {p}");
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+pub(crate) fn start(profile: &str) -> Result<ExitCode> {
+    let devices = Devices::from_env()?;
+    let profiles = devices.profiles()?;
+    if !profiles.iter().any(|p| p == profile) {
+        return Err(Error::Other(format!(
+            "no emulator profile {profile}; there are: {}",
+            profiles.join(", ")
+        )));
+    }
+    let eka2l1 = eka2l1_with_control()?;
+    let entry = EmulatorInstance::start(&eka2l1, &devices.profile(profile), devices.registry())?;
+    println!("{}", entry.id);
+    Ok(ExitCode::SUCCESS)
+}
+
+pub(crate) fn stop(id: &str) -> Result<ExitCode> {
+    let devices = Devices::from_env()?;
+    let wanted = DeviceId::parse(id)
+        .ok_or_else(|| Error::Other(format!("`{id}` is not a device id like emulator-1")))?;
+    let entry = devices
+        .live()?
+        .into_iter()
+        .find(|e| e.id == wanted)
+        .ok_or_else(|| Error::Other(format!("{id} is not running")))?;
+    EmulatorInstance::stop(&entry, devices.registry())?;
+    Ok(ExitCode::SUCCESS)
+}

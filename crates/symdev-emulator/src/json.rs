@@ -260,5 +260,22 @@ impl Parser<'_> {
     }
 }
 
+/// `text` as a JSON string, quotes included: the quote, the backslash and every control
+/// character escaped (RFC 8259 §7).
+pub(crate) fn quote(text: &str) -> String {
+    let mut out = String::from("\"");
+    for c in text.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            c if u32::from(c) < 0x20 => out.push_str(&format!("\\u{:04x}", u32::from(c))),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 #[cfg(test)]
 mod tests;

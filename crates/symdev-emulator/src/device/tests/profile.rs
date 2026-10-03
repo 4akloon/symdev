@@ -100,3 +100,27 @@ fn a_link_in_drive_c_that_leaves_it_is_refused() {
         .to_string();
     assert!(e.contains("out") && e.contains("link"), "{e}");
 }
+
+#[test]
+fn an_instance_is_started_in_its_own_session_with_its_profile_and_socket() {
+    let argv = crate::device::EmulatorInstance::argv(
+        Path::new("/opt/eka2l1"),
+        Path::new("/p/rm-469"),
+        Path::new("/run/u/symdev/emulator-1.sock"),
+    );
+    let argv: Vec<String> = argv
+        .iter()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        argv,
+        [
+            "setsid",
+            "/opt/eka2l1",
+            "--data-dir",
+            "/p/rm-469",
+            "--control",
+            "/run/u/symdev/emulator-1.sock"
+        ]
+    );
+}
