@@ -42,16 +42,33 @@ rust-sdk/symbian-rs/prebuilt/` (lib: 4172/7736/19294/59174 B).
   TARGET2-rewritten in place for lld only.
 
 ## Status
-- [ ] elf2e32 byte types  - [ ] Toolchain split  - [ ] RustLinker/prebuilt/lld/cache
+- [x] elf2e32 byte types (commit below)  - [ ] Toolchain split  - [ ] RustLinker/prebuilt/lld/cache
 - [ ] link line + two links  - [ ] CLI + Provision  - [ ] real builds  - [ ] no-GCCE run
 - [ ] emulator  - [ ] docs + exp 113  - [ ] gates
 
 ## For the packages repo
-(API recorded once written.)
+Crate `symdev-elf2e32` (path `crates/symdev-elf2e32`, deps only `symdev-core` + `symdev-uidcrc`,
+`thiserror`). Bytes in, bytes out; no env, no file I/O. Errors: `symdev_core::Error`
+(`Display` names the problem; archive errors are prefixed ``archive member `<name>`: ``).
+```rust
+use symdev_elf2e32::{StrtabPadding, Target2Rewrite};
+// R_ARM_TARGET2 (41) -> R_ARM_ABS32 (2), only the type byte of each SHT_REL/SHT_RELA entry.
+Target2Rewrite::object(bytes: &[u8]) -> Result<Target2Rewrite>   // ELF32 LE ARM ET_REL only
+Target2Rewrite::archive(bytes: &[u8]) -> Result<Target2Rewrite>  // SysV/GNU ar; skips `/`, `//`,
+                                    // `/SYM64/`; any other member must be such an object
+t.rewritten() -> usize; t.bytes() -> &[u8]; t.into_bytes() -> Vec<u8>
+Target2Rewrite::R_ARM_TARGET2 / R_ARM_ABS32: u8
+// bytes after the last NUL of every SHT_STRTAB -> 0 (any ELF32 LE ARM file, e.g. a .dso)
+StrtabPadding::zero(bytes: &[u8]) -> Result<StrtabPadding>  // a strtab with no NUL: error
+p.zeroed() -> usize; p.bytes(); p.into_bytes()
+```
+Checked against the real SDK (`~/src/rl-driver-scratch/fixcheck`): 570 `.dso`, 428 padded,
+all byte-equal to the spike's `dso-fixed/`; `usrt2_2.lib` 1 rewritten = spike's copy;
+`eexe.lib` 0.
 
 ## Findings
 
 ## Dead ends
 
 ## Next step
-TDD `Target2Rewrite` + `StrtabPadding` in crates/symdev-elf2e32.
+`ElfImage::jump_slots()`, then Toolchain split (GcceTools optional).
