@@ -5,7 +5,7 @@ mod overrides;
 use std::path::PathBuf;
 
 use symdev_core::{Error, Result};
-use symdev_sdk::{Gcce, Pins, PlatformSdk};
+use symdev_sdk::{Gcce, PlatformSdk};
 
 pub use epocroot::Epocroot;
 pub use gcce_tools::GcceTools;
@@ -45,16 +45,17 @@ impl Toolchain {
         })
     }
 
-    /// GCCE, for a build that compiles C++ or links with GNU ld.
+    /// GCCE, for a build that compiles C++ or links with GNU ld. A toolchain set up without
+    /// it reaching this is symdev's error, not the environment's: only a rust-lld build with
+    /// the prebuilt set is set up so, and such a build compiles and links no GCCE.
     pub fn gcce(&self) -> Result<&GcceTools> {
         self.gcce.as_ref().ok_or_else(|| {
-            Error::Other(format!(
-                "this step needs GCCE, and the build was set up without GCCE (a Rust build \
-                 that rust-lld links with the Rust SDK's prebuilt shims); run `symdev sdk \
-                 install {}`, or set the SYMDEV_GXX, SYMDEV_LD, SYMDEV_GCC_LIB and \
-                 SYMDEV_GCC_TARGET_LIB variables",
-                Pins::gcce().shell_word()
-            ))
+            Error::Other(
+                "internal error: a step needs GCCE, and this build was set up without GCCE (a \
+                 Rust build that rust-lld links with the Rust SDK's prebuilt shims); set \
+                 SYMDEV_RUST_LINKER=gnu to build with GCCE, and report it"
+                    .into(),
+            )
         })
     }
 }

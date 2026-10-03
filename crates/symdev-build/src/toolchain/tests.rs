@@ -202,7 +202,9 @@ fn a_build_without_gcce_needs_only_the_sdk_and_says_so_if_gcce_is_asked_for() {
     assert_eq!(t.elf2e32, None);
     let e = t.gcce().err().unwrap().to_string();
     assert!(e.contains("without GCCE"), "{e}");
-    assert!(e.contains("symdev sdk install 'gcce;12.1.0'"), "{e}");
+    // Installing GCCE would not help a build set up without it; GNU ld would.
+    assert!(e.contains("SYMDEV_RUST_LINKER=gnu"), "{e}");
+    assert!(!e.contains("symdev sdk install"), "{e}");
 }
 
 #[test]
