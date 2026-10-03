@@ -1141,9 +1141,8 @@ cp -a "$data/drives/z/rm-469" "$out/drives/z/"
 echo "staged firmware;rm-469;1 in $out"
 ```
 
-`sh tests/firmware-stage.test` now prints only `ok` lines. In `.github/workflows/tests.yml`,
-add `recipes/firmware/**` to nothing (the `recipes/**` path filter already covers it) and a
-step after the install.sh ones:
+`sh tests/firmware-stage.test` now prints only `ok` lines. `.github/workflows/tests.yml`
+already triggers on `recipes/**` and `tests/**`; add a step after the install.sh ones:
 
 ```yaml
       - name: The firmware recipe's stage.sh
