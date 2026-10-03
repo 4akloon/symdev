@@ -197,4 +197,9 @@ Ledger (git-ignored): `.superpowers/sdd/2026-10-03-cargo-build-run/progress.md`.
   shims under a work dir. `exec/t2-images.sh`: hello/ui/async 0.3.0 vs t2 EQUAL. Ruling:
   `shim_object`/`shim_archive` take `work: &Path` and `shim_archives`/`build_shims` drop
   `project` (would be unused) — the plan kept `project` in their signatures.
-NEXT: Task 3 — read brief task-3-brief.md; `cargo test -p symdev-cli --offline sisx::tests`.
+- Task 3 done: `ProjectPackage` (sisx.rs), `package_artifacts` takes resources from the image's
+  directory; D1 = A in `SisPackage::package` (password only for an encrypted `[signing] key`).
+  Old test `package_short_password_errors_before_tools` replaced by the two D1 tests; cli
+  `package_missing_sign_password` → `package_without_a_password_signs_with_a_generated_pair`.
+  READMEs (root, examples, symdev-cli) updated to the new rule.
+NEXT: Task 4 — `task-start <plan> 4`, read brief (big: role + LinkRun + setup-linker).

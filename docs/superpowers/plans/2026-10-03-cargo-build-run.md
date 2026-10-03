@@ -813,7 +813,7 @@ git commit -m "Link rustc's objects and rlibs where the staticlib stood, each li
   must be named `<app>.exe`; its directory holds the resources and receives
   `<name>.sis`/`<name>.sisx`. Returns the `.sisx` path.
 
-- [ ] **Step 1: Write the failing test** — at the end of `sisx.rs`
+- [x] **Step 1: Write the failing test** — at the end of `sisx.rs`
 
 ```rust
 #[cfg(test)]
@@ -843,13 +843,13 @@ A second assertion covers a `[ui]` project. Build the `UiResources` the way
 `UiResources::artifacts(&work)` names into `work`, and assert every returned path starts with
 `work`.
 
-- [ ] **Step 2: Run it to see it fail**
+- [x] **Step 2: Run it to see it fail**
 
 Run: `cargo test -p symdev-cli --offline sisx::tests`
 Expected: FAIL: the `[ui]` assertion sees `<root>/build/…` paths, because `package_artifacts`
 joins `cwd.join("build")`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `artifacts.rs`, replace each `cwd.join("build")` with `build`, computed once at the top:
 
@@ -917,20 +917,20 @@ impl ProjectPackage {
 
 Add `mod sisx;` to `main.rs`.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `cargo test -p symdev-cli --offline`
 Expected: all pass, including `tests/package.rs` unchanged. `main.rs` shrinks by about 60
 lines.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/symdev-cli/src/sisx.rs crates/symdev-cli/src/main.rs crates/symdev-cli/src/artifacts.rs
 git commit -m "Package a project from an image and the resources beside it, as a type."
 ```
 
-- [ ] **Step 6 (needs D1; Option A shown): Ask for the password only for an encrypted key of the user's**
+- [x] **Step 6 (needs D1; Option A shown): Ask for the password only for an encrypted key of the user's**
 
 Tests first, in `crates/symdev-build/src/package/tests/validation.rs` (a child of
 `package/tests.rs`, whose helpers `fake_pkg()` and `hello_exe_bytes()` it reaches as

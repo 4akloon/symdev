@@ -93,7 +93,7 @@ and their causes are tracked in [docs/research/size-levers.md](docs/research/siz
 |---|---|---|
 | GCCE cross compiler (GCC 12.1.0 + binutils 2.29.1, `arm-none-symbianelf`) | C++ projects; a Rust project only when the Rust SDK has no prebuilt shims (a source checkout) or with `SYMDEV_RUST_LINKER=gnu` | package `gcce;12.1.0`, or `SYMDEV_GXX`, `SYMDEV_LD`, `SYMDEV_GCC_LIB`, `SYMDEV_GCC_TARGET_LIB` |
 | S60 3rd FP2 SDK (headers, `.dso` stubs, static libraries) | compiling and linking | package `sdk;s60-3rd-fp2;1.1`, or `SYMDEV_EPOCROOT` |
-| Self-signing password (4+ characters) | `symdev package` | `SYMDEV_SIGN_PASSWORD` |
+| Password of an encrypted `[signing] key` (4+ characters; a generated self-signed pair needs none) | `symdev package` | `SYMDEV_SIGN_PASSWORD` |
 | Rust SDK (`symbian-rs/`) | Rust projects only | `SYMDEV_RUST_SDK`, else the checkout symdev was built from, else package `rust-sdk;<symdev's version>` |
 | Rust nightly, pinned in `symbian-rs/rust-toolchain.toml`, and a host C linker (`cc`, e.g. `build-essential`) | Rust projects only (`-Zbuild-std`; build scripts and the SDK's proc macros link on the host, as for any Rust project); a C++ project needs neither | rustup, your distribution |
 | `rust-lld` | Rust projects: links them (see [Linking Rust programs](#linking-rust-programs)) | the pinned nightly's own `rustc` component (rustup installs it), or `SYMDEV_RUST_LLD` |
