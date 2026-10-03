@@ -3684,3 +3684,75 @@ lld's ARM PLT entry is fixed: 16 bytes (12 of code, `d4d4d4d4` padding) plus a 4
 `-z noseparate-code`, `--no-rosegment`, `--hash-style=sysv`; `--help` lists no ARM PLT
 option. GNU ld's symbianelf PLT entry is 8 bytes, `ldr pc, [pc, #-4]` and a word that
 elf2e32 turns into the import, with no header.
+
+### 3. The stubs: GNU's PLT entry, made outside lld
+
+`ImportStubs` (`crates/symdev-elf2e32/src/import_stubs.rs`) writes GNU ld's entry into an
+object and lets `--wrap` route the calls to it. Two links of the same inputs:
+
+1. **First link**, the experiment 109 line unchanged. `ImportStubs::from_first_link` reads
+   its `R_ARM_JUMP_SLOT` symbols — the imported functions the program *calls* (refused
+   unless `ElfLinker` says lld). Imports only taken by address are `R_ARM_ABS32` and need
+   no stub, as with GNU ld.
+2. **The object.** `ImportStubs::object` writes an ELF32 ARM `ET_REL` directly (≈130
+   lines, no assembler, so no GCCE): section `.text.symdev_import_stubs`, per function
+   `f` at `8 × i` the word `ldr pc, [pc, #-4]` (`0xe51ff004`) and a zero word with an
+   `R_ARM_ABS32` against `__real_f`; `__wrap_f` a hidden global function of size 8;
+   mapping symbols `$a`/`$d`; `EF_ARM_EABI_VER5`. binutils 2.29.1 `objdump` disassembles it
+   as intended. Chosen over `rustc --emit=obj` of a `global_asm!`, which needs a rustc run
+   with the target's `core` per build.
+3. **Second link** = the first line + `stubs.o` + `--wrap=f` per function. Every call to
+   `f` reaches `__wrap_f`; the stub's word, `R_ARM_ABS32` against `__real_f` = `f`, is an
+   ordinary absolute import that elf2e32 reads as GNU's (rule (a) does not even apply).
+   The second link has **no `R_ARM_JUMP_SLOT`, no `.plt`, no `.got.plt`** (checked on every
+   link below). `ldr pc` interworks on ARMv5T, and a Thumb `bl __wrap_f` becomes `blx`.
+
+The driver is `examples/import_stubs.rs` (`import_stubs <first.elf> <stubs.o>`, prints the
+functions); `~/src/rl-scratch/stubs/link2.py <app> [--place=…] [--sandbox]` runs the two
+links and the post-link and prints the sizes.
+
+### 4. Sizes
+
+The four applications (`link2.py`, stubs placed after the other inputs; `.exe`
+compressed, then uncompressed, as symdev writes them):
+
+| | GNU ld | lld + stubs | lld PLT (exp. 109) | stubs |
+|---|---:|---:|---:|---:|
+| `hello` | 968 / 1 340 | 975 / 1 348 | 1 044 / 1 584 | 16 |
+| `async` | 18 431 / 33 948 | **18 360** / 33 892 | 18 577 / 34 684 | 61 |
+| leave probe (`shim`) | 4 452 / 7 092 | 4 464 / 7 112 | 4 572 / 7 552 | 32 |
+| `ui` | 10 315 / 17 092 | **10 288** / 17 028 | 10 511 / 17 936 | 71 |
+
+The stubs cost what GNU's PLT costs, 8 bytes per called import. `async` and `ui` come out
+*smaller* than GNU: GNU ld also gives the image's own global functions PLT entries
+(async 69 − 61 = 8, ui 80 − 71 = 9 — `symbian-libcalls`' `__atomic_*`, the shim's
+`symrs_app_*`), while lld with `-Bsymbolic` calls them directly. The residue against GNU
+is the exception index (section 5).
+
+The fifteen other workspace examples (`~/src/rl-scratch/stubs/ex15.py`: the spike's GNU
+argv remapped to the no-GCCE set as `nogcce-link.py` does, both links in the sandbox of
+section 7, post-linked by this branch's elf2e32, compared with the spike's `batch/`):
+
+| example | GNU ld | lld + stubs | lld PLT | uncompressed GNU / stubs |
+|---|---:|---:|---:|---:|
+| `hello-raw` | 805 | 807 | 867 | 1 080 / 1 084 |
+| `alloc` | 3 765 | 3 774 | 3 848 | 5 932 / 5 940 |
+| `spawnee` | 2 606 | 2 609 | 2 690 | 4 408 / 4 412 |
+| `files` | 8 288 | 8 289 | 8 444 | 14 292 / 14 292 |
+| `cleanup` | 4 265 | 4 272 | 4 368 | 6 824 / 6 828 |
+| `atomics` | 8 837 | 8 796 | 8 949 | 15 920 / 15 848 |
+| `time` | 10 146 | 10 159 | 10 220 | 16 544 / 16 552 |
+| `net` | 10 506 | 10 504 | 10 734 | 17 624 / 17 616 |
+| `tls` | 13 978 | 13 938 | 14 079 | 25 944 / 25 920 |
+| `ui-list` | 11 194 | 11 158 | 11 452 | 18 636 / 18 580 |
+| `notes` | 11 465 | 11 426 | 11 699 | 19 072 / 19 012 |
+| `query` | 12 673 | 12 642 | 12 854 | 20 992 / 20 936 |
+| `panic` | 2 018 | 2 029 | 2 125 | 2 964 / 2 972 |
+| `fmt` | 107 777 | 107 754 | 107 744 | 262 416 / 262 412 |
+| `locale` | 8 122 | 8 109 | 8 250 | 13 296 / 13 288 |
+
+**All fifteen link and post-link; the import words are identical per DLL in every one**
+(`e32cmp.py` against the GNU image). Against GNU the stubs builds lie between −72 and +8
+bytes uncompressed, −41 and +13 compressed. `DT_NEEDED` is identical except `notes` and
+`query`, where GNU keeps `eikcoctl` (experiment 109 §6: `--as-needed` decided before
+`--gc-sections`); neither image imports from it.
