@@ -103,7 +103,7 @@ impl DeviceRegistry {
 }
 
 /// Whether `pid` is an EKA2L1 process now: `/proc/<pid>/comm` names it (`eka2l1_qt`), as
-/// `Eka2l1Backend::previous` checks.
+/// symdev has always checked a PID it did not start.
 pub fn is_eka2l1(pid: u32) -> bool {
     std::fs::read_to_string(format!("/proc/{pid}/comm"))
         .is_ok_and(|comm| comm.trim().to_ascii_lowercase().contains("eka2l1"))

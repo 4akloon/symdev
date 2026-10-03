@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use super::{AppExit, ExeTarget};
+use super::{AppExit, ExeTarget, Verdict};
 use crate::ld::{LinkKind, LinkRecord};
 use symdev_emulator::control::{AppExited, ExitType};
 
@@ -135,4 +135,27 @@ fn the_log_tail_gives_the_guest_lines_written_after_it_started() {
     assert_eq!(tail.poll(), vec!["half a line".to_string()]);
     std::fs::write(&log, "T s.cpp:3 [Emulated.Stdout]: after a restart\n").unwrap();
     assert_eq!(tail.poll(), vec!["after a restart".to_string()]);
+}
+
+#[test]
+fn the_running_case_takes_the_panic_and_pending_ones_are_not_run() {
+    let report = symdev_emulator::TestReport::parse(r#"{"schema":1,"app":"t","uid3":"0xe1234567","passed":1,"failed":0,
+        "cases":[{"name":"a","ok":true},{"name":"b","ok":false,"state":"running"},{"name":"c","ok":false,"state":"pending"}]}"#).unwrap();
+    let exit = AppExit {
+        code: 101,
+        message: Some("panicked: RUST 3".into()),
+    };
+    let lines = super::TestOutcome::settle(&report, &exit);
+    let v: Vec<_> = lines
+        .iter()
+        .map(|l| (l.name.as_str(), l.verdict, l.detail.as_str()))
+        .collect();
+    assert_eq!(
+        v,
+        [
+            ("a", Verdict::Ok, ""),
+            ("b", Verdict::Failed, "panicked: RUST 3"),
+            ("c", Verdict::NotRun, "")
+        ]
+    );
 }

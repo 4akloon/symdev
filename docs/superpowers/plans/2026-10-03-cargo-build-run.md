@@ -2670,7 +2670,7 @@ git commit -m "Run an image on a chosen device as cargo's runner, with the app's
     ok. P passed; F failed` (`FAILED.` when it failed; `; K not run` when K > 0). It passed
     only with F = 0, K = 0 and N > 0.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```rust
 // crates/symdev-cli/src/libtest_print.rs, #[cfg(test)]
@@ -2732,9 +2732,9 @@ report into the fake profile's drive E before it sends the exit:
 | `a_failing_case_exits_non_zero` | one `ok:false` case `x` with a detail, `kill 0 None` | status 1; stdout has `test x ... FAILED` and the detail under `failures:` |
 | `a_report_from_an_earlier_run_is_not_read` | a stale report is in place before the install, and the fake writes none | the runner removed it before installing; status 1, `no test report` |
 
-- [ ] **Step 2: Run them to see them fail.**
+- [x] **Step 2: Run them to see them fail.**
 
-- [ ] **Step 3: Implement.** `results.rs` parses `state`. `TestOutcome::settle` and
+- [x] **Step 3: Implement.** `results.rs` parses `state`. `TestOutcome::settle` and
   `LibtestPrint::lines` follow the interfaces above. In `Runner`, a target whose kind is
   `Test` does three extra things:
   - before the install, removes `EmulatorProfile::at(root, &device.profile).data()
@@ -2771,9 +2771,9 @@ mod executor {
 }
 ```
 
-- [ ] **Step 4: Run the tests**: `cargo test --workspace --offline`; all pass.
+- [x] **Step 4: Run the tests**: `cargo test --workspace --offline`; all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/symdev-emulator crates/symdev-cli symbian-rs/examples/async

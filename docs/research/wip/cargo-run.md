@@ -293,4 +293,11 @@ NEXT: Task 10 — `task-start <plan> 10` (EKA2L1 with --control/--data-dir; prof
   on ETXTBSY. Tests isolate XDG_RUNTIME_DIR now. Smoke (`exec/t13-smoke.sh`, flock): in t7,
   `cargo run --release` → created profile, started emulator-1, app ran, rc=0 in 6.8 s; second
   `cargo run` rc=0 in 5.3 s (hello waits 5 s itself); `symdev emulator stop` → no eka2l1_qt left.
-NEXT: Task 14 — `task-start <plan> 14` (cargo test through the runner, libtest printer).
+- Task 14 done: CaseState in TestReport; TestOutcome/CaseLine/Verdict; LibtestPrint; Runner
+  test path (clear report, follow, await_report 5 s, settle, libtest lines, status 0 iff pass;
+  a report whose cases are all finished also ends the wait — Avkon examples report and keep
+  running); `symdev test --emulator` on the same runner; Eka2l1Backend reduced to from_env;
+  examples/async gets tests/executor.rs. Real (`exec/t14-real.sh`, flock): `cargo test
+  --release` in examples/async → emulator-1 started, `test block_on_returns_what_the_future_produced
+  ... ok`, `test result: ok. 1 passed; 0 failed`, rc=0 in 0.7 s; emulator stopped.
+NEXT: Task 15 — `task-start <plan> 15` (symdev build = cargo build --release).

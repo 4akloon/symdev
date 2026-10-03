@@ -4,7 +4,7 @@ use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
 mod common;
-use common::fake_control::{CLOSE, FakeDevice, INFO, answer, exited};
+use common::fake_control::{CLOSE, FakeDevice, INFO, answer, exited, report_path};
 
 const UID3: u32 = 0xe123_4567;
 
@@ -24,7 +24,19 @@ fn image(dir: &Path) -> PathBuf {
 
 /// The fake's answers for a run: `then` is what follows the answer to `app.launch`.
 fn device(running: bool, then: Vec<String>) -> FakeDevice {
-    FakeDevice::start(move |method, id, _| match method {
+    device_writing(tempfile::tempdir().unwrap(), running, then, None)
+}
+
+/// [`device`] in `env`, writing `report` as the device's test report just before it sends
+/// what follows `app.launch`.
+fn device_writing(
+    env: tempfile::TempDir,
+    running: bool,
+    then: Vec<String>,
+    report: Option<String>,
+) -> FakeDevice {
+    let path = report_path(env.path());
+    FakeDevice::start_in(env, move |method, id, _| match method {
         "emulator.info" => vec![answer(id, INFO)],
         "events.subscribe" => vec![answer(id, "{\"events\":[\"app_exited\"]}")],
         "apps.list" => vec![answer(
@@ -34,6 +46,10 @@ fn device(running: bool, then: Vec<String>) -> FakeDevice {
         "app.kill" => vec![answer(id, "{\"killed\":1}"), exited("kill", 0, "Kill")],
         "package.install" => vec![answer(id, "{}")],
         "app.launch" => {
+            if let Some(report) = &report {
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(&path, report).unwrap();
+            }
             let mut out = vec![answer(id, "{\"pid\":7}")];
             out.extend(then.clone());
             out
@@ -140,5 +156,86 @@ fn several_devices_and_no_terminal_is_an_error() {
     assert!(
         err.contains("emulator-1") && err.contains("emulator-2") && err.contains("SYMDEV_DEVICE"),
         "{err}"
+    );
+}
+
+/// The image of a `harness = false` test, as symdev-ld records it.
+fn test_image(dir: &Path) -> PathBuf {
+    let p = image(dir);
+    std::fs::write(
+        dir.join("out/app.symdev.toml"),
+        "kind = \"test\"\nname = \"smoke\"\n",
+    )
+    .unwrap();
+    p
+}
+
+fn report(cases: &str) -> String {
+    format!(
+        "{{\"schema\":1,\"app\":\"smoke\",\"uid3\":\"0xe1234567\",\"passed\":0,\"failed\":0,\"cases\":[{cases}]}}"
+    )
+}
+
+fn run_test(fake: &FakeDevice) -> (i32, String, String) {
+    let mut cmd = fake.runner(&test_image(fake.env.path()));
+    cmd.env("SYMDEV_DEVICE", "emulator-1");
+    let out = cmd.output().unwrap();
+    let text = |b: &[u8]| String::from_utf8_lossy(b).into_owned();
+    (
+        out.status.code().unwrap_or(-1),
+        text(&out.stdout),
+        text(&out.stderr),
+    )
+}
+
+#[test]
+fn cargo_test_prints_libtest_lines_and_exits_0() {
+    let cases = report("{\"name\":\"a\",\"ok\":true},{\"name\":\"b\",\"ok\":true}");
+    let fake = device_writing(
+        tempfile::tempdir().unwrap(),
+        false,
+        vec![exited("kill", 0, "None")],
+        Some(cases),
+    );
+    fake.register(1);
+    let (code, out, err) = run_test(&fake);
+    assert_eq!(code, 0, "{out}{err}");
+    assert!(
+        out.contains("test a ... ok") && out.contains("test result: ok. 2 passed; 0 failed"),
+        "{out}"
+    );
+}
+
+#[test]
+fn a_failing_case_exits_non_zero() {
+    let cases = report("{\"name\":\"x\",\"ok\":false,\"detail\":\"2 + 2 is 4\"}");
+    let fake = device_writing(
+        tempfile::tempdir().unwrap(),
+        false,
+        vec![exited("kill", 0, "None")],
+        Some(cases),
+    );
+    fake.register(1);
+    let (code, out, err) = run_test(&fake);
+    assert_eq!(code, 1, "{out}{err}");
+    assert!(
+        out.contains("test x ... FAILED") && out.contains("failures:\n    x: 2 + 2 is 4"),
+        "{out}"
+    );
+}
+
+#[test]
+fn a_report_from_an_earlier_run_is_not_read() {
+    let env = tempfile::tempdir().unwrap();
+    let stale = report_path(env.path());
+    std::fs::create_dir_all(stale.parent().unwrap()).unwrap();
+    std::fs::write(&stale, report("{\"name\":\"old\",\"ok\":true}")).unwrap();
+    let fake = device_writing(env, false, vec![exited("kill", 0, "None")], None);
+    fake.register(1);
+    let (code, out, err) = run_test(&fake);
+    assert_eq!(code, 1, "{out}{err}");
+    assert!(
+        !stale.exists() && out.contains("no test report"),
+        "{out}{err}"
     );
 }

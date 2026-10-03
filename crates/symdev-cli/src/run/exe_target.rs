@@ -64,14 +64,32 @@ impl ExeTarget {
         })
     }
 
-    /// The project's own package, for `symdev run` without `--exe`.
-    pub fn installed(sisx: PathBuf, uid3: u32) -> Self {
-        Self {
-            image: sisx.with_extension("exe"),
+    /// The project's own package `build/<name>.sisx`, for `symdev run` and `symdev test`
+    /// without `--exe`. A package older than the `build/<name>.exe` beside it would
+    /// install the previous build, so it is refused.
+    pub fn installed(sisx: PathBuf, uid3: u32) -> Result<Self> {
+        let name = sisx
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if !sisx.is_file() {
+            return Err(Error::Other(format!(
+                "SISX not found: build/{name} (run symdev package; for a Rust project, cargo build)"
+            )));
+        }
+        let image = sisx.with_extension("exe");
+        if image.is_file() && modified(&sisx)? < modified(&image)? {
+            return Err(Error::Other(format!(
+                "build/{name} is older than {}, so this would install the previous build: run                  symdev package (or cargo build for a Rust project)",
+                image.display()
+            )));
+        }
+        Ok(Self {
+            image,
             sisx,
             uid3,
             kind: LinkKind::Main,
-        }
+        })
     }
 }
 

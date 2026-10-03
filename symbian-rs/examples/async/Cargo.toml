@@ -14,3 +14,11 @@ test = false
 symbian-async = { path = "../../crates/symbian-async" }
 symbian-core = { path = "../../crates/symbian-core" }
 symbian-std = { path = "../../crates/symbian-std" }
+
+# A device test (`cargo test`): tests/*.rs with harness = false, on symbian-test.
+[[test]]
+name = "executor"
+harness = false
+
+[dev-dependencies]
+symbian-test = { path = "../../crates/symbian-test" }

@@ -24,7 +24,15 @@ pub struct FakeDevice {
 impl FakeDevice {
     /// `script(method, id, line)` answers one request.
     pub fn start(script: impl Fn(&str, &str, &str) -> Vec<String> + Send + 'static) -> Self {
-        let env = tempfile::tempdir().unwrap();
+        Self::start_in(tempfile::tempdir().unwrap(), script)
+    }
+
+    /// [`Self::start`] with the environment directory made by the caller, who may need its
+    /// paths in the script.
+    pub fn start_in(
+        env: tempfile::TempDir,
+        script: impl Fn(&str, &str, &str) -> Vec<String> + Send + 'static,
+    ) -> Self {
         let socket = env.path().join("emu.sock");
         let listener = UnixListener::bind(&socket).unwrap();
         let (tx, methods) = channel();
@@ -148,4 +156,10 @@ fn spawn(script: &Path) -> Child {
         }
     }
     panic!("{} stayed busy", script.display())
+}
+
+/// Where the runner looks for the report of UID3 `0xe1234567` on the fake's profile
+/// `rm-469`: drive E of the profile under `XDG_DATA_HOME` (`<env>/data`).
+pub fn report_path(env: &Path) -> PathBuf {
+    env.join("data/symdev/emulators/rm-469/data/drives/e/symdev/results/e1234567.json")
 }

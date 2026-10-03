@@ -6,6 +6,7 @@ mod exe_target;
 mod interrupt;
 mod log_tail;
 mod runner;
+mod test_outcome;
 
 use std::io::IsTerminal;
 use std::path::PathBuf;
@@ -20,6 +21,7 @@ pub(crate) use exe_target::ExeTarget;
 pub(crate) use interrupt::Interrupt;
 pub(crate) use log_tail::LogTail;
 pub(crate) use runner::Runner;
+pub(crate) use test_outcome::{CaseLine, TestOutcome, Verdict};
 
 pub(crate) fn run(exe: Option<PathBuf>, args: Vec<String>) -> Result<ExitCode> {
     refuse_arguments(&args)?;
@@ -59,13 +61,7 @@ fn project_target(cwd: &std::path::Path) -> Result<ExeTarget> {
         .uid3
         .ok_or_else(|| Error::Other("uid3 required for run (set symbian.uid3)".into()))?;
     let sisx = cwd.join("build").join(format!("{}.sisx", m.package.name));
-    if !sisx.is_file() {
-        return Err(Error::Other(format!(
-            "SISX not found: build/{}.sisx (run symdev package; for a Rust project, cargo build)",
-            m.package.name
-        )));
-    }
-    Ok(ExeTarget::installed(sisx, uid3))
+    ExeTarget::installed(sisx, uid3)
 }
 
 #[cfg(test)]

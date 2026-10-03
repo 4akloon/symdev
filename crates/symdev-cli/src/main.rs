@@ -4,6 +4,7 @@ mod build_dir;
 mod cli;
 mod devices_cmd;
 mod ld;
+mod libtest_print;
 mod provision;
 mod role;
 mod run;

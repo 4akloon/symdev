@@ -91,6 +91,16 @@ pub struct TestCase {
     pub name: String,
     pub ok: bool,
     pub detail: String,
+    /// `None` for a finished case; set by `symbian-test` for one listed but not finished.
+    pub state: Option<CaseState>,
+}
+
+/// Where `symbian-test` got with a case: listed before the first ran, or running now. A
+/// panic ends the process, so the case left `Running` is the one that panicked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaseState {
+    Pending,
+    Running,
 }
 
 /// A parsed result file.
@@ -136,9 +146,22 @@ impl TestReport {
                 .get("ok")
                 .and_then(Json::as_bool)
                 .ok_or_else(|| Error::Other("test result file: a case has no `ok`".into()))?;
+            let state = match item.get("state").map(|s| s.as_str()) {
+                None => None,
+                Some(Some("pending")) => Some(CaseState::Pending),
+                Some(Some("running")) => Some(CaseState::Running),
+                Some(other) => {
+                    return Err(Error::Other(format!(
+                        "test result file: case `{name}` has the state {}, which this symdev \
+                         does not know",
+                        other.unwrap_or("(not a string)")
+                    )));
+                }
+            };
             cases.push(TestCase {
                 name: name.to_owned(),
                 ok,
+                state,
                 detail: item
                     .get("detail")
                     .and_then(Json::as_str)
