@@ -2137,6 +2137,8 @@ pub(crate) fn eka2l1_with_control(provision: &Provision) -> Result<Eka2l1> {
 }
 ```
 
+`devices_cmd.rs` imports `symdev_emulator::device::{Eka2l1, Firmware}`, `symdev_sdk::Pins`
+and `crate::provision::Provision`, and no longer `symdev_emulator::EmulatorData`.
 `list(provision: &Provision)` and `start(profile: &str, provision: &Provision)` call
 `devices.profiles_or_make(provision)?` where they called `profiles()`. `start` passes
 `&eka2l1_with_control(provision)?` to `EmulatorInstance::start`.
