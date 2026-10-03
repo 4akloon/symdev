@@ -159,7 +159,8 @@ test in the task named.
 **Order.** 1 → 2 → 3 → 4 make `symdev-ld`. 5 and 6 are the Rust SDK side. 7, 8, 9 move the
 projects. 10 → 11 → 12 → 13 → 14 are the devices and the runner. 15, 16 and 17 are `symdev
 build`, the refusal of the old shape, and CI. 18 and 19 are the real runs and acceptance.
-Tasks 10–14 do not depend on 5–9 and can run in parallel with them; 18 needs all before it.
+Tasks 10–13 depend only on 4 and can run in parallel with 5–9; 14 also needs 6; 18 needs
+all before it.
 
 ---
 
@@ -2101,13 +2102,14 @@ flock ~/.local/share/EKA2L1/.symdev-agent.lock sh -c '
 ```
 
 Probe it with the README's netcat line: `emulator.info` (expect `device.firmware`
-`RM-469`), `package.install` of Task 7's `t7.sisx` (absolute path), `app.launch` with its
-UID, and `apps.list`. Record:
+`RM-469`), `package.install` of a packaged app (absolute path; experiment 114 §1.5 left
+`~/src/cargo-run-scratch/tree/symbian-rs/examples/hello/build/hello.sisx`, UID `0xef9f2cab`),
+`app.launch` with its UID, and `apps.list`. Record:
 
 * which files the emulator wrote into the profile, and where the log is;
 * the exact shape of a guest `RDebug` line (the class `Emulated.Stdout`), which the runner
   will match;
-* where the installed `sys/bin/t7.exe` landed;
+* where the installed `sys/bin/hello.exe` landed;
 * that the user's `~/.local/share/EKA2L1` did not change (`find -newer` on a marker file).
 
 Then `kill -9` that PID only. If the links are refused, record the error and copy what
