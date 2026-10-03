@@ -176,10 +176,10 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
 (commit, no push). Stop before L1, write "READY FOR L1" here.
 
 ## Execution status
-- [ ] Task 1 (in progress): copy made, heads fetched (all = exp 115 §1.1, master fbf0060, 11 PRs),
-  branch `symdev` rebuilt (9 merges, 2 conflicts resolved, see ~/src/EKA2L1-wt/emulator-pkg.NOTES.md).
-  Host build running: PID 602043, log ~/src/EKA2L1-wt-build/emulator-pkg/build.log (EXIT= at end).
-  Next: when EXIT=0, run ekatests (brief step 3), then step 4 --help check under the lock.
+- [x] Task 1: emulator-pkg copy, branch `symdev` rebuilt on upstream fbf0060 + 9 merges (11 PRs),
+  2 conflicts (applistwidget.cpp lock×reload; option lists) — ~/src/EKA2L1-wt/emulator-pkg.NOTES.md.
+  Host build ~/src/EKA2L1-wt-build/emulator-pkg EXIT=0, ekatests all passed (388 cases),
+  --help lists --data-dir and --control (wrapper ~/src/emu-pkg-scratch/bin/eka2l1-emupkg).
 - [x] Task 2 committed on symdev: <C> = 29d5f58aecc8826a7832c3acdce36461021da39f, <c> 29d5f58,
   <V> = 2026.10.03 (merges-only head 50a419f).
 - [ ] Task 3: ~/src/emu-pkg-scratch/rehearsal/run.sh running, PID 617606 (21:04Z), log run.log
