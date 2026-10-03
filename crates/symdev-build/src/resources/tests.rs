@@ -101,6 +101,28 @@ fn casefold_links_wrong_case_includes() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+/// Where files differ only in case, the first in sorted order wins, whatever order the
+/// directory listing gives (20 twin pairs: a listing-order pick matches by chance 1 in 2^20).
+#[test]
+fn casefold_picks_the_first_case_twin_in_sorted_order() {
+    let dir = std::env::temp_dir().join(format!("symdev-casefold-tie-{}", std::process::id()));
+    let inc = dir.join("include");
+    std::fs::create_dir_all(&inc).unwrap();
+    let mut wants = String::new();
+    for n in 0..20 {
+        std::fs::write(inc.join(format!("Twin{n}.h")), "upper").unwrap();
+        std::fs::write(inc.join(format!("twin{n}.h")), "lower").unwrap();
+        wants.push_str(&format!("#include <TWIN{n}.H>\n"));
+    }
+    std::fs::write(inc.join("all.h"), wants).unwrap();
+    let out = SdkIncludeCaseFold::ensure(&inc, &dir.join("overlay")).unwrap();
+    for n in 0..20 {
+        let got = std::fs::read_to_string(out.join(format!("TWIN{n}.H"))).unwrap();
+        assert_eq!(got, "upper", "TWIN{n}.H");
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 /// §4.3/§4.6: an export bound for `epoc32/include` is staged in the build directory,
 /// which is already the first `-I`; anything else is named in a warning.
 #[test]

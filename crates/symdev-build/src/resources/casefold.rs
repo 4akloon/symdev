@@ -7,7 +7,8 @@ use symdev_core::{Error, Result};
 /// Case-insensitive view of `epoc32/include` for a case-sensitive host: the SDK was
 /// written on Windows, so headers include each other with the wrong case
 /// (`fbs.h` → `FbsMessage.h`, file `fbsmessage.h`). One symlink per mismatched
-/// include name, pointing at the real file.
+/// include name, pointing at the real file; where files differ only in case, at the
+/// first in sorted order.
 pub struct SdkIncludeCaseFold;
 
 impl SdkIncludeCaseFold {
@@ -34,9 +35,14 @@ impl SdkIncludeCaseFold {
                     continue;
                 };
                 let rel = rel.to_string_lossy().replace('\\', "/");
-                by_lower
+                // Case twins: the first in sorted order wins, as in the packages repo's
+                // overlay, so the pick does not depend on the directory listing.
+                let first = by_lower
                     .entry(rel.to_lowercase())
                     .or_insert_with(|| path.clone());
+                if path < *first {
+                    *first = path.clone();
+                }
                 if let Ok(bytes) = std::fs::read(&path) {
                     include_names(&bytes, &mut names);
                 }
