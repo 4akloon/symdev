@@ -130,6 +130,15 @@ Scratch: `~/src/emu-pkg-scratch/`. Read-only observations go to experiment 115 �
   EMULATOR_ARTIFACT_DIR; sha256sum; --appimage-extract; clone fork commit w/ submodules
   into ./eka2l1-src); tests/emulator-build.test (hash refusal, zeros refusal).
 
+- Task 10 written + committed (pkgtools emulator-tree/notices, recipe.toml, artifact.toml,
+  build.sh, tests/emulator-build.test, rehearsal build in scratch).
+- Task 11 design: source.sh <out.tar.gz> (run after build.sh, reuses ./eka2l1-src and
+  ./artifact): eka2l1/ = git archive of <C> + each submodule's git archive at its commit
+  (git submodule foreach --recursive); recipe/ = the recipe dir; ubuntu/ = for each source
+  pkg in packages.tsv: .dsc from launchpad +files, pkgtools dsc-files verifies sha256 of
+  the files listed under Checksums-Sha256; tar --sort=name --mtime=@0 … | gzip -n -9.
+  Then publish public --dry-run (rehearsal prefix + source) → record sizes.
+
 ## Next step
 
-Write Task 10 into the plan, then 11–16 and the lead's acceptance.
+Write Task 11 (source) into the plan, then 12–16 and the lead's acceptance.
