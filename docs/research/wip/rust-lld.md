@@ -108,6 +108,11 @@ Do NOT edit: `crates/symdev-build/src/driver/{rust_build,libcalls}.rs`, `crates/
   `~/src/rl-scratch/shots/stubs-{hello,shim}-1.png`, `stubs-ui-cmd-{1,2}.png`.
   async: `symdev test --emulator` → `asyncdemo: 15 passed`, exit 0 (300 ms sleep 328 ms,
   together 312, sequence 625, race 109); log `~/src/rl-scratch/stubs/async-test.log`.
+- Step 3 no-GCCE: `link2.py <proj> --sandbox` (rust-lld + import_stubs inside `bwrap
+  --dev-bind / / --tmpfs ~/gcc-builds` under `strace -e trace=%file`): all four link, 0
+  `gcc-builds` paths in first/stubs/final.strace; files opened = rust-lld's own libs, spike
+  dso-fixed / prebuilt/lib / sdk-fixed, Rust archives, stubs.o. The .exe equal the
+  unsandboxed ones except 0x14-0x17/0x24-0x27 (time, CRC).
 ## Dead ends
 - lld options for an 8-byte PLT: none. `.plt`/`.got` stay 0x120/0x4c on hello with each of
   `-z now`, `-z lazy`, `--pic-veneer`, `-z noseparate-code`, `--no-rosegment`,
