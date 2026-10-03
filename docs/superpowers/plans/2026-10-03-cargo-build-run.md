@@ -75,3 +75,56 @@ assumption; every task below is written for the observation:
    branch in `~/src/EKA2L1-wt/integration` lacks both. Task 10 builds one from
    `dev/data-dir` + `dev/control-events`.
 8. **Signing in `cargo build` needs an owner decision** (D1 below).
+
+## Open decision for the owner — D1: signing in `cargo build`
+
+`symdev package` refuses a `SYMDEV_SIGN_PASSWORD` shorter than 4 characters, even for
+`[signing] mode = "self-signed"` (`SisPackage::validate_password`,
+`crates/symdev-build/src/package.rs:47`). With the spec's "`cargo build` produces a signed
+`.sisx`", a fresh project's first `cargo build` therefore fails until the user sets the
+variable. Facts for the decision:
+
+- With no `[signing] cert`/`key`, `SisPackage::package` generates a new self-signed pair on
+  every run. Its key is **unencrypted** PKCS#8 (`symdev_makekeys::SelfSignedDsa::key_pem`,
+  `BEGIN PRIVATE KEY`), and the password plays no part in signing with it. The check guards
+  nothing on this path.
+- The original tools allow a key with no password (experiment 114 §1.7, through Wine).
+  `makekeys` without `-password` asks "Do you want to use a password (y/n)?". Answered `n`, it
+  writes an unencrypted `BEGIN DSA PRIVATE KEY`, and `signsis` signs with it given no pass
+  phrase.
+
+| Option | What changes | Cost |
+|---|---|---|
+| **A (recommended)** | The password is required only for a key the user supplies (`[signing] key`) and only when that key is encrypted (`Proc-Type: 4,ENCRYPTED` or `BEGIN ENCRYPTED PRIVATE KEY`). A generated self-signed pair needs none | One rule changes in `SisPackage`; matches what the original tools allow |
+| B | `symdev new` writes a random password to `.symdev/sign-password` (git-ignored); `symdev-ld` reads it when `SYMDEV_SIGN_PASSWORD` is unset | A secret file in every project that protects nothing on the generated-key path |
+| C | Without the variable, `symdev-ld` stops after the `.exe` and prints `note: set SYMDEV_SIGN_PASSWORD (at least 4 characters) to get <name>.sisx`; the runner then refuses with the same text | Today's rule kept; a fresh `cargo run` fails until the user sets it |
+
+**Recommendation: A.** The password never touches the key symdev generates. The original
+tools allow an unencrypted self-signed key. A is the only option where `symdev new` → `cargo
+run` works with no setup, which the spec's acceptance (§10) requires.
+
+**Depends on D1:** Task 3, step 6, and Task 19's acceptance run. Every other task is
+independent of it. If D1 is not decided when Task 3 is reached, implement steps 1–5, leave
+step 6 unchecked, and go on.
+
+## Review Focus
+
+Five inputs the spec implies and no other test covers, most likely first. Each one has its
+test in the task named.
+
+1. **`cargo test` links the binary and every test at once.** Intermediates, shims and the
+   import-stub object must not be shared between two `symdev-ld` processes of one project.
+   Each link works in its own `<out>.symdev/` directory (Task 4, test
+   `two_links_of_one_project_use_two_work_dirs`).
+2. **`cargo run` from a subdirectory.** The runner gets a path relative to its working
+   directory, not to the project root, and must resolve it that way (Task 13, test
+   `a_relative_exe_is_resolved_against_the_working_directory`).
+3. **A `.sisx` older than the image beside it**, left by an earlier link when the newest one
+   failed after writing the image. The runner refuses it rather than installing the previous
+   build (Task 13, test `a_sisx_older_than_its_image_is_refused`).
+4. **The user's own EKA2L1 is open.** It is never listed, chosen or killed. A registry entry
+   whose PID is now some other process is removed and never signalled (Task 11, test
+   `an_entry_whose_pid_is_not_eka2l1_is_dropped_not_killed`).
+5. **A `[[bin]]` renamed away from the package name.** `symdev-ld` sees a `CARGO_BIN_NAME`
+   that is not `symdev.toml`'s `package.name`, and says so with both names instead of
+   packaging it as a stray example (Task 1, test `a_binary_not_named_after_the_package_is_refused`).
