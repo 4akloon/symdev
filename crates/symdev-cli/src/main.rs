@@ -1,6 +1,7 @@
 mod artifacts;
 mod build_cmd;
 mod build_dir;
+mod cargo_build;
 mod cli;
 mod devices_cmd;
 mod ld;

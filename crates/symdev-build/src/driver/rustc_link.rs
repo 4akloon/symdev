@@ -1,5 +1,5 @@
 //! `RustcLink`: a link of what rustc compiled, run by `symdev-ld` (design spec §4).
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use symdev_core::{Artifact, Project, RemotePath, Result};
 
@@ -18,6 +18,16 @@ pub struct RustcLink {
 }
 
 impl RustBuild {
+    /// What the link `symdev-ld` will run needs, checked before cargo: with rust-lld, the
+    /// SDK's linker script and rust-lld itself. A `std` project's cargo takes minutes, and a
+    /// missing linker must not wait for it.
+    pub fn check_link(&self, root: &Path) -> Result<()> {
+        if let RustLinker::Lld { rust_lld, .. } = &self.linker {
+            self.rust_lld_ready(rust_lld.as_deref(), &RemotePath::new(arg(root)))?;
+        }
+        Ok(())
+    }
+
     /// 0.3.0's link after cargo, on rustc's inputs: the shims, the libcall archive (built
     /// by the same `cargo rustc` as 0.3.0, now nested in cargo's own build: experiment
     /// 114 §1.3 saw no lock wait), rust-lld's two links or GNU ld, the capability check,

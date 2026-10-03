@@ -1,11 +1,13 @@
 //! `symdev build`: one backend per manifest language.
+use std::path::Path;
 use std::process::ExitCode;
 
-use symdev_build::{FrozenExports, GcceBuild};
+use symdev_build::{FrozenExports, GcceBuild, StdSysroot};
 use symdev_core::{BuildBackend, Error, LocalEnv};
-use symdev_manifest::{Language, Manifest};
+use symdev_manifest::Manifest;
 
 use crate::build_dir::BuildDir;
+use crate::cargo_build::CargoBuild;
 use crate::provision::Provision;
 use crate::rust_project::RustProject;
 
@@ -23,30 +25,23 @@ pub fn build_project(m: Manifest, provision: &Provision) -> Result<ExitCode, Err
         ));
     }
     let project = crate::current_project()?;
-    let (artifacts, epocroot) = if m.language.is_rust() {
-        let rust = RustProject::resolve(&m, &project.root, provision, true)?;
-        BuildDir::of(&project.root).create()?;
-        (rust.build.build(&project)?, rust.epocroot)
-    } else {
-        let tools = provision.toolchain(m.target.device, true)?;
-        let epocroot = tools.epocroot.clone();
-        BuildDir::of(&project.root).create()?;
-        let gcce = GcceBuild {
-            env: LocalEnv,
-            tools,
-            uid3,
-            capabilities: m.symbian.capabilities,
-            icon: m.symbian.icon,
-            icons: m.icons,
-            secure_id: m.symbian.secure_id,
-        };
-        (gcce.build(&project)?, epocroot)
-    };
-    for artifact in artifacts {
-        println!("{}", artifact.path.display());
+    if m.language.is_rust() {
+        return build_rust(&m, &project.root, provision);
     }
-    if m.language != Language::Cpp {
-        return Ok(ExitCode::SUCCESS);
+    let tools = provision.toolchain(m.target.device, true)?;
+    let epocroot = tools.epocroot.clone();
+    BuildDir::of(&project.root).create()?;
+    let gcce = GcceBuild {
+        env: LocalEnv,
+        tools,
+        uid3,
+        capabilities: m.symbian.capabilities,
+        icon: m.symbian.icon,
+        icons: m.icons,
+        secure_id: m.symbian.secure_id,
+    };
+    for artifact in gcce.build(&project)? {
+        println!("{}", artifact.path.display());
     }
     for dll in FrozenExports::of(&project, &epocroot)? {
         if !dll.unfrozen.is_empty() {
@@ -59,6 +54,29 @@ pub fn build_project(m: Manifest, provision: &Provision) -> Result<ExitCode, Err
                 dll.unfrozen.join(", ")
             );
         }
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// A Rust project: `cargo build --release` (design spec §3), after what cargo cannot do
+/// itself — the nightly and SDK checks and `build/rust-sdk`, and for `rust-std` the
+/// sysroot `symdev-rustc` points at. `symdev-ld` leaves `build/<name>.exe` and
+/// `build/<name>.sisx`.
+fn build_rust(m: &Manifest, root: &Path, provision: &Provision) -> Result<ExitCode, Error> {
+    let rust = RustProject::resolve(m, root, provision, true)?;
+    BuildDir::of(root).create()?;
+    rust.build.prepare(root)?;
+    rust.build.check_link(root)?;
+    if m.language.has_std() {
+        StdSysroot::materialise(&rust.build.sdk, &rust.build.rustc, root)?;
+    }
+    CargoBuild::run(root)?;
+    let build = root.join("build");
+    for file in [
+        format!("{}.exe", m.package.name),
+        format!("{}.sisx", m.package.name),
+    ] {
+        println!("{}", build.join(file).display());
     }
     Ok(ExitCode::SUCCESS)
 }

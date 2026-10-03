@@ -37,9 +37,18 @@ fn sdk_install_for_a_rust_project_with_the_prebuilt_set_installs_no_gcce() {
 #[test]
 fn building_a_rust_project_with_the_prebuilt_set_installs_no_gcce() {
     let w = world(true);
+    // `symdev build` runs cargo only with cargo's linker, `symdev-ld`, on PATH.
+    let bin = w.tmp.path().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::write(bin.join("symdev-ld"), "").unwrap();
+    let path = std::env::join_paths(
+        std::iter::once(bin).chain(std::env::split_paths(&std::env::var_os("PATH").unwrap())),
+    )
+    .unwrap();
     w.prebuilt()
         .current_dir(w.rust_project())
         .arg("build")
+        .env("PATH", path)
         .env("SYMDEV_CARGO", w.stub_cargo())
         .assert()
         .failure()

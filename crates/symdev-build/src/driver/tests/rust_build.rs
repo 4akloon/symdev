@@ -1,7 +1,5 @@
 use std::path::Path;
 
-use symdev_core::Project;
-
 use symdev_manifest::{Softkeys, UiApp, UiKind};
 
 use super::*;
@@ -41,39 +39,6 @@ pub(super) fn gui() -> RustBuild {
         }),
         ..rust()
     }
-}
-
-#[test]
-fn cargo_args_are_the_recorded_build_std_invocation() {
-    let b = rust();
-    let spec = b.sdk.target_spec();
-    assert_eq!(
-        b.cargo_args(),
-        s(&[
-            "/rustup/bin/cargo",
-            "build",
-            "--release",
-            "--target",
-            &spec.display().to_string(),
-            "-Zbuild-std=core,alloc",
-            "-Zbuild-std-features=optimize_for_size",
-            "-Zjson-target-spec",
-            "--target-dir",
-            "build/cargo",
-        ])
-    );
-}
-
-#[test]
-fn archive_is_under_build_cargo() {
-    let b = rust();
-    let project = Project {
-        root: PathBuf::from("/p"),
-    };
-    assert_eq!(
-        b.archive(&project),
-        PathBuf::from("/p/build/cargo/arm-symbian-e32/release/libhello.a")
-    );
 }
 
 #[test]
