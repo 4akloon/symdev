@@ -158,3 +158,70 @@ the notes.
 - **L4**: push `~/worktrees/symdev-packages/cargo-run` and open its PR (this is what L2
   merges).
 - After L2 and L3: the real-bucket acceptance (end of this plan).
+
+## Review Focus
+
+These are the five inputs the spec implies and that no task's main tests cover, most likely
+first. Each has its test in the task named.
+
+1. **The user's shell exports `LD_LIBRARY_PATH` or `QT_PLUGIN_PATH`.** The owner's own
+   wrapper does this for his host build. Inherited, these load the host's Qt 6.8 into the
+   bundled Qt 6.4 and the emulator fails at start. Expected: a packaged EKA2L1 starts
+   without the host's library and plugin paths; the user's own (`SYMDEV_EKA2L1`) keeps its
+   whole environment (Task 8, tests `a_packaged_eka2l1_does_not_inherit_the_hosts_library_paths`
+   and `the_users_eka2l1_keeps_its_environment`).
+2. **`SYMDEV_EKA2L1` still names an EKA2L1 without `--control`.** The owner's
+   `~/.local/bin/eka2l1` is one. Expected: the error names the variable and says that
+   unsetting it makes symdev use the `emulator` package (Task 9, test
+   `an_old_symdev_eka2l1_is_named_with_the_way_to_the_package`).
+3. **The firmware package is uninstalled or replaced under an existing profile.** The
+   profile's ROM and Z links then point at nothing. Expected: refused before EKA2L1 starts,
+   naming the profile, the missing path and the install command (Task 7, test
+   `a_profile_whose_package_is_gone_is_refused_before_start`).
+4. **A profile already exists, with no source configured or with `--offline`.** Expected:
+   `symdev devices` and a start use it and install nothing (Task 9, test
+   `an_existing_profile_needs_no_firmware_package`).
+5. **Firmware sits in the default `~/.local/share/EKA2L1` and `SYMDEV_EKA2L1_DATA` is unset.**
+   Expected: that folder is neither read nor written, and the error names
+   `SYMDEV_EKA2L1_DATA` as the way to use it (Task 9, test
+   `the_default_eka2l1_folder_is_not_read_without_symdev_eka2l1_data`).
+
+## File structure
+
+symdev (`~/worktrees/symdev/cargo-run`):
+
+| Path | Responsibility |
+|---|---|
+| `crates/symdev-manifest/src/schema.rs` | `Device::ALL`: every device symdev supports |
+| `crates/symdev-sdk/src/pins.rs` | `Pins::emulator()`, `Pins::firmware(device)` |
+| `crates/symdev-sdk/src/emulator_package.rs` | `EmulatorPackage`: an installed `emulator;…`, its program |
+| `crates/symdev-sdk/src/firmware_package.rs` | `FirmwarePackage`: an installed `firmware;<fw>;…`, its layout |
+| `crates/symdev-sdk/src/catalog.rs` | the "way around a source" hint for `sdk`, `emulator`, `firmware` ids |
+| `crates/symdev-emulator/src/device/firmware.rs` | `Firmware`: the user's EKA2L1 data or a firmware package |
+| `crates/symdev-emulator/src/device/emulator_profile.rs` | `create(&Firmware)`, `check()` |
+| `crates/symdev-emulator/src/device/profile_files.rs` | the file helpers moved out of the profile (copy, link, make) |
+| `crates/symdev-emulator/src/device/eka2l1.rs` | `Eka2l1`: the user's EKA2L1 or the package's program, and its environment |
+| `crates/symdev-emulator/src/device/emulator_instance.rs` | start and probe an `Eka2l1` |
+| `crates/symdev-emulator/src/lib.rs`, `results.rs` | `Eka2l1Backend` and `EmulatorData::from_env` deleted |
+| `crates/symdev-cli/src/provision/emulator.rs` | `Provision::eka2l1()`, `Provision::firmwares()` |
+| `crates/symdev-cli/src/devices_cmd.rs`, `run.rs`, `run/device_pick.rs`, `test_cmd.rs`, `main.rs` | pass `&Provision` through |
+| `crates/symdev-cli/tests/emulator_packages.rs` | the CLI against a `file://` source with the two packages |
+| `README.md`, `crates/symdev-emulator/README.md`, `docs/research/licensing.md` | requirements, rules |
+
+symdev-packages (`~/worktrees/symdev-packages/cargo-run`):
+
+| Path | Responsibility |
+|---|---|
+| `pkgtools/src/device_entry.rs` | `DeviceEntry`: one device of an EKA2L1 `devices.yml` |
+| `pkgtools/src/emulator_tree.rs` (+ `emulator_tree/glibc.rs`) | `EmulatorTree`: the extracted AppImage's layout and glibc floor |
+| `pkgtools/src/emulator_notices.rs` | `EmulatorNotices`: `share/doc/eka2l1/` from the source tree and the package list |
+| `pkgtools/src/dsc.rs` | `Dsc`: a Debian source control file's files and SHA-256s (D1 = A) |
+| `recipes/firmware/rm-469/1/{recipe.toml,stage.sh}` | the private firmware package |
+| `recipes/emulator/<V>/{recipe.toml,artifact.toml,build.sh,source.sh}` | the public emulator package |
+| `.github/workflows/emulator.yml` | PR: build and dry-run; `main`: publish |
+| `tests/firmware-stage.test`, `tests/emulator-build.test` | the drivers against fake inputs |
+
+EKA2L1 (outside git of symdev): `~/src/EKA2L1-wt/emulator-pkg` (branch `symdev`), notes
+`~/src/EKA2L1-wt/emulator-pkg.NOTES.md`, host build `~/src/EKA2L1-wt-build/emulator-pkg`.
+
+---
