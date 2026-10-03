@@ -197,4 +197,7 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   MAP_PRIVATE map, never written); writable package (as installed, 0644) boots with empty C and
   one-line config, hello installs/launches/exits kill, 0 of 15 597 package files changed, no
   other write on Z/ROM. Package must carry Z:\stubcached (it does). Plan Task 6 got a note.
-- [ ] Task 7: next (Firmware enum, create(&Firmware) with links, check(), delete from_env).
+- [x] Task 7: Firmware enum, EmulatorProfile::create(&Firmware) (package: links, empty C/D/E,
+  one-line config), check() before start, EmulatorData::from_env deleted; devices_cmd reads
+  SYMDEV_EKA2L1_DATA directly until Task 9. Gates green (55 ok, clippy 0, fmt ok).
+- [ ] Task 8: next (Eka2l1 enum User/Package, env stripping, EmulatorInstance::start(&Eka2l1)).

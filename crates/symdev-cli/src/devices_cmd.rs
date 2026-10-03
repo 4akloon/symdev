@@ -9,7 +9,7 @@ use symdev_core::{Error, Result};
 use symdev_emulator::EmulatorData;
 use symdev_emulator::control::ControlClient;
 use symdev_emulator::device::{
-    DeviceId, DeviceRegistry, EmulatorInstance, EmulatorProfile, RegistryEntry, is_eka2l1,
+    DeviceId, DeviceRegistry, EmulatorInstance, EmulatorProfile, Firmware, RegistryEntry, is_eka2l1,
 };
 
 /// How long a liveness probe waits for `emulator.info`: a wedged emulator must not hang
@@ -59,10 +59,13 @@ impl Devices {
         if !names.is_empty() {
             return Ok(names);
         }
-        let user = EmulatorData::from_env()?;
-        for firmware in Self::dirs(&user.root().join("data/roms")) {
-            self.profile(&firmware).create(&user, &firmware)?;
-            eprintln!("created profile {firmware}");
+        let user = match std::env::var_os("SYMDEV_EKA2L1_DATA").filter(|v| !v.is_empty()) {
+            Some(dir) => EmulatorData::at(std::path::Path::new(&dir)),
+            None => return Ok(Vec::new()),
+        };
+        for firmware in Firmware::in_user_data(&user) {
+            self.profile(firmware.name()).create(&firmware)?;
+            eprintln!("created profile {}", firmware.name());
         }
         Ok(Self::dirs(&self.profiles_root))
     }

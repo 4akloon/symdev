@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::EmulatorData;
-use crate::device::EmulatorProfile;
+use crate::device::{EmulatorProfile, Firmware};
 
 #[test]
 fn a_profile_references_the_rom_and_drive_z_and_owns_c_d_e() {
@@ -24,8 +24,11 @@ fn a_profile_references_the_rom_and_drive_z_and_owns_c_d_e() {
     .unwrap();
     let root = tempfile::tempdir().unwrap();
     let p = EmulatorProfile::at(root.path(), "rm-469");
-    p.create(&EmulatorData::at(&user.path().join("EKA2L1")), "rm-469")
-        .unwrap();
+    p.create(&Firmware::UserData {
+        data: EmulatorData::at(&user.path().join("EKA2L1")),
+        name: "rm-469".into(),
+    })
+    .unwrap();
     let data = p.dir().join("data");
     assert_eq!(
         std::fs::read_link(data.join("roms/rm-469")).unwrap(),
@@ -47,7 +50,10 @@ fn a_profile_references_the_rom_and_drive_z_and_owns_c_d_e() {
         data.join("drives/e/symdev/results/e1234567.json")
     );
     let again = p
-        .create(&EmulatorData::at(&user.path().join("EKA2L1")), "rm-469")
+        .create(&Firmware::UserData {
+            data: EmulatorData::at(&user.path().join("EKA2L1")),
+            name: "rm-469".into(),
+        })
         .unwrap_err();
     assert!(again.to_string().contains("already exists"), "{again}");
 }
@@ -57,7 +63,10 @@ fn a_firmware_the_user_has_not_installed_is_named() {
     let user = tempfile::tempdir().unwrap();
     let root = tempfile::tempdir().unwrap();
     let e = EmulatorProfile::at(root.path(), "rm-469")
-        .create(&EmulatorData::at(user.path()), "rm-469")
+        .create(&Firmware::UserData {
+            data: EmulatorData::at(user.path()),
+            name: "rm-469".into(),
+        })
         .unwrap_err()
         .to_string();
     assert!(
@@ -95,7 +104,10 @@ fn a_link_in_drive_c_that_leaves_it_is_refused() {
     std::os::unix::fs::symlink("/etc", d.join("drives/c/out")).unwrap();
     let root = tempfile::tempdir().unwrap();
     let e = EmulatorProfile::at(root.path(), "rm-469")
-        .create(&EmulatorData::at(&user.path().join("EKA2L1")), "rm-469")
+        .create(&Firmware::UserData {
+            data: EmulatorData::at(&user.path().join("EKA2L1")),
+            name: "rm-469".into(),
+        })
         .unwrap_err()
         .to_string();
     assert!(e.contains("out") && e.contains("link"), "{e}");

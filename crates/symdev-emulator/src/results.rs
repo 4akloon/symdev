@@ -16,42 +16,15 @@ use crate::json::Json;
 /// is refused rather than half-understood.
 pub const SCHEMA: i64 = 1;
 
-/// EKA2L1's data directory, where the emulated drives live as host directories.
-///
-/// `SYMDEV_EKA2L1_DATA` overrides it; the default is the path EKA2L1 itself uses on
-/// Linux, `$XDG_DATA_HOME/EKA2L1` (`~/.local/share/EKA2L1`), which is where `symdev
-/// run` has been installing since experiment 48. The drives are one level further in,
-/// under `data/` — verified against the tree on this host, not assumed.
+/// EKA2L1's data folder: a profile's own, or the user's named by `SYMDEV_EKA2L1_DATA`.
+/// The drives are one level further in, under `data/` — verified against the tree on this
+/// host, not assumed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmulatorData {
     root: PathBuf,
 }
 
 impl EmulatorData {
-    pub fn from_env() -> Result<Self> {
-        if let Some(v) = std::env::var_os("SYMDEV_EKA2L1_DATA").filter(|v| !v.is_empty()) {
-            return Ok(Self { root: v.into() });
-        }
-        let share = match std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()) {
-            Some(v) => PathBuf::from(v),
-            None => {
-                let home = std::env::var_os("HOME")
-                    .filter(|v| !v.is_empty())
-                    .ok_or_else(|| {
-                        Error::Other(
-                        "cannot find EKA2L1's data directory: neither HOME nor XDG_DATA_HOME is \
-                         set; set SYMDEV_EKA2L1_DATA to the directory holding drives/"
-                            .into(),
-                    )
-                    })?;
-                PathBuf::from(home).join(".local/share")
-            }
-        };
-        Ok(Self {
-            root: share.join("EKA2L1"),
-        })
-    }
-
     pub fn at(root: &Path) -> Self {
         Self {
             root: root.to_path_buf(),

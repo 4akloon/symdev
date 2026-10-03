@@ -31,6 +31,7 @@ impl EmulatorInstance {
         profile: &EmulatorProfile,
         registry: &DeviceRegistry,
     ) -> Result<RegistryEntry> {
+        profile.check()?;
         let id = registry.next_id()?;
         let run = registry
             .dir()

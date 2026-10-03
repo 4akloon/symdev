@@ -1354,7 +1354,7 @@ Experiment 115 §3 has the evidence.
   - `EmulatorData::from_env` no longer exists. The user's data is reached only through
     `SYMDEV_EKA2L1_DATA`, which `Provision` reads (Task 9).
 
-- [ ] **Step 1: Write the failing tests**, `crates/symdev-emulator/src/device/tests/firmware.rs`
+- [x] **Step 1: Write the failing tests**, `crates/symdev-emulator/src/device/tests/firmware.rs`
 
 ```rust
 use std::path::Path;
@@ -1448,7 +1448,7 @@ become `create(&Firmware::UserData { data: EmulatorData::at(X), name: "rm-469".i
 (import `crate::device::Firmware`). Their assertions stay as they are: the user-data route
 does not change.
 
-- [ ] **Step 2: Run them and see them fail**
+- [x] **Step 2: Run them and see them fail**
 
 ```bash
 cargo test -p symdev-emulator --offline device:: > /tmp/t7.log 2>&1; grep -E "^error|test result" /tmp/t7.log
@@ -1456,7 +1456,7 @@ cargo test -p symdev-emulator --offline device:: > /tmp/t7.log 2>&1; grep -E "^e
 
 Expected: `unresolved import crate::device::Firmware` and `no method named check`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `crates/symdev-emulator/src/device/firmware.rs`:
 
@@ -1587,7 +1587,7 @@ that it no longer names a default: "EKA2L1's data folder: a profile's own, or th
 named by `SYMDEV_EKA2L1_DATA`". The file then has no `std::env` use. Keep the imports
 clippy still needs.
 
-- [ ] **Step 4: Keep the CLI building**
+- [x] **Step 4: Keep the CLI building**
 
 `devices_cmd.rs`'s `profiles()` called `EmulatorData::from_env()`. Until Task 9 wires
 `Provision`, replace those lines with the equivalent that reads the variable in the CLI:
@@ -1610,10 +1610,10 @@ folder. It is the only CLI test that relied on the default: `tests/test_cmd.rs` 
 the variable, and the fake devices of `tests/common/fake_control.rs` need no firmware.
 `grep -rn 'EKA2L1' crates/symdev-cli/tests` confirms it at execution.
 
-- [ ] **Step 5: Run the tests and the gates** (Task 4 step 4's three commands). Expected: all
+- [x] **Step 5: Run the tests and the gates** (Task 4 step 4's three commands). Expected: all
   pass, 0 clippy lines.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add crates/symdev-emulator/src/device.rs crates/symdev-emulator/src/device/firmware.rs \

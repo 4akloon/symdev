@@ -47,6 +47,7 @@ fn run_with_a_profile_to_start_and_no_emulator_names_symdev_eka2l1() {
     bin()
         .current_dir(&dir)
         .env("XDG_DATA_HOME", &data)
+        .env("SYMDEV_EKA2L1_DATA", &user)
         .arg("run")
         .assert()
         .failure()

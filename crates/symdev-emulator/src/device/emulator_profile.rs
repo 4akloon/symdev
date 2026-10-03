@@ -1,13 +1,14 @@
 //! `EmulatorProfile`: an emulator's own data folder, as Android's AVD (design spec §5;
 //! experiment 114 §2). EKA2L1 started with `--data-dir <profile>` keeps its configuration,
-//! log, settings and drives there. The ROM and drive Z are the user's, referenced by
-//! symbolic links (the emulator reads them and writes neither); drive C is copied, D and E
-//! start empty, and `config.yml` is the user's with symdev's log filter.
+//! log, settings and drives there. The ROM and drive Z are a firmware's, the user's or an
+//! installed package's, referenced by symbolic links (the emulator reads them and writes
+//! neither: experiments 114 §2 and 115 §3); D and E start empty.
 use std::path::{Path, PathBuf};
 
 use symdev_core::{Error, Result};
 
 use crate::EmulatorData;
+use crate::device::Firmware;
 
 /// What the runner needs from the log: the guest's `RDebug` lines (`Emulated.Stdout`) and
 /// the kernel's panic lines (`Kernel`), which the stock filter hides (experiment 114 §2).
@@ -71,9 +72,13 @@ impl EmulatorProfile {
         EmulatorData::at(&self.dir)
     }
 
-    /// Makes the profile from the user's EKA2L1 data `from` for `firmware` (a folder of
-    /// `data/roms`). An existing profile is never overwritten.
-    pub fn create(&self, from: &EmulatorData, firmware: &str) -> Result<()> {
+    /// Makes the profile from `firmware`; an existing profile is never overwritten. From
+    /// the user's data: ROM and the whole drive Z linked, `devices.yml`, drive C and
+    /// `config.yml` copied (experiment 114 §2). From a package: ROM and drive Z linked
+    /// into it, its `device.yml` as `devices.yml`, empty C, D and E, and a `config.yml`
+    /// holding only symdev's log filter, every other option at EKA2L1's default
+    /// (experiment 115 §3).
+    pub fn create(&self, firmware: &Firmware) -> Result<()> {
         if self.dir.symlink_metadata().is_ok() {
             return Err(Error::Other(format!(
                 "emulator profile {} already exists at {}",
@@ -81,6 +86,15 @@ impl EmulatorProfile {
                 self.dir.display()
             )));
         }
+        match firmware {
+            Firmware::UserData { data, name } => self.create_from_user(data, name),
+            Firmware::Package { root, name } => self.create_from_package(root, name),
+        }
+    }
+
+    /// The profile from the user's EKA2L1 data `from` for `firmware` (a folder of
+    /// `data/roms`).
+    fn create_from_user(&self, from: &EmulatorData, firmware: &str) -> Result<()> {
         let user = from.root().join("data");
         let rom = user.join("roms").join(firmware);
         if !rom.is_dir() {
@@ -102,6 +116,46 @@ impl EmulatorProfile {
         let text = std::fs::read_to_string(&config).map_err(|e| file(&config, e))?;
         let out = self.dir.join("config.yml");
         std::fs::write(&out, Self::with_log_filter(&text)).map_err(|e| file(&out, e))
+    }
+
+    fn create_from_package(&self, root: &Path, name: &str) -> Result<()> {
+        let data = self.dir.join("data");
+        for dir in ["drives/c", "drives/d", "drives/e", "roms"] {
+            make_dir(&data.join(dir))?;
+        }
+        copy_file(&root.join("device.yml"), &data.join("devices.yml"))?;
+        link(&root.join("roms").join(name), &data.join("roms").join(name))?;
+        link(&root.join("drives/z"), &data.join("drives/z"))?;
+        let out = self.dir.join("config.yml");
+        std::fs::write(&out, format!("{LOG_FILTER}\n")).map_err(|e| file(&out, e))
+    }
+
+    /// Refuses a profile whose ROM or drive Z is a link to nothing (its firmware package
+    /// was uninstalled, or the user's EKA2L1 data moved), before EKA2L1 starts on it.
+    pub fn check(&self) -> Result<()> {
+        let data = self.dir.join("data");
+        let mut links = vec![data.join("drives/z")];
+        if let Ok(roms) = std::fs::read_dir(data.join("roms")) {
+            links.extend(roms.flatten().map(|e| e.path()));
+        }
+        for path in links {
+            let is_link = path
+                .symlink_metadata()
+                .is_ok_and(|m| m.file_type().is_symlink());
+            if is_link && !path.exists() {
+                let target = std::fs::read_link(&path).map_err(|e| file(&path, e))?;
+                return Err(Error::Other(format!(
+                    "emulator profile {} links {} to {}, which is gone: its firmware package \
+                     was uninstalled or its EKA2L1 data moved. Install it again (`symdev sdk \
+                     install`), or remove {} and symdev makes the profile again",
+                    self.name,
+                    path.display(),
+                    target.display(),
+                    self.dir.display()
+                )));
+            }
+        }
+        Ok(())
     }
 
     /// `text` with its `log-filter:` line replaced by symdev's; the user's is kept as a
