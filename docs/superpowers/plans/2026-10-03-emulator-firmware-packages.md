@@ -140,22 +140,22 @@ for older hosts (building on an older base) is a later decision.
 Each needs the owner's explicit go. Implementing agents stop before them and say so in
 the notes.
 
-- **L1** (after Task 15): push `~/src/EKA2L1-wt/emulator-pkg` branch `symdev` to
+- **L1 — LEAD ONLY, after the owner's explicit go** (after Task 15): push `~/src/EKA2L1-wt/emulator-pkg` branch `symdev` to
   `4akloon/EKA2L1` (`git push --force-with-lease fork symdev`). Check that a `C/C++ CI` run
   starts for `<C>` (`gh run list -R 4akloon/EKA2L1 --branch symdev`). If none starts within
   five minutes, enable Actions for the fork in its web UI and run `gh workflow run
   build.yml -R 4akloon/EKA2L1 --ref symdev`. Wait until the `build-desktop (linux)` job is
   green, then hand Task 16 its run id.
-- **L2** (after Task 16): `emulator;<V>` reaches the public bucket by merging the
+- **L2 — LEAD ONLY, after the owner's explicit go** (after Task 16): `emulator;<V>` reaches the public bucket by merging the
   `symdev-packages` branch into `main`. `.github/workflows/emulator.yml` (Task 12) then
   publishes it. Check the cross-repository artifact download in the PR run first (Task 12
   notes why it may need a token).
-- **L3** (after Task 16): on the owner's machine, with the publisher keys:
+- **L3 — LEAD ONLY, after the owner's explicit go** (after Task 16): on the owner's machine, with the publisher keys:
   `EKA2L1_DATA=~/.local/share/EKA2L1/data bash recipes/firmware/rm-469/1/stage.sh
   ~/src/emu-pkg-scratch/firmware/tree`, then `cargo run --release -p publish -- private
   'firmware;rm-469;1' --from ~/src/emu-pkg-scratch/firmware/tree --recipe
   recipes/firmware/rm-469/1/recipe.toml`.
-- **L4**: push `~/worktrees/symdev-packages/cargo-run` and open its PR (this is what L2
+- **L4 — LEAD ONLY, after the owner's explicit go**: push `~/worktrees/symdev-packages/cargo-run` and open its PR (this is what L2
   merges). The branch also carries cargo-run's `recipes/symdev/0.4.0` (commit `3fe6a76`),
   whose `commit` is still zeros. Merging the whole branch into `main` therefore also starts
   `symdev.yml`, and its `build.sh` refuses the zeros until `v0.4.0` is tagged. The merge
