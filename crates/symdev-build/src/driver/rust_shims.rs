@@ -16,7 +16,7 @@ use crate::{RustLinker, RustPrebuilt, file_error};
 
 impl RustBuild {
     /// Where the shim object for `source` goes: `<work>/shims/<stem>.o`. `work` is the
-    /// link's own directory (`build/` for 0.3.0's path, `<out>.symdev/` for `symdev-ld`), so
+    /// link's own directory (`<out>.symdev/`, which `symdev-ld` gives each link), so
     /// two links of one project under `cargo test` never share an object.
     pub fn shim_object(&self, work: &Path, source: &Path) -> PathBuf {
         let stem = source.file_stem().unwrap_or_default();
