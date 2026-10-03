@@ -15,7 +15,7 @@ In a Rust project made by `symdev new --lang rust`, plain cargo does the whole l
 - `cargo test` runs the project's tests on the chosen device and prints `libtest`-style results.
 
 `symdev.toml` stays the only place for what the phone needs (UID3, capabilities, vendor, UI
-resources, signing); nothing of it moves into `Cargo.toml`, and nothing else moves into it.
+resources, signing): none of it moves into `Cargo.toml`, and `symdev.toml` gains nothing else.
 C++ projects are unchanged.
 
 ## 2. Decisions taken with the owner
