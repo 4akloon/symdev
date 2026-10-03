@@ -74,3 +74,11 @@ all byte-equal to the spike's `dso-fixed/`; `usrt2_2.lib` 1 rewritten = spike's 
 Real builds. GNU byte-identical check first (main binary vs branch with SYMDEV_RUST_LINKER=gnu,
 argv via SYMDEV_LD wrapper + .exe cmp masking CRC 0x14-0x17 / time 0x24-0x2B), then lld default
 on the four apps + all examples, sizes vs exp 112.
+
+## Real builds (running)
+- Binaries: `~/src/rl-driver-scratch/bin/symdev-main` (git archive 04f8e7d → main-src, release),
+  `bin/symdev-rl3` (branch f71d1d5, release). Env `env-gcce.sh` (scratch SYMDEV_HOME/XDG).
+- Smoke: examples/hello rust-lld default (GCCE shims) → hello.exe **975 B** = exp 112 lld+stubs;
+  hello.first.elf 79 624 = exp 109 lld; cache key dir `home/cache/sdk-lld/6178838f…`.
+- Batches (background): `out/main-gnu.txt` (main bin, gnu-log, main-src tree), then
+  `out/rl3-gnu.txt` → `out/rl3-lld.txt` (worktree). Per example: `out/<run>/<ex>.{log,ld.argv}`, `*.exe`.
