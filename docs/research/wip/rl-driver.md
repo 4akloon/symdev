@@ -140,7 +140,8 @@ sizes.py), no-GCCE builds + emulator runs (all recorded above). std-net checkout
 `needs_gcce(&RustSdk)`), #2 no-HOME error names the cache + gnu, #3 lld_script checked before
 cargo + message without a version, #4 `LldLine::adapt`/`second_link` return Result (3c5bad1,
 cf127b8). **Still to do (review items, all Minor):**
-- #5 `rust_lld_link.rs`: run the `jump_slots()` check on the final ELF in BOTH paths (also the
+- #5 DONE (commit after cf127b8; tests driver/tests/rust_lld_link.rs: stub rust-lld + golden ELFs)
+- (was #5) `rust_lld_link.rs`: run the `jump_slots()` check on the final ELF in BOTH paths (also the
   rename path); wrap rust-lld errors with "first/second rust-lld link" + gnu way out; add the
   ELF path to the `ImportStubs::from_first_link` error; `io` helper calls in rust_lld_link.rs
   (rename/write) and rust_shims.rs (`shim_archives` read/write) must name the path.
