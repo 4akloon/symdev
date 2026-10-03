@@ -12,6 +12,7 @@ mod gcce_compat;
 mod language;
 mod libcalls;
 mod link;
+mod lld_line;
 mod resolve_source;
 mod rust_build;
 mod rust_prepare;

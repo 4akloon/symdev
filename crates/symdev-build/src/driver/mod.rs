@@ -17,6 +17,7 @@ mod language;
 mod libcalls;
 mod link;
 mod linker;
+mod lld_line;
 mod module;
 mod resource;
 mod rust_build;
@@ -32,6 +33,7 @@ pub use gcce_compat::GcceCompat;
 pub use language::SourceLanguage;
 pub use libcalls::LibcallArchive;
 pub use linker::Linker;
+pub use lld_line::LldLine;
 pub use module::Module;
 pub use rust_build::{APP_CREATE, E32MAIN, RustBuild};
 

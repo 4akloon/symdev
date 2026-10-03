@@ -1,11 +1,11 @@
 //! `RustBuild`: the link line, and the two orderings that decide how big a Rust
 //! program is and whether a GUI one links at all.
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use symdev_core::Result;
 
 use super::rust_build::APP_CREATE;
-use super::{E32MAIN, RustBuild, arg};
+use super::{E32MAIN, Linker, RustBuild, arg};
 use crate::rust_sdk::RustSdk;
 
 impl RustBuild {
@@ -50,13 +50,37 @@ impl RustBuild {
         elf: &Path,
         map: &Path,
     ) -> Result<Vec<String>> {
+        let linker = Linker::gnu(self.gcce.tools.gcce()?);
+        let shims: Vec<PathBuf> = shim.map(Path::to_path_buf).into_iter().collect();
+        Ok(self.link_line(&linker, archive, &shims, libcalls, elf, map))
+    }
+
+    /// [`Self::link_args`]' line written for `linker`, with any number of shim archives in
+    /// the order given: GNU ld's, or the one [`super::LldLine`] turns into rust-lld's.
+    pub fn link_line(
+        &self,
+        linker: &Linker,
+        archive: &Path,
+        shims: &[PathBuf],
+        libcalls: Option<&Path>,
+        elf: &Path,
+        map: &Path,
+    ) -> Vec<String> {
         let ui_libraries: Vec<String> = match self.ui {
             Some(_) => RustSdk::UI_LIBRARIES.iter().map(|l| (*l).into()).collect(),
             None => Vec::new(),
         };
-        let mut args = self
-            .gcce
-            .link_args(&self.name, archive, elf, map, &ui_libraries)?;
+        let module = self.gcce.exe_module();
+        let mut args = self.gcce.link_line(
+            linker,
+            &module,
+            &self.name,
+            archive,
+            elf,
+            map,
+            &ui_libraries,
+            &[],
+        );
         let after = args
             .windows(2)
             .position(|w| w[0] == "-u" && w[1] == "_E32Startup")
@@ -91,14 +115,18 @@ impl RustBuild {
             .iter()
             .position(|a| a == &arg(archive))
             .map_or(args.len(), |i| i + 1);
-        let extras: Vec<String> = [shim, libcalls].into_iter().flatten().map(arg).collect();
+        let extras: Vec<String> = shims
+            .iter()
+            .map(|s| arg(s))
+            .chain(libcalls.map(arg))
+            .collect();
         args.splice(after..after, extras);
         let at = args
             .iter()
             .position(|a| a == "-lsupc++")
             .unwrap_or(args.len());
         args.splice(at..at, Self::sdk_libraries());
-        Ok(args)
+        args
     }
 
     /// The DSOs the SDK's own crates and shim import, under `--as-needed` so that an
