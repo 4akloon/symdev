@@ -9,6 +9,9 @@ mod executor {
 
     #[test]
     fn block_on_returns_what_the_future_produced() -> Result<(), Evidence> {
-        ensure(block_on(async { 42u32 }) == Ok(42), "block_on(async { 42 })")
+        ensure(
+            block_on(async { 42u32 }) == Ok(42),
+            "block_on(async { 42 })",
+        )
     }
 }

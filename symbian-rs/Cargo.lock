@@ -17,6 +17,7 @@ dependencies = [
  "symbian-async",
  "symbian-core",
  "symbian-std",
+ "symbian-test",
 ]
 
 [[package]]
