@@ -8,18 +8,19 @@ mod provision;
 mod scaffold;
 mod scaffold_rust;
 mod sdk_cmd;
+mod sisx;
 mod test_cmd;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser};
-use symdev_build::{AppTarget, Epocroot, FrozenExports, SisPackage, UiResources};
-use symdev_core::{Error, PackageBackend, Project};
+use symdev_build::{AppTarget, Epocroot, FrozenExports};
+use symdev_core::{Error, Project};
 
-use artifacts::package_artifacts;
 use cli::{Cli, Commands};
 use provision::Provision;
+use sisx::ProjectPackage;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -103,65 +104,20 @@ fn freeze_project(provision: &Provision) -> Result<ExitCode, Error> {
 }
 
 fn package_project(m: symdev_manifest::Manifest, provision: &Provision) -> Result<ExitCode, Error> {
-    let uid3 = m
-        .symbian
-        .uid3
-        .ok_or_else(|| Error::Other("uid3 required for package (set symbian.uid3)".into()))?;
     let cwd = std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?;
     let project = Project { root: cwd.clone() };
     let device = m.target.device;
     let epocroot = epocroot_for(&project, || provision.installed_epocroot(device))?;
-    let app = AppTarget::of(&project, &m.package.name, &epocroot)?;
-    let e32 = PathBuf::from("build").join(app.exe_file());
+    let package = ProjectPackage::new(m, cwd.clone(), epocroot)?;
+    let e32 = cwd.join("build").join(format!("{}.exe", package.app()));
     if !e32.is_file() {
         return Err(Error::Other(format!(
-            "E32 not found: {} (run symdev build)",
-            e32.display()
+            "E32 not found: build/{}.exe (run symdev build)",
+            package.app()
         )));
     }
-    let icon = m.symbian.icon.clone();
-    // The same caption translations the build compiled, so the package installs them.
-    let locales = symdev_locale::Locales::load(&cwd.join("locales"))
-        .map_err(|e| Error::Other(e.to_string()))?;
-    let ui = m.ui.clone().map(|ui| {
-        UiResources {
-            app: app.name().to_string(),
-            uid3,
-            ui,
-            icon: icon.as_ref().map(|i| cwd.join(i)),
-            captions: Vec::new(),
-        }
-        .with_locales(locales.as_ref())
-    });
     let password = std::env::var("SYMDEV_SIGN_PASSWORD").unwrap_or_default();
-    let package = SisPackage {
-        name: m.package.name,
-        app: app.name().to_string(),
-        uid3,
-        version: m.package.version,
-        vendor: m.symbian.vendor,
-        capabilities: m.symbian.capabilities,
-        password,
-        cert: m
-            .signing
-            .cert
-            .map(|p| if p.is_absolute() { p } else { cwd.join(p) }),
-        key: m
-            .signing
-            .key
-            .map(|p| if p.is_absolute() { p } else { cwd.join(p) }),
-        subject: m.signing.subject,
-    }
-    .package(&package_artifacts(
-        &project,
-        &e32,
-        if ui.is_some() { None } else { icon.as_deref() },
-        &m.icons,
-        &m.install,
-        &epocroot,
-        ui.as_ref(),
-    )?)?;
-    println!("{}", package.primary.display());
+    println!("{}", package.package(&e32, &password)?.display());
     Ok(ExitCode::SUCCESS)
 }
 
