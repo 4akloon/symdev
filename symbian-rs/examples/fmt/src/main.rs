@@ -9,6 +9,7 @@
 //! buffer that is too small has to fail exactly where `core` fails — a lone `-`
 //! included.
 #![no_std]
+#![no_main]
 
 extern crate alloc;
 

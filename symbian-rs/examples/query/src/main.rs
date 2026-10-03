@@ -18,6 +18,7 @@
 //! comes from the ROM's own resource, and it is the CBA built from the `.rss` symdev
 //! generates that swallows them (experiment 93).
 #![no_std]
+#![no_main]
 
 extern crate alloc;
 

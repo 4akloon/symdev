@@ -4,12 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-# `src/main.rs` is a library: rustc never links, symdev does (design spec §3).
-autobins = false
 
-[lib]
+[[bin]]
+name = "listdemo"
 path = "src/main.rs"
-crate-type = ["staticlib"]
+test = false
 
 [dependencies]
 symbian-std = { path = "../../crates/symbian-std" }

@@ -10,6 +10,7 @@
 //! took to `E:\symdev\time76\measured.txt` so the host can compare its own clock with
 //! the emulated one.
 #![no_std]
+#![no_main]
 
 extern crate alloc;
 

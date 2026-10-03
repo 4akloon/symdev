@@ -13,6 +13,7 @@
 //! No peer, no network and no clock setting: an `RTimer` is all it needs, so this runs
 //! anywhere `symdev test --emulator` runs.
 #![no_std]
+#![no_main]
 
 extern crate alloc;
 

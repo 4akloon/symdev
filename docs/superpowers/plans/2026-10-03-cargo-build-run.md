@@ -1893,7 +1893,7 @@ git commit -m "Make symdev new write a binary crate that cargo links, runs and t
 - Consumes: Tasks 4, 5, 7.
 - Produces: every `no_std` example builds with plain `cargo build --release` in its directory.
 
-- [ ] **Step 1: Convert**
+- [x] **Step 1: Convert**
 
 `~/src/cargo-run-scratch/toshape.py <dir>…` (experiment 114) does exactly this edit and
 asserts it happened: the `[lib]` staticlib table becomes `[[bin]]` named after the package
@@ -1902,7 +1902,7 @@ Then check by hand that `#![no_main]` sits after every crate-level attribute
 (`examples/atomics` has `#![forbid(unsafe_code)]`, and an inner attribute after an item is
 an error).
 
-- [ ] **Step 2: Build every one with cargo and compare with experiment 114**
+- [x] **Step 2: Build every one with cargo and compare with experiment 114**
 
 ```bash
 . ~/src/cargo-run-scratch/env.sh; export SYMDEV_RUST_SDK=$PWD/symbian-rs SYMDEV_SIGN_PASSWORD=scratch
@@ -1917,7 +1917,7 @@ Expected: rc=0 for all 19. Each `build/<name>.exe` has the uncompressed size in 
 than experiment 114's, so only path-dependent bytes may differ (`net`, `tls`). The
 byte-for-byte comparison at one path is Task 18's.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add symbian-rs/examples/*/Cargo.toml symbian-rs/examples/*/src/main.rs symbian-rs/examples/README.md

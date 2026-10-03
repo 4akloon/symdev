@@ -27,6 +27,7 @@
 //! Arrows and the selection key only. F1/F2 reach the guest and still do nothing in an
 //! application built here (`docs/research/eka2l1-input.md`), so no softkey is in it.
 #![no_std]
+#![no_main]
 
 extern crate alloc;
 

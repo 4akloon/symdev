@@ -240,4 +240,10 @@ Ledger (git-ignored): `.superpowers/sdd/2026-10-03-cargo-build-run/progress.md`.
   release. (2) OPEN closed: `ManifestDependency` — `#[main]` and `uid3!()` emit a discarded
   `include_str!` of symdev.toml; `exec/t7-relink.sh`: editing only `vendor` → `Compiling t7`,
   new .sisx; image EQUAL 975/1348.
-NEXT: Task 8 — `task-start <plan> 8` (other 18 no_std examples in the new shape).
+- Task 8 done: toshape.py on the 18; plain `cargo build --release` (`exec/t8-build.sh`, log
+  `exec/t8-build.log`): rc=0 for all 19, 8–16 s each. vs out/q2 (spike, other path): EQUAL
+  alloc hello hello-raw panic shim spawnee (no report); the 13 report examples DIFF by Tasks
+  5+6 (measured on async: E32Main 0x66c (T5) → 0x720 (+180: report `state` in json, finished()
+  filters), `Report::record` +8, .rodata +12 `,"state":"`; net vs q2: +60 uncompressed).
+  `symbian-rs/examples/README.md` did not exist → created (short how-to; Task 19 updates it).
+NEXT: Task 9 — `task-start <plan> 9` (rust-std via symdev-rustc + sysroot).

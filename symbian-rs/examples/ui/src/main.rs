@@ -21,6 +21,7 @@
 //! promises, with a view of a plausible size. **The screenshot pair is the test of
 //! `draw` and `key`; the report is the test of the entry path.**
 #![no_std]
+#![no_main]
 
 extern crate alloc;
 

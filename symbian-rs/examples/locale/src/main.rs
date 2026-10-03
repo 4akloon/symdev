@@ -17,6 +17,7 @@
 //!
 //! and that the strings are the ones for the language the device reports.
 #![no_std]
+#![no_main]
 
 extern crate alloc;
 

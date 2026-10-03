@@ -13,6 +13,7 @@
 //! Acceptance: `emukey.py keys <pid> Left`, screenshot — an information note over the
 //! view — against the same frame with no note on it.
 #![no_std]
+#![no_main]
 
 extern crate alloc;
 

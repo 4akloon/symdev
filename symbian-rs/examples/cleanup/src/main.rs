@@ -18,6 +18,7 @@
 //! test is the runtime, not the file API: if the entry point stops installing the
 //! handler, this dies again with no result file.
 #![no_std]
+#![no_main]
 
 extern crate alloc;
 
