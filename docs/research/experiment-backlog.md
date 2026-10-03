@@ -4138,3 +4138,42 @@ review fixes: error messages, the final `R_ARM_JUMP_SLOT` check on both paths, t
 `urel`-first lookup. It then relinked nine programs: `hello`, `async`, `ui`, `notes` and
 `shim` by default; `ui` and `notes` on the prebuilt route; `hello` and `ui` with GNU ld. All
 nine `.exe` are equal to the ones above, masking the CRC and time (`recheck.txt`).
+
+## 114. `cargo build`, `cargo run` and `cargo test` in a symdev Rust project (cargo-run, Rust SDK)
+
+**Question.** The design (`docs/superpowers/specs/2026-10-03-cargo-build-run-design.md`) makes
+symdev cargo's linker (`symdev-ld`) and runner (`symdev run --exe`). Its §11 spike asks what
+rustc really hands a linker for this target, whether a link built from that gives `symdev
+build` 0.3.0's images, whether libcalls and the patched `std` fit plain cargo, what the `dev`
+profile produces, and how a test binary is told from the main one. §1 answers those by
+observation; the real runs of the finished work come later in this record.
+
+**Setup.** Branch `cargo-run` (worktree `~/worktrees/symdev/cargo-run`), 2026-10-03, code
+equal to `main` `3086f1d` (symdev 0.3.0). Scratch `~/src/cargo-run-scratch/` (each script
+starts with a comment saying what it does). `bin/symdev-030`: a release build of the branch.
+`env.sh`: the GCCE route of experiment 113 (`SYMDEV_EPOCROOT`, `SYMDEV_GXX` …, rust-lld by
+default, shims compiled by GCCE because the checkout has no `prebuilt/`), a scratch
+`SYMDEV_HOME`/`XDG_*`/`TMPDIR`, and `SYMDEV_RUST_SDK` = `tree/symbian-rs`. `tree/` is a `git
+archive` of the branch; baseline and new builds both run in it, at one path, because rustc's
+output depends on the source path (experiment 113 §2). Nightly `nightly-2026-09-19`, cargo
+`1.100.0-nightly (495c385d0 2026-09-16)`, rust-lld 23.1.1.
+
+* `bin/rec-ld` stands in for cargo's linker. It writes argv, the environment and a copy of
+  every `.o`/`.rlib` input to `rec/<run>/`, then an empty `-o` file, and exits 0. `bin/symdev-ld`
+  is a link to it, the name the design gives the linker.
+* `bin/rec-run` stands in for the runner and records argv, cwd and the environment.
+* `q1/app` is a scaffold-shaped project on a copy of the SDK (`sdk1/`) whose target spec says
+  `"executables": true`. It has `[[bin]] name = "app"`, `test = false`, a `harness = false`
+  test `tests/smoke.rs` and `.cargo/config.toml` with `[target.arm-symbian-e32] linker =
+  "symdev-ld"`.
+* `toshape.py` turns an example from `[lib] crate-type = ["staticlib"]` into `[[bin]]`
+  (named after the package, `test = false`) and adds `#![no_main]`.
+* The throwaway driver is `bin/symdev-spike`: 0.3.0 with three environment switches added to
+  `RustBuild::link_line` (`driver-src/`). `SPIKE_RUST_INPUTS=<file>` replaces the staticlib
+  argument with rustc's recorded inputs, in order. `SPIKE_NO_LIBCALLS` drops the separate
+  libcalls archive. `SPIKE_KEEP_DEBUG` drops `--strip-debug`.
+* `q2.sh <out> <profile> <ex>…` builds the bin shape with symdev's own cargo flags and the
+  value `symdev build` gives `SYMDEV_UID3`, through `rec-ld`. It then runs `symdev-spike build`
+  with `SYMDEV_CARGO` = a no-op. Everything after cargo is 0.3.0's path: shims, the libcalls
+  rlib, both rust-lld links, import stubs, elf2e32.
+* `e32cmp.py` compares two images, masking the CRC (0x14–0x17) and the time (0x24–0x2B).
