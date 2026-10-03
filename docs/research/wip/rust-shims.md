@@ -120,3 +120,24 @@ Spike evidence: ~/src/rust-lld-spike/ (experiment 109 §1, §5).
   rehearse/config, `out/symdev/bin/symdev sdk install` into rehearse/home with the
   keys.env reader key, prebuilt.sh from rehearse/work, pack dry run into
   rehearse/artifact/packed, epoc32 check of the artifact.
+- **Rehearsal results.** build.sh (local tag v0.3.0 in the scratch clone): static-pie
+  symdev, out/{symdev,rust-sdk,symdev-0.3.0-source.tar.gz}. The just-built symdev with
+  `sources.toml` = private source (`auth = "s3"`, `key = "builtin"`, dummy URL, no keys)
+  installed `gcce;12.1.0` (67.5 MB) from public into a fresh SYMDEV_HOME: it reads
+  `key = "builtin"` and checks the signed public index. **Not rehearsed by me: the SDK
+  install from the private bucket** — the auto-mode classifier refused reading the owner's
+  sources.toml/keys.env (credential materialisation); prebuilt.sh used the SDK the previous
+  run installed in `~/src/rl-shims-scratch/home/sdk/s60-3rd-fp2/1.1`. CI's first run (or
+  the lead, with the key) covers it. prebuilt.sh with that GCCE: 2.1 s, 90 376 B, the four
+  archives byte-identical to run1 (which the no-GCCE link verified). Pack dry run (cwd
+  rehearse/artifact/packed, PUBLISH_PUBLIC_URL = public r2.dev): rust-sdk;0.3.0 417 468 B
+  (sha e121a7ca…) with symbian-rs/prebuilt/{COPYING.RUNTIME,COPYING3,NOTICE,lib/4×.a},
+  symdev;0.3.0 3.2 MB; index shows licence `MIT AND GPL-3.0-or-later WITH
+  GCC-exception-3.1`. gcce's source-code entry: src/gcce/12.1.0/1af72bd0….tar.gz.
+- packages c01f8e7: `tools/sdk_free.py <sdk-dir> <path>...` (9 tests): fails on any file,
+  nested tar/tar.gz members included, with the bytes of an SDK file, or a path through
+  epoc32/. Rehearsal artifact (symdev-out.tar + packed/*.tar.gz): pass against 2 411
+  distinct SDK files; positive control (e32std.h renamed in a tar.gz in a tar): exit 1.
+- Next: symdev.yml (toolchain under $RUNNER_TEMP/toolchain, install step only with the
+  reader key, prebuilt step, pack into $RUNNER_TEMP/artifact/packed, sdk_free.py check,
+  upload `${{ runner.temp }}/artifact/`), tests.yml (recipes path, step name), README.
