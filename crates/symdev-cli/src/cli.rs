@@ -3,7 +3,7 @@ use symdev_manifest::Device;
 use symdev_sdk::{PackageId, Pins};
 
 #[derive(Parser)]
-#[command(name = "symdev", disable_help_subcommand = true)]
+#[command(name = "symdev", version, disable_help_subcommand = true)]
 pub struct Cli {
     /// Never download: a missing toolchain package is an error naming the command that
     /// installs it.
