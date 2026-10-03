@@ -2300,3 +2300,174 @@ Expected: compile errors.
 git add crates/symdev-emulator
 git commit -m "Choose a device the way flutter run does, from a registry of the emulators symdev started."
 ```
+
+### Task 12: The control-server client, starting an emulator, and `symdev devices`
+
+The protocol is EKA2L1's README (`~/src/EKA2L1-wt/control-server/src/emu/control/README.md`,
+branch `dev/control-events`), the only source this task may use. JSON-RPC 2.0, one message
+per line, parameters by name. A UID is a number or `"0x…"`. Methods used: `emulator.info`
+(`protocol` 1, `device {manufacturer, model, firmware, os}`), `apps.list` (`apps[] {uid,
+running, …}`), `package.install {path}` (absolute), `app.launch {uid}` → `{pid}`, `app.kill
+{uid}` → `{killed}`, and `events.subscribe {events: ["app_exited"]}`. The notification is
+`event.app_exited {uid, pid, name, exit_type: kill|terminate|panic, exit_reason,
+exit_category}`. Errors: -32000 not ready, -32002 not found, -32003 failed, -32004 shutting
+down.
+
+**Files:**
+- Create: `crates/symdev-emulator/src/control.rs`, `control/{request,control_client,app_exited,emulator_info}.rs`, `control/tests.rs` (with a fake server)
+- Create: `crates/symdev-emulator/src/device/emulator_instance.rs` (`EmulatorInstance`)
+- Modify: `crates/symdev-emulator/src/json.rs` (`pub(crate)`; add `pub(crate) fn quote(&str) -> String`)
+- Create: `crates/symdev-cli/src/devices_cmd.rs`; Modify: `crates/symdev-cli/src/{cli.rs,main.rs}` (`Devices`, `Emulator { Start { profile }, Stop { id } }`)
+
+**Interfaces:**
+- Consumes: Tasks 10, 11.
+- Produces:
+  - `ControlClient::connect(socket: &Path) -> Result<ControlClient>`, `info() ->
+    Result<EmulatorInfo>` (refuses `protocol != 1`, naming the EKA2L1 to install),
+    `running(uid3) -> Result<bool>`, `install(sisx: &Path) -> Result<()>`, `launch(uid3) ->
+    Result<u32>`, `kill(uid3) -> Result<u32>`, `subscribe_app_exited() -> Result<()>`, and
+    `next_exit(timeout: Duration) -> Result<Option<AppExited>>`. A notification that arrives
+    while a call waits for its answer is queued, not lost. EOF on the socket is
+    `Err(ControlClosed)`, a distinct `symdev_core::Error::Other` text starting `the emulator
+    closed its control connection`.
+  - `AppExited { pub uid: u32, pub pid: u32, pub name: String, pub exit_type: ExitType, pub
+    reason: i64, pub category: String }`, where `enum ExitType { Kill, Terminate, Panic }`.
+  - `EmulatorInfo { pub name: String }`. `name` is `"<manufacturer> <model> (<firmware>)"`
+    exactly as reported; the README's example gives `Nokia N00 (RM-469)`. It is not the
+    spec's "Nokia E52": the emulator does not report that name.
+  - `EmulatorInstance::argv(eka2l1, profile_dir, socket) -> Vec<OsString>` = `setsid <eka2l1>
+    --data-dir <dir> --control <socket>`; `EmulatorInstance::start(eka2l1, &EmulatorProfile,
+    &DeviceRegistry) -> Result<RegistryEntry>`, ready when `info()` and `apps.list` answer
+    (up to 120 s, `-32000` retried); `EmulatorInstance::stop(&RegistryEntry) -> Result<()>`
+    (`kill -9` only if `is_eka2l1(pid)`, then removes the entry).
+  - `EmulatorInstance::has_control(eka2l1) -> Result<bool>`: `<eka2l1> --help` lists
+    `--control` (observed in the control-server build's help).
+
+- [ ] **Step 1: Write the failing tests** — `control/tests.rs`, against a fake server on a
+  Unix socket in a temp dir. The fake reads one request per line and answers from a script.
+
+```rust
+use std::io::{BufRead, BufReader, Write};
+use std::os::unix::net::UnixListener;
+use std::time::Duration;
+
+use super::{ControlClient, ExitType};
+
+/// Serves one connection: for each request line, `answer(line)` gives the lines to send.
+fn fake(answer: impl Fn(&str) -> Vec<String> + Send + 'static) -> (tempfile::TempDir, std::path::PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let sock = dir.path().join("c.sock");
+    let listener = UnixListener::bind(&sock).unwrap();
+    std::thread::spawn(move || {
+        let (s, _) = listener.accept().unwrap();
+        let mut w = s.try_clone().unwrap();
+        for line in BufReader::new(s).lines() {
+            for out in answer(&line.unwrap()) { writeln!(w, "{out}").unwrap(); }
+        }
+    });
+    (dir, sock)
+}
+
+fn id_of(line: &str) -> String {
+    line.split("\"id\":").nth(1).unwrap().split(|c| c == ',' || c == '}').next().unwrap().to_string()
+}
+
+#[test]
+fn install_launch_and_an_exit_that_arrives_between_answers() {
+    let (_d, sock) = fake(|l| {
+        let id = id_of(l);
+        if l.contains("\"package.install\"") {
+            assert!(l.contains("\"path\":\"/abs/app.sisx\""), "{l}");
+            vec![format!("{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{{}}}}")]
+        } else if l.contains("\"app.launch\"") {
+            assert!(l.contains("\"uid\":\"0xE1234567\""), "{l}");
+            vec!["{\"jsonrpc\":\"2.0\",\"method\":\"event.app_exited\",\"params\":{\"uid\":3792946535,\"pid\":7,\"name\":\"app\",\"exit_type\":\"panic\",\"exit_reason\":3,\"exit_category\":\"RUST\"}}".into(),
+                 format!("{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{{\"pid\":7}}}}")]
+        } else {
+            vec![format!("{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{{\"events\":[\"app_exited\"]}}}}")]
+        }
+    });
+    let mut c = ControlClient::connect(&sock).unwrap();
+    c.subscribe_app_exited().unwrap();
+    c.install(std::path::Path::new("/abs/app.sisx")).unwrap();
+    assert_eq!(c.launch(0xe123_4567).unwrap(), 7);
+    let exit = c.next_exit(Duration::from_secs(1)).unwrap().unwrap();
+    assert_eq!((exit.pid, exit.exit_type, exit.reason, exit.category.as_str()), (7, ExitType::Panic, 3, "RUST"));
+}
+
+#[test]
+fn an_error_answer_names_the_method_code_and_message() {
+    let (_d, sock) = fake(|l| vec![format!("{{\"jsonrpc\":\"2.0\",\"id\":{},\"error\":{{\"code\":-32002,\"message\":\"no app with UID 0xE1234567\"}}}}", id_of(l))]);
+    let e = ControlClient::connect(&sock).unwrap().launch(0xe123_4567).unwrap_err().to_string();
+    assert!(e.contains("app.launch") && e.contains("-32002") && e.contains("no app with UID"), "{e}");
+}
+
+#[test]
+fn another_protocol_is_refused_with_what_to_install() {
+    let (_d, sock) = fake(|l| vec![format!("{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"name\":\"EKA2L1\",\"version\":\"x\",\"protocol\":2,\"paused\":false,\"device\":null}}}}", id_of(l))]);
+    let e = ControlClient::connect(&sock).unwrap().info().unwrap_err().to_string();
+    assert!(e.contains("protocol 2") && e.contains("SYMDEV_EKA2L1"), "{e}");
+}
+
+#[test]
+fn a_closed_connection_says_the_emulator_closed_it() {
+    let (_d, sock) = fake(|_| Vec::new());
+    let mut c = ControlClient::connect(&sock).unwrap();
+    drop(std::os::unix::net::UnixStream::connect(&sock)); // nothing; the fake answers nothing
+    let e = c.next_exit(Duration::from_millis(200));
+    assert!(matches!(e, Ok(None)), "a quiet socket is no exit yet");
+}
+
+#[test]
+fn paths_with_quotes_and_backslashes_are_escaped() {
+    let line = super::Request::line(1, "package.install", &[("path", super::Param::Str("/a\"b\\c.sisx"))]);
+    assert_eq!(line, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"package.install\",\"params\":{\"path\":\"/a\\\"b\\\\c.sisx\"}}");
+}
+```
+
+and in `device/tests.rs`:
+
+```rust
+#[test]
+fn an_instance_is_started_in_its_own_session_with_its_profile_and_socket() {
+    let argv = super::EmulatorInstance::argv(Path::new("/opt/eka2l1"), Path::new("/p/rm-469"), Path::new("/run/u/symdev/emulator-1.sock"));
+    let argv: Vec<String> = argv.iter().map(|a| a.to_string_lossy().into_owned()).collect();
+    assert_eq!(argv, ["setsid", "/opt/eka2l1", "--data-dir", "/p/rm-469", "--control", "/run/u/symdev/emulator-1.sock"]);
+}
+```
+
+- [ ] **Step 2: Run them to see them fail**: `cargo test -p symdev-emulator --offline`.
+
+- [ ] **Step 3: Implement.** `Request::line(id, method, params: &[(&str, Param)])` with
+  `enum Param<'a> { Str(&'a str), Uid(u32), Names(&'a [&'a str]) }`; `Uid` is written
+  `"0x%08X"`. `ControlClient` keeps a `BufReader<UnixStream>` and a write half. `call`
+  writes one line and reads lines until the answer with its `id`. A line with `"method":
+  "event.app_exited"` goes to a `VecDeque<AppExited>`. `next_exit` first drains the queue,
+  then reads with `set_read_timeout(timeout)`; `WouldBlock`/`TimedOut` → `Ok(None)`.
+  `EmulatorInstance::start` takes the id from `registry.next_id()` and the socket
+  `$XDG_RUNTIME_DIR/symdev/<id>.sock`. It spawns `argv` with stdout/stderr to
+  `<profile>/symdev-<id>.out` and polls `connect` + `info` + `apps.list` every 250 ms up to
+  120 s. It writes the `RegistryEntry` (`name` from `info`, `log` = the log file Task 10
+  observed). On a timeout it `kill -9`s the PID it started and says so.
+
+`devices_cmd.rs`. With no profile at all, it first creates one per directory in the user's
+`<EmulatorData>/data/roms/` (spec §5, phase 1), printing `created profile rm-469`. `symdev
+devices` prints the running devices (`emulator-1  Nokia N00 (RM-469)  pid 4242  profile
+rm-469`) and then the profiles. Liveness is `is_eka2l1` plus `ControlClient::connect(&e.socket)
+.and_then(|mut c| c.info()).is_ok()`. `symdev emulator start <profile>` checks
+`has_control(SYMDEV_EKA2L1)` first; without it, the error is `SYMDEV_EKA2L1 (<path>) has no
+--control: cargo run needs an EKA2L1 with the control server (EKA2L1#770–#772, our fork's
+symdev branch)`. `symdev emulator stop <id>` calls `EmulatorInstance::stop`.
+
+- [ ] **Step 4: Run the tests, then the real emulator** (under the agent lock):
+  `SYMDEV_EKA2L1=~/src/cargo-run-scratch/bin/eka2l1-symdev symdev emulator start rm-469`
+  prints `emulator-1`. `symdev devices` lists it. `symdev emulator stop emulator-1` ends it,
+  and `pgrep -a eka2l1_qt` no longer shows its PID. The user's own instance, if open, is
+  untouched: compare `pgrep` before and after.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add crates/symdev-emulator crates/symdev-cli/src/devices_cmd.rs crates/symdev-cli/src/cli.rs crates/symdev-cli/src/main.rs
+git commit -m "Talk to EKA2L1's control server, start emulators of our own, and list them with symdev devices."
+```
