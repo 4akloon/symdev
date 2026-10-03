@@ -3856,7 +3856,7 @@ What RL3 needs, in the order a build meets it:
   (an error naming the symbol otherwise) and post-link it as today. Both links take the
   same argv apart from the output, the object and the `--wrap` list; the first one's
   `.map` can be dropped. If `functions()` is empty the first link is the result. Cost:
-  one more rust-lld run (well under a second on these programs).
+  one more rust-lld run: 0.03 s for `fmt`, the largest (262 KB of code).
 * **SDK fixes, a local cache.** Made once at `symdev sdk install` (or lazily, keyed by
   the SDK file's hash) under `SYMDEV_HOME`, never shipped — they are SDK bytes: (1) every
   `.dso` the line names, with the `.strtab` padding after the last NUL zeroed (428 of
@@ -3877,7 +3877,7 @@ What RL3 needs, in the order a build meets it:
 
 **The PLT price is gone.** With 8-byte stubs made by a 130-line object writer and a
 second link, rust-lld produces images within −72…+20 bytes of GNU ld's uncompressed, on
-all nineteen programs; seven of them come out smaller than GNU's. The product elf2e32
+all nineteen programs; ten of them come out smaller than GNU's. The product elf2e32
 reads them through five rules gated on lld's `.comment` string, labelled as derived from
 the ABI and lld and verified in EKA2L1, and gives GNU ELFs the same bytes as before. In the
 emulator the stubs builds behave as GNU's, including a caught leave and the fifteen async
