@@ -37,6 +37,11 @@ pub fn build_project(m: Manifest, provision: &Provision) -> Result<ExitCode, Err
         (Some(sdk), Some(linker)) => linker.needs_gcce(sdk)?,
         _ => true,
     };
+    if let (Some(sdk), Some(linker)) = (&rust_sdk, &linker)
+        && let Some(note) = provision.prebuilt_note(sdk, linker)?
+    {
+        eprintln!("{note}");
+    }
     let tools = provision.toolchain(m.target.device, gcce)?;
     let epocroot = tools.epocroot.clone();
     let project = crate::current_project()?;

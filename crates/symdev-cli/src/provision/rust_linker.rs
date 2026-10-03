@@ -1,6 +1,6 @@
 //! How a Rust project is linked (experiment 113): `SYMDEV_RUST_LINKER`, `SYMDEV_RUST_LLD`.
 
-use symdev_build::{RustLinker, RustLld, SdkLldCache};
+use symdev_build::{RustLinker, RustLld, RustPrebuilt, RustSdk, SdkLldCache};
 use symdev_core::Error;
 
 use super::Provision;
@@ -42,5 +42,29 @@ impl Provision {
             rust_lld,
             cache: SdkLldCache::at(home.join(SdkLldCache::DIR)),
         })
+    }
+
+    /// A one-line note when rust-lld links the prebuilt set of a local Rust SDK tree (the
+    /// checkout, or `SYMDEV_RUST_SDK`): that set, not the tree's `shims/` sources, goes into
+    /// the program, so an edited shim changes nothing until `prebuilt/` is deleted. The
+    /// installed package's set is the release's own and needs no note. Modification times
+    /// are not compared: a copied or checked-out tree makes them say nothing.
+    pub fn prebuilt_note(
+        &self,
+        sdk: &RustSdk,
+        linker: &RustLinker,
+    ) -> Result<Option<String>, Error> {
+        if self.needed_rust_sdk().is_some() {
+            return Ok(None);
+        }
+        Ok(linker.prebuilt(sdk)?.map(|p| {
+            format!(
+                "note: linking the prebuilt shims in {}, not {}/shims/; delete {} to link \
+                 edited shims",
+                p.lib_dir().display(),
+                sdk.root().display(),
+                sdk.root().join(RustPrebuilt::DIR).display()
+            )
+        }))
     }
 }
