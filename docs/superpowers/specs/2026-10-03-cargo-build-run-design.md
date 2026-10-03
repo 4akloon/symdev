@@ -17,7 +17,9 @@ In a Rust project made by `symdev new --lang rust`, plain cargo does the whole l
 
 `symdev.toml` stays the only place for what the phone needs (UID3, capabilities, vendor, UI
 resources, signing): none of it moves into `Cargo.toml`, and `symdev.toml` gains nothing else.
-C++ projects are unchanged.
+C++ projects build as before; `symdev run` and `symdev test` for C++ use the same device
+choice and runner as Rust (the owner chose one run path on 2026-10-03), so they too need an
+EKA2L1 with `--control` and `--data-dir`.
 
 ## 2. Decisions taken with the owner
 
