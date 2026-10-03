@@ -183,3 +183,6 @@ uid3!/report! macros; 6 symbian-test crate; 7 project shape + symdev new; 8 migr
 11 device registry + choice + `symdev devices/emulator`; 12 control client; 13 runner
 (`symdev run --exe`, `symdev run`); 14 cargo test path (report, libtest printer, symdev test);
 15 symdev build = cargo build; 16 old-shape error; 17 CI; 18 exp 114 real runs; 19 acceptance.
+- Plan progress: header, D1, review focus, file map, Tasks 1–6 written and committed.
+  NEXT: Task 7 (scaffold) … 19. Design notes for the rest are in the task list above;
+  runner liveness test trick: a symlink named `eka2l1-fake` → /bin/sleep gives /proc comm.
