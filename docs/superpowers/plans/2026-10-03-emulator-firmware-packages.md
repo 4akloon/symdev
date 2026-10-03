@@ -2653,7 +2653,7 @@ impl EmulatorNotices {
                 let list = BundledList::read(tsv, &self.tree)?;
                 let out = doc.join("BUNDLED.tsv");
                 fs::write(&out, list.to_tsv()).map_err(|e| ToolError::io(out.display(), &e))?;
-                list.len()
+                list.count()
             }
             None => 0,
         };
@@ -2826,7 +2826,7 @@ impl BundledList {
 }
 ```
 
-(`EmulatorNotices::write` calls `list.count()`.) `main.rs`: `mod emulator_notices;`,
+`main.rs`: `mod emulator_notices;`,
 `use crate::emulator_notices::EmulatorNotices;`, and
 
 ```rust
