@@ -328,3 +328,10 @@ NEXT: Task 10 — `task-start <plan> 10` (EKA2L1 with --control/--data-dir; prof
   `cargo test`: 167 passed — but 1 fails when the developer's PUBLISH_SIGNING_KEY is in the env
   (publish's dry-run test expects an unsigned index; pre-existing, environmental).
 NEXT: Task 18 — `task-start <plan> 18` (experiment 114 real runs).
+- Task 18 in progress. Step 1 done (`t18/bytes.sh` → `t18/bytes.out`, `t18/symdiff.py` →
+  `t18/symdiff.out`, `t18/cold.sh`): 21/21 built both ways at one path; EQUAL alloc hello
+  hello-raw panic shim spawnee; 13 report-using no_std examples differ only in .text +60..+192
+  (Report::record +8 and the function that inlines report!/finish: E32Main etc. — Task 5 −~110
+  plus Task 6 +~170–300); std-hello .text −192 .rodata +672, std-net −204/+504 (path strings).
+  Times: cold hello 15.5 s / warm 0.9 s; cold ui 16.5 s / warm 2.1 s. Next: `t18/runs.sh` under
+  flock (steps 2–5), bin7 = HEAD 6d75fbb.
