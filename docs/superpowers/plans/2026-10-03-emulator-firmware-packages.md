@@ -156,7 +156,11 @@ the notes.
   'firmware;rm-469;1' --from ~/src/emu-pkg-scratch/firmware/tree --recipe
   recipes/firmware/rm-469/1/recipe.toml`.
 - **L4**: push `~/worktrees/symdev-packages/cargo-run` and open its PR (this is what L2
-  merges).
+  merges). The branch also carries cargo-run's `recipes/symdev/0.4.0` (commit `3fe6a76`),
+  whose `commit` is still zeros. Merging the whole branch into `main` therefore also starts
+  `symdev.yml`, and its `build.sh` refuses the zeros until `v0.4.0` is tagged. The merge
+  order is the lead's call: tag and fill in 0.4.0 first, or put the emulator and firmware
+  commits on a branch of their own from `main`.
 - After L2 and L3: the real-bucket acceptance (end of this plan).
 
 ## Review Focus
