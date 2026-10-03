@@ -17,8 +17,9 @@ Do NOT edit: `crates/symdev-build/src/driver/{rust_build,libcalls}.rs`, `crates/
 - [x] B: lld options investigation (dead ends below)
 - [x] B: stub mechanism + ImportStubs type (`src/import_stubs.rs`, `import_stubs/object.rs`,
       example driver `examples/import_stubs.rs`)
-- [ ] B: four apps sizes / elf2e32 / EKA2L1
-- [ ] experiment 112 entry
+- [x] B: four apps sizes / elf2e32 / EKA2L1, bwrap, 15 examples
+- [x] experiment 112 entry
+- [ ] gates (step 5): logs ~/src/rl-scratch/gate-{test,clippy}.log
 
 ## Findings
 - Detection: `.comment` holds a NUL-separated string starting `Linker: LLD ` (lld writes
@@ -137,7 +138,7 @@ Do NOT edit: `crates/symdev-build/src/driver/{rust_build,libcalls}.rs`, `crates/
   padding) + 4 B `.got.plt` slot, header 32 B + 3 reserved GOT words.
 
 ## Next step (resume 3, 2026-10-03)
-Steps 1-3 DONE. Steps: (1) confirm lld golden test + all goldens pass (`cargo test -p symdev-elf2e32 --offline`,
+Steps 1-4 DONE (experiment 112 written, commits de0ecb5..a29112a). Steps: (1) confirm lld golden test + all goldens pass (`cargo test -p symdev-elf2e32 --offline`,
 CARGO_TARGET_DIR=~/src/rl-scratch/target); (2) hello +7 B exidx thunk: try link order / lld
 options, record each; (3) prove hello/async/leave probe/ui with stubs in EKA2L1 + bwrap no-GCCE
 + 15 examples; (4) rebase on main, experiment 112 in backlog; (5) gates.
