@@ -17,6 +17,9 @@ pub struct ElfImportReloc {
     pub dso: String,
     pub symbol: String,
     pub vaddr: u32,
+    /// The word at `vaddr` is the import's addend (`addend << 16 | ordinal` in E32). For
+    /// an lld ELF only `R_ARM_ABS32` keeps one (`ElfLinker::Lld`, rule a).
+    pub addend_in_place: bool,
 }
 
 /// A dynamic relocation against a defined symbol: the word at `vaddr` refers to `target`.
@@ -51,6 +54,8 @@ pub(super) struct ElfRel {
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ElfSection {
+    /// `sh_name`: offset in the section-name string table.
+    pub(super) name: usize,
     pub(super) kind: u32,
     pub(super) addr: u32,
     pub(super) offset: usize,

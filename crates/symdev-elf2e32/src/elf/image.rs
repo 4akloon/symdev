@@ -1,4 +1,5 @@
 //! `ElfImage`: parsing and the code/data segments.
+use super::linker::ElfLinker;
 use super::types::{ElfSection, ElfSegment};
 use symdev_core::{Error, Result};
 
@@ -9,6 +10,9 @@ pub struct ElfImage {
     pub(super) entry: u32,
     pub(super) loads: Vec<(u32, ElfSegment)>,
     pub(super) sections: Vec<ElfSection>,
+    /// `e_shstrndx`: the section-name string table.
+    pub(super) section_names: usize,
+    pub(super) linker: ElfLinker,
 }
 
 impl ElfImage {
@@ -46,6 +50,8 @@ impl ElfImage {
             entry: 0,
             loads: Vec::new(),
             sections: Vec::new(),
+            section_names: 0,
+            linker: ElfLinker::Gnu,
         };
         if elf.u16_at(0x12)? != Self::EM_ARM {
             return Err(Error::Other("ELF machine is not ARM".into()));
@@ -57,6 +63,7 @@ impl ElfImage {
         let phnum = elf.u16_at(0x2c)? as usize;
         let shentsize = elf.u16_at(0x2e)? as usize;
         let shnum = elf.u16_at(0x30)? as usize;
+        elf.section_names = elf.u16_at(0x32)? as usize;
 
         for i in 0..phnum {
             let ph = phoff + i * phentsize;
@@ -76,6 +83,7 @@ impl ElfImage {
         for i in 0..shnum {
             let sh = shoff + i * shentsize;
             let section = ElfSection {
+                name: elf.u32_at(sh)? as usize,
                 kind: elf.u32_at(sh + 4)?,
                 addr: elf.u32_at(sh + 12)?,
                 offset: elf.u32_at(sh + 16)? as usize,
@@ -84,11 +92,20 @@ impl ElfImage {
             };
             elf.sections.push(section);
         }
+        let comment = elf
+            .section_named(".comment")
+            .and_then(|s| elf.bytes.get(s.offset..s.offset + s.size));
+        elf.linker = ElfLinker::from_comment(comment);
         Ok(elf)
     }
 
     pub fn entry(&self) -> u32 {
         self.entry
+    }
+
+    /// The linker that wrote this ELF (lld's needs the rules in `elf/lld.rs`).
+    pub fn linker(&self) -> ElfLinker {
+        self.linker
     }
 
     /// The executable `PT_LOAD` (E32 code section).

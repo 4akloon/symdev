@@ -33,7 +33,11 @@ impl E32CodeSection {
             let ordinal = ordinals.get(&imp.dll, &imp.symbol).ok_or_else(|| {
                 Error::Other(format!("no ordinal for {} in {}", imp.symbol, imp.dll))
             })?;
-            let addend = E32Fixups::word(&bytes, base, imp.vaddr)?;
+            let addend = if imp.addend_in_place {
+                E32Fixups::word(&bytes, base, imp.vaddr)?
+            } else {
+                0
+            };
             if addend > 0xffff || ordinal > 0xffff {
                 return Err(Error::Other(format!(
                     "import {} addend {addend:#x} / ordinal {ordinal:#x} exceed 16 bits",

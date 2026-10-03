@@ -1,6 +1,7 @@
 //! Shared fixtures for `Elf2E32` encode/parse tests, split by experiment.
 use super::*;
 
+mod experiment_109;
 mod experiment_44;
 mod experiment_49;
 mod experiment_52;

@@ -20,6 +20,7 @@ pub use e32::{E32Image, E32Time};
 pub use e32::{E32ImageHeader, E32ImageHeaderJ, E32ImageHeaderV};
 pub use e32::{E32ImportBlock, E32ImportSection};
 pub use elf::ElfImportReloc;
+pub use elf::ElfLinker;
 pub use elf::ElfLocalReloc;
 pub use elf::{ElfImage, ElfSegment, ElfSymbol};
 pub use elf2e32::Elf2E32;

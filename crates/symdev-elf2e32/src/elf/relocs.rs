@@ -35,6 +35,7 @@ impl ElfImage {
                 dso: version.dso.clone(),
                 symbol: self.string(dynsym.link, rel.symbol_name)?,
                 vaddr: rel.vaddr,
+                addend_in_place: self.linker.import_addend_in_place(rel.kind),
             });
         }
         Ok(out)
@@ -56,9 +57,13 @@ impl ElfImage {
                     rel.kind, rel.vaddr
                 )));
             }
+            let target = match self.lld_relative_target(&rel)? {
+                Some(target) => target,
+                None => rel.symbol_value,
+            };
             out.push(ElfLocalReloc {
                 vaddr: rel.vaddr,
-                target: rel.symbol_value,
+                target,
                 absolute: rel.kind != Self::R_ARM_RELATIVE,
                 addend_in_place: rel.kind == Self::R_ARM_ABS32,
             });

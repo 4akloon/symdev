@@ -1,0 +1,18 @@
+# Experiment 109: import ordinals the lld-linked hello uses (dll, symbol, ordinal), read from FP2 --libpath DSOs.
+drtaeabi{000a0000}.dll _ZTI15XLeaveException 0xce
+euser{000a0000}[100039e5].dll _ZN4User15HandleExceptionEPv 0x265
+euser{000a0000}[100039e5].dll _ZN4User9InvariantEv 0x29d
+euser{000a0000}[100039e5].dll _ZN4User4ExitEi 0x281
+euser{000a0000}[100039e5].dll _ZN8UserHeap15SetupThreadHeapEiR24SStdEpocThreadCreateInfo 0x550
+euser{000a0000}[100039e5].dll _ZN12CTrapCleanup3NewEv 0xc4
+euser{000a0000}[100039e5].dll _ZN4User11InitProcessEv 0x249
+euser{000a0000}[100039e5].dll _ZN4User5AfterE27TTimeIntervalMicroSeconds32 0x285
+euser{000a0000}[100039e5].dll _ZN4User5PanicERK7TDesC16i 0x28a
+euser{000a0000}[100039e5].dll _ZN4User9InfoPrintERK7TDesC16 0x29c
+euser{000a0000}[100039e5].dll _ZN6TDes166AppendEPKti 0x3c7
+euser{000a0000}[100039e5].dll _ZN6TDes169AppendNumEx 0x3d8
+drtaeabi{000a0000}.dll __aeabi_memclr4 0x90
+drtaeabi{000a0000}.dll __cxa_begin_catch 0xb4
+drtaeabi{000a0000}.dll __cxa_end_catch 0xb7
+drtaeabi{000a0000}.dll __cxa_end_cleanup 0xb8
+drtaeabi{000a0000}.dll _ZN23TCppRTExceptionsGlobalsC1Ev 0xcc
