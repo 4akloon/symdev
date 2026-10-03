@@ -914,7 +914,7 @@ All in `~/worktrees/symdev-packages/cargo-run`. The staged tree and the archive 
   `stage.sh <out>` makes `<out>/{device.yml,roms/rm-469/,drives/z/rm-469/}`. The recipe pins
   the archive's SHA-256.
 
-- [ ] **Step 1: Write the failing tests** in `pkgtools/src/device_entry.rs`
+- [x] **Step 1: Write the failing tests** in `pkgtools/src/device_entry.rs`
 
 ```rust
 #[cfg(test)]
@@ -971,7 +971,7 @@ fn device_entry_prints_the_entry_and_exits_1_without_it() {
 }
 ```
 
-- [ ] **Step 2: Run them and see them fail**
+- [x] **Step 2: Run them and see them fail**
 
 ```bash
 cd ~/worktrees/symdev-packages/cargo-run && cargo test --locked -p pkgtools device_entry > /tmp/t5.log 2>&1; grep -E "^error|test result" /tmp/t5.log
@@ -980,7 +980,7 @@ cd ~/worktrees/symdev-packages/cargo-run && cargo test --locked -p pkgtools devi
 Expected: `cannot find type DeviceEntry` (declare `mod device_entry;` in `main.rs` first)
 and an unknown subcommand in the CLI test.
 
-- [ ] **Step 3: Implement** `pkgtools/src/device_entry.rs` (above its tests)
+- [x] **Step 3: Implement** `pkgtools/src/device_entry.rs` (above its tests)
 
 ```rust
 //! `DeviceEntry`: one device of EKA2L1's `devices.yml`, as the firmware recipe's stage.sh
@@ -1073,9 +1073,9 @@ with the arm
         },
 ```
 
-- [ ] **Step 4: Run them and see them pass**, as in step 2. Expected: `test result: ok`.
+- [x] **Step 4: Run them and see them pass**, as in step 2. Expected: `test result: ok`.
 
-- [ ] **Step 5: Write the driver's test first**, `tests/firmware-stage.test`
+- [x] **Step 5: Write the driver's test first**, `tests/firmware-stage.test`
 
 ```sh
 #!/bin/sh
@@ -1114,7 +1114,7 @@ check "a missing ROM is refused by name" sh -c "EKA2L1_DATA='$data' bash '$stage
 
 Run `sh tests/firmware-stage.test`. Expected: it fails, because `stage.sh` does not exist.
 
-- [ ] **Step 6: Write `recipes/firmware/rm-469/1/stage.sh`**
+- [x] **Step 6: Write `recipes/firmware/rm-469/1/stage.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -1160,7 +1160,7 @@ already triggers on `recipes/**` and `tests/**`; add a step after the install.sh
         run: sh tests/firmware-stage.test
 ```
 
-- [ ] **Step 7: Write the recipe and pin its archive**
+- [x] **Step 7: Write the recipe and pin its archive**
 
 `recipes/firmware/rm-469/1/recipe.toml`:
 
@@ -1211,7 +1211,7 @@ env -u PUBLISH_PUBLIC_URL cargo run --release --quiet --manifest-path $P/Cargo.t
 
 Expected: `… grants no right to publish it; only the private bucket may hold it`.
 
-- [ ] **Step 8: Gates and commit** (packages worktree)
+- [x] **Step 8: Gates and commit** (packages worktree)
 
 ```bash
 cd ~/worktrees/symdev-packages/cargo-run

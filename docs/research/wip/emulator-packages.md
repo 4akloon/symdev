@@ -186,4 +186,9 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   (EXIT= at end). Then step 3 (extract + inspect) and exp 115 §2.
 - [x] Task 4: Device::ALL, Pins::emulator (emulator;2026.10.03) / firmware, EmulatorPackage,
   FirmwarePackage, catalog bypass. Gates green (tests 55 ok, clippy 0, fmt ok).
-- [ ] Task 5: next (packages worktree: pkgtools device-entry + firmware recipe).
+- [x] Task 5: packages ae57739: pkgtools device-entry, recipes/firmware/rm-469/1/{recipe.toml,stage.sh},
+  tests/firmware-stage.test (8 ok), tests.yml step. Staged tree ~/src/emu-pkg-scratch/firmware/tree
+  (15 597 files, 258 MB); archive sha256 032b6e1d…b25b, 133 668 334 B (pinned). Public dry run
+  refuses it. Gates: cargo test 5 ok (env -u PUBLISH_SIGNING_KEY), clippy 0, fmt ok,
+  install.sh.test dash 81 ok.
+- [ ] Task 6: next (needs the rehearsal? no: Task 1's eka2l1-emupkg + Task 5's tree).
