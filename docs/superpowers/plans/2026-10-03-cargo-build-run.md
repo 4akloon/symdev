@@ -2911,7 +2911,7 @@ fn a_project_in_the_new_shape_is_left_alone() {
   0.3.0's for the new version; its include list gains `symbian-rs/crates/symbian-test` if it
   lists crates one by one)
 
-- [ ] **Step 1: CI.** In the `examples` job, after "Build symdev":
+- [x] **Step 1: CI.** In the `examples` job, after "Build symdev":
 
 ```yaml
       - name: Link symdev-ld and symdev-rustc
@@ -2934,12 +2934,12 @@ ci-throwaway` unless D1 = A made it unnecessary. Then delete it, so CI proves a 
 project needs none. Validate the workflow: `python3 -c 'import yaml,sys;
 yaml.safe_load(open(".github/workflows/ci.yml"))'`.
 
-- [ ] **Step 2: install.sh.** After it links `~/.local/bin/symdev`, it runs `"$bindir/symdev"
+- [x] **Step 2: install.sh.** After it links `~/.local/bin/symdev`, it runs `"$bindir/symdev"
   setup-linker --dir "$bindir"`. Its own test suite (`cargo test` in the packages repo)
   stays green. Add a test there if `install.sh` has one per step: check `README.md` and
   `tests/`.
 
-- [ ] **Step 3: Commit** in each repo:
+- [x] **Step 3: Commit** in each repo:
 
 ```bash
 git add .github/workflows/ci.yml && git commit -m "Build the Rust examples with cargo in CI, through symdev-ld."

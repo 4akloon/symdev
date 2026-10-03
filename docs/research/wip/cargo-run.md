@@ -316,4 +316,15 @@ NEXT: Task 10 — `task-start <plan> 10` (EKA2L1 with --control/--data-dir; prof
   with "SYMDEV_DEVICE=emulator-1 is neither a running emulator nor a profile; there are: none"
   (the runner's liveness dropped the fake). Not reproduced in 5 full runs since. Stress:
   `exec/stress-run-exe.sh 40` → `exec/stress.out`, failing logs in `exec/stress/`.
-NEXT: Task 17 — `task-start <plan> 17` (CI and the packages).
+- Task 17 done. CI (4971763): examples job links symdev-ld/symdev-rustc with setup-linker
+  into ~/.local/bin, builds C++ examples with build+package and every symbian-rs example with
+  `symdev build` (= cargo), uploads symbian-rs/examples/*/build/*.sisx, and no longer sets
+  SYMDEV_SIGN_PASSWORD (D1 = A); YAML validated. Packages: worktree
+  ~/worktrees/symdev-packages/cargo-run, branch cargo-run (from main d81ddee), commit 3fe6a76
+  (NOT pushed): install.sh checks then links symdev, symdev-ld, symdev-rustc → the installed
+  binary (same replace/refuse rules; a foreign file at any of them leaves all three); tests
+  for it in tests/install.sh.test (dash + bash: all passed); recipes/symdev/0.4.0 = 0.3.0's with
+  0.4.0 ids/tag and commit 000… (build.sh refuses until set at release); README. Packages
+  `cargo test`: 167 passed — but 1 fails when the developer's PUBLISH_SIGNING_KEY is in the env
+  (publish's dry-run test expects an unsigned index; pre-existing, environmental).
+NEXT: Task 18 — `task-start <plan> 18` (experiment 114 real runs).
