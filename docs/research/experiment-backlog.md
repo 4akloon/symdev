@@ -4424,3 +4424,60 @@ apply here: this cargo has no `deps/`.
 * Anything else, an example included, is refused by name until it is needed.
 * The runner cannot use the same signal: it sees `CARGO_BIN_EXE_<bin>` only for a test, so
   `symdev-ld` records the kind beside the image.
+
+#### 1.7 A self-signed key without a password, with the original tools
+
+This was asked for the plan, not by §11. `symdev package` refuses a `SYMDEV_SIGN_PASSWORD`
+shorter than 4 characters even for `mode = "self-signed"` (`SisPackage::validate_password`),
+so a `cargo build` that signs would fail in a fresh shell. The SDK's own tools ran through
+Wine in `signing/`, on experiment 8's `hello.sis`.
+
+* **The usage.** `makekeys` prints `[-password <password> <At least 4 characters>]`: the
+  option is optional.
+* **No `-password`.** `makekeys -cert -expdays 3650 -len 2048 -dname "<experiment 8's>"
+  nopw.key nopw.cer` warns "the private key should be encrypted with the -password option",
+  then asks "Do you want to use a password (y/n)?".
+* **The answer.** With no answer (stdin at EOF) it asks for a PEM pass phrase and ends in
+  "** Error writing to key file". Answering `n` gives "Created key", "Created certificate":
+  `nopw.key` is 1 192 bytes of `BEGIN DSA PRIVATE KEY` with no `Proc-Type: 4,ENCRYPTED`
+  header.
+* **Signing.** `signsis hello.sis hello-nopw.sisx nopw.cer nopw.key`, four positionals and no
+  pass phrase, exits 0. The result is 5 180 bytes, and `file` calls it a Symbian
+  installation file (Symbian OS 9.x).
+
+The `.sisx` was not installed anywhere.
+
+#### Answers (§1)
+
+1. **Argv and environment.** Release: 13 arguments, the LTO object and `compiler_builtins`'s
+   rlib between `--as-needed -Bstatic` / `-Bdynamic -z noexecstack -o <out> --gc-sections
+   --strip-debug`. Dev: `symbols.o`, the codegen units and 11 rlibs, no `--strip-debug`.
+   `-flavor gnu` comes first unless the linker's name ends in `-ld`. Cargo's new layout puts
+   `-o` in `build/<pkg>/<hash>/out/` and hard-links a binary up. `cargo test` needs
+   `panic-abort-tests`; `src/main.rs` needs `#![no_main]`.
+2. **Same bytes.** Yes: 19 of 19 `no_std` examples are byte-equal on the same target spec.
+   The spec edit itself reorders `net` and `tls`, with the same uncompressed size.
+3. **libcalls.** Not as an ordinary dependency (+2 036 bytes for `hello`, at best +64 for
+   `files`), because cargo cannot take one crate out of LTO's code generation. `symdev-ld`
+   runs today's separate `cargo rustc` from inside the build instead: no deadlock, same rlib.
+4. **Patched `std`.** Yes, from configuration: `[build] rustc` naming a wrapper that passes
+   `--sysroot` to a materialised sysroot (rustup's `path`/linked toolchain also works). Images
+   differ from 0.3.0's by path-dependent bytes only.
+5. **Dev.** It does not link on 0.3.0's line until the target spec says `"default-visibility":
+   "hidden"`. Then it links, `hello` runs in EKA2L1, and release bytes are unchanged; elf2e32
+   accepts DWARF, and the line strips it.
+6. **Test or main.** `CARGO_BIN_NAME` names the binary; a test has none but has
+   `CARGO_TARGET_TMPDIR`.
+
+**Evidence (§1).** 2026-10-03, this host, branch `cargo-run`. All of it is outside git, in
+`~/src/cargo-run-scratch/`:
+
+* Scripts and drivers: `env.sh`, `bin/{rec-ld,symdev-ld,rec-run,nested-libcalls,lld-log,
+  fake-cargo,symdev-030,symdev-spike}`, `driver-src/` (the spike's three switches in
+  `crates/symdev-build/src/driver/rust_link.rs`), `toshape.py`, `addlibcalls.py`, `base.sh`,
+  `all.sh`, `q2.sh`, `q3.sh`, `e32cmp.py`, `secs.py`.
+* Recordings and fixtures: `rec/`, `fixtures/`.
+* Images and logs: `out/{base,q2,spec,q3/*,q4,q5,q5a,q5a-dbg,q5d,q5e}/`; `base*.txt`,
+  `q2-rest.txt`, `q5d-rest.txt`.
+* Projects: `q1/app`, `sdk1/` (`std-hello` with H3/H4 files), `q4/{tc-copy,rustup}`.
+* Emulator and signing: `emu.sh`, `runshot.py`, `shots/`, `signing/`.
