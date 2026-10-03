@@ -7,14 +7,12 @@ in `docs/research/experiment-backlog.md`; phase 2 = plan via superpowers:writing
 No push to main / merge / tag / publish; pushing `cargo-run` is allowed.
 
 ## Status
-- [ ] Q1 linker argv + env (dev, release, harness=false test)
-- [ ] Q2 same bytes from rustc's link inputs (hello, ui, async)
-- [ ] Q3 libcalls as an ordinary dependency
-- [ ] Q4 patched std from config alone (rust-std)
-- [ ] Q5 dev profile
-- [ ] Q6 test binary vs main binary signal
-- [ ] exp 114 §1 written
-- [ ] plan written + committed
+- [x] Q1 linker argv + env   - [x] Q2 same bytes (19/19 no_std)   - [x] Q3 libcalls
+- [x] Q4 patched std (H4)    - [x] Q5 dev profile                 - [x] Q6 test signal
+- [x] exp 114 §1 written (experiment-backlog.md, end of file)
+- [ ] plan written + committed (phase 2) — NEXT: invoke superpowers:writing-plans, read the
+  code names the plan needs (CLI layout, symdev-emulator, test_cmd, run), EKA2L1 control
+  docs in ~/src/EKA2L1-wt/control-server (README only; branches dev/control-*).
 
 ## Facts
 - Env: `~/src/cargo-run-scratch/env.sh` (GCCE route, scratch SYMDEV_HOME/XDG, TMPDIR in
