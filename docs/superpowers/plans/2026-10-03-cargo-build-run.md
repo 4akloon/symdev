@@ -156,6 +156,11 @@ test in the task named.
 | `symbian-rs/crates/symbian-macros/src/manifest_uid3.rs` | `ManifestUid3`: `symdev.toml`'s UID3 at expansion time |
 | `symbian-rs/crates/symbian-test/` | the `harness = false` test harness |
 
+**Order.** 1 → 2 → 3 → 4 make `symdev-ld`. 5 and 6 are the Rust SDK side. 7, 8, 9 move the
+projects. 10 → 11 → 12 → 13 → 14 are the devices and the runner. 15, 16 and 17 are `symdev
+build`, the refusal of the old shape, and CI. 18 and 19 are the real runs and acceptance.
+Tasks 10–14 do not depend on 5–9 and can run in parallel with them; 18 needs all before it.
+
 ---
 
 ### Task 1: The recorded rustc calls as fixtures, and the types that read them
@@ -2036,6 +2041,7 @@ git commit -m "Build rust-std projects with plain cargo through symdev-rustc and
 - Outside git: `~/src/EKA2L1-wt/integration` (branch `symdev`) and its build in
   `~/src/EKA2L1-wt-build/integration`; a launch wrapper `~/src/cargo-run-scratch/bin/eka2l1-symdev`
 - Create: `crates/symdev-emulator/src/device.rs`, `crates/symdev-emulator/src/device/emulator_profile.rs` (`EmulatorProfile`)
+- Modify: `crates/symdev-emulator/src/lib.rs` (`pub mod device;`)
 - Test: `crates/symdev-emulator/src/device/tests.rs`
 - Modify: `docs/research/experiment-backlog.md` (experiment 114 §2: the profile layout, as observed)
 
@@ -2169,7 +2175,7 @@ git commit -m "Give each emulator profile its own drives and log filter, referen
 
 **Files:**
 - Create: `crates/symdev-emulator/src/device/{device_id,registry_entry,device_registry,device_choice,device_prompt}.rs`
-- Modify: `crates/symdev-emulator/src/device.rs`, `crates/symdev-emulator/src/lib.rs` (`pub mod device`), `crates/symdev-emulator/Cargo.toml` (`toml = "1"`)
+- Modify: `crates/symdev-emulator/src/device.rs` (declare and re-export the five types), `crates/symdev-emulator/Cargo.toml` (`toml = "1"`)
 - Test: `crates/symdev-emulator/src/device/tests.rs` (split into `tests/choice.rs` and `tests/registry.rs` if past 300 lines)
 
 **Interfaces:**
@@ -2316,7 +2322,7 @@ down.
 **Files:**
 - Create: `crates/symdev-emulator/src/control.rs`, `control/{request,control_client,app_exited,emulator_info}.rs`, `control/tests.rs` (with a fake server)
 - Create: `crates/symdev-emulator/src/device/emulator_instance.rs` (`EmulatorInstance`)
-- Modify: `crates/symdev-emulator/src/json.rs` (`pub(crate)`; add `pub(crate) fn quote(&str) -> String`)
+- Modify: `crates/symdev-emulator/src/json.rs` (`pub(crate)`; add `pub(crate) fn quote(&str) -> String`), `crates/symdev-emulator/src/lib.rs` (`pub mod control;`)
 - Create: `crates/symdev-cli/src/devices_cmd.rs`; Modify: `crates/symdev-cli/src/{cli.rs,main.rs}` (`Devices`, `Emulator { Start { profile }, Stop { id } }`)
 
 **Interfaces:**
@@ -2331,7 +2337,8 @@ down.
     `Err(ControlClosed)`, a distinct `symdev_core::Error::Other` text starting `the emulator
     closed its control connection`.
   - `AppExited { pub uid: u32, pub pid: u32, pub name: String, pub exit_type: ExitType, pub
-    reason: i64, pub category: String }`, where `enum ExitType { Kill, Terminate, Panic }`.
+    reason: i64, pub category: String }`, where `enum ExitType { Kill, Terminate, Panic }`. Both derive `Debug, Clone,
+    PartialEq, Eq` (and `ExitType` also `Copy`); the runner's tests compare them.
   - `EmulatorInfo { pub name: String }`. `name` is `"<manufacturer> <model> (<firmware>)"`
     exactly as reported; the README's example gives `Nokia N00 (RM-469)`. It is not the
     spec's "Nokia E52": the emulator does not report that name.
@@ -2641,7 +2648,7 @@ git commit -m "Run an image on a chosen device as cargo's runner, with the app's
 
 **Files:**
 - Modify: `crates/symdev-emulator/src/results.rs` (`TestCase.state: Option<CaseState>`), `results/tests.rs`
-- Create: `crates/symdev-cli/src/libtest_print.rs` (`LibtestPrint`), `crates/symdev-cli/src/run/test_outcome.rs` (`TestOutcome`)
+- Create: `crates/symdev-cli/src/libtest_print.rs` (`LibtestPrint`), `crates/symdev-cli/src/run/test_outcome.rs` (`TestOutcome`, `CaseLine`, `Verdict`; `run.rs` re-exports the three `pub(crate)`)
 - Modify: `crates/symdev-cli/src/run/runner.rs` (a test target: clear, wait, read, settle, print), `crates/symdev-cli/src/test_cmd.rs` (uses the runner; `Eka2l1Backend::run` loses its last caller)
 - Modify: `crates/symdev-emulator/src/lib.rs` (delete `Eka2l1Backend::{run, run_args, run_args_replacing, installed, previous}` once unused, with their tests)
 - Modify: `symbian-rs/examples/async/{Cargo.toml,tests/executor.rs}`
