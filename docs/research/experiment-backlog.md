@@ -4060,3 +4060,75 @@ other name and UID3 (`0xe99c709c`, also the `--defsym` value). One mistake of th
 recorded: `noui`'s first build failed because the script added a `symbian-core` dependency
 the scaffold already has (`duplicate key`); fixed by hand, `nogcce-ui.sh` rebuilt it in the
 same sandbox.
+
+### 5. In EKA2L1
+
+`emu.sh <tag> <project> <symdev> <nogcce|dev> <regex> [delay] [keys]` runs `symdev package`
+(scratch `SYMDEV_SIGN_PASSWORD`), then experiment 112's `runshot.py` under `flock
+~/.local/share/EKA2L1/.symdev-agent.lock`, one run at a time. `runshot.py` does `symdev run`,
+waits for the regex in `build/eka2l1.log`, takes PID-bound screenshots (keys sent with
+`XSendEvent`), then `kill -9`s that PID only.
+
+| program | route | result |
+|---|---|---|
+| `nohello` | no GCCE | `Trying to display: Hello from Rust SDK (19 chars)` |
+| `noui` | no GCCE (prebuilt Avkon shim, `--defsym` UID) | "Bars", `bars=3 keys=0 cmd=0`; F1, F1 (Options → More bars) → `bars=4 keys=0 cmd=1` (`shots/nogcce-ui-{1,2}.png`) |
+| `noprobe` | no GCCE | `lld109 mkdirall=0 trapped=-1 bad=0 ensured=0 sign=-42 alive` |
+| `examples/ui` | checkout | the same two screens: 44 pixels from `noui`'s, all in the status-pane clock box (547,157)–(554,165) |
+| `examples/shim` | checkout | `shim70 mkdirall=0 trapped=-12 bad=0 ensured=0 sign=-42 alive` |
+| `apps/probe` | checkout | `lld109 … trapped=-1 … alive` |
+| `examples/async` | checkout | `symdev test --emulator`: **15 passed** (one 300 ms sleep 312 ms; two together 312; in sequence 625; race 109) |
+
+Each image was `cmp`-checked against the batch's before it was packaged.
+
+**A pitfall of the harness, not of symdev.** The first `nohello` run ended in "Installation
+of SIS failed". `emu.sh` had exported the scratch `XDG_DATA_HOME`, and EKA2L1 inherits it. The
+emulator then looked for its own `EKA2L1/data/devices.yml` there and found none: "Devices
+file not found", "No current device". `emu.sh` now gives `symdev package`/`run` only
+`SYMDEV_HOME`. The user's emulator data was never touched.
+
+### Conclusion
+
+**rust-lld is symdev's Rust linker.**
+
+* By default it builds every example and makes experiment 112's images. All 18 match on the
+  prebuilt route. On the checkout route, `notes` keeps one more exception-index entry
+  (+8 bytes), because GCCE's whole `libgcc.a` orders its members differently.
+* `SYMDEV_RUST_LINKER=gnu` reproduces 0.2.0's link argv for argv and image for image.
+* With a `rust-sdk` that carries the prebuilt set, a Rust application builds, installs and
+  runs on a machine with no GCCE, a caught leave included. The GCCE directory is hidden, and
+  the run neither installs GCCE nor touches it.
+
+**What the 0.3.0 release must keep together.** The rust-lld default needs the Rust SDK's
+`targets/symbian-lld.ld`, and the no-GCCE route needs its `prebuilt/`.
+
+* Neither is in the published `rust-sdk;0.2.0`.
+* `Pins::rust_sdk()` follows the workspace version, so the version bump and the `rust-sdk`
+  built by the 0.3.0 recipe must ship with this change.
+* A release build of this tree at 0.2.0 refuses every Rust build before cargo runs, with
+  `SYMDEV_RUST_LINKER=gnu` as the way out.
+
+**Not covered:** a Rust DLL (exports, `edll.lib`), a device. Two cases were built but never
+run in the emulator: the `std` examples, and the other fifteen examples (sizes only).
+
+**Evidence.** 2026-10-03, this host. Branch `rl-driver`:
+
+* Byte fixes: `crates/symdev-elf2e32/src/{target2_rewrite,strtab_padding,ar_member,ar_members,elf_section_header,elf_section_headers}.rs`.
+* Build types: `crates/symdev-build/src/{rust_linker,rust_lld,rust_prebuilt,sdk_lld_cache,sdk_lld_copy}.rs`.
+* Driver: `driver/{linker,lld_line,rust_lld_link}.rs`.
+* CLI: `crates/symdev-cli/src/provision/rust_linker.rs`, `tests/rust_linker.rs`.
+* Linker script: `symbian-rs/targets/symbian-lld.ld`.
+
+Outside git, `~/src/rl-driver-scratch/`:
+
+* Environment, wrappers and drivers: `env-gcce.sh`, `bin/{ld-log,lld-log,symdev-*}`,
+  `build-all.sh`, `cmp-gnu.py`, `sizes.py`, `table113.py`, `e32size.py`, `fixcheck/`.
+* Staging and the no-GCCE run: `stager/`, `stage/{trees,repo}`,
+  `nogcce{,-ui,-probe}.sh` + `nogcce/` (logs, straces, home, projects).
+* Builds: `apps/`, `out/{main-gnu,rl3-gnu,rl3-lld,pre,main-gnu-wt}/` (per example `.log`,
+  `.ld.argv`, `.exe`), `out/argv-ui-dev.txt`.
+* Emulator: `emu.sh`, `runshot.py`, `shots/`.
+
+The baseline tree is `main-src/` (`git archive 04f8e7d`). The binaries were built at
+`f71d1d5`; later commits change only error messages, checks and the cache's lookup order
+(re-checked in the evidence note below).
