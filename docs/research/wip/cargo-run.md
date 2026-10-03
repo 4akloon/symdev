@@ -10,9 +10,9 @@ No push to main / merge / tag / publish; pushing `cargo-run` is allowed.
 - [x] Q1 linker argv + env   - [x] Q2 same bytes (19/19 no_std)   - [x] Q3 libcalls
 - [x] Q4 patched std (H4)    - [x] Q5 dev profile                 - [x] Q6 test signal
 - [x] exp 114 §1 written (experiment-backlog.md, end of file)
-- [ ] plan written + committed (phase 2) — NEXT: invoke superpowers:writing-plans, read the
-  code names the plan needs (CLI layout, symdev-emulator, test_cmd, run), EKA2L1 control
-  docs in ~/src/EKA2L1-wt/control-server (README only; branches dev/control-*).
+- [x] plan written + committed: docs/superpowers/plans/2026-10-03-cargo-build-run.md, 19 tasks,
+  D1 (signing) open for the owner. NEXT: hand back to the lead; execution waits for the
+  owner's review of the plan and D1.
 
 ## Facts
 - Env: `~/src/cargo-run-scratch/env.sh` (GCCE route, scratch SYMDEV_HOME/XDG, TMPDIR in

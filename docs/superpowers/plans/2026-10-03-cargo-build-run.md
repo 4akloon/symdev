@@ -1149,7 +1149,7 @@ impl Role {
     match role::Role::of(&argv0) {
         role::Role::Linker => return exit(ld::LinkRun::from_env(args).and_then(|r| r.run())),
         role::Role::Rustc => return exit(Err(Error::Other(
-            "symdev-rustc: TODO: the rust-std wrapper arrives with Task 9 (not observed)".into()))),
+            "symdev-rustc: the rust-std wrapper is not built yet (plan Task 9)".into()))),
         role::Role::Cli => {}
     }
 ```
@@ -1987,7 +1987,7 @@ and run `build/symdev-rustc -vV`. Expected stdout: `--sysroot <tmp>/build/sysroo
 - [ ] **Step 3: Run them to see them fail**
 
 Run: `cargo test -p symdev-build --offline std_sysroot` and `cargo test -p symdev-cli
---offline --test rustc_wrapper`. Expected: not found / the CLI prints the Task 4 TODO.
+--offline --test rustc_wrapper`. Expected: not found / the CLI prints Task 4's "not built yet" error.
 
 - [ ] **Step 4: Implement**
 
