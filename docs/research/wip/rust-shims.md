@@ -141,3 +141,24 @@ Spike evidence: ~/src/rust-lld-spike/ (experiment 109 §1, §5).
 - Next: symdev.yml (toolchain under $RUNNER_TEMP/toolchain, install step only with the
   reader key, prebuilt step, pack into $RUNNER_TEMP/artifact/packed, sdk_free.py check,
   upload `${{ runner.temp }}/artifact/`), tests.yml (recipes path, step name), README.
+- packages 56577b7: prebuilt.sh on a compile failure prints only diagnostic lines (grep
+  `error|warning|note|In file included`), not GCC's quoted source lines (SDK headers in a
+  public CI log). Negative run (IMPORT_C redefined in a shim): exit 1, 4 042 lines shown of
+  12 295, 0 quoted-source lines.
+- packages e5ae629: **symdev.yml build job**: job env `GCCE_ID`/`SDK_ID`; "Choose the
+  recipe" also outputs `prebuilt=true` when the recipe has prebuilt.sh; new steps (all
+  `if: prebuilt`): Configure the private source (`vars.SYMDEV_PRIVATE_SOURCE_URL`,
+  `key = "builtin"`, under $RUNNER_TEMP/toolchain/config), Install GCCE and the S60 SDK (ONLY
+  step with `secrets.SYMDEV_SOURCE_PRIVATE_{ACCESS_KEY_ID,SECRET_ACCESS_KEY}`, runs only
+  out/symdev/bin/symdev, SYMDEV_HOME/XDG_* under $RUNNER_TEMP/toolchain), Build rust-sdk's
+  prebuilt set; pack now runs in $RUNNER_TEMP/artifact/packed (`--manifest-path`); the tar
+  goes to $RUNNER_TEMP/artifact/symdev-out.tar; "Check that the artifact holds no file of
+  the S60 SDK" (sdk_free.py); upload path `${{ runner.temp }}/artifact/` (was workspace
+  `symdev-out.tar` + `*.tar.gz`). No caches.
+- **Local run of the build job's steps** (`rehearse/driver/run.py`: YAML → bash -eo
+  pipefail per step, cwd = workspace copy, RUNNER_TEMP = rehearse/rt; musl/rust installs
+  skipped; no reader key → the install step refused with its ::error:: as designed, then
+  the driver installed GCCE with the built symdev and copied the scratch SDK): every step
+  exit 0; artifact = symdev-out.tar + packed/{e121a7ca… rust-sdk, cf11d438… symdev} only;
+  prebuilt lib/ = run1 byte for byte; sdk_free: none of 2 411 SDK files.
+- Next: tests.yml (paths + `recipes/**`, step name), README; gates.
