@@ -42,7 +42,7 @@ rust-sdk/symbian-rs/prebuilt/` (lib: 4172/7736/19294/59174 B).
   TARGET2-rewritten in place for lld only.
 
 ## Status
-- [x] elf2e32 byte types (commit below)  - [ ] Toolchain split  - [ ] RustLinker/prebuilt/lld/cache
+- [x] elf2e32 byte types (commit below)  - [x] Toolchain split (71b3f48)  - [x] RustPrebuilt, RustLld (d56811a), SdkLldCache  - [ ] RustLinker
 - [ ] link line + two links  - [ ] CLI + Provision  - [ ] real builds  - [ ] no-GCCE run
 - [ ] emulator  - [ ] docs + exp 113  - [ ] gates
 
@@ -71,4 +71,4 @@ all byte-equal to the spike's `dso-fixed/`; `usrt2_2.lib` 1 rewritten = spike's 
 ## Dead ends
 
 ## Next step
-`ElfImage::jump_slots()`, then Toolchain split (GcceTools optional).
+RustLinker enum, then the lld link line (`LldLine` adapt + second link) and RustBuild wiring.

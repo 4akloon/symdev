@@ -20,6 +20,8 @@ symdev-sdk = { path = "../symdev-sdk" }
 # Content hashing for the patched-std overlay (`StdSrc`): it checks that each file it
 # replaces is still the toolchain file it was derived from. Not a security use.
 sha1 = "0.10"
+# The key of the rust-lld SDK fix cache (`SdkLldCache`): the SDK files it was made from.
+sha2 = "0.10"
 thiserror = "2"
 # `rust-toolchain.toml` and the project's Cargo files, read to check that a Rust project
 # agrees with the SDK it is built against.
