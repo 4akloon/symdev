@@ -422,6 +422,7 @@ R=~/src/emu-pkg-scratch/rehearsal
 rm -rf "$R/src" "$R/out"; mkdir -p "$R/out"
 git clone --quiet --branch symdev ~/src/EKA2L1-wt/emulator-pkg "$R/src"
 git -C "$R/src" submodule update --init --recursive --quiet
+cp "$R/package-list.sh" "$R/src/.github/rehearse-package-list.sh"
 docker run --rm -v "$R/src:/src" -w /src -e DEBIAN_FRONTEND=noninteractive \
   -e APPIMAGE_EXTRACT_AND_RUN=1 -e QMAKE=/usr/bin/qmake6 ubuntu:24.04 bash -euo pipefail -c '
   apt-get update
@@ -440,10 +441,9 @@ cp "$R/src/build/eka2l1-qt-x64.AppImage" "$R/src/build/eka2l1-qt-x64.packages.ts
 (cd "$R/out" && sha256sum eka2l1-qt-x64.AppImage eka2l1-qt-x64.packages.tsv > SHA256SUMS)
 ```
 
-`.github/rehearse-package-list.sh` does not exist in the branch. Before the run, copy the
-`run:` block of Task 2's step into `$R/src/.github/rehearse-package-list.sh` with `set -euo
-pipefail` on top, as the clone is the rehearsal's own. Without D1 = A, drop that line and
-the `.packages.tsv` from the copies.
+`$R/package-list.sh` is the `run:` block of Task 2's step with `set -euo pipefail` on top
+(the clone's `build.yml` has it as YAML; the container runs it as a script). Without
+D1 = A, drop the two `rehearse-package-list` lines and the `.packages.tsv` from the copies.
 
 - [ ] **Step 2: Run it in the background and wait for the end**
 
@@ -2974,7 +2974,8 @@ packages.
 - [ ] **Step 7: Test the driver**, `tests/emulator-build.test`
 
 A fake AppImage is a shell script that answers `--appimage-extract` with the observed
-layout. Its `eka2l1_qt` is a copy of `/bin/true`, a real ELF file that needs glibc.
+layout. Its `eka2l1_qt` is a copy of the `pkgtools` binary, a real ELF file that needs
+glibc. `/bin/true` would not do: on this host it may be a static multicall binary.
 
 ```sh
 #!/bin/sh
@@ -2997,7 +2998,7 @@ cat > "$tmp/art/eka2l1-qt-x64.AppImage" <<'APPIMAGE'
 #!/bin/sh
 [ "$1" = --appimage-extract ] || exit 9
 mkdir -p squashfs-root/usr/bin squashfs-root/usr/share/doc/libfoo1
-cp /bin/true squashfs-root/usr/bin/eka2l1_qt
+cp "$PKGTOOLS" squashfs-root/usr/bin/eka2l1_qt
 printf '[Paths]\nPrefix = ../\nPlugins = plugins\n' > squashfs-root/usr/bin/qt.conf
 ln -s usr/bin/eka2l1_qt squashfs-root/AppRun
 echo copyright > squashfs-root/usr/share/doc/libfoo1/copyright
@@ -3497,7 +3498,7 @@ set -u
 X=~/src/emu-pkg-scratch/exp115; S=~/src/emu-pkg-scratch/stage; W=~/worktrees/symdev/cargo-run
 T=$X/t13; rm -rf $T; mkdir -p $T/bin $T/config/symdev $X/shots
 cargo build --release --offline -p symdev-cli --manifest-path $W/Cargo.toml --target-dir $X/target > $T/build.log 2>&1
-cp $X/target/release/symdev $T/bin/ && $T/bin/symdev setup-linker $T/bin
+cp $X/target/release/symdev $T/bin/ && $T/bin/symdev setup-linker
 printf 'builtin = false\n\n[[source]]\nname = "public"\nurl = "file://%s/public"\n\n[[source]]\nname = "private"\nurl = "file://%s/private"\n' $S $S \
   > $T/config/symdev/sources.toml
 unset SYMDEV_EKA2L1 SYMDEV_EKA2L1_DATA SYMDEV_DEVICE LD_LIBRARY_PATH QT_PLUGIN_PATH
@@ -3642,8 +3643,9 @@ reruns it against the real buckets.
 
 - **public** (`accept/public/`): `symdev;0.4.0` (this branch, `SYMDEV_RELEASE=1` release
   build), `rust-sdk;0.4.0` (HEAD cut with the 0.4.0 recipe's include list plus experiment
-  113's `prebuilt/`, as before) and `emulator;<V>` (`$E/prefix`). Its index is signed
-  with `install.sh.test`'s throwaway key, as before, because `install.sh` verifies it.
+  113's `prebuilt/`, as cargo-run's `stage.sh` cuts it) and `emulator;<V>` (`$E/prefix`).
+  Its index is signed with `install.sh.test`'s throwaway key by the same `openssl` lines as
+  cargo-run's `stage.sh`, because `install.sh` verifies it.
 - **private** (`accept/private/`): `sdk;s60-3rd-fp2;1.1` (the cargo-run staging's tree)
   and `firmware;rm-469;1` (Task 5's tree).
 
@@ -3673,7 +3675,7 @@ echo "owner's EKA2L1 files newer than the run: $(find ~/.local/share/EKA2L1 -new
   `SYMDEV_INSTALL_URL` is `file://$A/public/`;
 - it first prints `ls -A /home/genius/.local/share/EKA2L1 | wc -l`, which must be `0`.
 
-The rest is as before: `install.sh`, `symdev new accept --lang rust`, `cargo run` with the
+The rest is cargo-run's `accept.sh` unchanged: `install.sh`, `symdev new accept --lang rust`, `cargo run` with the
 PID-bound screenshot (`$A/out/accept.png`), `cargo test`, `symdev devices`, `symdev emulator
 stop` for each id, and `ls $H/.local/share/symdev`.
 
