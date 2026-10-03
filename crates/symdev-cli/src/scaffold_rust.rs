@@ -29,6 +29,7 @@ pub fn write_rust(
     let toolchain = std::fs::read_to_string(toolchain.path()).map_err(io_err)?;
     std::fs::create_dir_all(root.join("src")).map_err(io_err)?;
     std::fs::create_dir_all(root.join(".cargo")).map_err(io_err)?;
+    std::fs::create_dir_all(root.join("tests")).map_err(io_err)?;
     // `build/` ignores itself before the link is made in it, as `symdev build` does.
     BuildDir::of(root).create()?;
     RustSdkLink::of(root).point_at(&sdk)?;
@@ -38,12 +39,31 @@ pub fn write_rust(
         (".cargo/config.toml".into(), cargo_config()),
         ("rust-toolchain.toml".into(), toolchain),
         ("src/main.rs".into(), RustSdk::HELLO_MAIN.into()),
+        ("tests/smoke.rs".into(), SMOKE_TEST.into()),
     ];
     for (path, text) in files {
         std::fs::write(root.join(path), text).map_err(io_err)?;
     }
     Ok(root.to_path_buf())
 }
+
+/// The scaffold's test: `cargo test` builds it, the runner installs and runs it.
+const SMOKE_TEST: &str = "\
+//! A test on the device: `cargo test` builds it, symdev installs and runs it, and prints
+//! what it reports (symbian-test).
+#![no_std]
+#![no_main]
+
+#[symbian_test::tests]
+mod smoke {
+    use symbian_test::{Evidence, ensure};
+
+    #[test]
+    fn arithmetic() -> Result<(), Evidence> {
+        ensure(2 + 2 == 4, \"2 + 2 is 4\")
+    }
+}
+";
 
 fn manifest(name: &str) -> String {
     format!(
@@ -68,9 +88,10 @@ fn manifest(name: &str) -> String {
     )
 }
 
-/// A `staticlib` named after the package (`RustBuild` looks for `lib<name>.a`); the SDK
-/// crates through `build/rust-sdk` ([`RustSdkLink`]); the same profile as the SDK workspace (size, one object,
-/// no unwinder).
+/// A binary named after the package, which cargo links through `symdev-ld`, and a
+/// `harness = false` test on `symbian-test`; the SDK crates through `build/rust-sdk`
+/// ([`RustSdkLink`]); the same profile as the SDK workspace (size, one object, no
+/// unwinder).
 ///
 /// `symbian-std` and not `symbian-runtime`: the entry point is `#[symbian_std::main]`
 /// (experiment 81), and the runtime underneath it — the panic handler, the heap and
@@ -82,16 +103,23 @@ fn cargo_manifest(name: &str) -> String {
          name = \"{name}\"\n\
          version = \"0.1.0\"\n\
          edition = \"2024\"\n\
-         # `src/main.rs` is a library: rustc never links, symdev does.\n\
-         autobins = false\n\
          \n\
-         [lib]\n\
+         # No libtest on the phone: tests are tests/*.rs with harness = false (symbian-test).\n\
+         [[bin]]\n\
+         name = \"{name}\"\n\
          path = \"src/main.rs\"\n\
-         crate-type = [\"staticlib\"]\n\
+         test = false\n\
+         \n\
+         [[test]]\n\
+         name = \"smoke\"\n\
+         harness = false\n\
          \n\
          [dependencies]\n\
          symbian-core = {{ path = \"{}\" }}\n\
          symbian-std = {{ path = \"{}\" }}\n\
+         \n\
+         [dev-dependencies]\n\
+         symbian-test = {{ path = \"{}\" }}\n\
          \n\
          [profile.release]\n\
          opt-level = \"s\"\n\
@@ -111,7 +139,8 @@ fn cargo_manifest(name: &str) -> String {
          [profile.dev]\n\
          panic = \"abort\"\n",
         RustSdkLink::crate_dir("symbian-core"),
-        RustSdkLink::crate_dir("symbian-std")
+        RustSdkLink::crate_dir("symbian-std"),
+        RustSdkLink::crate_dir("symbian-test")
     )
 }
 
@@ -134,85 +163,17 @@ fn cargo_config() -> String {
          # `core`'s size/speed switch: the small integer `Display` (no 200-byte\n\
          # two-digit table), the small sort, the short padding path.\n\
          build-std-features = [\"optimize_for_size\"]\n\
-         json-target-spec = true\n",
+         json-target-spec = true\n\
+         # cargo test builds core twice without it (E0152, experiment 114 §1.1).\n\
+         panic-abort-tests = true\n\
+         \n\
+         # cargo links through symdev (signed .sisx beside the image) and runs on a device.\n\
+         [target.arm-symbian-e32]\n\
+         linker = \"symdev-ld\"\n\
+         runner = \"symdev run --exe\"\n",
         RustSdkLink::target_spec()
     )
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::cli::Lang;
-    use crate::scaffold::create_project;
-
-    fn scratch() -> PathBuf {
-        let p = std::env::temp_dir().join(format!(
-            "symdev-scaffold-rust-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&p).unwrap();
-        p
-    }
-
-    #[test]
-    fn rust_project_has_cargo_files_and_no_mmp() {
-        let dir = scratch();
-        let checkout = || RustSdk::at(Path::new(RustSdk::CHECKOUT.unwrap()));
-        let root = create_project(&dir, "hello", Template::Console, Lang::Rust, checkout).unwrap();
-        let sdk = checkout().unwrap();
-        let read = |p: &str| std::fs::read_to_string(root.join(p)).unwrap();
-        assert!(read("symdev.toml").contains("name = \"rust\""));
-        assert!(read("symdev.toml").contains("uid3 = \"0xef9f2cab\""));
-        let cargo = read("Cargo.toml");
-        assert!(cargo.contains("crate-type = [\"staticlib\"]"));
-        assert_eq!(
-            read("rust-toolchain.toml"),
-            sdk_file(&sdk, "rust-toolchain.toml")
-        );
-        assert_eq!(read("src/main.rs"), RustSdk::HELLO_MAIN);
-        assert!(!root.join("group").exists());
-        assert!(!root.join("bld.inf").exists());
-    }
-
-    fn sdk_file(sdk: &RustSdk, file: &str) -> String {
-        std::fs::read_to_string(sdk.root().join(file)).unwrap()
-    }
-
-    /// The project names the SDK only through `build/rust-sdk`, which `symdev new` links
-    /// and every `symdev build` keeps pointing at the SDK it resolved (experiment 110).
-    #[test]
-    fn rust_project_names_the_sdk_through_build_rust_sdk() {
-        let dir = scratch();
-        let checkout = || RustSdk::at(Path::new(RustSdk::CHECKOUT.unwrap()));
-        let root = create_project(&dir, "hello", Template::Console, Lang::Rust, checkout).unwrap();
-        let sdk = checkout().unwrap();
-        let read = |p: &str| std::fs::read_to_string(root.join(p)).unwrap();
-        let cargo = read("Cargo.toml");
-        for name in ["symbian-core", "symbian-std"] {
-            let line = format!("{name} = {{ path = \"build/rust-sdk/symbian-rs/crates/{name}\" }}");
-            assert!(cargo.contains(&line), "{cargo}");
-        }
-        let config = read(".cargo/config.toml");
-        let target = "target = \"build/rust-sdk/symbian-rs/targets/arm-symbian-e32.json\"";
-        assert!(config.contains(target), "{config}");
-        // A fresh clone has no link until a build makes it (review 0.2.0, minor 4).
-        assert!(config.contains("run `symdev build` once"), "{config}");
-        let tree = sdk.root().parent().unwrap().display().to_string();
-        assert!(!cargo.contains(&tree) && !config.contains(&tree));
-        let link = std::fs::read_link(root.join("build/rust-sdk")).unwrap();
-        assert_eq!(link, sdk.root().parent().unwrap());
-        assert!(read("build/.gitignore").lines().any(|l| l == "*"));
-    }
-
-    #[test]
-    fn rust_gui_template_is_a_todo() {
-        let dir = scratch();
-        let sdk = || panic!("the GUI template is refused before the SDK is looked for");
-        let err = create_project(&dir, "notes", Template::Gui, Lang::Rust, sdk).unwrap_err();
-        assert!(err.to_string().starts_with("TODO:"), "{err}");
-    }
-}
+mod tests;
