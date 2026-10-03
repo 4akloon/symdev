@@ -1491,3 +1491,227 @@ git add symbian-rs/targets/arm-symbian-e32.json symbian-rs/crates/symbian-macros
   symbian-rs/crates/symbian-std/src symbian-rs/examples/*/src/main.rs crates/symdev-build/src/driver/rust_build.rs
 git commit -m "Let rustc link executables for the target and read UID3 from symdev.toml at compile time."
 ```
+
+### Task 6: `symbian-test`, the harness of a `harness = false` test
+
+**Files:**
+- Create: `symbian-rs/crates/symbian-test/{Cargo.toml,src/lib.rs,src/evidence.rs}`
+- Create: `symbian-rs/crates/symbian-macros/src/test_module.rs` (`TestModule`, the `#[symbian_test::tests]` expansion)
+- Modify: `symbian-rs/crates/symbian-macros/src/lib.rs` (`#[proc_macro_attribute] pub fn tests`)
+- Modify: `symbian-rs/crates/symbian-std/src/test_report/{mod.rs,json.rs}` (case `state`: `pending`, `running`)
+- Modify: `symbian-rs/Cargo.toml` (member `crates/symbian-test`)
+- Modify: `crates/symdev-sdk/src/rust_sdk_package.rs` and `~/projects/symdev-packages/recipes/symdev/0.4.0/recipe.toml` (Task 17) only if the recipe lists crates one by one; check with `grep -n symbian-ui` in both
+- Test: `symbian-rs/crates/symbian-macros/src/test_module.rs` (`#[cfg(test)]`)
+
+**Interfaces:**
+- Consumes: Task 5 (`symbian_std::uid3!`).
+- Produces (device side):
+  - The attribute `#[symbian_test::tests]` on `mod <m> { … }`. It strips `#[test]` from each
+    `fn` directly in the module, adds `pub(super) const __SYMBIAN_TESTS:
+    &[::symbian_test::Case]` inside it, and writes `E32Main` beside it. That `E32Main` runs
+    `::symbian_std::__start(|| ::symbian_test::__run(env!("CARGO_CRATE_NAME"),
+    ::symbian_std::uid3!(), <m>::__SYMBIAN_TESTS))`.
+  - `pub struct Case { pub name: &'static str, pub run: fn() -> Result<(), Evidence> }`.
+  - `pub struct Evidence`, with `impl<E: symbian_std::test_report::Evidence> From<E>` (so `?`
+    works on any error the report can show), `Evidence::msg(&str)`, and `ensure(ok: bool, what:
+    &str) -> Result<(), Evidence>`.
+  - The report file, schema 1 unchanged, gains an optional `"state"` on a case:
+    `"pending"` (written for every case before the first runs) and `"running"` (written just
+    before that case runs). A finished case has no `state`. symdev's reader ignores unknown
+    fields today, so old readers still read the file.
+
+- [ ] **Step 1: Write the failing tests** — end of `test_module.rs`
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::TestModule;
+
+    fn expand(src: &str) -> Result<String, String> {
+        TestModule::expand(src.parse().unwrap()).map(|t| t.to_string())
+    }
+
+    #[test]
+    fn test_attributes_are_stripped_and_listed_in_order() {
+        let out = expand("mod checks { #[test] fn first() -> R { Ok(()) } fn helper() {} \
+                          #[test] fn second() -> R { Ok(()) } }").unwrap();
+        assert!(!out.contains("# [test]"), "{out}");
+        let (a, b) = (out.find("\"first\"").unwrap(), out.find("\"second\"").unwrap());
+        assert!(a < b && !out.contains("\"helper\""), "{out}");
+        assert!(out.contains("__SYMBIAN_TESTS") && out.contains("_Z7E32Mainv"), "{out}");
+        assert!(out.contains("checks :: __SYMBIAN_TESTS"), "{out}");
+    }
+
+    #[test]
+    fn a_module_with_no_test_is_an_error() {
+        assert!(expand("mod m { fn f() {} }").unwrap_err().contains("no `#[test]` fn"));
+    }
+
+    #[test]
+    fn anything_but_an_inline_module_is_an_error() {
+        assert!(expand("fn f() {}").unwrap_err().contains("`mod <name> { … }`"));
+        assert!(expand("mod m;").unwrap_err().contains("`mod <name> { … }`"));
+    }
+}
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `cargo +nightly-2026-09-19 test --offline --manifest-path symbian-rs/crates/symbian-macros/Cargo.toml`
+Expected: `TestModule` not found.
+
+- [ ] **Step 3: Implement**
+
+`test_module.rs` walks tokens, not strings:
+
+```rust
+//! `#[symbian_test::tests]`: a module of `#[test] fn`s becomes a program (design spec §7).
+use proc_macro::{Delimiter, Group, TokenStream, TokenTree};
+
+pub struct TestModule;
+
+impl TestModule {
+    pub fn expand(item: TokenStream) -> Result<TokenStream, String> {
+        let shape = "`#[symbian_test::tests]` goes on an inline `mod <name> { … }`";
+        let mut tokens: Vec<TokenTree> = item.into_iter().collect();
+        let at = tokens.iter().position(|t| matches!(t, TokenTree::Ident(i) if i.to_string() == "mod"))
+            .ok_or_else(|| shape.to_string())?;
+        let name = match tokens.get(at + 1) { Some(TokenTree::Ident(i)) => i.to_string(), _ => return Err(shape.into()) };
+        let Some(TokenTree::Group(body)) = tokens.get(at + 2).cloned() else { return Err(shape.into()) };
+        if body.delimiter() != Delimiter::Brace { return Err(shape.into()); }
+        let (inner, tests) = Self::strip_tests(body.stream());
+        if tests.is_empty() {
+            return Err(format!("`mod {name}` has no `#[test]` fn for `#[symbian_test::tests]` to run"));
+        }
+        let cases: Vec<String> = tests.iter()
+            .map(|t| format!("::symbian_test::Case {{ name: \"{t}\", run: {t} }}")).collect();
+        let list: TokenStream = format!("pub(super) const __SYMBIAN_TESTS: &[::symbian_test::Case] = &[{}];", cases.join(", "))
+            .parse().map_err(|_| "internal: the case list did not lex".to_string())?;
+        let mut new_inner = inner;
+        new_inner.extend(list);
+        tokens[at + 2] = TokenTree::Group(Group::new(Delimiter::Brace, new_inner));
+        let mut out: TokenStream = tokens.into_iter().collect();
+        let main: TokenStream = format!(
+            "#[unsafe(export_name = \"_Z7E32Mainv\")]\n\
+             pub extern \"C\" fn __symbian_e32main() -> i32 {{\n\
+             ::symbian_std::__start(|| ::symbian_test::__run(env!(\"CARGO_CRATE_NAME\"), \
+             ::symbian_std::uid3!(), {name}::__SYMBIAN_TESTS))\n}}\n"
+        ).parse().map_err(|_| "internal: E32Main did not lex".to_string())?;
+        out.extend(main);
+        Ok(out)
+    }
+
+    /// The module's tokens without `#[test]`, and the names of the fns that carried it.
+    fn strip_tests(body: TokenStream) -> (TokenStream, Vec<String>) {
+        let tokens: Vec<TokenTree> = body.into_iter().collect();
+        let (mut kept, mut names, mut i) = (Vec::new(), Vec::new(), 0);
+        while i < tokens.len() {
+            let is_test = matches!(&tokens[i], TokenTree::Punct(p) if p.as_char() == '#')
+                && matches!(tokens.get(i + 1), Some(TokenTree::Group(g))
+                    if g.delimiter() == Delimiter::Bracket && g.stream().to_string() == "test");
+            if is_test {
+                let fn_at = tokens[i + 2..].iter()
+                    .position(|t| matches!(t, TokenTree::Ident(x) if x.to_string() == "fn"));
+                if let Some(TokenTree::Ident(n)) = fn_at.and_then(|f| tokens.get(i + 2 + f + 1)) {
+                    names.push(n.to_string());
+                }
+                i += 2;
+                continue;
+            }
+            kept.push(tokens[i].clone());
+            i += 1;
+        }
+        (kept.into_iter().collect(), names)
+    }
+}
+```
+
+(The tests above run in the macro crate's own unit tests. `proc_macro` types are usable
+there through `proc_macro2`-free `TokenStream::from_str` only inside a proc-macro context.
+If they panic with "procedural macro API is used outside of a procedural macro", split
+the token walk the way `entry.rs` does: work on `item.to_string()` with the observed `# [test]`
+spacing, and keep `TokenStream` at the entry point. The existing `tests.rs` shows which form
+this crate's tests use. Follow it.)
+
+`lib.rs`:
+
+```rust
+mod test_module;
+
+/// A module of `#[test] fn name() -> Result<(), symbian_test::Evidence>` becomes the
+/// program's `E32Main`, run on the device by `cargo test` (design spec §7).
+#[proc_macro_attribute]
+pub fn tests(_attribute: TokenStream, item: TokenStream) -> TokenStream {
+    match test_module::TestModule::expand(item) {
+        Ok(out) => out,
+        Err(message) => tokens(&compile_error(&message)),
+    }
+}
+```
+
+`symbian-test/Cargo.toml`: `[package] name = "symbian-test"`, workspace version/edition/
+licence, `[dependencies] symbian-std = { path = "../symbian-std" }`, `symbian-macros = {
+path = "../symbian-macros" }`. `src/lib.rs`:
+
+```rust
+//! The harness of a `tests/*.rs` with `harness = false` (design spec §7): `libtest` needs
+//! `std` and a host; this runs the cases on the phone and writes the report `symdev`
+//! reads, marking each case before it runs so a panic is attributed.
+#![no_std]
+extern crate alloc;
+
+mod evidence;
+
+pub use evidence::{Evidence, ensure};
+pub use symbian_macros::tests;
+
+use symbian_std::test_report::Report;
+
+pub struct Case {
+    pub name: &'static str,
+    pub run: fn() -> Result<(), Evidence>,
+}
+
+#[doc(hidden)]
+pub fn __run(app: &str, uid3: u32, cases: &[Case]) -> i32 {
+    let mut report = Report::with_uid3(app, uid3);
+    for case in cases { report.pending(case.name); }
+    let _ = report.save();
+    for case in cases {
+        report.running(case.name);
+        let _ = report.save();
+        match (case.run)() {
+            Ok(()) => report.settle(case.name, true, ""),
+            Err(e) => report.settle(case.name, false, e.text()),
+        }
+        let _ = report.save();
+    }
+    0 // the verdict is the report's; the runner reads it after the process ends
+}
+```
+
+`src/evidence.rs`: `pub struct Evidence(alloc::string::String)` with
+`impl<E: symbian_std::test_report::Evidence> From<E> for Evidence` (uses `e.shown()`),
+`pub fn msg(what: &str) -> Self`, `pub fn text(&self) -> &str`, and `pub fn ensure(ok: bool,
+what: &str) -> Result<(), Evidence>`.
+
+In `symbian-std/src/test_report/mod.rs`, `Case` gains `state: Option<&'static str>`.
+`Report` gains `pending(&mut self, name)` (pushes a case with `ok: false`, `state:
+Some("pending")`), `running(&mut self, name)` (sets that case's state to `"running"`),
+`settle(&mut self, name, ok, detail)` (sets `ok`, `detail`, `state: None`), and `save(&self) ->
+Result<()>` (what `finish` does, returning nothing). `finish` calls `save`. `json.rs` writes
+`,"state":"<s>"` after `ok` when the case has one. `passed`/`failed`/`is_pass` count only
+cases without a state.
+
+- [ ] **Step 4: Run the tests and build the crate for the phone**
+
+Run Step 2's command, expected all pass. Then, in `symbian-rs`: `cargo build --release -p
+symbian-test` (the workspace config targets the phone). Expected: builds.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add symbian-rs/Cargo.toml symbian-rs/Cargo.lock symbian-rs/crates/symbian-test \
+  symbian-rs/crates/symbian-macros/src symbian-rs/crates/symbian-std/src/test_report
+git commit -m "Add symbian-test, which runs a module of tests on the phone and marks each before it runs."
+```
