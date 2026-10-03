@@ -199,7 +199,6 @@ symdev (`~/worktrees/symdev/cargo-run`):
 | `crates/symdev-sdk/src/catalog.rs` | the "way around a source" hint for `sdk`, `emulator`, `firmware` ids |
 | `crates/symdev-emulator/src/device/firmware.rs` | `Firmware`: the user's EKA2L1 data or a firmware package |
 | `crates/symdev-emulator/src/device/emulator_profile.rs` | `create(&Firmware)`, `check()` |
-| `crates/symdev-emulator/src/device/profile_files.rs` | the file helpers moved out of the profile (copy, link, make) |
 | `crates/symdev-emulator/src/device/eka2l1.rs` | `Eka2l1`: the user's EKA2L1 or the package's program, and its environment |
 | `crates/symdev-emulator/src/device/emulator_instance.rs` | start and probe an `Eka2l1` |
 | `crates/symdev-emulator/src/lib.rs`, `results.rs` | `Eka2l1Backend` and `EmulatorData::from_env` deleted |
@@ -1599,6 +1598,7 @@ git add crates/symdev-emulator/src/device.rs crates/symdev-emulator/src/device/f
   crates/symdev-emulator/src/device/emulator_profile.rs crates/symdev-emulator/src/device/emulator_instance.rs \
   crates/symdev-emulator/src/results.rs crates/symdev-emulator/src/device/tests.rs \
   crates/symdev-emulator/src/device/tests/firmware.rs crates/symdev-emulator/src/device/tests/profile.rs \
-  crates/symdev-cli/src/devices_cmd.rs crates/symdev-cli/tests
+  crates/symdev-cli/src/devices_cmd.rs
+git add <each test file step 4 changed, by name>
 git commit -m "Make an emulator profile from a firmware package, refuse one whose firmware is gone, and read the user's EKA2L1 data only through SYMDEV_EKA2L1_DATA."
 ```
