@@ -118,6 +118,17 @@ Do NOT edit: `crates/symdev-build/src/driver/{rust_build,libcalls}.rs`, `crates/
   compare with spike batch/<ex>/). Running in background → `stubs/ex15.log`.
   alloc: 21 stubs, .exe GNU 3765 | stubs 3774 | PLT 3848; uncompressed 5932|5940; imports
   identical, DT_NEEDED same, 0 gcc-builds opens.
+  DONE, all 15 link + post-link, imports identical per DLL, 0 gcc-builds opens (ex15.log):
+  .exe GNU|stubs|PLT (uncompressed GNU|stubs): hello-raw 805|807|867 (1080|1084); alloc
+  3765|3774|3848 (5932|5940); spawnee 2606|2609|2690 (4408|4412); files 8288|8289|8444
+  (14292|14292); cleanup 4265|4272|4368 (6824|6828); atomics 8837|8796|8949 (15920|15848);
+  time 10146|10159|10220 (16544|16552); net 10506|10504|10734 (17624|17616); tls
+  13978|13938|14079 (25944|25920); ui-list 11194|11158|11452 (18636|18580); notes
+  11465|11426|11699 (19072|19012); query 12673|12642|12854 (20992|20936); panic
+  2018|2029|2125 (2964|2972); fmt 107777|107754|107744 (262416|262412); locale
+  8122|8109|8250 (13296|13288). DT_NEEDED same except notes/query: GNU keeps eikcoctl (the
+  --as-needed-before-gc effect of exp 109 §6).
+- Step 4: rebased on main b774989 (no conflicts; main did not touch symdev-elf2e32).
 ## Dead ends
 - lld options for an 8-byte PLT: none. `.plt`/`.got` stay 0x120/0x4c on hello with each of
   `-z now`, `-z lazy`, `--pic-veneer`, `-z noseparate-code`, `--no-rosegment`,
@@ -126,7 +137,7 @@ Do NOT edit: `crates/symdev-build/src/driver/{rust_build,libcalls}.rs`, `crates/
   padding) + 4 B `.got.plt` slot, header 32 B + 3 reserved GOT words.
 
 ## Next step (resume 3, 2026-10-03)
-Steps 1-2 DONE. Steps: (1) confirm lld golden test + all goldens pass (`cargo test -p symdev-elf2e32 --offline`,
+Steps 1-3 DONE. Steps: (1) confirm lld golden test + all goldens pass (`cargo test -p symdev-elf2e32 --offline`,
 CARGO_TARGET_DIR=~/src/rl-scratch/target); (2) hello +7 B exidx thunk: try link order / lld
 options, record each; (3) prove hello/async/leave probe/ui with stubs in EKA2L1 + bwrap no-GCCE
 + 15 examples; (4) rebase on main, experiment 112 in backlog; (5) gates.
