@@ -2296,3 +2296,218 @@ fn a_qt_conf_without_the_plugin_path_is_refused() {
 Run `cargo test --locked -p pkgtools emulator_tree > /tmp/t10.log 2>&1; grep -E "^error|test
 result" /tmp/t10.log` (with `mod emulator_tree;` in `main.rs`). Expected: unresolved
 `EmulatorTree`, `GlibcVersion`.
+
+- [ ] **Step 3: Implement the tree check**
+
+`pkgtools/src/emulator_tree/glibc_version.rs`:
+
+```rust
+//! `GlibcVersion`: a `GLIBC_x.y[.z]` symbol version, and the newest one an ELF file needs.
+
+use std::fmt;
+
+use object::Endianness;
+use object::elf::FileHeader64;
+use object::read::elf::FileHeader;
+
+use crate::tool_error::{Result, ToolError};
+
+/// Compared number by number, so 2.2.5 < 2.17 < 2.38.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GlibcVersion(Vec<u32>);
+
+impl GlibcVersion {
+    /// `2.38`, `2.2.5`; `None` for anything else (`PRIVATE`).
+    pub fn parse(text: &str) -> Option<GlibcVersion> {
+        let parts: Option<Vec<u32>> = text.split('.').map(|p| p.parse().ok()).collect();
+        parts.filter(|p| p.len() >= 2).map(GlibcVersion)
+    }
+
+    /// The newest `GLIBC_` version the file's version-needs section names; `None` for a
+    /// file that is not ELF or needs none. A 32-bit or damaged ELF file is an error.
+    pub fn needed_by(data: &[u8]) -> Result<Option<GlibcVersion>> {
+        if !data.starts_with(b"\x7fELF") {
+            return Ok(None);
+        }
+        let bad = |e: object::read::Error| ToolError::new(format!("not a readable 64-bit ELF file: {e}"));
+        let header = FileHeader64::<Endianness>::parse(data).map_err(bad)?;
+        let endian = header.endian().map_err(bad)?;
+        let sections = header.sections(endian, data).map_err(bad)?;
+        let Some((mut needs, link)) = sections.gnu_verneed(endian, data).map_err(bad)? else {
+            return Ok(None);
+        };
+        let strings = sections.strings(endian, data, link).map_err(bad)?;
+        let mut newest = None;
+        while let Some((_, mut names)) = needs.next().map_err(bad)? {
+            while let Some(aux) = names.next().map_err(bad)? {
+                let name = aux.name(endian, strings).map_err(bad)?;
+                let version = name
+                    .strip_prefix(b"GLIBC_")
+                    .and_then(|v| std::str::from_utf8(v).ok())
+                    .and_then(GlibcVersion::parse);
+                newest = newest.max(version);
+            }
+        }
+        Ok(newest)
+    }
+}
+
+impl fmt::Display for GlibcVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let parts: Vec<String> = self.0.iter().map(u32::to_string).collect();
+        f.write_str(&parts.join("."))
+    }
+}
+```
+
+Check these `object` calls against `object 0.39.1`'s `read::elf` docs (`cargo doc --open -p
+object`). They were read from its source: `FileHeader::parse`, `endian`, `sections`,
+`SectionTable::gnu_verneed` and `strings`, `VerneedIterator::next`, `Vernaux::name`.
+
+`pkgtools/src/emulator_tree.rs`:
+
+```rust
+//! `EmulatorTree`: the extracted AppImage an `emulator` package is, checked for the layout
+//! symdev starts it by (symdev experiment 115 §1.2) and for its glibc floor.
+
+mod glibc_version;
+mod tool;
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+pub use glibc_version::GlibcVersion;
+pub use tool::EmulatorTreeTool;
+
+use crate::tool_error::{Result, ToolError};
+use crate::tree_walk::TreeWalk;
+
+pub struct EmulatorTree {
+    root: PathBuf,
+}
+
+impl EmulatorTree {
+    /// What symdev starts (its EmulatorPackage::PROGRAM).
+    pub const PROGRAM: &'static str = "usr/bin/eka2l1_qt";
+
+    /// The tree at `root`, if it has the observed layout: `AppRun` a link to the program,
+    /// no AppRun hooks, the program an ELF file, `qt.conf` pointing Qt at the bundle.
+    pub fn at(root: &Path) -> Result<EmulatorTree> {
+        let apprun = root.join("AppRun");
+        let target = fs::read_link(&apprun)
+            .map_err(|e| ToolError::io(format!("{} is not a symlink", apprun.display()), &e))?;
+        if target != Path::new(Self::PROGRAM) {
+            return Err(ToolError::new(format!(
+                "AppRun links to {}, not {}: symdev starts {} itself (experiment 115 §1.2), so \
+                 another layout needs a new observation",
+                target.display(),
+                Self::PROGRAM,
+                Self::PROGRAM
+            )));
+        }
+        for hook in ["apprun-hooks", "AppRun.wrapped"] {
+            if root.join(hook).symlink_metadata().is_ok() {
+                return Err(ToolError::new(format!(
+                    "{hook} exists: the AppImage sets up an environment that symdev does not \
+                     give eka2l1_qt; observe what it needs before packing it"
+                )));
+            }
+        }
+        let program = root.join(Self::PROGRAM);
+        let head = fs::read(&program).map_err(|e| ToolError::io(program.display(), &e))?;
+        if !head.starts_with(b"\x7fELF") {
+            return Err(ToolError::new(format!("{} is not an ELF file", program.display())));
+        }
+        let qt_conf = root.join("usr/bin/qt.conf");
+        let text = fs::read_to_string(&qt_conf).map_err(|e| ToolError::io(qt_conf.display(), &e))?;
+        for line in ["Prefix = ../", "Plugins = plugins"] {
+            if !text.lines().any(|l| l.trim() == line) {
+                return Err(ToolError::new(format!(
+                    "{} has no `{line}`: Qt would not find the bundled plugins",
+                    qt_conf.display()
+                )));
+            }
+        }
+        Ok(EmulatorTree { root: root.to_path_buf() })
+    }
+
+    /// The newest glibc version any ELF file of the tree needs (links are skipped: they
+    /// name files the walk reads anyway).
+    pub fn glibc_floor(&self) -> Result<GlibcVersion> {
+        let mut newest = None;
+        for file in TreeWalk::files(&self.root, |_| true)? {
+            if file.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
+                continue;
+            }
+            let data = fs::read(&file).map_err(|e| ToolError::io(file.display(), &e))?;
+            let needed = GlibcVersion::needed_by(&data)
+                .map_err(|e| ToolError::new(format!("{}: {e}", file.display())))?;
+            newest = newest.max(needed);
+        }
+        newest.ok_or_else(|| ToolError::new("no ELF file of the tree needs a glibc version"))
+    }
+}
+
+#[cfg(test)]
+mod tests;
+```
+
+`pkgtools/src/emulator_tree/tool.rs`:
+
+```rust
+//! `EmulatorTreeTool`: `pkgtools emulator-tree <tree> --glibc <x.y>`.
+
+use std::io::Write;
+use std::path::Path;
+
+use super::{EmulatorTree, GlibcVersion};
+
+pub struct EmulatorTreeTool;
+
+impl EmulatorTreeTool {
+    /// Exit 0 when the tree has the layout and the recorded floor; 1 with the reason.
+    pub fn run(tree: &Path, glibc: &str, out: &mut impl Write, err: &mut impl Write) -> u8 {
+        let Some(recorded) = GlibcVersion::parse(glibc) else {
+            let _ = writeln!(err, "error: --glibc {glibc} is not a version like 2.38");
+            return 1;
+        };
+        let floor = EmulatorTree::at(tree).and_then(|t| t.glibc_floor());
+        match floor {
+            Ok(floor) if floor == recorded => {
+                let _ = writeln!(out, "glibc floor {floor}");
+                0
+            }
+            Ok(floor) => {
+                let _ = writeln!(
+                    err,
+                    "error: the tree needs GLIBC_{floor}, artifact.toml records {recorded}: \
+                     record what the tree needs; a floor above 2.38 goes to the owner first \
+                     (plan finding F1)"
+                );
+                1
+            }
+            Err(e) => {
+                let _ = writeln!(err, "error: {}: {e}", tree.display());
+                1
+            }
+        }
+    }
+}
+```
+
+`main.rs`: `mod emulator_tree;`, `use crate::emulator_tree::EmulatorTreeTool;`, and
+
+```rust
+    /// Check an extracted EKA2L1 AppImage for the layout symdev starts it by and for the
+    /// glibc floor artifact.toml records. Exit 1 on any difference.
+    EmulatorTree {
+        #[arg(value_name = "tree")]
+        tree: PathBuf,
+        /// The recorded floor, e.g. 2.38.
+        #[arg(long, value_name = "x.y")]
+        glibc: String,
+    },
+```
+
+with `Command::EmulatorTree { tree, glibc } => EmulatorTreeTool::run(&tree, &glibc, &mut out,
+&mut err),`. Run step 2's command again; expected `test result: ok`.
