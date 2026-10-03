@@ -64,14 +64,18 @@ impl SdkLldCache {
             files.insert((dir, name.clone()), (path, bytes));
         }
         let dir = self.root.join(Self::key(epocroot, &files)?);
+        // Looked at before the files, so that a copy another build renames into place
+        // between the two looks is never taken for a pruned one and deleted.
+        let existed = dir.exists();
         let complete = files
             .keys()
             .all(|(d, name)| dir.join(d).join(name).is_file());
-        if !complete {
+        if existed && !complete {
             // A copy someone pruned by hand: made again, whole.
-            if dir.exists() {
-                fs::remove_dir_all(&dir).map_err(|e| at(&dir, e))?;
-            }
+            fs::remove_dir_all(&dir).map_err(|e| at(&dir, e))?;
+        }
+        if !complete {
+            // A rename that loses to another build's copy keeps that copy (`make`).
             self.make(&dir, &files)?;
         }
         Ok(SdkLldCopy::at(dir))
