@@ -4287,3 +4287,52 @@ fresh target directory also builds `core` and `alloc`, as before.
 `no_std` examples are byte-equal once the target spec is the same. Changing the spec moves
 two images (`net`, `tls`) by reordering code; their uncompressed sizes are unchanged. The
 `std` examples are in 1.4.
+
+#### 1.3 libcalls as an ordinary dependency
+
+`q3.sh` is `q2.sh` with `SPIKE_NO_LIBCALLS`, so the separate archive leaves the line. It is
+compared with 1.2's images (the same spec). `addlibcalls.py` makes `symbian-libcalls` a path
+dependency of the example and adds `use symbian_libcalls as _;`, so rustc links it. Each
+variant adds to the one before.
+
+| variant | `hello` | `files` | `atomics` | `async` | `tls` |
+|---|---|---|---|---|---|
+| today (separate archive) | 975 / 1 348 | 8 289 / 14 292 | 8 796 / 15 848 | 18 360 / 33 892 | 13 938 / 25 920 |
+| V1 plain dependency | 1 708 / 3 384 | 9 036 / 16 276 | 8 891 / 15 944 | 18 461 / 33 976 | 14 002 / 25 968 |
+| V2 `#![no_builtins]` | equal | 8 976 / 16 324 | 8 841 / 16 000 | 18 447 / 34 048 | 13 976 / 26 008 |
+| V3 `[profile.release.package.symbian-libcalls] codegen-units = 16` | equal | 8 300 / 14 356 | 8 732 / 16 000 | 18 356 / 34 048 | 13 913 / 26 140 |
+| V4 `-Zprofile-rustflags`: that package gets `-Zdefault-visibility=hidden` | = V3 | = V3 | = V3 | = V3 | = V3 |
+
+**Why no variant keeps the bytes.**
+
+* **V1.** Under LTO the crate is part of the program, and its `#[no_mangle]` entry points
+  become exported globals of a `-shared` link. Each one is a `--gc-sections` root, so `hello`
+  carries all of them: +2 036 bytes.
+* **V2.** `#![no_builtins]` takes the crate out of LTO. rustc then passes
+  `libsymbian_libcalls-<hash>.rlib` after the object, members are pulled on demand, and
+  `hello` is equal again. But the crate is compiled under the application's profile, with one
+  codegen unit, so `files` pulls the atomics with `memcmp`.
+* **V3 and V4.** The `-v` line shows `-C codegen-units=16` and the visibility flag arriving,
+  so the remaining difference is code generation. Cargo gives every dependency of a fat-LTO
+  binary `-C linker-plugin-lto`. The excluded crate's object code then comes from LLVM's
+  pre-link pipeline: its members carry `.llvmbc`, `AtomicLock`'s `Drop` is no longer inlined
+  (`__atomic_exchange_1` calls `…AtomicLock…drop` instead of `RFastLock::Signal`), and every
+  `__atomic_*` grows 4 bytes.
+* Cargo allows no per-package `lto`, so nothing in `Cargo.toml` turns that off for one crate.
+
+**What does work: the linker runs today's build itself.** `bin/nested-libcalls` (a hook in
+`rec-ld`) runs 0.3.0's `cargo rustc --profile libcalls -p symbian-libcalls --lib … --
+-Zdefault-visibility=hidden` from inside the linker, while cargo's own build is running, with
+the same `--target-dir build/cargo`.
+
+* No lock wait and no deadlock.
+* 7.1 s the first time (`core` and `alloc` for the `libcalls` profile), 0.03 s when fresh.
+* The rlib lands where `LibcallArchive::path` expects it.
+
+It is the same invocation as today, so it is the same archive; the 1.2 images already link
+that archive.
+
+**Answer.** No: libcalls cannot be an ordinary dependency without changing bytes. The
+smallest working alternative is for `symdev-ld` to run `LibcallArchive::cargo_args` itself
+and link its rlib as today. A `rust-sdk` that ships the archive prebuilt
+(`prebuilt/lib/`, like the shims) can skip that step later.
