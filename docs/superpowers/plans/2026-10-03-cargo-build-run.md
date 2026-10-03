@@ -789,3 +789,188 @@ Expected: `EQUAL` three times (both binaries build the same tree at the same pat
 git add crates/symdev-build/src
 git commit -m "Link rustc's objects and rlibs where the staticlib stood, each link in its own directory."
 ```
+
+### Task 3: Packaging as a type, resources beside the image — and D1
+
+**Files:**
+- Create: `crates/symdev-cli/src/sisx.rs` (`ProjectPackage`)
+- Modify: `crates/symdev-cli/src/main.rs` (`package_project` becomes a call to `ProjectPackage`)
+- Modify: `crates/symdev-cli/src/artifacts.rs` (resources from the image's directory, not `cwd/build`)
+- Modify (step 6, D1 = A only): `crates/symdev-build/src/package.rs`, `crates/symdev-build/src/package/tests.rs`, `crates/symdev-cli/tests/package.rs`
+- Test: `crates/symdev-cli/src/sisx.rs` (`#[cfg(test)] mod tests` at its end, the file stays ≤ 300 lines)
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: `ProjectPackage::new(manifest: Manifest, root: PathBuf, epocroot: PathBuf) ->
+  Result<ProjectPackage>`, `ProjectPackage::app(&self) -> &str`, and
+  `ProjectPackage::package(&self, exe: &Path, password: &str) -> Result<PathBuf>`. `exe`
+  must be named `<app>.exe`; its directory holds the resources and receives
+  `<name>.sis`/`<name>.sisx`. Returns the `.sisx` path.
+
+- [ ] **Step 1: Write the failing test** — at the end of `sisx.rs`
+
+```rust
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use crate::artifacts::package_artifacts;
+
+    #[test]
+    fn resources_are_taken_from_beside_the_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let work = dir.path().join("out/app.symdev");
+        std::fs::create_dir_all(&work).unwrap();
+        std::fs::write(work.join("app.exe"), b"E32").unwrap();
+        let project = symdev_core::Project { root: dir.path().to_path_buf() };
+        let got = package_artifacts(&project, &work.join("app.exe"), None, &[], &[],
+                                    Path::new(""), None).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].path, work.join("app.exe"));
+    }
+}
+```
+
+A second assertion covers a `[ui]` project. Build the `UiResources` the way
+`build_cmd.rs` does (app `"app"`, uid3 `0xe1234567`, `symdev_manifest::UiApp` with
+`kind = Avkon`, caption `"App"`, softkeys `OptionsExit`). Write the three resource files that
+`UiResources::artifacts(&work)` names into `work`, and assert every returned path starts with
+`work`.
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `cargo test -p symdev-cli --offline sisx::tests`
+Expected: FAIL: the `[ui]` assertion sees `<root>/build/…` paths, because `package_artifacts`
+joins `cwd.join("build")`.
+
+- [ ] **Step 3: Implement**
+
+In `artifacts.rs`, replace each `cwd.join("build")` with `build`, computed once at the top:
+
+```rust
+    let build = cwd.join(e32).parent().map(Path::to_path_buf).ok_or_else(|| {
+        Error::Other(format!("{}: the image has no directory", e32.display()))
+    })?;
+```
+
+`symdev package` passes `build/<app>.exe`, so its behaviour is unchanged.
+
+`sisx.rs` carries the body of `main.rs`'s `package_project`, from `let uid3 = …` to the
+`.package(&package_artifacts(…))` call, as a method:
+
+```rust
+//! `ProjectPackage`: a project's `.sisx` from an E32 image and the resources beside it.
+use std::path::{Path, PathBuf};
+
+use symdev_build::{AppTarget, SisPackage, UiResources};
+use symdev_core::{Error, PackageBackend, Project, Result};
+use symdev_manifest::Manifest;
+
+use crate::artifacts::package_artifacts;
+
+pub(crate) struct ProjectPackage {
+    manifest: Manifest,
+    root: PathBuf,
+    epocroot: PathBuf,
+    app: String,
+    uid3: u32,
+}
+
+impl ProjectPackage {
+    pub fn new(manifest: Manifest, root: PathBuf, epocroot: PathBuf) -> Result<Self> {
+        let uid3 = manifest.symbian.uid3.ok_or_else(|| {
+            Error::Other("uid3 required for package (set symbian.uid3)".into())
+        })?;
+        let project = Project { root: root.clone() };
+        let app = AppTarget::of(&project, &manifest.package.name, &epocroot)?.name().to_string();
+        Ok(Self { manifest, root, epocroot, app, uid3 })
+    }
+
+    pub fn app(&self) -> &str { &self.app }
+
+    pub fn package(&self, exe: &Path, password: &str) -> Result<PathBuf> {
+        let m = &self.manifest;
+        let project = Project { root: self.root.clone() };
+        // … the rest of package_project's body, unchanged, with `cwd` → `self.root`,
+        // `e32` → `exe`, `app.name()` → `self.app`, `password` → `password.to_string()`,
+        // `m.<field>` cloned where it was moved …
+        Ok(package.primary)
+    }
+}
+```
+
+`main.rs`'s `package_project` keeps its `e32.is_file()` check and its printing. In between:
+
+```rust
+    let package = ProjectPackage::new(m, cwd.clone(), epocroot)?;
+    let e32 = cwd.join("build").join(format!("{}.exe", package.app()));
+    // … the existing is_file check on e32 …
+    let password = std::env::var("SYMDEV_SIGN_PASSWORD").unwrap_or_default();
+    println!("{}", package.package(&e32, &password)?.display());
+```
+
+Add `mod sisx;` to `main.rs`.
+
+- [ ] **Step 4: Run the tests**
+
+Run: `cargo test -p symdev-cli --offline`
+Expected: all pass, including `tests/package.rs` unchanged. `main.rs` shrinks by about 60
+lines.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add crates/symdev-cli/src/sisx.rs crates/symdev-cli/src/main.rs crates/symdev-cli/src/artifacts.rs
+git commit -m "Package a project from an image and the resources beside it, as a type."
+```
+
+- [ ] **Step 6 (needs D1; Option A shown): Ask for the password only for an encrypted key of the user's**
+
+Tests first, in `crates/symdev-build/src/package/tests.rs`:
+
+```rust
+#[test]
+fn a_generated_self_signed_pair_needs_no_password() {
+    let dir = tempfile::tempdir().unwrap();
+    let pkg = SisPackage { password: String::new(), ..sample() };
+    let exe = dir.path().join("hello.exe");
+    std::fs::write(&exe, crate::package::tests::tiny_e32()).unwrap();
+    assert!(pkg.package(&[symdev_core::Artifact::exe(exe)]).is_ok());
+}
+
+#[test]
+fn an_encrypted_key_of_the_users_still_needs_four_characters() {
+    let dir = tempfile::tempdir().unwrap();
+    let (cer, key) = (dir.path().join("a.cer"), dir.path().join("a.key"));
+    std::fs::write(&cer, "-----BEGIN CERTIFICATE-----\n").unwrap();
+    std::fs::write(&key, "-----BEGIN DSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\n").unwrap();
+    let pkg = SisPackage { password: "ab".into(), cert: Some(cer), key: Some(key), ..sample() };
+    let exe = dir.path().join("hello.exe");
+    std::fs::write(&exe, crate::package::tests::tiny_e32()).unwrap();
+    let e = pkg.package(&[symdev_core::Artifact::exe(exe)]).unwrap_err().to_string();
+    assert!(e.contains("at least 4 characters"), "{e}");
+}
+```
+
+(`sample()` and `tiny_e32()` are the helpers `package/tests.rs` already uses to build a
+`SisPackage` and a minimal image; reuse them, adding `pub(crate)` if needed.) Implement in
+`SisPackage::package`: replace `self.validate_password()?;` with
+
+```rust
+        if let Some((_, key)) = self.existing_signing_pair() {
+            let pem = std::fs::read(&key).map_err(|e| Error::Other(format!("{}: {e}", key.display())))?;
+            let text = String::from_utf8_lossy(&pem);
+            if text.contains("Proc-Type: 4,ENCRYPTED") || text.contains("BEGIN ENCRYPTED PRIVATE KEY") {
+                self.validate_password()?;
+            }
+        }
+```
+
+The doc comment cites experiment 114 §1.7: the original `makekeys` allows an unencrypted key
+and `signsis` signs with it with no pass phrase. Change `tests/package.rs`'s
+`package_missing_sign_password` into `package_without_a_password_signs_with_a_generated_pair`
+(expects success and a `.sisx`). Run `cargo test --workspace --offline` and commit: "Ask for
+a signing password only for an encrypted key the project supplies."
+
+For D1 = B or C, replace this step with that option's behaviour from the D1 table, test
+first, before Task 4.
