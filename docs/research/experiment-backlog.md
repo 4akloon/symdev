@@ -3629,3 +3629,58 @@ developer's own flags (environment or config, by cargo's own precedence) reach e
 crate as they do in the application's build. `CARGO_ENCODED_RUSTFLAGS` merging was
 rejected because it drops config-file rustflags (row i), profile rustflags because they
 reach host build scripts and change every crate's metadata (row e).
+
+## 112. elf2e32 reads lld ELFs, and 8-byte import stubs bring an lld link to GNU ld's size (rust-lld RL1–RL2, Rust SDK)
+
+**Question.** Experiment 109 linked Rust applications with `rust-lld` and no GCCE, but
+through a forked elf2e32 and at the price of lld's PLT (+2–8 % `.exe`). Can the product
+elf2e32 read lld ELFs without changing a byte for GNU ld ELFs, and can the PLT go?
+
+**Setup.** Branch `rl-elf2e32` (worktree `~/worktrees/symdev/rl-elf2e32`), 2026-10-03.
+Inputs are experiment 109's: the no-GCCE argv `~/src/rust-lld-spike/nogcce/<app>/argv`
+(hello, async, shim = the leave probe, ui), the spike's GNU argv for the fifteen other
+examples (`logs/gnu-ex-<ex>.argv`), its fixed SDK copies (`dso-fixed/`, `sdk-fixed/`),
+the prebuilt runtime and shims (`prebuilt/lib`), its GNU and lld-PLT images (`e32/`,
+`batch/`). `rust-lld` 23.1.1 from `nightly-2026-09-19`. Scratch: `~/src/rl-scratch/`.
+
+### 1. The product elf2e32 on an lld ELF
+
+`ElfLinker` (`crates/symdev-elf2e32/src/elf/linker.rs`) says which linker wrote an ELF:
+lld appends `Linker: LLD <version>` to `.comment` in every non-relocatable link
+(`rust-lld` writes `Linker: LLD 23.1.1 (…)`); GNU ld 2.29.1 writes no linker string, its
+`.comment` holds only the inputs' compiler strings. `rust-lld -r` writes none either, so
+an lld-relocated object linked by GNU ld is read as GNU's. A missing or stripped
+`.comment` reads as GNU's, which refuses an lld ELF exactly as before (tested).
+
+The five rules of experiment 109 §3 live in `elf/lld.rs`, each labelled *derived from the
+ARM ABI / lld behaviour, verified in EKA2L1 (experiment 109); never observed from the SDK's
+elf2e32* — the narrow exception to "not observed → error" the owner accepted for lld ELFs
+only. For a GNU ELF every rule answers as the observed elf2e32 does:
+
+| rule | lld ELF | call site |
+|---|---|---|
+| (a) | an import slot's word is the addend only for `R_ARM_ABS32`; `GLOB_DAT`/`JUMP_SLOT` resolve to `S` (lld fills `.got.plt` with PLT0) | `relocs.rs`, `code_section.rs` |
+| (b) | no writable `PT_LOAD` (lld drops empty ones): empty data at the `.data` section's address; no `.data` → an error naming the fix | `layout.rs` |
+| (c) | the exception descriptor is looked up in `.symtab` | `layout.rs` |
+| (d) | a symbol-less `R_ARM_RELATIVE` targets the word as linked | `relocs.rs` |
+| (e) | a target one past the code (`.ARM.exidx$$Limit`) is a code relocation | `reloc_section.rs` |
+
+**Golden.** `testdata/hello_lld.elf.hex` is the spike's no-GCCE `hello` relinked with
+`-z max-page-size=0x1000` (22 KB instead of 79 KB, same image); `hello_lld.exe.hex` and
+`hello_lld_uncompressed.exe.hex` are its E32 images, byte-equal (masking time and CRC) to
+the forked elf2e32's `nogcce/hello.exe` that ran in EKA2L1. `elf2e32/tests/experiment_109.rs`:
+the golden, detection both ways, the refusal without `.comment`, and one test per rule —
+`cargo test -p symdev-elf2e32`: 60 passed, every earlier GNU golden unchanged.
+
+**GNU unchanged, lld as the fork.** This elf2e32 on the spike's ELFs: the four GNU ELFs
+give main's images byte for byte, the four lld ELFs the fork's; the fifteen batch examples
+the same for both linkers (`~/src/rl-scratch/cmp/cmp4.sh`, `cmp15.sh`).
+
+### 2. lld has no 8-byte PLT
+
+lld's ARM PLT entry is fixed: 16 bytes (12 of code, `d4d4d4d4` padding) plus a 4-byte
+`.got.plt` slot, after a 32-byte header and three reserved GOT words. On `hello` `.plt` and
+`.got` stay 0x120 / 0x4c with each of `-z now`, `-z lazy`, `--pic-veneer`,
+`-z noseparate-code`, `--no-rosegment`, `--hash-style=sysv`; `--help` lists no ARM PLT
+option. GNU ld's symbianelf PLT entry is 8 bytes, `ldr pc, [pc, #-4]` and a word that
+elf2e32 turns into the import, with no header.
