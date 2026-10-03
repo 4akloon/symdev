@@ -2239,14 +2239,14 @@ All in `~/worktrees/symdev-packages/cargo-run`. This task builds the package fro
     the download. Every AppImage or package list whose SHA-256 differs from `artifact.toml`
     is refused, and so are `artifact.toml`'s zeros.
 
-- [ ] **Step 1: Add the dependency**
+- [x] **Step 1: Add the dependency**
 
 In `pkgtools/Cargo.toml`: `object = { version = "0.39", default-features = false, features
 = ["read_core", "elf", "std"] }`. `object 0.39.1` is in this machine's cargo cache. Run `cargo
 fetch` once online if `--locked` reports a missing lock entry, and record the new
 `Cargo.lock` lines.
 
-- [ ] **Step 2: Write the failing tests**, `pkgtools/src/emulator_tree/tests.rs`
+- [x] **Step 2: Write the failing tests**, `pkgtools/src/emulator_tree/tests.rs`
 
 ```rust
 use std::fs;
@@ -2323,7 +2323,7 @@ Run `cargo test --locked -p pkgtools emulator_tree > /tmp/t10.log 2>&1; grep -E 
 result" /tmp/t10.log` (with `mod emulator_tree;` in `main.rs`). Expected: unresolved
 `EmulatorTree`, `GlibcVersion`.
 
-- [ ] **Step 3: Implement the tree check**
+- [x] **Step 3: Implement the tree check**
 
 `pkgtools/src/emulator_tree/glibc_version.rs`:
 
@@ -2538,7 +2538,7 @@ impl EmulatorTreeTool {
 with `Command::EmulatorTree { tree, glibc } => EmulatorTreeTool::run(&tree, &glibc, &mut out,
 &mut err),`. Run step 2's command again; expected `test result: ok`.
 
-- [ ] **Step 4: Write the failing notice tests**, `pkgtools/src/emulator_notices/tests.rs`
+- [x] **Step 4: Write the failing notice tests**, `pkgtools/src/emulator_notices/tests.rs`
 
 ```rust
 use std::fs;
@@ -2630,7 +2630,7 @@ fn the_bundled_list_points_at_each_packages_copyright_and_refuses_a_missing_one(
 Run `cargo test --locked -p pkgtools emulator_notices` (with `mod emulator_notices;` in
 `main.rs`). Expected: unresolved `EmulatorNotices`.
 
-- [ ] **Step 5: Implement the notices**
+- [x] **Step 5: Implement the notices**
 
 `pkgtools/src/emulator_notices.rs`:
 
@@ -2881,7 +2881,7 @@ share/doc/eka2l1: COPYING, {files} licence files, {packages} bundled packages, S
 and returns 0; on `Err` it prints `error: {e}` and returns 1. Run step 4's command; expected
 `test result: ok`.
 
-- [ ] **Step 6: Write the recipe**
+- [x] **Step 6: Write the recipe**
 
 `recipes/emulator/<V>/recipe.toml`:
 
@@ -2995,7 +2995,7 @@ echo "built $id in $prefix"
 Without D1 = A, delete the `packages-sha256` line: build.sh then neither checks nor lists
 packages.
 
-- [ ] **Step 7: Test the driver**, `tests/emulator-build.test`
+- [x] **Step 7: Test the driver**, `tests/emulator-build.test`
 
 A fake AppImage is a shell script that answers `--appimage-extract` with the observed
 layout. Its `eka2l1_qt` is a copy of the `pkgtools` binary, a real ELF file that needs
@@ -3068,7 +3068,7 @@ Run `sh tests/emulator-build.test`; expected: only `ok` lines. Add the step
 `- name: The emulator recipe's build.sh` / `run: sh tests/emulator-build.test` to
 `.github/workflows/tests.yml`. It needs no network: the fake repo has no submodules.
 
-- [ ] **Step 8: Build the package from the rehearsal AppImage**
+- [x] **Step 8: Build the package from the rehearsal AppImage**
 
 ```bash
 E=~/src/emu-pkg-scratch/emulator; rm -rf $E; mkdir -p $E/work
@@ -3091,7 +3091,7 @@ hand. Its licence file (or the header that carries the licence) goes into
 licence, in the real recipe, not the scratch copy. Then copy it to `$E/recipe/` and run
 again. Record the tree's size (`du -sh $E/prefix`), `<n>` and `<m>` in the wip file.
 
-- [ ] **Step 9: Gates and commit** (packages worktree; `env -u PUBLISH_SIGNING_KEY` as in Task 5)
+- [x] **Step 9: Gates and commit** (packages worktree; `env -u PUBLISH_SIGNING_KEY` as in Task 5)
 
 ```bash
 cargo test --locked > /tmp/t10-all.log 2>&1; grep -E "FAILED|^error" /tmp/t10-all.log

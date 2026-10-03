@@ -205,4 +205,10 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
 - [x] Task 9: Provision::eka2l1()/firmwares() (provision/emulator.rs), Devices::profiles/make_profiles/
   profiles_or_make, eka2l1_with_control(&Provision) naming the package, lazy pick_device, CLI wiring,
   tests/emulator_packages.rs (5 ok). Gates green (56 ok, clippy 0, fmt ok).
-- [ ] Task 10: next (packages: pkgtools emulator-tree/emulator-notices, recipes/emulator/2026.10.03/).
+- [x] Task 10: packages 31f6b50: object 0.39.1, pkgtools emulator-tree (GlibcVersion, EmulatorTree) and
+  emulator-notices (Submodules, BundledList, read_extra), recipes/emulator/2026.10.03/{recipe.toml,
+  artifact.toml (zeros), build.sh, notices-extra.txt}, tests/emulator-build.test (8 ok), tests.yml.
+  Rehearsal build: ~/src/emu-pkg-scratch/emulator/prefix, 258 MB, glibc floor 2.38, 78 licence
+  files, 167 bundled packages. notices-extra.txt: 5 submodules read by hand (RectangleBinPack PD,
+  microprofile Unlicense, stb PD/MIT, sdl2-cmake-scripts BSD-2, upscale-shaders per-file headers).
+- [ ] Task 11: in progress (dsc.rs + dsc-files done uncommitted, source.sh written; next: archive + dry run).
