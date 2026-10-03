@@ -33,7 +33,7 @@ fn a_gui_app_with_the_prebuilt_set_links_with_the_experiment_109_line() {
         Path::new("/p/build/hello.first.elf"),
         Path::new("/p/build/hello.exe.map"),
     );
-    let got = lld_line(Some(b.gcce.uid3)).adapt(line);
+    let got = lld_line(Some(b.gcce.uid3)).adapt(line).unwrap();
     let want = "/rust/bin/rust-lld -flavor gnu -L/pre/lib/ -L /pre/lib --target1-abs \
         --no-undefined -nostdlib -shared -Ttext 0x8000 -Tdata 0x400000 -soname \
         hello{000a0000}[e79e4cf9].exe --target1-abs --no-undefined -nostdlib --strip-debug \
@@ -70,7 +70,9 @@ fn a_checkout_build_keeps_the_gcce_runtime_and_defines_no_uid_symbol() {
         Path::new("/p/build/hello.exe.map"),
     );
     let gnu = b.link_args(archive, Some(&shim), None, elf, map).unwrap();
-    let got = lld_line(None).adapt(b.link_line(&linker, archive, &[shim], None, elf, map));
+    let got = lld_line(None)
+        .adapt(b.link_line(&linker, archive, &[shim], None, elf, map))
+        .unwrap();
     // Against the GNU line of the same build: the program, one option fewer, the SDK's
     // directories, and the five rust-lld options at the end.
     let mut want: Vec<String> = s(&["/rust/bin/rust-lld", "-flavor", "gnu"]);
@@ -131,7 +133,8 @@ fn the_second_link_appends_the_stubs_and_wraps_each_function() {
         Path::new("/b/h.elf"),
         Path::new("/b/import_stubs.o"),
         &s(&["_ZN4User4ExitEi", "_ZN4User9InfoPrintERK7TDesC16"]),
-    );
+    )
+    .unwrap();
     let want = s(&[
         "/rust-lld",
         "-flavor",
@@ -146,4 +149,20 @@ fn the_second_link_appends_the_stubs_and_wraps_each_function() {
         "--wrap=_ZN4User9InfoPrintERK7TDesC16",
     ]);
     assert_eq!(got, want);
+}
+
+/// A line the rules cannot apply to is refused, not passed on half-changed: the second link
+/// would otherwise overwrite the first ELF and a stale `<name>.elf` be post-linked.
+#[test]
+fn a_line_without_an_output_or_the_sdk_directories_is_refused() {
+    let first = s(&["/rust-lld", "-flavor", "gnu", "a.a"]);
+    let e = LldLine::second_link(&first, Path::new("/b/h.elf"), Path::new("/b/s.o"), &[]);
+    assert!(e.unwrap_err().to_string().contains("no -o"));
+    let line = s(&[
+        "/rust-lld",
+        "-L/sdk/epoc32/release/armv5/lib",
+        "-l:euser.dso",
+    ]);
+    let e = lld_line(None).adapt(line).unwrap_err().to_string();
+    assert!(e.contains("-L/sdk/epoc32/release/armv5/urel"), "{e}");
 }

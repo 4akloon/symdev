@@ -1,6 +1,8 @@
 //! `LldLine`: the recorded link line made into rust-lld's (experiments 109, 112).
 use std::path::{Path, PathBuf};
 
+use symdev_core::{Error, Result};
+
 use super::arg;
 use crate::SdkLldCopy;
 
@@ -35,8 +37,18 @@ pub struct LldLine {
 }
 
 impl LldLine {
-    pub fn adapt(&self, line: Vec<String>) -> Vec<String> {
+    /// The line rust-lld links with. Refuses a line that does not name both of the SDK's
+    /// directories, which the fixed copies must replace.
+    pub fn adapt(&self, line: Vec<String>) -> Result<Vec<String>> {
         let (lib, urel) = (Self::dir(&self.sdk_lib), Self::dir(&self.sdk_urel));
+        for dir in [&lib, &urel] {
+            if !line.contains(dir) {
+                return Err(Error::Other(format!(
+                    "the link line names no {dir}, so rust-lld would read the SDK's own \
+                     files there instead of the fixed copies"
+                )));
+            }
+        }
         let mut out: Vec<String> = line
             .into_iter()
             .filter(|a| a != "--default-symver")
@@ -51,7 +63,7 @@ impl LldLine {
         if let Some(uid3) = self.uid3_symbol {
             out.push(format!("--defsym=symrs_uid3=0x{uid3:08x}"));
         }
-        out
+        Ok(out)
     }
 
     /// The files the line's `-l:` arguments name, each once, in order: what
@@ -74,16 +86,17 @@ impl LldLine {
         elf: &Path,
         stubs: &Path,
         functions: &[String],
-    ) -> Vec<String> {
+    ) -> Result<Vec<String>> {
         let mut out = first.to_vec();
-        if let Some(at) = out.iter().position(|a| a == "-o")
-            && let Some(output) = out.get_mut(at + 1)
-        {
-            *output = arg(elf);
-        }
+        let output = out
+            .iter()
+            .position(|a| a == "-o")
+            .and_then(|at| out.get_mut(at + 1))
+            .ok_or_else(|| Error::Other("the first rust-lld link has no -o to redirect".into()))?;
+        *output = arg(elf);
         out.push(arg(stubs));
         out.extend(functions.iter().map(|f| format!("--wrap={f}")));
-        out
+        Ok(out)
     }
 
     fn dir(path: &Path) -> String {

@@ -48,7 +48,7 @@ impl RustBuild {
             script: self.sdk.lld_script()?,
             uid3_symbol: (prebuilt.is_some() && self.ui.is_some()).then_some(self.gcce.uid3),
         };
-        let first = lld_line.adapt(line);
+        let first = lld_line.adapt(line)?;
         self.gcce.run_tool(&first, cwd)?;
         let stubs = ImportStubs::from_first_link(&Self::elf_at(&first_elf)?)?;
         if stubs.functions().is_empty() {
@@ -56,7 +56,7 @@ impl RustBuild {
         }
         let object = elf.with_file_name("import_stubs.o");
         std::fs::write(&object, stubs.object()).map_err(io)?;
-        let second = LldLine::second_link(&first, elf, &object, stubs.functions());
+        let second = LldLine::second_link(&first, elf, &object, stubs.functions())?;
         self.gcce.run_tool(&second, cwd)?;
         let left = Self::elf_at(elf)?.jump_slots()?;
         if !left.is_empty() {
