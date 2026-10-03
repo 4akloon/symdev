@@ -2519,7 +2519,7 @@ git commit -m "Talk to EKA2L1's control server, start emulators of our own, and 
 | the control connection closes | 1, `emulator-<n> was closed` |
 | Ctrl+C | 130, no message (the runner sent `app.kill`; the emulator stays) |
 
-- [ ] **Step 1: Write the failing unit tests** — `run/tests.rs`
+- [x] **Step 1: Write the failing unit tests** — `run/tests.rs`
 
 ```rust
 use std::path::Path;
@@ -2588,7 +2588,7 @@ fn arguments_after_the_exe_are_refused_until_observed() {
 }
 ```
 
-- [ ] **Step 2: Write the failing integration tests** — `tests/run_exe.rs`
+- [x] **Step 2: Write the failing integration tests** — `tests/run_exe.rs`
 
 `common/fake_control.rs` is Task 12's fake server, plus a channel that reports each method it
 received. It also makes the fake device: `sleep 600` started through a link named
@@ -2607,11 +2607,11 @@ as in Step 1. Then it kills the sleeper.
 | `a_closed_emulator_is_reported` | after `app.launch`, closes the connection | status 1; stderr has `emulator-1 was closed` |
 | `several_devices_and_no_terminal_is_an_error` | two entries, no `SYMDEV_DEVICE`, stdin not a terminal | status 1; stderr lists both ids and names `SYMDEV_DEVICE` |
 
-- [ ] **Step 3: Run them to see them fail**
+- [x] **Step 3: Run them to see them fail**
 
 Run: `cargo test -p symdev-cli --offline run::tests` and `cargo test -p symdev-cli --offline --test run_exe`.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 `run.rs`: `pub(crate) fn run(exe: Option<PathBuf>, args: Vec<String>) -> Result<ExitCode>`.
 It calls `refuse_arguments(&args)?`; spec §6.6 says passing a command line to an app was
@@ -2637,9 +2637,9 @@ the message to stderr, and returns `ExitCode::from(code)`.
 `Emulated.Stdout` marker Task 10 observed. The line's text is printed after the marker, with
 no timestamp.
 
-- [ ] **Step 5: Run the tests**: all pass; `cargo clippy -p symdev-cli --all-targets --offline` clean.
+- [x] **Step 5: Run the tests**: all pass; `cargo clippy -p symdev-cli --all-targets --offline` clean.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add Cargo.lock crates/symdev-cli

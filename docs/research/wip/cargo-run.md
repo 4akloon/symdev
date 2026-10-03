@@ -286,4 +286,11 @@ NEXT: Task 10 — `task-start <plan> 10` (EKA2L1 with --control/--data-dir; prof
   `emulator start rm-469` → "created profile rm-469", `emulator-1` in 0.5 s; `devices` →
   `emulator-1  Nokia N00 (RM-469)  pid 161383  profile rm-469`; `emulator stop emulator-1` →
   pgrep empty; user's EKA2L1 folder unchanged.
-NEXT: Task 13 — `task-start <plan> 13` (runner; ctrlc dep needs one online cargo fetch).
+- Task 13 done: ctrlc 3.5.2 fetched online once (commit "Add ctrlc"); run/{ExeTarget, AppExit,
+  Interrupt, LogTail, Runner, pick_device}; `symdev run [--exe <image>] [args→refused]`;
+  run_project gone. Fake device for tests: a `#!/bin/sh` script named eka2l1-fake doing `read`
+  on a held pipe (this host's `sleep` is uutils multicall: refuses another name), spawn retried
+  on ETXTBSY. Tests isolate XDG_RUNTIME_DIR now. Smoke (`exec/t13-smoke.sh`, flock): in t7,
+  `cargo run --release` → created profile, started emulator-1, app ran, rc=0 in 6.8 s; second
+  `cargo run` rc=0 in 5.3 s (hello waits 5 s itself); `symdev emulator stop` → no eka2l1_qt left.
+NEXT: Task 14 — `task-start <plan> 14` (cargo test through the runner, libtest printer).
