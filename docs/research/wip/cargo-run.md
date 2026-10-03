@@ -277,4 +277,13 @@ NEXT: Task 10 — `task-start <plan> 10` (EKA2L1 with --control/--data-dir; prof
 - Task 11 done: DeviceId, RegistryEntry (TOML via toml::Table), DeviceRegistry (live never
   signals; drops non-EKA2L1 PIDs and silent sockets), is_eka2l1, DeviceChoice/Choice/Offer,
   DevicePrompt. Tests split into device/tests/{choice,profile}.rs (+2 extra: id, round trip).
-NEXT: Task 12 — `task-start <plan> 12` (control client, instance start/stop, symdev devices).
+- Task 12 done: control/{Request,Param,ControlClient,AppExited,ExitType,EmulatorInfo},
+  json::quote, device::EmulatorInstance (argv/start/stop/has_control), CLI `devices`,
+  `emulator start|stop` (devices_cmd.rs, `Devices` shared with the runner). Observed: `--help`
+  prints the options and then does NOT exit (40 s, killed); any run without --data-dir uses the
+  default folder → has_control runs `--data-dir <tmp> --help` with HOME/XDG_* in tmp, reads ≤15 s,
+  kills its own child. Real run (`exec/t12-real.sh`, flock, XDG_DATA_HOME=scratch/xdg12):
+  `emulator start rm-469` → "created profile rm-469", `emulator-1` in 0.5 s; `devices` →
+  `emulator-1  Nokia N00 (RM-469)  pid 161383  profile rm-469`; `emulator stop emulator-1` →
+  pgrep empty; user's EKA2L1 folder unchanged.
+NEXT: Task 13 — `task-start <plan> 13` (runner; ctrlc dep needs one online cargo fetch).

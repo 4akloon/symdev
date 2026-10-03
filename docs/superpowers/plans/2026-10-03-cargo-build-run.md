@@ -2352,7 +2352,7 @@ down.
   - `EmulatorInstance::has_control(eka2l1) -> Result<bool>`: `<eka2l1> --help` lists
     `--control` (observed in the control-server build's help).
 
-- [ ] **Step 1: Write the failing tests** — `control/tests.rs`, against a fake server on a
+- [x] **Step 1: Write the failing tests** — `control/tests.rs`, against a fake server on a
   Unix socket in a temp dir. The fake reads one request per line and answers from a script.
 
 ```rust
@@ -2451,9 +2451,9 @@ fn an_instance_is_started_in_its_own_session_with_its_profile_and_socket() {
 }
 ```
 
-- [ ] **Step 2: Run them to see them fail**: `cargo test -p symdev-emulator --offline`.
+- [x] **Step 2: Run them to see them fail**: `cargo test -p symdev-emulator --offline`.
 
-- [ ] **Step 3: Implement.** `Request::line(id, method, params: &[(&str, Param)])` with
+- [x] **Step 3: Implement.** `Request::line(id, method, params: &[(&str, Param)])` with
   `enum Param<'a> { Str(&'a str), Uid(u32), Names(&'a [&'a str]) }`; `Uid` is written
   `"0x%08X"`. `ControlClient` keeps a `BufReader<UnixStream>` and a write half. `call`
   writes one line and reads lines until the answer with its `id`. A line with `"method":
@@ -2474,13 +2474,13 @@ rm-469`) and then the profiles. Liveness is `is_eka2l1` plus `ControlClient::con
 --control: cargo run needs an EKA2L1 with the control server (EKA2L1#770–#772, our fork's
 symdev branch)`. `symdev emulator stop <id>` calls `EmulatorInstance::stop`.
 
-- [ ] **Step 4: Run the tests, then the real emulator** (under the agent lock):
+- [x] **Step 4: Run the tests, then the real emulator** (under the agent lock):
   `SYMDEV_EKA2L1=~/src/cargo-run-scratch/bin/eka2l1-symdev symdev emulator start rm-469`
   prints `emulator-1`. `symdev devices` lists it. `symdev emulator stop emulator-1` ends it,
   and `pgrep -a eka2l1_qt` no longer shows its PID. The user's own instance, if open, is
   untouched: compare `pgrep` before and after.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/symdev-emulator crates/symdev-cli/src/devices_cmd.rs crates/symdev-cli/src/cli.rs crates/symdev-cli/src/main.rs
