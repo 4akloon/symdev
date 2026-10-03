@@ -75,6 +75,22 @@ No push to main / merge / tag / publish; pushing `cargo-run` is allowed.
   Path strings in the image change: `build/rust-src/library/std/src/…` (0.3.0) vs
   `build/sysroot/lib/rustlib/src/rust/library/std/src/…` (H4) — staticlib 1 289 862 vs 1 290 330.
 
+- Q4 full run (std-hello bin shape, `.cargo/config.toml` = H4 + linker, plain `cargo build
+  --release` 12 s, then spike link): image 70 351 / 124 920 vs 0.3.0 70 441 / 124 212; .text
+  equal (0x1902c), .rodata +0x2c8: 36 std path strings `build/sysroot/lib/rustlib/src/rust/
+  library/…` vs `build/rust-src/library/…`. With `--remap-path-prefix` of that path in the
+  wrapper: 124 200 vs 124 212, .rodata −8 (string-merge order) — the SAME −12 when the OLD
+  staticlib shape goes through the wrapper (`out/q4/h4r-lib-stdhello.exe`) ⇒ not bin-vs-lib:
+  `cargo -v` shows `-C metadata` of std/core/compiler_builtins/stdhello differ between
+  `__CARGO_TESTS_ONLY_SRC_ROOT` and sysroot routes (cargo hashes the std source path) — the
+  path-dependence of exp 113 §2. ⇒ rust-std images differ from 0.3.0 by path-dependent bytes.
+- Q2 rest (16 no_std, `all.sh`: baseline with the 0.3.0 spec, then bin shape): 14 EQUAL;
+  `net` 10 504 vs 10 506 and `tls` 13 938 vs 13 920 — uncompressed EQUAL, compressed differ
+  (first diff in code). Investigating.
+
+## Dead ends
+- (none yet beyond Q4's H1/H2)
+
 ## Next
 Read exp 109–113 format, `crates/symdev-build` Rust build path, set up env.
 
