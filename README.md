@@ -110,7 +110,10 @@ A download must average at least 16 KiB/s (the 67 MB GCCE then takes up to 70 mi
 that is cut off is not resumed, and the next build downloads it again from the start.
 
 Each `SYMDEV_*` toolchain variable that is set overrides its package path, field by field, so an
-environment that sets all of them installs nothing and builds as before. `SYMDEV_AR` overrides
+environment that sets all of them installs nothing; a C++ project builds as before, and a Rust
+project links with rust-lld, which needs a home for its SDK fix cache (`SYMDEV_HOME`, else
+`HOME`; see [Linking Rust programs](#linking-rust-programs)) unless `SYMDEV_RUST_LINKER=gnu`
+keeps GNU ld. `SYMDEV_AR` overrides
 the `ar` that otherwise sits beside the linker, and `SYMDEV_ELF2E32` an external post-linker in
 place of the native one.
 
@@ -187,7 +190,8 @@ checkout has no `prebuilt/`; there the shims are compiled with GCCE as before an
 them. The link line is the recorded GNU one with the changes experiments 109 and 112 found
 necessary, plus [`symbian-rs/targets/symbian-lld.ld`](symbian-rs/targets/symbian-lld.ld); it
 runs twice, the second time with GNU ld's 8-byte import stubs in place of lld's PLT, so the
-images are the size GNU ld makes them (within a few dozen bytes; experiment 113).
+images are the size GNU ld makes them: −108 to +20 bytes uncompressed over the 21 SDK examples
+(experiment 113).
 
 lld refuses some SDK files as they are (the `.strtab` padding of most `.dso`, one
 `R_ARM_TARGET2` in `usrt2_2.lib`), so the first rust-lld link copies the files the line names,
