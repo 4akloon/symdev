@@ -162,3 +162,41 @@ Spike evidence: ~/src/rust-lld-spike/ (experiment 109 §1, §5).
   exit 0; artifact = symdev-out.tar + packed/{e121a7ca… rust-sdk, cf11d438… symdev} only;
   prebuilt lib/ = run1 byte for byte; sdk_free: none of 2 411 SDK files.
 - Next: tests.yml (paths + `recipes/**`, step name), README; gates.
+- packages f79409e (tests.yml: + `recipes/**`, "Python tool tests"), d7542d0 (README:
+  "The prebuilt set (rust-sdk from 0.3.0)", layout, CI settings).
+
+## For the lead: driver integration (crates/symdev-build/src/driver/* — not touched here)
+What a rust-lld link with the installed prebuilt set needs (the argv the no-GCCE check
+used, `~/src/rl-shims-scratch/verify/nogcce-link.py`, = experiment 109 §5 with run1's set):
+- Find `<rust-sdk>/symbian-rs/prebuilt/lib/` (installed rust-sdk ≥ 0.3.0). A source
+  checkout has no prebuilt/ (not tracked; build.sh refuses a tag that tracks it): there the
+  driver keeps compiling the shims with GCCE as today, or runs prebuilt.sh's steps itself.
+- In symdev's GNU argv: both GCCE library dirs (`-L<gcc_lib>/`, `-L<gcc_target_lib>`) →
+  `-L<prebuilt/lib>` (so `-lsupc++ -lgcc` take the 2+2 members); `build/shims/libsymrs.a` →
+  `<prebuilt>/libsymrs_ui.a` (only `[ui]`) then `<prebuilt>/libsymrs.a`; drop
+  `--default-symver`; add `-z notext --target2=abs -Bsymbolic -T symbian-lld.ld`, and for
+  `[ui]` `--defsym=symrs_uid3=0x<uid3>` (the prebuilt `symrs_avkon.o` has `U symrs_uid3`;
+  `-Bsymbolic` resolves it statically — GNU ld cannot, see above). The SDK import libraries
+  stay the SDK's (the spike used `dso-fixed/` and `sdk-fixed/urel/` — that is the rust-lld
+  work of experiment 109, not this set).
+- The GNU path is unchanged: keep compiling `symrs_avkon.cpp` per application with
+  `-DSYMRS_UID3=0x<uid3>` (byte-identical output proven: examples/ui before/after).
+- Drift guard: prebuilt.sh reads `SHIM_OPTIONS: [&'static str; N] = [...]` from the tag's
+  `driver/rust_shims.rs` (whitespace-insensitive sed) and fails unless it equals its own
+  `-ffunction-sections -fdata-sections -fno-rtti -Os`; moving/renaming that constant or
+  changing the shims' compile line needs prebuilt.sh's `shim_options`/`cxx_args` updated
+  in the same release.
+
+## For the lead: at the 0.3.0 release
+1. Merge symdev `rl-shims` (4d6d1d5 shim change + notes) with the rust-lld integration;
+   bump the workspace to 0.3.0 (both Cargo.lock and symbian-rs/Cargo.lock change:
+   symdev-locale), tag v0.3.0, push the tag.
+2. packages `rl-shims`: publish's symdev-sdk dependency is still tag v0.2.0 (fine unless
+   0.3.0 changes the index format). PR → symdev.yml dry run builds the tag, installs GCCE
+   + SDK with the reader key, runs prebuilt.sh, packs, sdk_free check. Before that PR:
+   the repo needs variable `SYMDEV_PRIVATE_SOURCE_URL` and secrets
+   `SYMDEV_SOURCE_PRIVATE_{ACCESS_KEY_ID,SECRET_ACCESS_KEY}` at repo level (v0.2.md says
+   the owner/lead set them; names assumed to be symdev CI's — check in the settings).
+3. Merge = release (push to main publishes rust-sdk;0.3.0 then symdev;0.3.0, install.sh).
+   If 0.3.0 ends up another number: rename `recipes/symdev/0.3.0`, the ids, the tag, and
+   `publish/src/recipe/tests/prebuilt.rs` (ID and path).
