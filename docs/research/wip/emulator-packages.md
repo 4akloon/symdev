@@ -166,3 +166,14 @@ Scratch: `~/src/emu-pkg-scratch/`. Read-only observations go to experiment 115 Â
 None for the planning task: hand back to the lead. Execution waits for the owner's review
 of the plan and D1; recommended execution: one agent (superpowers:executing-plans), tasks
 1 â†’ 15, stop before L1; final whole-branch review.
+
+# Execution: Phase A, Tasks 1-15 (started 2026-10-03)
+
+Executor: one agent, superpowers:executing-plans; ledger
+`.superpowers/sdd/2026-10-03-emulator-firmware-packages/progress.md` (git-ignored).
+Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
+`~/worktrees/symdev-packages/cargo-run` (commit, no push); EKA2L1 `~/src/EKA2L1-wt/emulator-pkg`
+(commit, no push). Stop before L1, write "READY FOR L1" here.
+
+## Execution status
+- [ ] Task 1 (in progress): copy integration -> emulator-pkg, fetch, rebuild symdev.
