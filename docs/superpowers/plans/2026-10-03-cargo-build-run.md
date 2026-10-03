@@ -772,10 +772,16 @@ changes (the GNU line tests pin that a one-element slice is 0.3.0's line exactly
 
 - [ ] **Step 5: Check 0.3.0's images did not move**
 
-Build `bin/symdev-030`'s successor from this tree (`cargo build --release --offline -p
-symdev-cli`). Run `~/src/cargo-run-scratch/base.sh <out> hello ui async` with `bin/symdev-030`
-replaced by it. Then compare with `e32cmp.py` against `~/src/cargo-run-scratch/out/base/`.
-Expected: `EQUAL` ×3.
+```bash
+S=~/src/cargo-run-scratch; mkdir -p $S/t2 && git archive HEAD | tar -x -C $S/t2
+cargo build --release --offline -p symdev-cli --target-dir $S/target-t2 && cp $S/target-t2/release/symdev $S/bin/symdev-t2
+. $S/env.sh; export SYMDEV_RUST_SDK=$S/t2/symbian-rs
+for ex in hello ui async; do for b in symdev-030 symdev-t2; do
+  (cd $S/t2/symbian-rs/examples/$ex && $S/bin/$b build >/dev/null && cp build/*.exe $S/t2/$ex.$b.exe); done
+  python3 $S/e32cmp.py $S/t2/$ex.symdev-030.exe $S/t2/$ex.symdev-t2.exe; done
+```
+
+Expected: `EQUAL` three times (both binaries build the same tree at the same path).
 
 - [ ] **Step 6: Commit**
 
