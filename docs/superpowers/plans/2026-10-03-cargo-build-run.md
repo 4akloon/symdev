@@ -1875,7 +1875,7 @@ git add crates/symdev-cli/src/scaffold_rust.rs crates/symdev-cli/src/scaffold_ru
 git commit -m "Make symdev new write a binary crate that cargo links, runs and tests through symdev."
 ```
 
-### Task 8: The other 20 examples in the new shape
+### Task 8: The other 18 `no_std` examples in the new shape
 
 **Files:**
 - Modify: `symbian-rs/examples/<ex>/Cargo.toml` and `src/main.rs` for `alloc async atomics
