@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use symdev_core::{Error, Result};
 use symdev_sdk::RustSdkWorkspace;
 
+use crate::rust_prebuilt::RustPrebuilt;
 use crate::rust_toolchain_file::RustToolchainFile;
 
 /// The `symbian-rs/` workspace: the target JSON, the SDK crates a project depends on by
@@ -153,6 +154,26 @@ impl RustSdk {
         self.root
             .join("targets")
             .join(format!("{}.json", Self::TARGET))
+    }
+
+    /// `targets/symbian-lld.ld`, the layout every rust-lld link takes (experiment 109 §2).
+    /// Not in [`Self::REQUIRED`]: a GNU ld build does without it.
+    pub fn lld_script(&self) -> Result<PathBuf> {
+        let script = self.root.join("targets/symbian-lld.ld");
+        match script.is_file() {
+            true => Ok(script),
+            false => Err(Error::Other(format!(
+                "Rust SDK at {} has no targets/symbian-lld.ld, which rust-lld links with: \
+                 it is older than symdev 0.3.0; use the rust-sdk of this symdev, or set \
+                 SYMDEV_RUST_LINKER=gnu to link with GCCE's GNU ld",
+                self.root.display()
+            ))),
+        }
+    }
+
+    /// The shims and GCC runtime compiled once ([`RustPrebuilt`]), when the SDK has them.
+    pub fn prebuilt(&self) -> Result<Option<RustPrebuilt>> {
+        RustPrebuilt::in_sdk(&self.root)
     }
 
     /// The SDK crate that defines what rustc's own code generation calls and this

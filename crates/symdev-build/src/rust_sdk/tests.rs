@@ -123,3 +123,22 @@ fn an_sdk_whose_toolchain_file_names_no_channel_says_so() {
     );
     assert!(err.contains(&sdk.root().display().to_string()), "{err}");
 }
+
+#[test]
+fn the_checkout_ships_the_lld_script_and_no_prebuilt_set() {
+    let sdk = RustSdk::at(Path::new(RustSdk::CHECKOUT.unwrap())).unwrap();
+    let script = sdk.lld_script().unwrap();
+    assert!(script.ends_with("targets/symbian-lld.ld"));
+    assert!(std::fs::read_to_string(script).unwrap().contains("PHDRS"));
+    // `prebuilt/` is made by the release recipe, never tracked.
+    assert_eq!(sdk.prebuilt().unwrap(), None);
+}
+
+#[test]
+fn an_sdk_without_the_lld_script_names_the_way_back_to_gnu_ld() {
+    let tree = tree_with(RustSdkPackage::REQUIRED);
+    let sdk = RustSdk::at(&tree.path().join("symbian-rs")).unwrap();
+    let e = sdk.lld_script().unwrap_err().to_string();
+    assert!(e.contains("targets/symbian-lld.ld"), "{e}");
+    assert!(e.contains("SYMDEV_RUST_LINKER=gnu"), "{e}");
+}
