@@ -3646,3 +3646,68 @@ reruns it against the real buckets.
   and `firmware;rm-469;1` (Task 5's tree).
 
 Use Task 13's stager for both.
+
+- [ ] **Step 2: Write `accept.sh` and `inner.sh`**
+
+`accept.sh` takes the agent lock and hides the owner's EKA2L1 folder:
+
+```bash
+#!/usr/bin/env bash
+# accept.sh — experiment 115 §5 (spec §6 acceptance, staged): inner.sh in an empty HOME,
+# with the owner's ~/.local/share/EKA2L1 hidden by an empty tmpfs (bwrap), under the agent
+# lock, which is taken before the folder is hidden.
+A=~/src/emu-pkg-scratch/accept; touch $A/marker
+flock ~/.local/share/EKA2L1/.symdev-agent.lock \
+  bwrap --dev-bind / / --tmpfs /home/genius/.local/share/EKA2L1 -- bash $A/inner.sh > $A/out/accept.log 2>&1
+echo "accept rc=$?"
+echo "owner's EKA2L1 files newer than the run: $(find ~/.local/share/EKA2L1 -newer $A/marker | wc -l)"
+```
+
+`inner.sh` is cargo-run's `accept.sh` with these changes:
+- the environment has **no** `SYMDEV_EKA2L1` and **no** `SYMDEV_EKA2L1_DATA`;
+- it does have this host's GL variables, if Task 13 found them needed (the user's shell
+  would);
+- `sources.toml` lists `public` and `private` as `file://` sources (`builtin = false`), and
+  `SYMDEV_INSTALL_URL` is `file://$A/public/`;
+- it first prints `ls -A /home/genius/.local/share/EKA2L1 | wc -l`, which must be `0`.
+
+The rest is as before: `install.sh`, `symdev new accept --lang rust`, `cargo run` with the
+PID-bound screenshot (`$A/out/accept.png`), `cargo test`, `symdev devices`, `symdev emulator
+stop` for each id, and `ls $H/.local/share/symdev`.
+
+- [ ] **Step 3: Run it and read the result**
+
+```bash
+mkdir -p ~/src/emu-pkg-scratch/accept/out && bash ~/src/emu-pkg-scratch/accept/stage.sh && bash ~/src/emu-pkg-scratch/accept/accept.sh
+```
+
+Expected in `out/accept.log`: `0` from the `ls` line; `install.sh` installed symdev 0.4.0 and
+linked the three names; `symdev new` installed `rust-sdk;0.4.0`; `cargo run` printed
+`installing firmware;rm-469;1 … from private`, `created profile rm-469`, `installing
+emulator;<V> … from public`, `emulator-1 is Nokia N00 (RM-469)` and `Hello from Rust SDK (19
+chars)`, status 0; `cargo test` printed `test result: ok`, status 0; the installed list
+holds `emulator`, `firmware`, `rust-sdk`, `sdk`, `symdev` and no `gcce`. From `accept.sh`:
+`accept rc=0` and `0` owner files newer than the run. Look at `accept.png`. Record it all
+as experiment 115 §5.
+
+- [ ] **Step 4: Final gates on both branches**
+
+symdev (`~/worktrees/symdev/cargo-run`): Task 4 step 4's three commands, plus `find crates
+-name '*.rs' -exec wc -l {} + | awk '$1 > 300 && $2 != "total"'` printing nothing. Packages:
+Task 10 step 9's commands and both shell tests. Then a review of the whole change:
+superpowers:requesting-code-review on symdev's `cargo-run` since `2694821`. Fix what it finds,
+each with a failing test first.
+
+- [ ] **Step 5: Push symdev's branch and stop**
+
+```bash
+git -C ~/worktrees/symdev/cargo-run push origin cargo-run
+```
+
+Do not push the packages branch, and do not push the EKA2L1 branch. Write to the wip file:
+"Phase A done at `<symdev HEAD>` / packages `<HEAD>` / EKA2L1 `symdev` `<C>`; waiting for L1
+(the lead pushes the integration branch after the owner's go). Next: Task 16 with the run
+id." Commit and push that too. Then report to the lead: D1 still open (if it is), F1,
+experiment 115 §2–§5 in one line each, and the three branch heads.
+
+## Phase B — after L1 (the lead pushed `symdev` and the fork's CI is green)
