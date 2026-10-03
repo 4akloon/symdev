@@ -225,3 +225,120 @@ EKA2L1 (outside git of symdev): `~/src/EKA2L1-wt/emulator-pkg` (branch `symdev`)
 `~/src/EKA2L1-wt/emulator-pkg.NOTES.md`, host build `~/src/EKA2L1-wt-build/emulator-pkg`.
 
 ---
+
+## Phase A — everything before the fork's CI runs
+
+### Task 1: The integration branch, rebuilt on upstream `master` with our 11 PRs
+
+**Files:**
+- Outside git: `~/src/EKA2L1-wt/emulator-pkg` (a copy of the integration clone, branch
+  `symdev` rebuilt), `~/src/EKA2L1-wt/emulator-pkg.NOTES.md`, host build
+  `~/src/EKA2L1-wt-build/emulator-pkg`, wrapper `~/src/emu-pkg-scratch/bin/eka2l1-emupkg`
+- Modify: `docs/research/wip/emulator-packages.md` (heads, conflicts, `<V>`, `<C>`)
+
+**Interfaces:**
+- Consumes: the PR heads of experiment 115 §1.1.
+- Produces: local branch `symdev` at `<C>` = upstream `master` + the 11 PR merges; `<V>`;
+  an EKA2L1 host build with `--data-dir` and `--control` for quick checks.
+
+- [ ] **Step 1: Make the copy and fetch** (the `eka2l1-host` skill applies; the clone is
+  shallow, so deepen if a merge finds no base)
+
+```bash
+cp -a --reflink=auto ~/src/EKA2L1-wt/integration ~/src/EKA2L1-wt/emulator-pkg
+cd ~/src/EKA2L1-wt/emulator-pkg
+git fetch origin master
+git fetch fork fix/command-list-overflow fix/cli-install-then-run \
+  fix/property-cancel-during-wipeout fix/applist-no-localisable-rsc dev/data-dir \
+  dev/anim-window-lifetime dev/applist-reload dev/applist-lock dev/control-server \
+  dev/control-input dev/control-events
+gh pr list -R EKA2L1/EKA2L1 --author 4akloon --state open --json number,headRefName,headRefOid
+```
+
+Write the PR list and each fetched head into `emulator-pkg.NOTES.md`. A head that differs
+from experiment 115 §1.1 is used as fetched (the PR moved); note the old and new SHA. A PR
+merged upstream since is left out. A new open PR of ours is not added: stop and ask the
+lead (the spec names eleven).
+
+- [ ] **Step 2: Rebuild the branch**
+
+```bash
+git branch symdev-d07d5ac symdev          # the old integration head, kept for reference
+git checkout -B symdev origin/master
+for b in fix/command-list-overflow fix/cli-install-then-run fix/property-cancel-during-wipeout \
+         fix/applist-no-localisable-rsc dev/data-dir dev/anim-window-lifetime \
+         dev/applist-reload dev/applist-lock dev/control-events; do
+  git merge --no-ff --no-edit -m "Merge $b ($(git rev-parse --short fork/$b)) into symdev." "fork/$b" || break
+done
+git submodule update --init --recursive
+```
+
+`dev/control-events` carries `dev/control-server` and `dev/control-input`. Check with
+`git merge-base --is-ancestor fork/dev/control-server fork/dev/control-events`. On a
+conflict the loop stops. Resolve it by keeping both sides' behaviour; the known one is the
+option lists in `src/emu/qt/src/thread.cpp` and `src/emu/qt/include/qt/cmdhandler.h`, where
+both options stay. Then `git commit --no-edit` and rerun the loop from the next branch.
+Record every conflict, file and resolution in the NOTES. If git says "refusing to merge
+unrelated histories", run `git fetch --deepen=1000 origin master` and the PR branches, then
+start the step again.
+
+- [ ] **Step 3: Build and test on this host**
+
+Configure `~/src/EKA2L1-wt-build/emulator-pkg` exactly as `~/src/EKA2L1-wt-build/cargo-run`
+(copy its `build.sh`, change the two directories), then:
+
+```bash
+PATH=~/.local/eka2l1-tools/bin:~/.local/eka2l1-tools/cmake/bin:$PATH \
+LIBRARY_PATH=~/.local/eka2l1-sysroot/usr/lib/x86_64-linux-gnu \
+ninja -C ~/src/EKA2L1-wt-build/emulator-pkg eka2l1_qt ekatests > ~/src/emu-pkg-scratch/host-build.log 2>&1
+(cd ~/src/EKA2L1-wt-build/emulator-pkg/src/tests && ./ekatests) > ~/src/emu-pkg-scratch/ekatests.log 2>&1
+git -C ~/src/EKA2L1-wt/emulator-pkg checkout -- src/emu/qt/translations
+```
+
+Expected: the build ends with exit 0, and `ekatests.log` ends with `All tests passed`. A
+failure that the merges caused is fixed on the branch as its own merge-fix commit, with the
+reason in the NOTES. A failure that `origin/master` alone also shows is recorded and left
+alone.
+
+- [ ] **Step 4: Check both options**
+
+`~/src/emu-pkg-scratch/bin/eka2l1-emupkg` is `~/src/cargo-run-scratch/bin/eka2l1-symdev`
+with its `exec` line pointing at `~/src/EKA2L1-wt-build/emulator-pkg/bin/eka2l1_qt`. Under
+the agent lock, with a scratch home (help never exits, and without `--data-dir` it rotates
+the owner's logs):
+
+```bash
+H=~/src/emu-pkg-scratch/help; rm -rf $H; mkdir -p $H
+flock ~/.local/share/EKA2L1/.symdev-agent.lock env HOME=$H XDG_DATA_HOME=$H/share \
+  XDG_CONFIG_HOME=$H/config XDG_CACHE_HOME=$H/cache XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority} \
+  timeout -s KILL 15 ~/src/emu-pkg-scratch/bin/eka2l1-emupkg --data-dir $H/data --help > $H/help.txt 2>&1
+grep -E -- '^ *--(control|data-dir)' $H/help.txt
+```
+
+Expected: two lines, one for `--control` and one for `--data-dir`.
+
+- [ ] **Step 5: Do not push**
+
+The push is L1. Leave `fork/symdev` as it is.
+
+- [ ] **Step 6: Record `<C>` and `<V>`**
+
+```bash
+cd ~/src/EKA2L1-wt/emulator-pkg
+git rev-parse symdev                                                   # <C>
+TZ=UTC git log -1 --format=%cd --date=format-local:%Y.%m.%d symdev     # <V>
+```
+
+Write both into the NOTES and into `docs/research/wip/emulator-packages.md`. Commit the
+wip file: `Record the rebuilt EKA2L1 integration branch and the emulator version it gives.`
+
+### Task 2: (D1 = A) The fork CI lists the Ubuntu packages its AppImage bundles
+
+**Files:**
+- Modify (EKA2L1 copy, branch `symdev`): `.github/workflows/build.yml`
+
+**Interfaces:**
+- Produces: the Linux artifact `eka2l1-<c>-linux` holds `eka2l1-qt-x64.AppImage` and
+  `eka2l1-qt-x64.packages.tsv`. Each line of the TSV is `<binary package>\t<version>\t<source
+  package>\t<source version>`, sorted, one per package that owns a file under
+  `usr/lib` or `usr/plugins` of the AppDir.
