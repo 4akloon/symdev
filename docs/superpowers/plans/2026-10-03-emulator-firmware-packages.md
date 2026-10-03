@@ -2947,10 +2947,15 @@ chmod u+x artifact/eka2l1-qt-x64.AppImage
 artifact/eka2l1-qt-x64.AppImage --appimage-extract > /dev/null
 $pkgtools emulator-tree squashfs-root --glibc "$glibc"
 
-[ -d eka2l1-src ] || git clone --quiet "${EKA2L1_GIT:-https://github.com/$repository}" eka2l1-src
-git -C eka2l1-src fetch --quiet origin "$commit"
-git -C eka2l1-src checkout --quiet --detach "$commit"
-git -C eka2l1-src submodule update --init --recursive --quiet
+# Shallow: the commit and each submodule's recorded commit only (a full clone with every
+# submodule's history does not fit a runner's disk comfortably).
+if [ ! -d eka2l1-src ]; then
+  git init --quiet eka2l1-src
+  git -C eka2l1-src remote add origin "${EKA2L1_GIT:-https://github.com/$repository}"
+fi
+git -C eka2l1-src fetch --quiet --depth 1 origin "$commit"
+git -C eka2l1-src checkout --quiet --detach FETCH_HEAD
+git -C eka2l1-src submodule update --init --recursive --depth 1 --quiet
 [ "$(git -C eka2l1-src rev-parse HEAD)" = "$commit" ]
 
 notices=(--id "$id" --commit "$commit")
