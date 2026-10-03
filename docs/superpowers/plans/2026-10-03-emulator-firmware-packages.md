@@ -3021,16 +3021,18 @@ check "the tree is built" test -L "$tmp/out/AppRun" -a -f "$tmp/out/usr/bin/eka2
 check "with EKA2L1's licence" grep -q GPL-3 "$tmp/out/share/doc/eka2l1/COPYING"
 check "and the bundled list" grep -q 'usr/share/doc/libfoo1/copyright' "$tmp/out/share/doc/eka2l1/BUNDLED.tsv"
 stage; sed -i 's/^run = .*/run = "0"/' "$tmp/r/artifact.toml"
-check "zeros are refused" sh -c "! (cd '$tmp/work' && EMULATOR_ARTIFACT_DIR='$tmp/art' bash '$tmp/r/build.sh' '$tmp/out') 2>&1 | grep -q 'still has zeros'" 
+if build; then built=yes; else built=no; fi
+check "zeros are refused" test "$built" = no
+check "by name" grep -q 'still has zeros' "$tmp/log"
 stage; echo '# changed' >> "$tmp/art/eka2l1-qt-x64.AppImage"
-check "a changed AppImage is refused" sh -c "! (cd '$tmp/work' && EMULATOR_ARTIFACT_DIR='$tmp/art' EKA2L1_GIT='$tmp/eka' bash '$tmp/r/build.sh' '$tmp/out') > '$tmp/log' 2>&1"
+if build; then built=yes; else built=no; fi
+check "a changed AppImage is refused" test "$built" = no
+check "with sha256sum's FAILED line" grep -q FAILED "$tmp/log"
 check "and nothing is built" test ! -e "$tmp/out"
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }
 ```
 
-The zeros check uses `! ( … ) | grep`, which tests grep's status. Write it as two lines if
-that reads unclearly: run the build into `$tmp/log`, then `grep -q 'still has zeros'
-"$tmp/log"`. Run `sh tests/emulator-build.test`; expected: only `ok` lines. Add the step
+Run `sh tests/emulator-build.test`; expected: only `ok` lines. Add the step
 `- name: The emulator recipe's build.sh` / `run: sh tests/emulator-build.test` to
 `.github/workflows/tests.yml`. It needs no network: the fake repo has no submodules.
 
