@@ -191,3 +191,10 @@ emulator evidence, experiment 113, the packages-repo API section above).
   base 04f8e7d if lost), fix Critical/Important, re-run `cargo test --workspace --offline` and
   `cargo clippy --workspace --all-targets --offline`, and redo `~/src/rl-driver-scratch/recheck.sh`
   if a fix touches the link path.
+- Final review (via lead): no Critical/Important; 9 Minor items to fix (lead's message):
+  1 cache race (remove only an existing incomplete copy), 2 `Toolchain::gcce()` error → name
+  SYMDEV_RUST_LINKER=gnu / internal, 3 resolve rust-lld before cargo (then recheck.sh), 4 note
+  when a checkout uses its prebuilt set, 5 rust_linker test: temp SDK without prebuilt, 6 damaged
+  prebuilt error: "or delete <dir>", 7 README range −108…+20 and env-with-all-vars note,
+  8 tidy (test linker lld, one path-prefix helper, named struct for link_lld inputs),
+  9 stale checklist in this file. Then gates. NEXT: item 1.
