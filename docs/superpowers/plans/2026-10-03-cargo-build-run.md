@@ -2636,3 +2636,137 @@ no timestamp.
 git add Cargo.lock crates/symdev-cli
 git commit -m "Run an image on a chosen device as cargo's runner, with the app's exit as the exit code."
 ```
+
+### Task 14: `cargo test` through the runner, and `symdev test` on the same path
+
+**Files:**
+- Modify: `crates/symdev-emulator/src/results.rs` (`TestCase.state: Option<CaseState>`), `results/tests.rs`
+- Create: `crates/symdev-cli/src/libtest_print.rs` (`LibtestPrint`), `crates/symdev-cli/src/run/test_outcome.rs` (`TestOutcome`)
+- Modify: `crates/symdev-cli/src/run/runner.rs` (a test target: clear, wait, read, settle, print), `crates/symdev-cli/src/test_cmd.rs` (uses the runner; `Eka2l1Backend::run` loses its last caller)
+- Modify: `crates/symdev-emulator/src/lib.rs` (delete `Eka2l1Backend::{run, run_args, run_args_replacing, installed, previous}` once unused, with their tests)
+- Modify: `symbian-rs/examples/async/{Cargo.toml,tests/executor.rs}`
+- Test: `crates/symdev-cli/src/libtest_print.rs`, `run/tests.rs`, `crates/symdev-cli/tests/run_exe.rs`
+
+**Interfaces:**
+- Consumes: Task 6 (the report's `state`), Task 13 (`Runner`, `ExeTarget`, `AppExit`).
+- Produces:
+  - `enum CaseState { Pending, Running }`. A case without `state` is finished.
+  - `TestOutcome::settle(report: &TestReport, exit: &AppExit) -> Vec<CaseLine>`, where
+    `CaseLine { name, verdict: Verdict, detail }` and `enum Verdict { Ok, Failed, NotRun }`.
+    A `Running` case becomes `Failed` with the exit's message (`panicked: RUST 3`); a
+    `Pending` one becomes `NotRun`.
+  - `LibtestPrint::lines(&[CaseLine]) -> (Vec<String>, bool)`, where the bool means passed.
+    The output is `running N tests`, then `test <name> ... ok|FAILED|not run`, a blank line,
+    `failures:` with `    <name>: <detail>` per failure, a blank line, and `test result:
+    ok. P passed; F failed` (`FAILED.` when it failed; `; K not run` when K > 0). It passed
+    only with F = 0, K = 0 and N > 0.
+
+- [ ] **Step 1: Write the failing tests**
+
+```rust
+// crates/symdev-cli/src/libtest_print.rs, #[cfg(test)]
+use super::LibtestPrint;
+use crate::run::{CaseLine, Verdict};
+
+fn line(name: &str, verdict: Verdict, detail: &str) -> CaseLine {
+    CaseLine { name: name.into(), verdict, detail: detail.into() }
+}
+
+#[test]
+fn a_passing_run_prints_like_libtest() {
+    let (out, ok) = LibtestPrint::lines(&[line("a", Verdict::Ok, ""), line("b", Verdict::Ok, "")]);
+    assert!(ok);
+    assert_eq!(out, ["running 2 tests", "test a ... ok", "test b ... ok", "",
+                     "test result: ok. 2 passed; 0 failed"]);
+}
+
+#[test]
+fn a_panic_fails_its_test_and_leaves_the_rest_not_run() {
+    let (out, ok) = LibtestPrint::lines(&[line("a", Verdict::Ok, ""),
+        line("b", Verdict::Failed, "panicked: RUST 3"), line("c", Verdict::NotRun, "")]);
+    assert!(!ok);
+    assert_eq!(out, ["running 3 tests", "test a ... ok", "test b ... FAILED", "test c ... not run", "",
+                     "failures:", "    b: panicked: RUST 3", "",
+                     "test result: FAILED. 1 passed; 1 failed; 1 not run"]);
+}
+
+#[test]
+fn no_case_at_all_is_a_failure() {
+    let (out, ok) = LibtestPrint::lines(&[]);
+    assert!(!ok && out.last().unwrap().starts_with("test result: FAILED. 0 passed"));
+}
+```
+
+In `run/tests.rs`:
+
+```rust
+#[test]
+fn the_running_case_takes_the_panic_and_pending_ones_are_not_run() {
+    let report = symdev_emulator::TestReport::parse(r#"{"schema":1,"app":"t","uid3":"0xe1234567","passed":1,"failed":0,
+        "cases":[{"name":"a","ok":true},{"name":"b","ok":false,"state":"running"},{"name":"c","ok":false,"state":"pending"}]}"#).unwrap();
+    let exit = AppExit { code: 101, message: Some("panicked: RUST 3".into()) };
+    let lines = super::TestOutcome::settle(&report, &exit);
+    let v: Vec<_> = lines.iter().map(|l| (l.name.as_str(), l.verdict, l.detail.as_str())).collect();
+    assert_eq!(v, [("a", Verdict::Ok, ""), ("b", Verdict::Failed, "panicked: RUST 3"), ("c", Verdict::NotRun, "")]);
+}
+```
+
+In `results/tests.rs`: a report with `"state":"pending"` parses into `CaseState::Pending`. A
+report without `state` parses as today. `"state":"other"` is an error naming it.
+
+In `tests/run_exe.rs`, the test image's record says `kind = "test"`, and the fake writes a
+report into the fake profile's drive E before it sends the exit:
+
+| test | report + exit | expected |
+|---|---|---|
+| `cargo_test_prints_libtest_lines_and_exits_0` | two ok cases, `kill 0 None` | status 0; stdout has `test result: ok. 2 passed; 0 failed` |
+| `a_failing_case_exits_non_zero` | one `ok:false` with detail | status 101 is not used here: status 1; `test x ... FAILED` |
+| `a_report_from_an_earlier_run_is_not_read` | a stale report is in place before the install, and the fake writes none | the runner removed it before installing; status 1, `no test report` |
+
+- [ ] **Step 2: Run them to see them fail.**
+
+- [ ] **Step 3: Implement.** `results.rs` parses `state`. `TestOutcome::settle` and
+  `LibtestPrint::lines` follow the interfaces above. In `Runner`, a target whose kind is
+  `Test` does three extra things:
+  - before the install, removes `EmulatorProfile::at(root, &device.profile).data()
+    .result_file(uid3)`;
+  - after the exit, waits up to 5 s for that file with `await_report`;
+  - then prints `LibtestPrint::lines(&TestOutcome::settle(&report, &exit))`. A missing report
+    becomes one failed line, `no test report at <path>: <exit message>`. The exit code is 0
+    exactly when the print passed.
+
+  `test_cmd.rs` keeps its `--emulator` check and builds `ExeTarget::installed(build/<name>.sisx,
+  uid3)` with the kind `Test { name: package }`. It then goes through `pick_device` and the
+  same runner (spec §7: "`symdev test --emulator` stays and does what `cargo test` does").
+  Delete what that leaves unused in `Eka2l1Backend` and `test_cmd.rs` (`stale_package`'s
+  job is `ExeTarget`'s now).
+
+  `symbian-rs/examples/async`: add `[[test]] name = "executor"`, `harness = false`, and
+  `[dev-dependencies] symbian-test = { path = "../../crates/symbian-test" }`.
+  `tests/executor.rs`:
+
+```rust
+//! `block_on` on the device, as a `cargo test` (symbian-test).
+#![no_std]
+#![no_main]
+
+#[symbian_test::tests]
+mod executor {
+    use symbian_async::block_on;
+    use symbian_test::{Evidence, ensure};
+
+    #[test]
+    fn block_on_returns_what_the_future_produced() -> Result<(), Evidence> {
+        ensure(block_on(async { 42u32 }) == Ok(42), "block_on(async { 42 })")
+    }
+}
+```
+
+- [ ] **Step 4: Run the tests**: `cargo test --workspace --offline`; all pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add crates/symdev-emulator crates/symdev-cli symbian-rs/examples/async
+git commit -m "Run cargo test binaries on the device and print their report the way libtest does."
+```
