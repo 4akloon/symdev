@@ -35,3 +35,13 @@ Spike evidence: ~/src/rust-lld-spike/ (experiment 109 §1, §5).
   passes -DSYMRS_UID3):** all 10 `build/shims/*.o` byte-identical (avkon included),
   `uidemo.elf` identical, `uidemo.exe` 10 315 B both, differs only at 0x14–0x17 (CRC) and
   0x24–0x27 (time). Evidence `~/src/rl-shims-scratch/ui-{before,after}/`.
+- **GNU ld + `--defsym` does NOT work today** (tested, so the driver must keep `-DSYMRS_UID3`
+  on the GNU path): `examples/ui` built by symdev with a logging `SYMDEV_LD` wrapper
+  (`~/src/rl-shims-scratch/gnu-defsym/ld-wrap.sh`) that swaps in an archive with the UID-free
+  avkon object and appends `--defsym=symrs_uid3=0xe0000687`: GNU ld 2.29.1 links, but writes a
+  dynamic `R_ARM_ABS32` at 0x9de0 against `symrs_uid3` (exported to `.dynsym` GLOBAL, ABS),
+  and symdev's elf2e32 refuses: "relocation at 0x9de0 targets 0xe0000687 outside code and
+  data". Declaring it `__attribute__((visibility("hidden")))` changes nothing that matters:
+  symbianelf copies it into `.dynsym` as LOCAL ABS and still emits the `R_ARM_ABS32`, same
+  error. lld with `-Bsymbolic` resolves it statically (spike §5). So: `--defsym` is an lld-only
+  mechanism; the compile-time define stays the GNU path. Kept the spike's plain declaration.
