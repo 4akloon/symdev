@@ -4375,6 +4375,6 @@ spike. The image is 70 351 / 124 920 against 0.3.0's 70 441 / 124 212.
 the configuration that needs neither rustup state nor an absolute path in the project. The
 patched source must exist before cargo starts, because cargo resolves `build-std` before any
 build script runs, so symdev materialises it ahead of time (once per SDK and nightly, not
-per build). A `RUSTC` variable in the environment overrides `build.rustc`. A `rust-std`
+per build). A `RUSTC` variable in the environment overrides `build.rustc` (observed: with `RUSTC=rustc`, `std` came from the toolchain's source and failed as in H1). A `rust-std`
 image differs from 0.3.0's by path-dependent bytes only: `std`'s path strings and the order
 that crate hashes give.
