@@ -976,3 +976,137 @@ a signing password only for an encrypted key the project supplies."
 
 For D1 = B or C, replace this step with that option's behaviour from the D1 table, test
 first, before Task 4.
+
+### Task 4: The `symdev-ld` role and `symdev setup-linker`
+
+**Files:**
+- Create: `crates/symdev-cli/src/role.rs` (`Role`)
+- Create: `crates/symdev-cli/src/rust_project.rs` (`RustProject`: the provisioning `build_cmd.rs` does for a Rust project, reusable)
+- Create: `crates/symdev-cli/src/ld/link_record.rs` (`LinkRecord`), `crates/symdev-cli/src/ld/link_run.rs` (`LinkRun`)
+- Create: `crates/symdev-cli/src/setup_linker.rs`
+- Modify: `crates/symdev-cli/src/main.rs` (role dispatch first; `Commands::SetupLinker`), `crates/symdev-cli/src/cli.rs`, `crates/symdev-cli/src/build_cmd.rs` (uses `RustProject`), `crates/symdev-cli/src/ld.rs`
+- Modify: `crates/symdev-cli/Cargo.toml` (`toml = "1"`, already in `Cargo.lock`)
+- Test: `crates/symdev-cli/tests/ld.rs`, `crates/symdev-cli/tests/setup_linker.rs`, `crates/symdev-cli/src/ld/tests.rs`
+
+**Interfaces:**
+- Consumes: Task 1 (`LinkerArgs`, `CargoLinkEnv`, `LinkKind`, `CargoOutput`), Task 2
+  (`RustcLink`, `RustBuild::link_rustc_output`), Task 3 (`ProjectPackage`).
+- Produces:
+  - `Role::of(argv0: &OsStr) -> Role`, where `enum Role { Cli, Linker, Rustc }`. The
+    names are `symdev-ld` and `symdev-rustc` (file stem); anything else is `Cli`.
+  - `LinkRecord { pub kind: LinkKind }` with `LinkRecord::write(&self, path: &Path) ->
+    Result<()>` and `LinkRecord::read(path: &Path) -> Result<LinkRecord>`. The file is TOML:
+    `kind = "main"`, or `kind = "test"` and `name = "<test>"`.
+  - The files one link leaves: `<out>` (the E32 image), `<out>.sisx`, `<out>.symdev.toml`
+    and `<out>.symdev/` (work). The main binary also leaves `<profile-dir>/<bin>.sisx`,
+    `<profile-dir>/<bin>.symdev.toml`, and `build/<name>.exe` + `build/<name>.sisx` in the
+    project, as 0.3.0 did.
+  - `RustProject::resolve(manifest: &Manifest, root: &Path, provision: &Provision, ui: bool)
+    -> Result<RustProject>`, with `pub build: RustBuild` and `pub epocroot: PathBuf`.
+
+- [ ] **Step 1: Write the failing tests**
+
+`crates/symdev-cli/tests/ld.rs` drives the real binary through a link named `symdev-ld`:
+
+```rust
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+fn symdev_ld(dir: &Path) -> PathBuf {
+    let link = dir.join("symdev-ld");
+    std::os::unix::fs::symlink(assert_cmd::cargo::cargo_bin("symdev"), &link).unwrap();
+    link
+}
+
+fn fixture(name: &str) -> Vec<String> {
+    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ld/testdata").join(name);
+    std::fs::read_to_string(p).unwrap().lines().map(String::from).collect()
+}
+
+fn run(dir: &Path, envs: &[(&str, &Path)], args: &[String]) -> (bool, String) {
+    let mut cmd = Command::new(symdev_ld(dir));
+    cmd.args(args).env_remove("CARGO_MANIFEST_DIR").env_remove("CARGO_BIN_NAME")
+        .env_remove("CARGO_TARGET_TMPDIR");
+    for (k, v) in envs { cmd.env(k, v); }
+    let out = cmd.output().unwrap();
+    (out.status.success(), String::from_utf8_lossy(&out.stderr).into_owned())
+}
+
+#[test]
+fn symdev_ld_outside_cargo_says_it_is_cargos_linker() {
+    let dir = tempfile::tempdir().unwrap();
+    let (ok, err) = run(dir.path(), &[], &fixture("release-bin.argv"));
+    assert!(!ok);
+    assert!(err.contains("CARGO_MANIFEST_DIR") && err.contains("cargo's linker"), "{err}");
+}
+
+#[test]
+fn symdev_ld_without_symdev_toml_names_the_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("app");
+    std::fs::create_dir(&project).unwrap();
+    let (ok, err) = run(dir.path(), &[("CARGO_MANIFEST_DIR", &project),
+                                     ("CARGO_BIN_NAME", Path::new("app"))],
+                        &fixture("release-bin.argv"));
+    assert!(!ok);
+    assert!(err.contains(&project.display().to_string()) && err.contains("symdev.toml"), "{err}");
+}
+
+#[test]
+fn symdev_ld_refuses_an_unseen_argument_by_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut args = fixture("release-bin.argv");
+    args.push("--eh-frame-hdr".into());
+    let (ok, err) = run(dir.path(), &[], &args);
+    assert!(!ok && err.contains("`--eh-frame-hdr`"), "{err}");
+}
+```
+
+`crates/symdev-cli/tests/setup_linker.rs`:
+
+```rust
+#[test]
+fn setup_linker_links_both_roles_to_this_binary() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = assert_cmd::cargo::cargo_bin("symdev");
+    let ok = std::process::Command::new(&bin).args(["setup-linker", "--dir"]).arg(dir.path())
+        .status().unwrap().success();
+    assert!(ok);
+    for role in ["symdev-ld", "symdev-rustc"] {
+        assert_eq!(std::fs::read_link(dir.path().join(role)).unwrap(), bin);
+    }
+    // A second run accepts its own links and changes nothing.
+    assert!(std::process::Command::new(&bin).args(["setup-linker", "--dir"]).arg(dir.path())
+        .status().unwrap().success());
+}
+```
+
+Append to `crates/symdev-cli/src/ld/tests.rs` (Review Focus 1):
+
+```rust
+#[test]
+fn two_links_of_one_project_use_two_work_dirs() {
+    let bin = super::LinkRun::work_for(&LinkerArgs::parse(argv("release-bin.argv")).unwrap()).unwrap();
+    let test = super::LinkRun::work_for(&LinkerArgs::parse(argv("release-test.argv")).unwrap()).unwrap();
+    assert_ne!(bin, test);
+    assert!(bin.ends_with("out/app.symdev") && test.ends_with("out/smoke-4f71ac116363b7c1.symdev"));
+}
+
+#[test]
+fn a_link_record_says_main_or_names_the_test() {
+    let dir = tempfile::tempdir().unwrap();
+    for kind in [LinkKind::Main, LinkKind::Test { name: "smoke".into() }] {
+        let p = dir.path().join("r.toml");
+        super::LinkRecord { kind: kind.clone() }.write(&p).unwrap();
+        assert_eq!(super::LinkRecord::read(&p).unwrap().kind, kind);
+    }
+}
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `cargo test -p symdev-cli --offline --test ld --test setup_linker` and `cargo test -p
+symdev-cli --offline ld::tests`
+Expected: the `symdev-ld` link starts the normal CLI, which prints clap's usage, so the
+assertions fail; `setup-linker` is an unknown subcommand; `LinkRun` and `LinkRecord` are
+not found.
