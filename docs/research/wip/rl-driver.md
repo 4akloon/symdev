@@ -190,3 +190,8 @@ emulator evidence, experiment 113, the packages-repo API section above).
   prebuilt error: "or delete <dir>", 7 README range −108…+20 and env-with-all-vars note,
   8 tidy (test linker lld, one path-prefix helper, named struct for link_lld inputs),
   9 stale checklist in this file. Then gates. DONE: 1–7 (recheck.sh after item 8). NEXT: item 8 (test linker lld, one path helper, LinkInputs struct).
+- Final review's 9 minor items done (commits 2ca9e9c..b4c48b5). Running: recheck.sh at HEAD
+  b4c48b5 → `~/src/rl-driver-scratch/recheck2.txt` (PID in the shell log; re-run with
+  `cd ~/src/rl-driver-scratch && ./recheck.sh > recheck2.txt`). NEXT: when it prints `done`,
+  run the gates: `cargo test --workspace --offline`, `cargo clippy --workspace --all-targets
+  --offline`, `cargo fmt --all --check`, the 300-line check; then report.
