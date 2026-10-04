@@ -293,3 +293,11 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   `pack` and the symdev `build` red by the known "already published" flaw. Still waiting for the owner to run
   both commands or to add Bash permission rules.
 - (2026-10-04) Real-bucket acceptance (exp 115 §7) PASSED: emulator from real public, firmware+sdk from real private, cargo test green, owner's folder untouched.
+- (2026-10-04) Emulator/firmware packages DONE: PR 4 merged by the owner, `emulator;2026.10.03` public, firmware
+  private, exp 115 §7 passed (a9fc95c). 0.4.0 release started on the owner's "роби": cargo-run merged with main
+  (9b02e04, pushed); gates rerun by the lead: 979 tests, 0 failed, clippy 0 warnings. PR 17 (cargo-run -> main)
+  is CLEAN with green checks. `gh pr merge 17` and a local packages branch `release-0.4.0` were refused by the
+  auto-mode classifier ([Merge Without Review]); not retried. Sequence left: owner merges PR 17 -> tag v0.4.0
+  -> packages branch `release-0.4.0` from main + cherry-pick 3fe6a76 (recipes/symdev/0.4.0), `commit` =
+  `git rev-parse v0.4.0^{commit}`, bump pkgtools/publish `tag = "v0.4.0"` if wanted -> merge -> dispatch
+  `symdev.yml -f version=0.4.0` (the push run fails by design, as at 0.3.0) -> empty-HOME acceptance.
