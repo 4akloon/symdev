@@ -255,3 +255,10 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   (LD_LIBRARY_PATH, QT_PLUGIN_PATH and one more); QML2_IMPORT_PATH, QML_IMPORT_PATH and
   QT_QPA_PLATFORM from the host reach the packaged EKA2L1 (exp 115 §3 saw no effect on the
   test host, which sets none of them). No code change.
+- (2026-10-04 ~09:30) Review fixed: symdev b35dc6d be20056 4a690fe, packages f4f7ff7 c9ad36d 34c9011 b2fcc3d
+  (gates green on both; symdev rerun by the lead: tests ok, clippy 0, fmt ok, no .rs > 300).
+  cargo-run pushed to origin (4a690fe, PR 17). READY FOR L1.
+- L1 force push (`git push --force-with-lease=symdev:d07d5ac fork HEAD:symdev` in ~/src/EKA2L1-wt/emulator-pkg)
+  was refused by the auto-mode classifier a second time, after the owner said "так, роби форс пуш" in chat.
+  Not retried, not worked around. The owner has to run it or add a Bash permission rule.
+  Everything after (Task 16 recipe pin, L2, L3, L4) waits on it.
