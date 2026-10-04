@@ -83,6 +83,7 @@ impl Devices {
             .map(|d| {
                 d.flatten()
                     .filter(|e| e.path().is_dir())
+                    .filter(|e| !EmulatorProfile::is_partial(&e.file_name().to_string_lossy()))
                     .filter_map(|e| e.file_name().into_string().ok())
                     .collect()
             })
@@ -116,9 +117,11 @@ pub(crate) fn eka2l1_with_control(provision: &Provision) -> Result<Eka2l1> {
     )))
 }
 
-pub(crate) fn list(provision: &Provision) -> Result<ExitCode> {
+/// Lists what exists; makes no profile and installs nothing (spec §5: a profile is made on
+/// the first need, which `devices` is not).
+pub(crate) fn list() -> Result<ExitCode> {
     let devices = Devices::from_env()?;
-    let profiles = devices.profiles_or_make(provision)?;
+    let profiles = devices.profiles();
     let live = devices.live()?;
     for e in devices.registered()? {
         let state = match live.iter().any(|l| l.id == e.id) {

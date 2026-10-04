@@ -140,6 +140,23 @@ fn an_existing_profile_needs_no_firmware_package() {
         .stderr(predicate::str::contains("installing").not());
 }
 
+#[test]
+fn devices_with_no_profile_and_no_firmware_lists_nothing_and_asks_nobody() {
+    let world = World::new();
+    let emulators = world.tmp.path().join("data/symdev/emulators");
+    // A half-made profile of a run that died is not a profile.
+    std::fs::create_dir_all(emulators.join("rm-469.partial-42")).unwrap();
+    world
+        .bin()
+        .args(["devices"])
+        .assert()
+        .success()
+        .stdout("")
+        .stderr(predicate::str::contains("installing").not())
+        .stderr(predicate::str::contains("created profile").not());
+    assert!(!profile(&world).exists());
+}
+
 /// Every path under `dir` with its modification time, sorted.
 fn walk(dir: &Path) -> Vec<(PathBuf, std::time::SystemTime)> {
     let mut found = Vec::new();

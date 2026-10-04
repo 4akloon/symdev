@@ -80,7 +80,7 @@ fn main() -> ExitCode {
         Some(Commands::Deploy) => manifest().and_then(deploy_project),
         Some(Commands::Sdk { action }) => sdk_cmd::run(action, &provision),
         Some(Commands::SetupLinker { dir }) => setup_linker::setup_linker(dir),
-        Some(Commands::Devices) => devices_cmd::list(&provision),
+        Some(Commands::Devices) => devices_cmd::list(),
         Some(Commands::Emulator { action }) => match action {
             EmulatorAction::Start { profile } => devices_cmd::start(&profile, &provision),
             EmulatorAction::Stop { id } => devices_cmd::stop(&id),
