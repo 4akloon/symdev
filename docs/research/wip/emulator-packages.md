@@ -267,3 +267,7 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   (head 29d5f58). A runner agent watches it. Next: when `build-desktop (linux)` is green, Task 16 (recipe
   pinned to this run id) by a fresh implementer, then L4 → L2, L3 (each needs the owner's go; given in chat
   "Так, роби" on 2026-10-03, re-confirm before pushing the packages repo if the classifier refuses).
+- (2026-10-04) Task 16 step 4 DONE: run13.sh and the staged acceptance rerun with the fork CI's package
+  (run 37184126387, package 102808383 B `b5b180e7…`, source 785603334 B): all green, no GL variables needed;
+  experiment 115 §6. Packages branch (91a65f3) is ready for L4 -> L2 and the firmware for L3; open question: can
+  the workflow's own token download the fork's artifact (unauthenticated zip GET is 401).

@@ -4971,3 +4971,31 @@ empty `HOME`, with `env -i` (no `SYMDEV_*` toolchain variable, no `SYMDEV_EKA2L1
 * Seen in passing, not this plan's: the private SDK's install message, printed by
   `symdev-ld`, reaches the user as rustc's `warning: linker stderr: installing sdk;…`
   (`linker_messages`).
+
+### 6. The same checks with the fork CI's package (plan Task 16 step 4)
+
+2026-10-04. Same symdev, scripts and `file://` stagings as §4 and §5, with `emulator;2026.10.03`
+packed from the CI-built prefix (`~/src/emu-pkg-scratch/emulator-ci/prefix`) instead of the
+rehearsal's; the firmware, SDK, symdev and rust-sdk packages are the staged ones of §4/§5.
+Source: fork 4akloon/EKA2L1, CI run **37184126387**, head `29d5f58ae`, artifact
+`eka2l1-29d5f58ae-linux` (AppImage 95 660 536 bytes), runner image ubuntu-24.04 20260901.588.
+
+* Package: 102 808 383 bytes, SHA-256 `b5b180e718405e1ca08e4dc880ca53e8b877475ad772f1b6080b476ce636238a`
+  (the dry run's hash; the staged index agrees). The rehearsal's was 102 819 047 (`7dc84337…`).
+  Source archive: 785 603 334 bytes (`97060a64…`).
+* `run13.sh` (copy `exp115ci/run13.sh`, log `exp115ci/run13.log`, under the agent lock): start
+  rc 0 (`installing firmware… from private`, `created profile rm-469`, `installing
+  emulator;2026.10.03 (102.8 MB) from public`), comm `eka2l1_qt`, exe under the installed
+  package; `cargo run` rc 0 with `Hello from Rust SDK (19 chars)`; `cargo test` rc 0
+  (`test result: ok. 1 passed`); stop rc 0; start with the host's Qt paths rc 0, `environ`
+  count 0. Files newer than the marker in the packages: 16 257, the install itself, as in §4.
+  Screenshot `exp115ci/shots/t13ci-hello.png`: the packaged EKA2L1 window, app list, `N00 (RM-469 - S60v3 FP2)`.
+* `accept.sh` (copy `accept-ci/`, empty HOME, bwrap over the owner's folder, agent lock): owner's
+  folder seen as 0 entries; `install.sh` rc 0; `symdev new` installed `rust-sdk;0.4.0`; `cargo
+  run` rc 0 in 23.5 s (hello after 18.6 s) with the same install lines as §5 and `emulator-1 is
+  Nokia N00 (RM-469)`; `cargo test` rc 0; stopped `emulator-1`; installed `emulator`,
+  `emulators`, `firmware`, `rust-sdk`, `sdk`, `symdev` (no `gcce`); `accept rc=0`; owner's
+  EKA2L1 files newer than the run: 0. Screenshot `accept-ci/out/accept.png`: same window.
+* **No GL variable was needed** on this host (none set in either run, window rendered).
+* No `eka2l1_qt` left running; the owner's folder has 0 files newer than the §6 run.
+* Result: identical to §4 and §5; the CI's AppImage works as the rehearsal's did.
