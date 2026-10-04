@@ -262,3 +262,8 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   was refused by the auto-mode classifier a second time, after the owner said "так, роби форс пуш" in chat.
   Not retried, not worked around. The owner has to run it or add a Bash permission rule.
   Everything after (Task 16 recipe pin, L2, L3, L4) waits on it.
+- (2026-10-04 08:55) L1 DONE: the owner ran the force push himself (d07d5ac -> 29d5f58). No push-triggered CI
+  started in ~5 min, so dispatched `gh workflow run build.yml -R 4akloon/EKA2L1 --ref symdev`: run 37184126387
+  (head 29d5f58). A runner agent watches it. Next: when `build-desktop (linux)` is green, Task 16 (recipe
+  pinned to this run id) by a fresh implementer, then L4 → L2, L3 (each needs the owner's go; given in chat
+  "Так, роби" on 2026-10-03, re-confirm before pushing the packages repo if the classifier refuses).
