@@ -33,6 +33,12 @@ impl Provision {
     pub fn firmwares(&self) -> Result<Vec<Firmware>, Error> {
         let ids: Vec<PackageId> = Device::ALL.into_iter().map(Pins::firmware).collect();
         if let Some(dir) = self.var(DATA) {
+            if !dir.is_absolute() {
+                return Err(Error::Other(format!(
+                    "{DATA} must be an absolute path, not `{}`: profiles link into it",
+                    dir.display()
+                )));
+            }
             let found = Firmware::in_user_data(&EmulatorData::at(&dir));
             if found.is_empty() {
                 let names: Vec<&str> = ids.iter().map(PackageId::as_str).collect();

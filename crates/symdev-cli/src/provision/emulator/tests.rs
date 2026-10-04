@@ -55,3 +55,16 @@ fn without_the_variables_offline_names_the_install_commands() {
     let e = p.firmwares().unwrap_err().to_string();
     assert!(e.contains("symdev sdk install 'firmware;rm-469;1'"), "{e}");
 }
+
+#[test]
+fn a_relative_symdev_eka2l1_data_is_refused_as_symdev_home_is() {
+    let p = provision(
+        false,
+        &[("SYMDEV_EKA2L1_DATA", Path::new("relative/eka2l1"))],
+    );
+    let e = p.firmwares().unwrap_err().to_string();
+    assert!(
+        e.contains("SYMDEV_EKA2L1_DATA") && e.contains("absolute"),
+        "{e}"
+    );
+}

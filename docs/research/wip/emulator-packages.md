@@ -247,3 +247,11 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   Fresh opus reviewer dispatched on 2694821..2257b36 (+ packages commits); report goes to
   .superpowers/sdd/emulator-packages-final-review.md. Next: read it, fix Critical/Important
   test-first, rerun gates, write READY FOR L1; L1 force push still needs the owner's explicit yes.
+- (2026-10-04) Final-review fixes 1, 2, 5, 6, 7 done test-first: profile built in
+  `<dir>.partial-<pid>` and renamed (existing after a lost race = success), check() needs
+  data/roms entry + data/drives/z and names the firmware id with `symdev sdk install`;
+  `symdev devices` lists profiles() only; relative SYMDEV_EKA2L1_DATA rejected.
+  Item 8, observed, not handled: device/eka2l1.rs strips only three host variables
+  (LD_LIBRARY_PATH, QT_PLUGIN_PATH and one more); QML2_IMPORT_PATH, QML_IMPORT_PATH and
+  QT_QPA_PLATFORM from the host reach the packaged EKA2L1 (exp 115 §3 saw no effect on the
+  test host, which sets none of them). No code change.
