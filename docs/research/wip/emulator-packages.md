@@ -271,3 +271,19 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   (run 37184126387, package 102808383 B `b5b180e7…`, source 785603334 B): all green, no GL variables needed;
   experiment 115 §6. Packages branch (91a65f3) is ready for L4 -> L2 and the firmware for L3; open question: can
   the workflow's own token download the fork's artifact (unauthenticated zip GET is 401).
+- (2026-10-04 ~10:30) Fork CI run 37184126387 green on linux (artifact eka2l1-29d5f58ae-linux). Task 16 done:
+  packages cargo-run 91a65f3; exp 115 §6 passed (82810e8). Because cargo-run's packages branch also carries
+  recipes/symdev/0.4.0 (zeros), the lead cut a clean branch `emulator-packages` from packages main
+  (d81ddee) with the 11 emulator/firmware/review commits (no 3fe6a76), head cbac80a; gates green
+  (cargo test, clippy 0, fmt, emulator-build, firmware-stage, install.sh.test dash). L4 done: pushed it and
+  opened https://github.com/4akloon/symdev-packages/pull/4. PR checks: emulator.yml build GREEN (the run's own
+  token DID download the fork's artifact: open question answered); build.yml `pack` and symdev.yml `build`
+  RED with "gcce;12.1.0 / rust-sdk;0.3.0 is already published; a rebuild is a new version" — those two
+  workflows rebuild the newest recipe on every PR, same flaw as the one fixed for emulator.yml (b2fcc3d);
+  pre-existing, and the push run on main fails the same way (seen at d81ddee).
+- BLOCKED by the auto-mode classifier, not retried or worked around:
+  L2 `gh pr merge 4 -R 4akloon/symdev-packages --merge` ([Merge Without Review]) and
+  L3 `cargo run --release -p publish -- private 'firmware;rm-469;1' --from ~/src/emu-pkg-scratch/firmware/tree
+  --recipe recipes/firmware/rm-469/1/recipe.toml` run in ~/worktrees/symdev-packages/emulator-packages
+  ([Production Deploy]; PUBLISH_* keys are in the environment). The owner must merge PR 4 / run L3, or add Bash
+  permission rules. Then: the real-bucket acceptance (plan's "For the lead", exp 115 §7).
