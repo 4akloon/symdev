@@ -243,3 +243,7 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
 - [ ] L1 (lead, 2026-10-03): `git push --force-with-lease fork symdev` (d07d5ac -> 29d5f58) was refused by
   the auto-mode classifier as a destructive git action, despite the owner's "Так, роби". Not retried,
   not worked around; asked the owner. The whole-branch review (agent a55be6b) is still running.
+- (2026-10-04 08:40) Reviewer a55be6b died mid-review (jsonl ends on a cargo test call, no report).
+  Fresh opus reviewer dispatched on 2694821..2257b36 (+ packages commits); report goes to
+  .superpowers/sdd/emulator-packages-final-review.md. Next: read it, fix Critical/Important
+  test-first, rerun gates, write READY FOR L1; L1 force push still needs the owner's explicit yes.
