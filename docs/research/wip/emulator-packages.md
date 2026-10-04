@@ -292,3 +292,4 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   ([Merge Without Review] both times). Not retried. PR 4 checks at cbac80a: emulator build, gcce, tests green;
   `pack` and the symdev `build` red by the known "already published" flaw. Still waiting for the owner to run
   both commands or to add Bash permission rules.
+- (2026-10-04) Real-bucket acceptance (exp 115 §7) PASSED: emulator from real public, firmware+sdk from real private, cargo test green, owner's folder untouched.

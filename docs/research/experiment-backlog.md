@@ -4999,3 +4999,29 @@ Source: fork 4akloon/EKA2L1, CI run **37184126387**, head `29d5f58ae`, artifact
 * **No GL variable was needed** on this host (none set in either run, window rendered).
 * No `eka2l1_qt` left running; the owner's folder has 0 files newer than the §6 run.
 * Result: identical to §4 and §5; the CI's AppImage works as the rehearsal's did.
+
+### 7. The acceptance against the real buckets (plan "For the lead")
+
+2026-10-04, after PR 4 of 4akloon/symdev-packages was merged (emulator.yml run 37196643054) and
+`firmware;rm-469;1` was published to the private bucket. Scripts (outside git, copies in
+`~/src/emu-pkg-scratch/accept/`): `stage-real.sh`, `inner-real.sh`, `accept-real.sh`. A staged
+`file://` source (`staged`, index re-signed with the throwaway key) carries ONLY `symdev;0.4.0`
+and `rust-sdk;0.4.0`, which are not published yet (HEAD 340d2bb release build); no emulator or
+firmware entry exists in it. `sources.toml` in the empty HOME: the built-in public source
+(`builtin` left at its default `true`), the real private bucket (`auth = "s3"`, `key = "builtin"`,
+keys from `SYMDEV_SOURCE_PRIVATE_*` in the environment, as toolchain spec §2), then `staged`.
+No `SYMDEV_EKA2L1`, `SYMDEV_EKA2L1_DATA` or GL variable. Owner's EKA2L1 folder hidden by bwrap under
+the agent lock, as in §5.
+
+* `install.sh` (staged URL, throwaway key) rc 0; `symdev new accept --lang rust` rc 0.
+* `cargo run` rc 0 in 47.6 s with
+  `installing sdk;s60-3rd-fp2;1.1 (4.9 MB) from private…`,
+  `installing firmware;rm-469;1 (133.7 MB) from private…`, `created profile rm-469`,
+  `installing emulator;2026.10.03 (102.8 MB) from public…`, `emulator-1 is Nokia N00 (RM-469)`,
+  `Hello from Rust SDK (19 chars)`. The emulator's receipt names source `public`, sha256
+  `b5b180e7…` (the CI package of §6).
+* `cargo test` rc 0 (`test result: ok. 1 passed`); `symdev devices` listed `emulator-1`; stopped it
+  (`symdev emulator stop`); no `eka2l1` process left.
+* Screenshot `out-real/accept-real.png`: the packaged EKA2L1 window, app list, `N00 (RM-469 - S60v3 FP2)`.
+* Owner's EKA2L1 files newer than the run: 0. No key value in any log (grep).
+* Result: passed; identical to §5 and §6, now from the real public and private buckets.
