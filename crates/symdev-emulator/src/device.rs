@@ -8,6 +8,7 @@ mod eka2l1;
 mod emulator_instance;
 mod emulator_profile;
 mod firmware;
+mod profile_check;
 mod registry_entry;
 
 pub use device_choice::{Choice, DeviceChoice, Offer};

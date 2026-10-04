@@ -14,6 +14,9 @@ use crate::device::Firmware;
 /// the kernel's panic lines (`Kernel`), which the stock filter hides (experiment 114 §2).
 const LOG_FILTER: &str = "log-filter: \"*:info Emulated.Stdout:trace Kernel:trace\"";
 
+/// The suffix of a profile's folder while it is being made (`<name>.partial-<pid>`).
+const PARTIAL: &str = ".partial-";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmulatorProfile {
     dir: PathBuf,
@@ -86,15 +89,47 @@ impl EmulatorProfile {
                 self.dir.display()
             )));
         }
-        match firmware {
-            Firmware::UserData { data, name } => self.create_from_user(data, name),
-            Firmware::Package { root, name } => self.create_from_package(root, name),
+        let partial = self.partial();
+        // A leftover of this PID's earlier try is ours to clear; another PID's is its own.
+        if partial.symlink_metadata().is_ok() {
+            std::fs::remove_dir_all(&partial).map_err(|e| file(&partial, e))?;
         }
+        let built = match firmware {
+            Firmware::UserData { data, name } => self.create_from_user(&partial, data, name),
+            Firmware::Package { root, name } => self.create_from_package(&partial, root, name),
+        };
+        let placed = built
+            .and_then(|()| std::fs::rename(&partial, &self.dir).map_err(|e| file(&self.dir, e)));
+        match placed {
+            Ok(()) => Ok(()),
+            // A concurrent first run placed its profile first: the profile exists, which
+            // is what this run wanted.
+            Err(_) if self.dir.symlink_metadata().is_ok() => {
+                let _ = std::fs::remove_dir_all(&partial);
+                Ok(())
+            }
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&partial);
+                Err(e)
+            }
+        }
+    }
+
+    /// Where the profile is built before it is renamed into place; `profiles` skips it.
+    fn partial(&self) -> PathBuf {
+        let mut name = self.dir.as_os_str().to_owned();
+        name.push(format!("{PARTIAL}{}", std::process::id()));
+        PathBuf::from(name)
+    }
+
+    /// Whether a folder of the profiles' root is a half-made profile, not a profile.
+    pub fn is_partial(name: &str) -> bool {
+        name.contains(PARTIAL)
     }
 
     /// The profile from the user's EKA2L1 data `from` for `firmware` (a folder of
     /// `data/roms`).
-    fn create_from_user(&self, from: &EmulatorData, firmware: &str) -> Result<()> {
+    fn create_from_user(&self, to: &Path, from: &EmulatorData, firmware: &str) -> Result<()> {
         let user = from.root().join("data");
         let rom = user.join("roms").join(firmware);
         if !rom.is_dir() {
@@ -103,7 +138,7 @@ impl EmulatorProfile {
                 user.join("roms").display()
             )));
         }
-        let data = self.dir.join("data");
+        let data = to.join("data");
         for dir in ["drives/d", "drives/e", "roms"] {
             make_dir(&data.join(dir))?;
         }
@@ -114,48 +149,20 @@ impl EmulatorProfile {
         copy_tree(&c, &c, &data.join("drives/c"))?;
         let config = from.root().join("config.yml");
         let text = std::fs::read_to_string(&config).map_err(|e| file(&config, e))?;
-        let out = self.dir.join("config.yml");
+        let out = to.join("config.yml");
         std::fs::write(&out, Self::with_log_filter(&text)).map_err(|e| file(&out, e))
     }
 
-    fn create_from_package(&self, root: &Path, name: &str) -> Result<()> {
-        let data = self.dir.join("data");
+    fn create_from_package(&self, to: &Path, root: &Path, name: &str) -> Result<()> {
+        let data = to.join("data");
         for dir in ["drives/c", "drives/d", "drives/e", "roms"] {
             make_dir(&data.join(dir))?;
         }
         copy_file(&root.join("device.yml"), &data.join("devices.yml"))?;
         link(&root.join("roms").join(name), &data.join("roms").join(name))?;
         link(&root.join("drives/z"), &data.join("drives/z"))?;
-        let out = self.dir.join("config.yml");
+        let out = to.join("config.yml");
         std::fs::write(&out, format!("{LOG_FILTER}\n")).map_err(|e| file(&out, e))
-    }
-
-    /// Refuses a profile whose ROM or drive Z is a link to nothing (its firmware package
-    /// was uninstalled, or the user's EKA2L1 data moved), before EKA2L1 starts on it.
-    pub fn check(&self) -> Result<()> {
-        let data = self.dir.join("data");
-        let mut links = vec![data.join("drives/z")];
-        if let Ok(roms) = std::fs::read_dir(data.join("roms")) {
-            links.extend(roms.flatten().map(|e| e.path()));
-        }
-        for path in links {
-            let is_link = path
-                .symlink_metadata()
-                .is_ok_and(|m| m.file_type().is_symlink());
-            if is_link && !path.exists() {
-                let target = std::fs::read_link(&path).map_err(|e| file(&path, e))?;
-                return Err(Error::Other(format!(
-                    "emulator profile {} links {} to {}, which is gone: its firmware package \
-                     was uninstalled or its EKA2L1 data moved. Install it again (`symdev sdk \
-                     install`), or remove {} and symdev makes the profile again",
-                    self.name,
-                    path.display(),
-                    target.display(),
-                    self.dir.display()
-                )));
-            }
-        }
-        Ok(())
     }
 
     /// `text` with its `log-filter:` line replaced by symdev's; the user's is kept as a

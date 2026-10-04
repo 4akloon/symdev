@@ -2,3 +2,4 @@
 mod choice;
 mod firmware;
 mod profile;
+mod profile_check;
