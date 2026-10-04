@@ -287,3 +287,8 @@ Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
   --recipe recipes/firmware/rm-469/1/recipe.toml` run in ~/worktrees/symdev-packages/emulator-packages
   ([Production Deploy]; PUBLISH_* keys are in the environment). The owner must merge PR 4 / run L3, or add Bash
   permission rules. Then: the real-bucket acceptance (plan's "For the lead", exp 115 §7).
+- (2026-10-04) The owner said "Роби l2 l4" in chat (L4 was already done: PR 4 is open). L2 (`gh pr merge 4`)
+  and L3 (`publish private firmware;rm-469;1`) were each refused once more by the auto-mode classifier
+  ([Merge Without Review] both times). Not retried. PR 4 checks at cbac80a: emulator build, gcce, tests green;
+  `pack` and the symdev `build` red by the known "already published" flaw. Still waiting for the owner to run
+  both commands or to add Bash permission rules.
