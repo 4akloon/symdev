@@ -20,10 +20,17 @@ pub(crate) fn package_artifacts(
     ui: Option<&UiResources>,
 ) -> Result<Vec<Artifact>, Error> {
     let cwd = &project.root;
+    // The image's own directory: `build/` for `symdev package`, `<out>.symdev/` for
+    // `symdev-ld`, whose resources are compiled beside the image it links.
+    let build = cwd
+        .join(e32)
+        .parent()
+        .map(Path::to_path_buf)
+        .ok_or_else(|| Error::Other(format!("{}: the image has no directory", e32.display())))?;
     let mut outputs = if AppTarget::has_bld_inf(project) {
         let mut outputs = BuildOutputs::of(project, epocroot)?;
         if let Some(source) = icon {
-            outputs.push(AppIcon::of(project, source, epocroot)?.artifact(&cwd.join("build")));
+            outputs.push(AppIcon::of(project, source, epocroot)?.artifact(&build));
         }
         outputs
             .into_iter()
@@ -32,7 +39,6 @@ pub(crate) fn package_artifacts(
     } else {
         let mut outputs = vec![Artifact::exe(cwd.join(e32))];
         if let Some(ui) = ui {
-            let build = cwd.join("build");
             outputs.extend(ui.artifacts(&build));
             if let Some(source) = &ui.icon {
                 outputs.push(
@@ -54,12 +60,12 @@ pub(crate) fn package_artifacts(
                 .and_then(|s| s.to_str())
                 .unwrap_or_default()
                 .to_string();
-            outputs.extend(StringsResources { app, locales }.artifacts(&cwd.join("build")));
+            outputs.extend(StringsResources { app, locales }.artifacts(&build));
         }
         outputs
     };
     for container in icons {
-        outputs.extend(IconOutputs::of(container, &cwd.join("build")).artifacts());
+        outputs.extend(IconOutputs::of(container, &build).artifacts());
     }
     for file in install {
         outputs.push(Artifact::installed(

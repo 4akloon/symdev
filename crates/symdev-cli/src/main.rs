@@ -1,25 +1,54 @@
 mod artifacts;
 mod build_cmd;
 mod build_dir;
+mod cargo_build;
 mod cli;
+mod devices_cmd;
+mod ld;
+mod libtest_print;
+mod old_shape;
 mod provision;
+mod role;
+mod run;
+mod rust_project;
+mod rustc_wrapper;
 mod scaffold;
 mod scaffold_rust;
 mod sdk_cmd;
+mod setup_linker;
+mod sisx;
 mod test_cmd;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser};
-use symdev_build::{AppTarget, Epocroot, FrozenExports, SisPackage, UiResources};
-use symdev_core::{Error, PackageBackend, Project};
+use symdev_build::{AppTarget, Epocroot, FrozenExports};
+use symdev_core::{Error, Project};
 
-use artifacts::package_artifacts;
-use cli::{Cli, Commands};
+use cli::{Cli, Commands, EmulatorAction};
 use provision::Provision;
+use role::Role;
+use sisx::ProjectPackage;
 
 fn main() -> ExitCode {
+    let mut args = std::env::args_os();
+    let argv0 = args.next().unwrap_or_default();
+    match Role::of(&argv0) {
+        Role::Linker => {
+            return exit(
+                ld::LinkRun::from_env(args)
+                    .and_then(|r| r.run())
+                    .map(|()| ExitCode::SUCCESS),
+            );
+        }
+        Role::Rustc => {
+            return exit(
+                rustc_wrapper::RustcWrapper::run(Path::new(&argv0), args).map(|n| match n {}),
+            );
+        }
+        Role::Cli => {}
+    }
     let cli = Cli::parse();
     let provision = Provision::from_env(cli.offline);
     let result = match cli.command {
@@ -43,14 +72,25 @@ fn main() -> ExitCode {
             }),
         Some(Commands::Build) => manifest().and_then(|m| build_cmd::build_project(m, &provision)),
         Some(Commands::Package) => manifest().and_then(|m| package_project(m, &provision)),
-        Some(Commands::Run) => manifest().and_then(run_project),
+        Some(Commands::Run { exe, args }) => run::run(exe, args, &provision),
         Some(Commands::Test { emulator }) => {
-            manifest().and_then(|m| test_cmd::test_project(m, emulator))
+            manifest().and_then(|m| test_cmd::test_project(m, emulator, &provision))
         }
         Some(Commands::Freeze) => freeze_project(&provision),
         Some(Commands::Deploy) => manifest().and_then(deploy_project),
         Some(Commands::Sdk { action }) => sdk_cmd::run(action, &provision),
+        Some(Commands::SetupLinker { dir }) => setup_linker::setup_linker(dir),
+        Some(Commands::Devices) => devices_cmd::list(),
+        Some(Commands::Emulator { action }) => match action {
+            EmulatorAction::Start { profile } => devices_cmd::start(&profile, &provision),
+            EmulatorAction::Stop { id } => devices_cmd::stop(&id),
+        },
     };
+    exit(result)
+}
+
+/// `error: <e>` and status 1, or the command's own status.
+fn exit(result: Result<ExitCode, Error>) -> ExitCode {
     result.unwrap_or_else(|e| {
         eprintln!("error: {e}");
         ExitCode::from(1)
@@ -101,65 +141,20 @@ fn freeze_project(provision: &Provision) -> Result<ExitCode, Error> {
 }
 
 fn package_project(m: symdev_manifest::Manifest, provision: &Provision) -> Result<ExitCode, Error> {
-    let uid3 = m
-        .symbian
-        .uid3
-        .ok_or_else(|| Error::Other("uid3 required for package (set symbian.uid3)".into()))?;
     let cwd = std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?;
     let project = Project { root: cwd.clone() };
     let device = m.target.device;
     let epocroot = epocroot_for(&project, || provision.installed_epocroot(device))?;
-    let app = AppTarget::of(&project, &m.package.name, &epocroot)?;
-    let e32 = PathBuf::from("build").join(app.exe_file());
+    let package = ProjectPackage::new(m, cwd.clone(), epocroot)?;
+    let e32 = cwd.join("build").join(format!("{}.exe", package.app()));
     if !e32.is_file() {
         return Err(Error::Other(format!(
-            "E32 not found: {} (run symdev build)",
-            e32.display()
+            "E32 not found: build/{}.exe (run symdev build)",
+            package.app()
         )));
     }
-    let icon = m.symbian.icon.clone();
-    // The same caption translations the build compiled, so the package installs them.
-    let locales = symdev_locale::Locales::load(&cwd.join("locales"))
-        .map_err(|e| Error::Other(e.to_string()))?;
-    let ui = m.ui.clone().map(|ui| {
-        UiResources {
-            app: app.name().to_string(),
-            uid3,
-            ui,
-            icon: icon.as_ref().map(|i| cwd.join(i)),
-            captions: Vec::new(),
-        }
-        .with_locales(locales.as_ref())
-    });
     let password = std::env::var("SYMDEV_SIGN_PASSWORD").unwrap_or_default();
-    let package = SisPackage {
-        name: m.package.name,
-        app: app.name().to_string(),
-        uid3,
-        version: m.package.version,
-        vendor: m.symbian.vendor,
-        capabilities: m.symbian.capabilities,
-        password,
-        cert: m
-            .signing
-            .cert
-            .map(|p| if p.is_absolute() { p } else { cwd.join(p) }),
-        key: m
-            .signing
-            .key
-            .map(|p| if p.is_absolute() { p } else { cwd.join(p) }),
-        subject: m.signing.subject,
-    }
-    .package(&package_artifacts(
-        &project,
-        &e32,
-        if ui.is_some() { None } else { icon.as_deref() },
-        &m.icons,
-        &m.install,
-        &epocroot,
-        ui.as_ref(),
-    )?)?;
-    println!("{}", package.primary.display());
+    println!("{}", package.package(&e32, &password)?.display());
     Ok(ExitCode::SUCCESS)
 }
 
@@ -173,37 +168,5 @@ fn deploy_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
     }
     let cwd = std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?;
     println!("{}", cwd.join(&sisx).display());
-    Ok(ExitCode::SUCCESS)
-}
-
-fn run_project(m: symdev_manifest::Manifest) -> Result<ExitCode, Error> {
-    let uid3 = m
-        .symbian
-        .uid3
-        .ok_or_else(|| Error::Other("uid3 required for run (set symbian.uid3)".into()))?;
-    let cwd = std::env::current_dir().map_err(|e| Error::Other(e.to_string()))?;
-    let sisx = cwd.join("build").join(format!("{}.sisx", m.package.name));
-    if !sisx.is_file() {
-        return Err(Error::Other(format!(
-            "SISX not found: build/{}.sisx (run symdev package)",
-            m.package.name
-        )));
-    }
-    let emulator = symdev_emulator::Eka2l1Backend::from_env()?;
-    let log = cwd.join("build").join("eka2l1.log");
-    let pid_file = cwd.join("build").join("eka2l1.pid");
-    if let Some(old) = symdev_emulator::Eka2l1Backend::previous(&pid_file) {
-        eprintln!(
-            "warning: EKA2L1 from the previous run (pid {old}) is still open; close its window \
-             (it ignores SIGTERM) to avoid two emulators on the same data"
-        );
-    }
-    let pid = emulator.run(&sisx, uid3, &log)?;
-    std::fs::write(&pid_file, pid.to_string()).map_err(|e| Error::Other(e.to_string()))?;
-    println!(
-        "EKA2L1 pid {pid}: installing {} and launching 0x{uid3:08x}",
-        sisx.display()
-    );
-    println!("log: {}", log.display());
     Ok(ExitCode::SUCCESS)
 }

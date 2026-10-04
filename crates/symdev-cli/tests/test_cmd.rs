@@ -51,6 +51,12 @@ fn test_without_emulator_binary_names_symdev_eka2l1() {
     let dir = project();
     std::fs::create_dir(dir.path().join("build")).unwrap();
     std::fs::write(dir.path().join("build/hello.sisx"), b"sisx").unwrap();
+    // A firmware in the user's EKA2L1, so a profile is made and has to be started.
+    for d in ["data/drives/c", "data/drives/z", "data/roms/rm-469"] {
+        std::fs::create_dir_all(dir.path().join(d)).unwrap();
+    }
+    std::fs::write(dir.path().join("data/devices.yml"), "").unwrap();
+    std::fs::write(dir.path().join("config.yml"), "").unwrap();
     bin()
         .current_dir(&dir)
         .env("SYMDEV_EKA2L1_DATA", dir.path())

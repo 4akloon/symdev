@@ -93,11 +93,11 @@ and their causes are tracked in [docs/research/size-levers.md](docs/research/siz
 |---|---|---|
 | GCCE cross compiler (GCC 12.1.0 + binutils 2.29.1, `arm-none-symbianelf`) | C++ projects; a Rust project only when the Rust SDK has no prebuilt shims (a source checkout) or with `SYMDEV_RUST_LINKER=gnu` | package `gcce;12.1.0`, or `SYMDEV_GXX`, `SYMDEV_LD`, `SYMDEV_GCC_LIB`, `SYMDEV_GCC_TARGET_LIB` |
 | S60 3rd FP2 SDK (headers, `.dso` stubs, static libraries) | compiling and linking | package `sdk;s60-3rd-fp2;1.1`, or `SYMDEV_EPOCROOT` |
-| Self-signing password (4+ characters) | `symdev package` | `SYMDEV_SIGN_PASSWORD` |
+| Password of an encrypted `[signing] key` (4+ characters; a generated self-signed pair needs none) | `symdev package` | `SYMDEV_SIGN_PASSWORD` |
 | Rust SDK (`symbian-rs/`) | Rust projects only | `SYMDEV_RUST_SDK`, else the checkout symdev was built from, else package `rust-sdk;<symdev's version>` |
 | Rust nightly, pinned in `symbian-rs/rust-toolchain.toml`, and a host C linker (`cc`, e.g. `build-essential`) | Rust projects only (`-Zbuild-std`; build scripts and the SDK's proc macros link on the host, as for any Rust project); a C++ project needs neither | rustup, your distribution |
 | `rust-lld` | Rust projects: links them (see [Linking Rust programs](#linking-rust-programs)) | the pinned nightly's own `rustc` component (rustup installs it), or `SYMDEV_RUST_LLD` |
-| EKA2L1 (optional) | `symdev run`, `symdev test --emulator` | `SYMDEV_EKA2L1` |
+| EKA2L1 with `--control` and `--data-dir`, and the E52 firmware | `cargo run`, `cargo test`, `symdev run`, `symdev test --emulator`, `symdev emulator`, `symdev devices` | packages `emulator;2026.10.03` (public, glibc 2.38 or newer) and `firmware;rm-469;1` (private source only), installed on first need; or `SYMDEV_EKA2L1` (your own EKA2L1 or a wrapper that sets your host's GL variables) and `SYMDEV_EKA2L1_DATA` (an EKA2L1 data folder with the firmware installed) |
 
 ### Toolchain packages
 
@@ -108,6 +108,9 @@ the install command. `symdev package` installs nothing. Downloads are cached in
 `~/.cache/symdev/downloads` and checked against the index's SHA-256 before they are unpacked.
 A download must average at least 16 KiB/s (the 67 MB GCCE then takes up to 70 minutes); one
 that is cut off is not resumed, and the next build downloads it again from the start.
+The emulator and firmware packages are installed by the first command that starts an
+emulator, not by `symdev build`. Without `SYMDEV_EKA2L1_DATA`, symdev never reads
+`~/.local/share/EKA2L1`.
 
 Each `SYMDEV_*` toolchain variable that is set overrides its package path, field by field, so an
 environment that sets all of them installs nothing; a C++ project builds as before, and a Rust
@@ -178,6 +181,31 @@ committed, so in a fresh clone, or after `rm -rf build`, run `symdev build` once
 with the exact lines to change, when the project still names another SDK by absolute path (as
 symdev 0.1.0 scaffolds did) or its `rust-toolchain.toml` names another nightly than the SDK's.
 
+### Rust projects and cargo
+
+A Rust project is an ordinary binary crate (`[[bin]]` with `#![no_main]`, `test = false`), and
+plain cargo does the whole loop through `symdev`, which answers to two more names. Its
+`.cargo/config.toml` names `linker = "symdev-ld"`: rustc hands it the objects and rlibs, and it
+links them as below, post-links the image and writes the signed `<image>.sisx` beside it (and
+`build/<name>.exe` and `build/<name>.sisx` for a release build). It names `runner = "symdev run
+--exe"`: `cargo run` installs that package on a device, launches it, prints what the app prints
+and ends with its status (a panic is 101, Ctrl+C stops the app and not the emulator); `cargo
+test` runs each `tests/*.rs` with `harness = false` and `#[symbian_test::tests]` the same way
+and prints its report like `libtest`. A `language = "rust-std"` project names `rustc =
+"build/symdev-rustc"`, which compiles against the patched `std` in `build/sysroot` that
+`symdev build` makes once. A project in symdev 0.3.0's shape (a `staticlib`) is refused by
+`symdev build` with the edits that bring it over. Design and measurements:
+[docs/superpowers/specs/2026-10-03-cargo-build-run-design.md](docs/superpowers/specs/2026-10-03-cargo-build-run-design.md),
+experiment 114.
+
+A device is an EKA2L1 that symdev started with `--control` on an emulator profile of its own
+(`~/.local/share/symdev/emulators/<firmware>/`: its own drives C, D, E and configuration, the
+ROM and drive Z referenced from the firmware package, or from your EKA2L1 with
+`SYMDEV_EKA2L1_DATA`, never written). The first run makes a profile per firmware. `cargo run` takes `SYMDEV_DEVICE` (`emulator-1` or a profile name)
+first, then the one running emulator, then the one profile, which it starts; otherwise it asks,
+or without a terminal it names the choices. An emulator stays up after the run; an EKA2L1 you
+started yourself is never listed or touched.
+
 ### Linking Rust programs
 
 A Rust program is linked by **rust-lld**, the linker every Rust toolchain ships, run as
@@ -230,6 +258,7 @@ makes unnecessary.
 ```bash
 cargo build --release --workspace
 export PATH="$PWD/target/release:$PATH"
+symdev setup-linker                       # symdev-ld and symdev-rustc beside it, for cargo
 ```
 
 A `symdev` built this way builds Rust projects against the clone's `symbian-rs/` for as long as
@@ -238,13 +267,16 @@ it is there.
 Then:
 
 ```bash
-symdev new hello --lang rust              # or --lang cpp; add --template gui for an Avkon app
+symdev new hello --lang rust              # add --template gui for an Avkon app (C++ only today)
 cd hello
-symdev build                              # installs missing toolchain packages; build/hello.exe
-symdev package                            # build/hello.sisx, self-signed
-symdev run                                # install and launch in EKA2L1
-symdev test --emulator                    # run it and read back its test report
+cargo build                               # build/cargo/…/hello and its signed hello.sisx
+cargo run                                 # on a device: an emulator is started if none runs
+cargo test                                # tests/*.rs on the device, printed like libtest
 ```
+
+A C++ project (`--lang cpp`) keeps `symdev build`, `symdev package`, `symdev run` and
+`symdev test --emulator`. For a Rust project `symdev build` is `cargo build --release` after
+installing what the build needs ([Rust projects and cargo](#rust-projects-and-cargo)).
 
 The first `symdev build` needs the `SYMDEV_*` variables, or a source for each package: the S60
 SDK comes only from a source you list in `~/.config/symdev/sources.toml` with its key in the
@@ -255,10 +287,13 @@ environment ([Toolchain packages](#toolchain-packages)). The C++ examples: [exam
 | Command | Does |
 |---|---|
 | `symdev new <name> [--lang cpp\|rust] [--template console\|gui]` | scaffolds a project |
-| `symdev build` | compiles, links and post-links into `build/` |
+| `symdev build` | compiles, links and post-links into `build/`; for Rust, `cargo build --release` |
 | `symdev package` | builds `build/<name>.sisx`, self-signed |
-| `symdev run` | installs the `.sisx` into EKA2L1 and launches it by UID3 |
-| `symdev test --emulator` | runs the app in EKA2L1 and reports the result file it wrote |
+| `symdev run [--exe <image>]` | installs the `.sisx` on a device and launches it until it ends; `--exe` is cargo's runner |
+| `symdev test --emulator` | runs the app on a device and prints its test report like `libtest` |
+| `symdev devices` | lists the emulators symdev started and the emulator profiles |
+| `symdev emulator start <profile>` / `stop <id>` | starts an EKA2L1 on a profile (e.g. `rm-469`) as `emulator-<n>`, or stops one |
+| `symdev setup-linker [--dir <dir>]` | makes the `symdev-ld` and `symdev-rustc` links cargo starts (`install.sh` makes them too) |
 | `symdev freeze` | appends a DLL's new exports to its frozen `.def` so ordinals stay fixed |
 | `symdev deploy` | prints the path of the `.sisx`; no device transport exists yet |
 | `symdev sdk list\|install\|uninstall` | manages the toolchain packages ([Requirements](#toolchain-packages)) |

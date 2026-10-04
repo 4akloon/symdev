@@ -11,7 +11,12 @@
 //! returning a `Result`, with the `E32Main()` `eexe.lib` calls written by the
 //! attribute and the error's `TInt` becoming the exit code. This file is also what
 //! `symdev new --language rust` writes.
+//!
+//! The crate is a binary that cargo links through `symdev-ld`, so it needs `#![no_main]`:
+//! the attribute keeps `fn main`, and rustc would otherwise take it for the program's own
+//! entry and refuse its type (E0580, experiment 114 §1.1).
 #![no_std]
+#![no_main]
 
 use core::fmt::Write;
 

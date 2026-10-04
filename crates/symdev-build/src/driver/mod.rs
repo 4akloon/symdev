@@ -25,6 +25,7 @@ mod rust_build;
 mod rust_link;
 mod rust_lld_link;
 mod rust_shims;
+mod rustc_link;
 mod source;
 mod strings_build;
 mod tool;
@@ -39,6 +40,7 @@ pub use linker::Linker;
 pub use lld_line::LldLine;
 pub use module::Module;
 pub use rust_build::{APP_CREATE, E32MAIN, RustBuild};
+pub use rustc_link::RustcLink;
 
 pub struct GcceBuild {
     pub env: LocalEnv,

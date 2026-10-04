@@ -37,10 +37,12 @@ fn canonical(path: &Path) -> String {
 fn a_prebuilt_symdev_installs_the_rust_sdk_first_and_builds_against_it() {
     let w = world();
     let id = Pins::rust_sdk();
+    let project = w.rust_project();
     let output = w
         .prebuilt()
-        .current_dir(w.rust_project())
+        .current_dir(&project)
         .arg("build")
+        .env("PATH", path_with_symdev_ld(&w))
         .env("SYMDEV_CARGO", stub_cargo(&w))
         .assert()
         .failure()
@@ -51,10 +53,24 @@ fn a_prebuilt_symdev_installs_the_rust_sdk_first_and_builds_against_it() {
     let rust_sdk = stderr.find(&format!("installing {id} (")).expect(&stderr);
     let gcce = stderr.find("installing gcce;12.1.0 (").expect(&stderr);
     assert!(rust_sdk < gcce, "{stderr}");
-    let sdk = canonical(&w.package_dir(id.as_str()).join("symbian-rs"));
-    let target = format!("--target {sdk}/targets/arm-symbian-e32.json");
-    assert!(stderr.contains("stub cargo build"), "{stderr}");
-    assert!(stderr.contains(&target), "{stderr}");
+    // cargo builds against the SDK through `build/rust-sdk` (the project's
+    // .cargo/config.toml names it), which the build points at the installed package.
+    let link = project.join("build/rust-sdk");
+    assert_eq!(
+        canonical(&link),
+        canonical(&w.package_dir(id.as_str())),
+        "{stderr}"
+    );
+    assert!(stderr.contains("stub cargo build --release"), "{stderr}");
+}
+
+/// `PATH` with a `symdev-ld` first: `symdev build` runs cargo only with cargo's linker there.
+fn path_with_symdev_ld(w: &World) -> std::ffi::OsString {
+    let bin = w.tmp.path().join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    fs::write(bin.join("symdev-ld"), "").unwrap();
+    let rest = std::env::var_os("PATH").unwrap_or_default();
+    std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&rest))).unwrap()
 }
 
 #[test]

@@ -132,7 +132,16 @@ pub use symbian_async as task;
 #[cfg(not(feature = "std"))]
 pub use symbian_ui as ui;
 
-pub use symbian_macros::{main, strings};
+pub use symbian_macros::{main, strings, uid3};
+
+/// A test report named by the application's own UID3 (`symdev.toml`), so the file
+/// `symdev test` waits for is the one the application writes.
+#[macro_export]
+macro_rules! report {
+    ($app:expr) => {
+        $crate::test_report::Report::with_uid3($app, $crate::uid3!())
+    };
+}
 
 /// `write!` and `writeln!` with `core`'s syntax and byte-for-byte `core`'s output,
 /// which append a plain `{}` of a string or an integer directly instead of going

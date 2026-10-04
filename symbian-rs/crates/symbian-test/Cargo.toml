@@ -1,0 +1,11 @@
+[package]
+name = "symbian-test"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The harness of a harness = false test: runs a module of #[test] fns on the phone and writes the report symdev reads"
+
+[dependencies]
+symbian-macros = { path = "../symbian-macros" }
+symbian-std = { path = "../symbian-std" }

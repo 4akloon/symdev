@@ -24,8 +24,11 @@ use proc_macro::TokenStream;
 mod cursor;
 mod entry;
 mod fast_write;
+mod manifest_dependency;
+mod manifest_uid3;
 mod signature;
 mod strings;
+mod test_module;
 
 #[cfg(test)]
 mod tests;
@@ -76,10 +79,16 @@ use entry::Entry;
 /// `symrs_app_create` calls this `main`.
 #[proc_macro_attribute]
 pub fn main(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    let generated = match Entry::parse(&attribute.to_string(), &item.to_string()) {
+    let mut generated = match Entry::parse(&attribute.to_string(), &item.to_string()) {
         Ok(entry) => entry.wrapper(),
         Err(message) => compile_error(&message),
     };
+    // symdev-ld reads symdev.toml; this makes cargo relink when it changes.
+    if let Some(dir) = std::env::var_os("CARGO_MANIFEST_DIR") {
+        generated.push_str(&manifest_dependency::ManifestDependency::of(
+            std::path::Path::new(&dir),
+        ));
+    }
     // The user's function is passed through as the token stream it arrived as, so a
     // diagnostic about its body still points at the body. The generated wrapper is
     // the only thing this attribute writes, and its tokens carry the call site — the
@@ -138,6 +147,38 @@ pub fn strings(input: TokenStream) -> TokenStream {
     };
     match strings::expand(std::path::Path::new(&dir)) {
         Ok(source) => tokens(&source),
+        Err(message) => tokens(&compile_error(&message)),
+    }
+}
+
+/// The application's UID3 from its `symdev.toml`, as a `u32` constant expression.
+#[proc_macro]
+pub fn uid3(input: TokenStream) -> TokenStream {
+    if !input.is_empty() {
+        return tokens(&compile_error("`symbian_std::uid3!()` takes no arguments"));
+    }
+    let Some(dir) = std::env::var_os("CARGO_MANIFEST_DIR") else {
+        return tokens(&compile_error(
+            "`symbian_std::uid3!()` needs CARGO_MANIFEST_DIR, which cargo sets",
+        ));
+    };
+    match manifest_uid3::ManifestUid3::read(std::path::Path::new(&dir)) {
+        // `ManifestDependency` makes rustc track symdev.toml, so an edited UID3 recompiles
+        // the crate (as `strings!()` tracks its locales files).
+        Ok(uid3) => tokens(&format!(
+            "{{ {}0x{uid3:08x}_u32 }}",
+            manifest_dependency::ManifestDependency::of(std::path::Path::new(&dir))
+        )),
+        Err(message) => tokens(&compile_error(&message)),
+    }
+}
+
+/// A module of `#[test] fn name() -> Result<(), symbian_test::Evidence>` becomes the
+/// program's `E32Main`, run on the device by `cargo test` (design spec §7).
+#[proc_macro_attribute]
+pub fn tests(_attribute: TokenStream, item: TokenStream) -> TokenStream {
+    match test_module::TestModule::expand(&item.to_string()) {
+        Ok(out) => tokens(&out),
         Err(message) => tokens(&compile_error(&message)),
     }
 }

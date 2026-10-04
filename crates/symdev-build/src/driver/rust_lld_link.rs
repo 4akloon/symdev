@@ -37,12 +37,12 @@ impl RustBuild {
         let first_elf = elf.with_extension("first.elf");
         let line = self.link_line(
             &linker,
-            inputs.archive,
+            inputs.rust,
             inputs.shims,
             Some(inputs.libcalls),
             &first_elf,
             map,
-        );
+        )?;
         let armv5 = self.gcce.tools.epocroot.join("epoc32/release/armv5");
         let lld_line = LldLine {
             sdk_lib: armv5.join("lib"),

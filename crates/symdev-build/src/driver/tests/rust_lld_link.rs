@@ -108,7 +108,7 @@ fn link_with(tmp: &Path, elf: &[u8], fail: bool) -> (Result<(), symdev_core::Err
     fs::create_dir_all(&build).unwrap();
     let (archive, libcalls) = (build.join("libhello.a"), build.join("libcalls.rlib"));
     let inputs = LinkInputs {
-        archive: &archive,
+        rust: std::slice::from_ref(&archive),
         shims: &[],
         libcalls: &libcalls,
     };

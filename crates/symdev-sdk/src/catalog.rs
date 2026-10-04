@@ -56,13 +56,13 @@ impl Catalog {
         id: &PackageId,
         host: Host,
     ) -> Result<(SourceSpec, IndexPackage, ArchiveEntry)> {
-        let sdk = id.kind() == "sdk";
+        let bypass = Self::bypass(id);
         let mut searched = Vec::new();
         let mut problems = Vec::new();
         let mut keyless = false;
         for source in self.sources.list.clone() {
             if self.fetcher(&source).is_none() {
-                problems.push(Self::keys_hint(&source, sdk));
+                problems.push(Self::keys_hint(&source, bypass));
                 keyless = true;
                 continue;
             }
@@ -97,11 +97,9 @@ impl Catalog {
             message.push_str(&problem);
         }
         let file = &self.sources.file;
-        // A keyless source's hint already names SYMDEV_EPOCROOT as the way around it.
-        if sdk && !keyless {
-            message.push_str(&format!(
-                "; set SYMDEV_EPOCROOT to your own SDK, or add a source that has it in {file}"
-            ));
+        // A keyless source's hint already names the way around the sources.
+        if let (Some(way), false) = (bypass, keyless) {
+            message.push_str(&format!("; {way}, or add a source that has it in {file}"));
         } else if self.sources.list.is_empty() {
             message.push_str(&format!("; list one in {file}"));
         }
@@ -115,7 +113,7 @@ impl Catalog {
         let mut problems = Vec::new();
         for source in self.sources.list.clone() {
             if self.fetcher(&source).is_none() {
-                problems.push(Self::keys_hint(&source, false));
+                problems.push(Self::keys_hint(&source, None));
                 continue;
             }
             match self.index(&source) {
@@ -134,17 +132,32 @@ impl Catalog {
     }
 
     /// Why a keyless `s3` source was skipped, and the variables that would let it in;
-    /// for an SDK (`sdk`), also the way around the private source altogether.
-    fn keys_hint(source: &SourceSpec, sdk: bool) -> String {
+    /// with `bypass`, also the way around the private source altogether.
+    fn keys_hint(source: &SourceSpec, bypass: Option<&str>) -> String {
         let (key_id, secret) = S3Keys::variable_names(&source.name);
         let mut hint = format!(
             "source `{}` was skipped because its keys are not set: set {key_id} and {secret}",
             source.name
         );
-        if sdk {
-            hint.push_str(", or set SYMDEV_EPOCROOT to your own SDK");
+        if let Some(way) = bypass {
+            hint.push_str(&format!(", or {way}"));
         }
         hint
+    }
+
+    /// The way around the sources for a package of `id`'s kind, named with every failed
+    /// lookup: the user's own copy, through the variable symdev reads before the packages.
+    fn bypass(id: &PackageId) -> Option<&'static str> {
+        match id.kind() {
+            "sdk" => Some("set SYMDEV_EPOCROOT to your own SDK"),
+            "emulator" => {
+                Some("set SYMDEV_EKA2L1 to your own EKA2L1 with --control and --data-dir")
+            }
+            "firmware" => Some(
+                "set SYMDEV_EKA2L1_DATA to an EKA2L1 data folder that has this firmware installed",
+            ),
+            _ => None,
+        }
     }
 
     /// The sources whose index was refused for its signature since the last call, as

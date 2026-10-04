@@ -2,6 +2,7 @@
 //! a `_LIT16` static and two `unsafe` euser calls. Kept as the regression that shows the
 //! raw path still works and what the safe version in `examples/hello` costs.
 #![no_std]
+#![no_main]
 
 use symbian_runtime::symbian_sys::des::Lit16;
 use symbian_runtime::symbian_sys::euser::{User_After, User_InfoPrint};

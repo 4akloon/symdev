@@ -42,7 +42,7 @@ what it produced, so `symdev package` can be used in scripts.
 |---|---|
 | `SYMDEV_EPOCROOT`, `SYMDEV_GXX`, `SYMDEV_LD`, `SYMDEV_GCC_LIB`, `SYMDEV_GCC_TARGET_LIB` | `build` |
 | `SYMDEV_EPOCROOT` | `package` and `freeze`, only for projects with a `bld.inf` |
-| `SYMDEV_SIGN_PASSWORD` (4+ characters) | `package` |
+| `SYMDEV_SIGN_PASSWORD` (4+ characters) | `package`, only for an encrypted `[signing] key` of the project's own |
 | `SYMDEV_EKA2L1` | `run` |
 | `SYMDEV_ELF2E32` | optional: use an external post-linker instead of the native one |
 

@@ -44,8 +44,9 @@ impl RustSdk {
     pub const TARGET: &'static str = "arm-symbian-e32";
     /// The hello application (`symbian-rs/examples/hello`), the scaffold's `src/main.rs`:
     /// `#![no_std]`, `#[symbian_std::main]` and a `fn main` returning a `Result`
-    /// (experiment 81). No `#![no_main]`: the crate is a `staticlib`, so rustc never
-    /// looks for a `main` of its own.
+    /// (experiment 81), and `#![no_main]`: the crate is a binary cargo links through
+    /// `symdev-ld`, and the attribute keeps `fn main`, which rustc would otherwise take for
+    /// the program's own entry (E0580, experiment 114 §1.1).
     pub const HELLO_MAIN: &'static str =
         include_str!("../../../symbian-rs/examples/hello/src/main.rs");
     /// The import libraries the SDK's own crates and C++ shim need beyond the runtime

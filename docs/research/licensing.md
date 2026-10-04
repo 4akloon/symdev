@@ -20,14 +20,32 @@ link to a third-party copy of:
 
 The SDK and firmware are either user-supplied paths or packages the toolchain manager downloads
 from a source the operator configured with their own credentials — for the owner, a private
-bucket holding the owner's own copies. symdev's built-in public source carries only GPL/MIT
-packages and their corresponding source. Changed by the repository owner on 2026-10-02 with the
-toolchain manager design ([2026-10-02-toolchain-manager-design.md](../superpowers/specs/2026-10-02-toolchain-manager-design.md) §1);
-before that the rule was "never downloaded by this repository".
+bucket holding the owner's own copies. symdev's built-in public source carries only free
+software with its corresponding source: GPL/MIT packages, and a GPL program together with the
+free libraries it bundles (LGPL, BSD, Apache-2.0, MPL-2.0 and the like), never the SDK or
+firmware. Changed by the repository owner on 2026-10-02 with the toolchain manager design
+([2026-10-02-toolchain-manager-design.md](../superpowers/specs/2026-10-02-toolchain-manager-design.md) §1;
+before that the rule was "never downloaded by this repository"), and on 2026-10-03 for the
+emulator package ([2026-10-03-emulator-firmware-packages-design.md](../superpowers/specs/2026-10-03-emulator-firmware-packages-design.md),
+`CLAUDE.md`).
 
 ## EKA2L1
 
 EKA2L1 is GPL-3.0. Invoke it as a **separate process** only. Do not copy EKA2L1 source into this tree.
+
+- **`emulator;<version>` (public bucket).** The fork CI's AppImage of our integration
+  branch, extracted: EKA2L1 (GPL-3.0-or-later) with the Qt (LGPL-3.0) and other free
+  libraries linuxdeploy bundled from Ubuntu. The package carries `share/doc/eka2l1/` (the GPL
+  text, every submodule's licence, `BUNDLED.tsv` with each Ubuntu package's copyright file,
+  `SOURCE.txt`). Its corresponding source is published beside it through `publish
+  --source-code`: the fork commit with every submodule, the recipe, and every bundled
+  Ubuntu source package at the exact version the CI used. symdev still only starts it as
+  a separate process.
+- **`firmware;<firmware>;<n>` (private bucket only).** Nokia's ROM and drive Z in EKA2L1's
+  layout, like the SDK: the owner's own copy, staged on his machine
+  (`recipes/firmware/…/stage.sh`), published with `publish private`, licence
+  `LicenseRef-Nokia-firmware`, which the publisher refuses for the public bucket. Never in
+  git, CI or the public bucket.
 
 ## Legacy tool licenses (Verified)
 

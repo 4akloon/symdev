@@ -40,6 +40,12 @@ pub enum Device {
     NokiaE52,
 }
 
+impl Device {
+    /// Every device symdev supports: what is made once per device (emulator profiles)
+    /// iterates over it.
+    pub const ALL: [Device; 1] = [Device::NokiaE52];
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Platform {
     pub family: String,

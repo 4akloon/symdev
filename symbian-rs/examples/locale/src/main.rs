@@ -17,6 +17,7 @@
 //!
 //! and that the strings are the ones for the language the device reports.
 #![no_std]
+#![no_main]
 
 extern crate alloc;
 
@@ -113,7 +114,7 @@ fn table(report: &mut Report, notes: &mut String) {
 
 #[symbian_std::main]
 fn main() -> Result<i32> {
-    let mut report = Report::new("locale");
+    let mut report = symbian_std::report!("locale");
     let mut notes = String::new();
     // The file session first, as the C++ side has its `RFs` connected before it counts.
     report.checked("the notes directory", fs::create_dir_all(DIR));

@@ -54,21 +54,21 @@ fn package_missing_epocroot_still_packages() {
     assert!(dir.path().join("build/hello.key").is_file());
 }
 
+/// D1 = A: with no `[signing]` pair the generated key is unencrypted, so no
+/// `SYMDEV_SIGN_PASSWORD` is needed (experiment 114 §1.7).
 #[test]
-fn package_missing_sign_password() {
+fn package_without_a_password_signs_with_a_generated_pair() {
     let dir = tempfile::tempdir().unwrap();
     write_toml(&dir, &hello_with_uid3());
     dummy_e32(&dir);
     bin()
         .current_dir(&dir)
+        .env_remove("SYMDEV_SIGN_PASSWORD")
         .arg("package")
         .assert()
-        .failure()
-        .code(1)
-        .stderr(predicate::str::contains(
-            "SYMDEV_SIGN_PASSWORD must be at least 4 characters",
-        ))
-        .stderr(predicate::str::contains("not implemented").not());
+        .success()
+        .stdout(predicate::str::contains("hello.sisx"));
+    assert!(dir.path().join("build/hello.sisx").is_file());
 }
 
 /// gap 11: `symdev build` writes `build/<MMP TARGET>.exe`; packaging must look for that

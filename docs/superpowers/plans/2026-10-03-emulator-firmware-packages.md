@@ -1,0 +1,3836 @@
+# `emulator` and `firmware;rm-469` packages — Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** On a clean machine, `install.sh` → `symdev new --lang rust` → `cargo run` installs
+an EKA2L1 with `--control` and `--data-dir` (`emulator;<V>`, public bucket) and the E52
+firmware (`firmware;rm-469;1`, private bucket) by itself, and shows the app.
+
+**Architecture:** The fork's CI builds the AppImage from our rebuilt integration branch. A
+recipe in `symdev-packages` takes that artifact by its SHA-256, extracts it and adds the
+notices. The corresponding source goes out through the publisher's existing `--source-code`
+archive. The owner stages the firmware from his EKA2L1 data and publishes it privately.
+symdev resolves `SYMDEV_EKA2L1` / `SYMDEV_EKA2L1_DATA` first and the pinned packages
+second. It starts `<package>/usr/bin/eka2l1_qt` directly, and makes an emulator profile
+whose ROM and drive Z are links into the installed firmware package.
+
+**Tech Stack:** Rust 1.98.1 (edition 2024) in `symdev` and in `symdev-packages`
+(`publish`, `pkgtools`); bash recipe drivers; GitHub Actions (the fork's `build.yml`,
+`symdev-packages`' workflows); Docker `ubuntu:24.04` for the CI rehearsal; EKA2L1 (GPL-3.0,
+always a separate process).
+
+**Spec:** `docs/superpowers/specs/2026-10-03-emulator-firmware-packages-design.md`, which
+extends `docs/superpowers/specs/2026-10-03-cargo-build-run-design.md` §5–§6 and the toolchain
+manager spec (`2026-10-02-toolchain-manager-design.md` §2, §4–§6, §12, §15). Every observed
+value below comes from experiment 115 §1 (`docs/research/experiment-backlog.md`, end of
+file). Read the spec and §1 before starting.
+
+## Global Constraints
+
+- `CLAUDE.md` is binding. Library paths return `Result`; no `unwrap`/`expect`/`panic!`
+  outside tests. Every `.rs` file is at most 300 lines, tests included. One type per file.
+  New API is a domain type with methods. Value types never read env, argv or stdout: in
+  symdev that is `Provision` (CLI), in `symdev-packages` the `*Tool` types of `pkgtools`.
+- Gates before any "done", in `~/worktrees/symdev/cargo-run`: `cargo test --workspace
+  --offline`, `cargo clippy --workspace --all-targets --offline` (zero warnings), `cargo fmt
+  --all --check`. In `~/worktrees/symdev-packages/cargo-run`: `cargo test --locked`, `cargo
+  clippy --all-targets --locked` (zero warnings), `cargo fmt --all --check`, and the shell
+  tests under `tests/`. Read a gate's result from a file, never through `| tail`.
+- Commit messages: one full imperative sentence ending with a period, then the attribution
+  trailer the session gives. Stage files by name, never `git add -A`.
+- Branches: symdev `cargo-run` in `~/worktrees/symdev/cargo-run`; symdev-packages
+  `cargo-run` in `~/worktrees/symdev-packages/cargo-run` (base `3fe6a76`, not pushed);
+  EKA2L1 in an own copy `~/src/EKA2L1-wt/emulator-pkg`, branch `symdev`. Implementing agents
+  may push symdev's `cargo-run`, and nothing else.
+- **LEAD ONLY, after the owner's explicit go** (implementing agents prepare up to these and
+  stop): L1 pushing the rebuilt `symdev` branch to `4akloon/EKA2L1`, which starts its CI;
+  L2 publishing `emulator;<V>` to the public bucket; L3 publishing `firmware;rm-469;1` to
+  the private bucket; L4 pushing `symdev-packages`.
+- Firmware, ROM, SDK, `.sis`, `.sisx`, `.cer` and `.key` files never enter git, CI or the
+  public bucket. Staged firmware trees and archives live in `~/src/emu-pkg-scratch/` only.
+- EKA2L1 is GPL-3.0: read it to learn its layout, never copy its code into symdev or
+  `pkgtools`. Never run it without `--data-dir` (even `--help`: that rotates the owner's
+  logs). Run it under the agent lock `flock ~/.local/share/EKA2L1/.symdev-agent.lock`, stop
+  only PIDs you started, with `kill -9`. Never write into `~/.local/share/EKA2L1`.
+- Recurring helpers (recipe builds, CI steps, checks) are Rust: `pkgtools` subcommands, reusing
+  its existing types. `build.sh` / `stage.sh` stay thin bash drivers that fetch, check
+  `sha256sum` and call `pkgtools`. `pkgtools` stays offline (no HTTP).
+- Never invent tool argv: EKA2L1 gets exactly `--data-dir <dir> --control <socket>` (and
+  `--help` for the probe), as experiment 114 observed.
+- Scratch: `~/src/emu-pkg-scratch/`. Each script starts with a comment saying what it does.
+- Keep `docs/research/wip/emulator-packages.md` current: facts, rulings, the exact next
+  step. Commit it after every task, and at least every ~15 minutes.
+- `<V>`, the emulator version, is the UTC commit date of the rebuilt integration head as
+  `yyyy.mm.dd` (Task 1 step 6 computes it and writes it to the notes). Replace `<V>`
+  everywhere below with that value. `<C>` is that head's full SHA-1, and `<c>` its first
+  7 hex digits.
+
+## What experiment 115 §1 changed in the spec
+
+1. **symdev starts `usr/bin/eka2l1_qt`, not `AppRun`.** `AppRun` is a symlink to it, and a
+   process started as `AppRun` has the comm `AppRun`. `device::is_eka2l1` would drop it from
+   the registry. The binary's `RUNPATH $ORIGIN/../lib` and `usr/bin/qt.conf` make the tree
+   self-contained, with no environment needed.
+2. **The fork has never run its CI.** The workflow is `active`, yet there are zero runs and
+   zero artifacts, although branches were pushed. L1 includes checking that a run starts,
+   and dispatching one if none does.
+3. **The corresponding source is much larger than "EKA2L1 + Qt".** The AppImage bundles
+   files from 167 Ubuntu packages, among them FFmpeg, x264 and x265 (GPL-2.0+). 35 of their
+   copyright files are not machine-readable. Decision D1 below.
+4. **The glibc floor is 2.38.** symdev's other packages run from glibc 2.28. Finding F1
+   below; the recipe records the floor and `pkgtools` checks it.
+5. **EKA2L1 writes drive Z at every start** (`avkonfep.dll` → `.bak`, then a copy that fails
+   on Linux). Task 6 observes a read-only firmware package before Task 7 decides between
+   links and copies.
+6. **Today the default `~/.local/share/EKA2L1` is read without `SYMDEV_EKA2L1_DATA`**
+   (`EmulatorData::from_env`). The spec's order makes the variable the only way to the
+   user's data. The default folder is then no longer read, which the acceptance's `bwrap
+   --tmpfs` relies on. Task 7 deletes `from_env`.
+7. **The publisher refuses unknown recipe keys** (`deny_unknown_fields`, and `commit` needs
+   a `tag`). The CI facts therefore live in `artifact.toml` beside `recipe.toml`, read only
+   by `build.sh`. The publisher does not change.
+8. **The fork's artifact will expire** (no `retention-days`; the repository default, at
+   most 90 days). The recipe's hashes are the lasting record; the package in R2 stays.
+
+## Decision D1: what goes out with the public `emulator` package — the owner chose A (2026-10-03)
+
+The spec asks for "the fork commit as a `git archive` including submodules, plus the source
+of the Qt version linuxdeploy bundled", with a licence field of "at least
+`GPL-3.0-or-later` … and `LGPL-3.0-only`". Experiment 115 §1.2 shows the AppImage carries
+more:
+
+- 187 libraries from **167 Ubuntu 24.04 packages**. Qt's multimedia plugin pulls Ubuntu's
+  FFmpeg, which pulls `libx264` and `libx265` (GPL-2.0+), `libzvbi`, `libcodec2` and others.
+  Distributing their binaries obliges us to offer their corresponding source too (GPL-2.0
+  §3, GPL-3.0 §6, LGPL §4/§6), not only Qt's. The exact versions are known only to the
+  runner that built the AppImage.
+- 96 of the 167 copyright files mention a GPL. 35 are not in the machine-readable format,
+  so a complete SPDX expression cannot be computed; it needs a reading.
+- `CLAUDE.md` says the built-in public source carries "only GPL/MIT packages". The bundle
+  is GPL-3.0-compatible as a whole, but its parts are also LGPL, BSD, Apache-2.0, MPL-2.0,
+  ISC and more.
+
+| Option | What it means | Cost |
+|---|---|---|
+| **A (recommended)** | One commit on the integration branch only (not an upstream PR) adds a step to the fork CI's Linux job. The step writes `eka2l1-qt-x64.packages.tsv` into the artifact: for each bundled library and plugin, its Ubuntu package, version, source package and source version. The recipe fetches each source package at that exact version from Launchpad and checks it against its `.dsc`. It packs them with EKA2L1's `git archive` (submodules included) and the recipe directory into the one `--source-code` archive. Licence field: `GPL-3.0-or-later AND LGPL-3.0-only AND LicenseRef-EKA2L1-bundle`. The LicenseRef is `share/doc/eka2l1/BUNDLED.tsv` plus `usr/share/doc/<package>/copyright` in the package. `licensing.md` gets the rule that the public bucket may carry a GPL program together with the free libraries it bundles | The integration branch is "master + our PRs + one CI commit". The source archive is several hundred MB (measured in Task 11) |
+| B | A's process applied to a smaller bundle. The recipe deletes the multimedia (`ffmpeg`, `gstreamer`), `networkinformation` and `tls` plugins, and the libraries only they need, before packing. Task 13 must then show that EKA2L1 still starts, draws and plays sound | Fewer sources, but the package is no longer the CI's artifact. Still needs A's list for Qt, SDL2, ICU, GLib … |
+| C | `emulator;<V>` goes to the **private** bucket for 0.4.0, so there is no public distribution yet. The public package follows once A is done | Contradicts spec §3. Only machines with the private keys get `cargo run` working |
+
+**Recommendation: A.** It is the only option that ships exactly what the CI built and
+meets every source obligation by construction: the build itself records the versions.
+B saves storage but changes the artifact. C postpones the problem.
+
+**Tasks that depend on D1:** Task 2 and Task 11 run only for A (B adds a pruning step to
+Task 10 and keeps Tasks 2 and 11). Task 10's licence field and Task 14's `licensing.md`
+text follow the choice. Everything else is the same for A, B and C. Until the owner
+decides, implement A and stop before L1.
+
+## Finding F1: the emulator needs glibc 2.38 — accepted by the owner for 0.4.0 (2026-10-03)
+
+The AppImage's libraries need `GLIBC_2.38` (Ubuntu 24.04+, Debian 13+, Fedora 39+, RHEL 10).
+symdev itself is static and GCCE needs glibc 2.28. The spec says a newer floor is "a finding
+for the owner, not a silent rebuild". The plan records the floor in `artifact.toml`, and
+`pkgtools emulator-tree` fails when the tree needs any other version. `README.md` states the
+requirement. On an older host, the loader's `GLIBC_2.38 not found` reaches the user through
+`EmulatorInstance::start`'s error, which quotes the emulator's last output lines. The fix
+for older hosts (building on an older base) is a later decision.
+
+## Owner decisions (2026-10-03)
+
+- D1 = A (Tasks 2 and 11 run; licence field and `licensing.md` as in A).
+- CLAUDE.md's public-source rule was changed on `main` (d2e3f57): the public source may carry a GPL
+  program with the free libraries it bundles, with corresponding source. Task 14 aligns `licensing.md`.
+- F1 accepted: glibc 2.38 is the emulator's floor for 0.4.0; README states it.
+- Without `SYMDEV_EKA2L1_DATA`, `~/.local/share/EKA2L1` is no longer read (Task 7 deletes `from_env`).
+
+## Steps reserved for the lead
+
+Each needs the owner's explicit go. Implementing agents stop before them and say so in
+the notes.
+
+- **L1 — LEAD ONLY, after the owner's explicit go** (after Task 15): push `~/src/EKA2L1-wt/emulator-pkg` branch `symdev` to
+  `4akloon/EKA2L1` (`git push --force-with-lease fork symdev`). Check that a `C/C++ CI` run
+  starts for `<C>` (`gh run list -R 4akloon/EKA2L1 --branch symdev`). If none starts within
+  five minutes, enable Actions for the fork in its web UI and run `gh workflow run
+  build.yml -R 4akloon/EKA2L1 --ref symdev`. Wait until the `build-desktop (linux)` job is
+  green, then hand Task 16 its run id.
+- **L2 — LEAD ONLY, after the owner's explicit go** (after Task 16): `emulator;<V>` reaches the public bucket by merging the
+  `symdev-packages` branch into `main`. `.github/workflows/emulator.yml` (Task 12) then
+  publishes it. Check the cross-repository artifact download in the PR run first (Task 12
+  notes why it may need a token).
+- **L3 — LEAD ONLY, after the owner's explicit go** (after Task 16): on the owner's machine, with the publisher keys:
+  `EKA2L1_DATA=~/.local/share/EKA2L1/data bash recipes/firmware/rm-469/1/stage.sh
+  ~/src/emu-pkg-scratch/firmware/tree`, then `cargo run --release -p publish -- private
+  'firmware;rm-469;1' --from ~/src/emu-pkg-scratch/firmware/tree --recipe
+  recipes/firmware/rm-469/1/recipe.toml`.
+- **L4 — LEAD ONLY, after the owner's explicit go**: push `~/worktrees/symdev-packages/cargo-run` and open its PR (this is what L2
+  merges). The branch also carries cargo-run's `recipes/symdev/0.4.0` (commit `3fe6a76`),
+  whose `commit` is still zeros. Merging the whole branch into `main` therefore also starts
+  `symdev.yml`, and its `build.sh` refuses the zeros until `v0.4.0` is tagged. The merge
+  order is the lead's call: tag and fill in 0.4.0 first, or put the emulator and firmware
+  commits on a branch of their own from `main`.
+- After L2 and L3: the real-bucket acceptance (end of this plan).
+
+## Review Focus
+
+These are the five inputs the spec implies and that no task's main tests cover, most likely
+first. Each has its test in the task named.
+
+1. **The user's shell exports `LD_LIBRARY_PATH` or `QT_PLUGIN_PATH`.** The owner's own
+   wrapper does this for his host build. Inherited, these load the host's Qt 6.8 into the
+   bundled Qt 6.4 and the emulator fails at start. Expected: a packaged EKA2L1 starts
+   without the host's library and plugin paths; the user's own (`SYMDEV_EKA2L1`) keeps its
+   whole environment (Task 8, tests `a_packaged_eka2l1_does_not_inherit_the_hosts_library_paths`
+   and `the_users_eka2l1_keeps_its_environment`).
+2. **`SYMDEV_EKA2L1` still names an EKA2L1 without `--control`.** The owner's
+   `~/.local/bin/eka2l1` is one. Expected: the error names the variable and says that
+   unsetting it makes symdev use the `emulator` package (Task 9, test
+   `an_old_symdev_eka2l1_is_named_with_the_way_to_the_package`).
+3. **The firmware package is uninstalled or replaced under an existing profile.** The
+   profile's ROM and Z links then point at nothing. Expected: refused before EKA2L1 starts,
+   naming the profile, the missing path and the install command (Task 7, test
+   `a_profile_whose_package_is_gone_is_refused_before_start`).
+4. **A profile already exists, with no source configured or with `--offline`.** Expected:
+   `symdev devices` and a start use it and install nothing (Task 9, test
+   `an_existing_profile_needs_no_firmware_package`).
+5. **Firmware sits in the default `~/.local/share/EKA2L1` and `SYMDEV_EKA2L1_DATA` is unset.**
+   Expected: that folder is neither read nor written, and the error names
+   `SYMDEV_EKA2L1_DATA` as the way to use it (Task 9, test
+   `the_default_eka2l1_folder_is_not_read_without_symdev_eka2l1_data`).
+
+## File structure
+
+symdev (`~/worktrees/symdev/cargo-run`):
+
+| Path | Responsibility |
+|---|---|
+| `crates/symdev-manifest/src/schema.rs` | `Device::ALL`: every device symdev supports |
+| `crates/symdev-sdk/src/pins.rs` | `Pins::emulator()`, `Pins::firmware(device)` |
+| `crates/symdev-sdk/src/emulator_package.rs` | `EmulatorPackage`: an installed `emulator;…`, its program |
+| `crates/symdev-sdk/src/firmware_package.rs` | `FirmwarePackage`: an installed `firmware;<fw>;…`, its layout |
+| `crates/symdev-sdk/src/catalog.rs` | the "way around a source" hint for `sdk`, `emulator`, `firmware` ids |
+| `crates/symdev-emulator/src/device/firmware.rs` | `Firmware`: the user's EKA2L1 data or a firmware package |
+| `crates/symdev-emulator/src/device/emulator_profile.rs` | `create(&Firmware)`, `check()` |
+| `crates/symdev-emulator/src/device/eka2l1.rs` | `Eka2l1`: the user's EKA2L1 or the package's program, and its environment |
+| `crates/symdev-emulator/src/device/emulator_instance.rs` | start and probe an `Eka2l1` |
+| `crates/symdev-emulator/src/lib.rs`, `results.rs` | `Eka2l1Backend` and `EmulatorData::from_env` deleted |
+| `crates/symdev-cli/src/provision/emulator.rs` | `Provision::eka2l1()`, `Provision::firmwares()` |
+| `crates/symdev-cli/src/devices_cmd.rs`, `run.rs`, `run/device_pick.rs`, `test_cmd.rs`, `main.rs` | pass `&Provision` through |
+| `crates/symdev-cli/tests/emulator_packages.rs` | the CLI against a `file://` source with the two packages |
+| `README.md`, `crates/symdev-emulator/README.md`, `docs/research/licensing.md` | requirements, rules |
+
+symdev-packages (`~/worktrees/symdev-packages/cargo-run`):
+
+| Path | Responsibility |
+|---|---|
+| `pkgtools/src/device_entry.rs` | `DeviceEntry`: one device of an EKA2L1 `devices.yml` |
+| `pkgtools/src/emulator_tree.rs` (+ `emulator_tree/{glibc_version,tool}.rs`) | `EmulatorTree`: the extracted AppImage's layout and glibc floor; `GlibcVersion`; `EmulatorTreeTool` |
+| `pkgtools/src/emulator_notices.rs` (+ `emulator_notices/{submodules,bundled_list}.rs`) | `EmulatorNotices`: `share/doc/eka2l1/` from the source tree and the package list; `Submodules`; `BundledList` |
+| `pkgtools/src/dsc.rs` | `Dsc`: a Debian source control file's files and SHA-256s (D1 = A) |
+| `recipes/firmware/rm-469/1/{recipe.toml,stage.sh}` | the private firmware package |
+| `recipes/emulator/<V>/{recipe.toml,artifact.toml,build.sh,source.sh}` | the public emulator package |
+| `.github/workflows/emulator.yml` | PR: build and dry-run; `main`: publish |
+| `tests/firmware-stage.test`, `tests/emulator-build.test` | the drivers against fake inputs |
+
+EKA2L1 (outside git of symdev): `~/src/EKA2L1-wt/emulator-pkg` (branch `symdev`), notes
+`~/src/EKA2L1-wt/emulator-pkg.NOTES.md`, host build `~/src/EKA2L1-wt-build/emulator-pkg`.
+
+---
+
+## Phase A — everything before the fork's CI runs
+
+### Task 1: The integration branch, rebuilt on upstream `master` with our 11 PRs
+
+**Files:**
+- Outside git: `~/src/EKA2L1-wt/emulator-pkg` (a copy of the integration clone, branch
+  `symdev` rebuilt), `~/src/EKA2L1-wt/emulator-pkg.NOTES.md`, host build
+  `~/src/EKA2L1-wt-build/emulator-pkg`, wrapper `~/src/emu-pkg-scratch/bin/eka2l1-emupkg`
+- Modify: `docs/research/wip/emulator-packages.md` (heads, conflicts, `<V>`, `<C>`)
+
+**Interfaces:**
+- Consumes: the PR heads of experiment 115 §1.1.
+- Produces: local branch `symdev` at `<C>` = upstream `master` + the 11 PR merges; `<V>`;
+  an EKA2L1 host build with `--data-dir` and `--control` for quick checks.
+
+- [x] **Step 1: Make the copy and fetch** (the `eka2l1-host` skill applies; the clone is
+  shallow, so deepen if a merge finds no base)
+
+```bash
+cp -a --reflink=auto ~/src/EKA2L1-wt/integration ~/src/EKA2L1-wt/emulator-pkg
+cd ~/src/EKA2L1-wt/emulator-pkg
+git fetch origin master
+git fetch fork fix/command-list-overflow fix/cli-install-then-run \
+  fix/property-cancel-during-wipeout fix/applist-no-localisable-rsc dev/data-dir \
+  dev/anim-window-lifetime dev/applist-reload dev/applist-lock dev/control-server \
+  dev/control-input dev/control-events
+gh pr list -R EKA2L1/EKA2L1 --author 4akloon --state open --json number,headRefName,headRefOid
+```
+
+Write the PR list and each fetched head into `emulator-pkg.NOTES.md`. A head that differs
+from experiment 115 §1.1 is used as fetched (the PR moved); note the old and new SHA. A PR
+merged upstream since is left out. A new open PR of ours is not added: stop and ask the
+lead (the spec names eleven).
+
+- [x] **Step 2: Rebuild the branch**
+
+```bash
+git branch symdev-d07d5ac symdev          # the old integration head, kept for reference
+git checkout -B symdev origin/master
+for b in fix/command-list-overflow fix/cli-install-then-run fix/property-cancel-during-wipeout \
+         fix/applist-no-localisable-rsc dev/data-dir dev/anim-window-lifetime \
+         dev/applist-reload dev/applist-lock dev/control-events; do
+  git merge --no-ff --no-edit -m "Merge $b ($(git rev-parse --short fork/$b)) into symdev." "fork/$b" || break
+done
+git submodule update --init --recursive
+```
+
+`dev/control-events` carries `dev/control-server` and `dev/control-input`. Check with
+`git merge-base --is-ancestor fork/dev/control-server fork/dev/control-events`. On a
+conflict the loop stops. Resolve it by keeping both sides' behaviour; the known one is the
+option lists in `src/emu/qt/src/thread.cpp` and `src/emu/qt/include/qt/cmdhandler.h`, where
+both options stay. Then `git commit --no-edit` and rerun the loop from the next branch.
+Record every conflict, file and resolution in the NOTES. If git says "refusing to merge
+unrelated histories", run `git fetch --deepen=1000 origin master` and the PR branches, then
+start the step again.
+
+- [x] **Step 3: Build and test on this host**
+
+`~/src/EKA2L1-wt-build/emulator-pkg/build.sh` is `~/src/EKA2L1-wt-build/cargo-run/build.sh`
+with `cargo-run` replaced by `emulator-pkg` everywhere (`sed s/cargo-run/emulator-pkg/g`) and
+`ekatests` added to its `ninja` targets. It configures once (the same cache options as the
+integration build, `-DEKA2L1_BUILD_TESTS=ON`), builds, restores `src/emu/qt/translations`
+and appends `EXIT=<rc>` to its `build.log`. Then:
+
+```bash
+mkdir -p ~/src/EKA2L1-wt-build/emulator-pkg/tmp
+bash ~/src/EKA2L1-wt-build/emulator-pkg/build.sh; tail -1 ~/src/EKA2L1-wt-build/emulator-pkg/build.log
+(cd ~/src/EKA2L1-wt-build/emulator-pkg/src/tests && ./ekatests) > ~/src/emu-pkg-scratch/ekatests.log 2>&1
+tail -2 ~/src/emu-pkg-scratch/ekatests.log
+```
+
+Expected: `EXIT=0`, and `ekatests.log` ends with `All tests passed`. A
+failure that the merges caused is fixed on the branch as its own merge-fix commit, with the
+reason in the NOTES. A failure that `origin/master` alone also shows is recorded and left
+alone.
+
+- [x] **Step 4: Check both options**
+
+`~/src/emu-pkg-scratch/bin/eka2l1-emupkg` is `~/src/cargo-run-scratch/bin/eka2l1-symdev`
+with its `exec` line pointing at `~/src/EKA2L1-wt-build/emulator-pkg/bin/eka2l1_qt`. Under
+the agent lock, with a scratch home (help never exits, and without `--data-dir` it rotates
+the owner's logs):
+
+```bash
+H=~/src/emu-pkg-scratch/help; rm -rf $H; mkdir -p $H
+flock ~/.local/share/EKA2L1/.symdev-agent.lock env HOME=$H XDG_DATA_HOME=$H/share \
+  XDG_CONFIG_HOME=$H/config XDG_CACHE_HOME=$H/cache XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority} \
+  timeout -s KILL 15 ~/src/emu-pkg-scratch/bin/eka2l1-emupkg --data-dir $H/data --help > $H/help.txt 2>&1
+grep -E -- '^ *--(control|data-dir)' $H/help.txt
+```
+
+Expected: two lines, one for `--control` and one for `--data-dir`.
+
+- [x] **Step 5: Do not push**
+
+The push is L1. Leave `fork/symdev` as it is.
+
+- [x] **Step 6: Record `<C>` and `<V>`**
+
+```bash
+cd ~/src/EKA2L1-wt/emulator-pkg
+git rev-parse symdev                                                   # <C>
+TZ=UTC git log -1 --format=%cd --date=format-local:%Y.%m.%d symdev     # <V>
+```
+
+Write both into the NOTES and into `docs/research/wip/emulator-packages.md`. Commit the
+wip file: `Record the rebuilt EKA2L1 integration branch and the emulator version it gives.`
+
+### Task 2: (D1 = A) The fork CI lists the Ubuntu packages its AppImage bundles
+
+**Files:**
+- Modify (EKA2L1 copy, branch `symdev`): `.github/workflows/build.yml`
+
+**Interfaces:**
+- Produces: the Linux artifact `eka2l1-<c>-linux` holds `eka2l1-qt-x64.AppImage` and
+  `eka2l1-qt-x64.packages.tsv`. Each line of the TSV is `<binary package>\t<version>\t<source
+  package>\t<source version>`, sorted, one per package that owns a file under
+  `usr/lib` or `usr/plugins` of the AppDir.
+
+- [x] **Step 1: Add the step after "Generate AppImage"**
+
+```yaml
+    # symdev integration branch only, not an upstream change: the Ubuntu packages whose
+    # files linuxdeploy put into the AppImage, with their source packages, so that their
+    # corresponding source can be published with it. A bundled file that belongs to no
+    # package fails the job.
+    - name: List the packages the AppImage bundles
+      if: matrix.label == 'linux'
+      shell: bash
+      run: |
+        cd build/eka2l1.AppDir/usr
+        find lib plugins -type f -name '*.so*' -printf '%f\n' | sort -u > ../../bundled-files.txt
+        : > ../../bundled-owners.txt
+        while read -r name; do
+          owner=$(dpkg -S "*/$name" 2>/dev/null | awk -F': ' 'NR == 1 { print $1 }') || true
+          if [ -z "$owner" ]; then echo "::error::$name belongs to no package"; exit 1; fi
+          echo "$owner" >> ../../bundled-owners.txt
+        done < ../../bundled-files.txt
+        sort -u ../../bundled-owners.txt | xargs dpkg-query -W \
+          -f '${binary:Package}\t${Version}\t${source:Package}\t${source:Version}\n' \
+          | sort > ../../eka2l1-qt-x64.packages.tsv
+        wc -l ../../eka2l1-qt-x64.packages.tsv
+```
+
+And the Linux upload takes both files (the artifact's root is their common folder `build/`):
+
+```yaml
+    - uses: actions/upload-artifact@v7
+      with:
+        name: eka2l1-${{ steps.git_short_sha.outputs.value }}-${{ matrix.label }}
+        path: |
+          build/eka2l1-qt-x64.AppImage
+          build/eka2l1-qt-x64.packages.tsv
+      if: matrix.label == 'linux'
+```
+
+- [x] **Step 2: Check the YAML and commit on `symdev`**
+
+```bash
+cd ~/src/EKA2L1-wt/emulator-pkg
+python3 -c 'import yaml; yaml.safe_load(open(".github/workflows/build.yml")); print("ok")'
+git add .github/workflows/build.yml
+git commit -m "ci: List the Ubuntu packages the Linux AppImage bundles (symdev integration only)."
+```
+
+Expected: `ok`. Task 3 runs the step for real.
+
+- [x] **Step 3: Record the new `<C>` and `<V>`** with Task 1 step 6's two commands (the head
+  moved). Commit the wip file.
+
+### Task 3: The fork CI's Linux job, rehearsed in `ubuntu:24.04`
+
+The push (L1) makes a public CI run. A rehearsal finds build failures first: our PRs were
+built against Qt 6.8.3, and the CI uses Ubuntu's 6.4.2. It also gives Tasks 6–15 an
+AppImage with `--control` before any push.
+
+**Files:**
+- Outside git: `~/src/emu-pkg-scratch/rehearsal/{run.sh,run.log,out/}`
+- Modify: `docs/research/experiment-backlog.md` (experiment 115 §2: the rehearsal)
+
+**Interfaces:**
+- Consumes: branch `symdev` at `<C>` (Tasks 1–2).
+- Produces: `~/src/emu-pkg-scratch/rehearsal/out/eka2l1-qt-x64.AppImage`, its
+  `.packages.tsv` (D1 = A) and `SHA256SUMS`. Tasks 10–15 call this "the rehearsal AppImage".
+
+- [x] **Step 1: Write `run.sh`**
+
+```bash
+#!/usr/bin/env bash
+# run.sh — rehearse build.yml's build-desktop (linux) job on the symdev branch in ubuntu:24.04:
+# the job's apt list, cmake flags, build, ctest, generate_appimage.sh and (D1 = A) the
+# package list. The extra apt packages are what the GitHub runner image has preinstalled.
+set -euo pipefail
+R=~/src/emu-pkg-scratch/rehearsal
+rm -rf "$R/src" "$R/out"; mkdir -p "$R/out"
+git clone --quiet --branch symdev ~/src/EKA2L1-wt/emulator-pkg "$R/src"
+git -C "$R/src" submodule update --init --recursive --quiet
+cp "$R/package-list.sh" "$R/src/.github/rehearse-package-list.sh"
+docker run --rm -v "$R/src:/src" -w /src -e DEBIAN_FRONTEND=noninteractive \
+  -e APPIMAGE_EXTRACT_AND_RUN=1 -e QMAKE=/usr/bin/qmake6 ubuntu:24.04 bash -euo pipefail -c '
+  apt-get update
+  apt-get -y install ccache libgtk-3-dev libpulse-dev libasound2-dev libsdl2-dev pulseaudio \
+    qt6-base-dev qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools \
+    libqt6svg6-dev qt6-multimedia-dev \
+    build-essential cmake ninja-build git wget curl file python3 pkg-config ca-certificates
+  cmake -B build -DCI=ON -DEKA2L1_ENABLE_UNEXPECTED_EXCEPTION_HANDLER=ON -DEKA2L1_NO_TERMINAL=ON \
+    -DEKA2L1_ENABLE_DISCORD_RICH_PRESENCE=ON -DCMAKE_BUILD_TYPE=Release
+  cmake --build build --config Release --parallel 16 --target eka2l1_qt ekatests
+  ctest --test-dir build -C Release --output-on-failure
+  chmod u+x scripts/generate_appimage.sh && ./scripts/generate_appimage.sh
+  bash .github/rehearse-package-list.sh
+  chown -R '"$(id -u):$(id -g)"' /src'
+cp "$R/src/build/eka2l1-qt-x64.AppImage" "$R/src/build/eka2l1-qt-x64.packages.tsv" "$R/out/"
+(cd "$R/out" && sha256sum eka2l1-qt-x64.AppImage eka2l1-qt-x64.packages.tsv > SHA256SUMS)
+```
+
+`$R/package-list.sh` is the `run:` block of Task 2's step with `set -euo pipefail` on top
+(the clone's `build.yml` has it as YAML; the container runs it as a script). Without
+D1 = A, drop the two `rehearse-package-list` lines and the `.packages.tsv` from the copies.
+
+- [x] **Step 2: Run it in the background and wait for the end**
+
+```bash
+bash ~/src/emu-pkg-scratch/rehearsal/run.sh > ~/src/emu-pkg-scratch/rehearsal/run.log 2>&1; echo "EXIT=$?" >> ~/src/emu-pkg-scratch/rehearsal/run.log
+```
+
+Expected: `EXIT=0`. On a missing build tool (cmake or FFmpeg's configure names it), add the
+Ubuntu package to the second apt line: it is in the runner image too, not a workflow
+change. Record each added package. On a compile error in our code against Qt 6.4.2, fix it
+on the PR branch it comes from, in the fork's PR copy (`~/src/EKA2L1-wt/<topic>`, the
+`eka2l1-host` skill), and repeat Task 1 from step 2. That PR then needs a push, which the
+lead does with L1; record it in the NOTES.
+
+- [x] **Step 3: Look at what it made** (experiment 115 §2)
+
+```bash
+cd ~/src/emu-pkg-scratch/rehearsal && rm -rf x && mkdir x && cd x
+../out/eka2l1-qt-x64.AppImage --appimage-extract > /dev/null
+ls -la squashfs-root; readlink squashfs-root/AppRun; cat squashfs-root/usr/bin/qt.conf
+objdump -p squashfs-root/usr/bin/eka2l1_qt | grep RUNPATH
+find squashfs-root -type f -exec sh -c 'objdump -T "$1" 2>/dev/null' _ {} \; \
+  | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+du -sh squashfs-root; wc -l ../out/eka2l1-qt-x64.packages.tsv
+```
+
+`--appimage-extract` runs only the AppImage runtime, which unpacks the tree; EKA2L1 does
+not start. Expected, as in §1.2: `AppRun -> usr/bin/eka2l1_qt`, `Plugins = plugins`,
+`RUNPATH $ORIGIN/../lib`, and the floor `GLIBC_2.38`. Record all of it, with `run.log`'s
+build time and the added packages, as experiment 115 §2. A difference from §1.2 (an
+`apprun-hooks/` directory, another floor) is recorded and reported to the lead before
+Task 8: it changes how symdev starts the program.
+
+- [x] **Step 4: Commit** `docs/research/experiment-backlog.md` and the wip file:
+  `Record experiment 115 §2: the fork CI's Linux job rehearsed on the rebuilt branch.`
+
+### Task 4: The two pins, the two package layouts, and the way around the sources
+
+**Files:**
+- Modify: `crates/symdev-manifest/src/schema.rs` (`Device::ALL`)
+- Modify: `crates/symdev-sdk/src/pins.rs` (`emulator`, `firmware`, tests)
+- Create: `crates/symdev-sdk/src/emulator_package.rs`, `crates/symdev-sdk/src/firmware_package.rs`
+- Modify: `crates/symdev-sdk/src/lib.rs` (modules and re-exports)
+- Modify: `crates/symdev-sdk/src/catalog.rs` (`bypass` replaces the `sdk: bool`)
+- Create: `crates/symdev-sdk/src/manager/tests/bypass.rs`; Modify: `crates/symdev-sdk/src/manager/tests.rs` (`mod bypass;`)
+
+**Interfaces:**
+- Produces:
+  - `Device::ALL: [Device; 1]`.
+  - `Pins::emulator() -> PackageId` (`emulator;<V>`), `Pins::firmware(Device) -> PackageId`
+    (`firmware;rm-469;1` for `NokiaE52`).
+  - `EmulatorPackage::at(root: PathBuf, id: &PackageId) -> Result<EmulatorPackage>`,
+    `EmulatorPackage::PROGRAM = "usr/bin/eka2l1_qt"`, `.program() -> PathBuf`.
+  - `FirmwarePackage::at(root: PathBuf, id: &PackageId) -> Result<FirmwarePackage>`,
+    `.root() -> &Path`, `.name() -> &str` (the id's second segment, `rm-469`).
+  - A lookup failure for an `emulator` id names `SYMDEV_EKA2L1`, for a `firmware` id
+    `SYMDEV_EKA2L1_DATA`, as an `sdk` id names `SYMDEV_EPOCROOT` today.
+
+- [x] **Step 1: Write the failing tests**
+
+In `pins.rs`'s test module (keep the existing ones; add `Pins::emulator()` and
+`Pins::firmware(Device::NokiaE52)` to `every_pin_is_a_valid_id`'s array):
+
+```rust
+    #[test]
+    fn the_e52_runs_on_the_rm_469_firmware() {
+        assert_eq!(
+            Pins::firmware(Device::NokiaE52),
+            PackageId::parse("firmware;rm-469;1").unwrap()
+        );
+    }
+
+    #[test]
+    fn the_emulator_is_pinned_to_a_dated_build() {
+        let id = Pins::emulator();
+        let segments: Vec<&str> = id.segments().collect();
+        assert_eq!(segments.len(), 2, "{id}");
+        assert_eq!(segments[0], "emulator");
+        let date: Vec<&str> = segments[1].split('.').collect();
+        let widths: Vec<usize> = date.iter().map(|part| part.len()).collect();
+        assert_eq!(widths, [4, 2, 2], "{id}");
+        assert!(date.iter().all(|p| p.chars().all(|c| c.is_ascii_digit())), "{id}");
+    }
+
+    #[test]
+    fn every_device_has_a_firmware() {
+        for device in Device::ALL {
+            assert_eq!(Pins::firmware(device).kind(), "firmware");
+        }
+    }
+```
+
+`crates/symdev-sdk/src/emulator_package.rs` and `firmware_package.rs` start as these test
+modules only; declare `mod emulator_package;` and `mod firmware_package;` in `lib.rs` now
+so that they compile. The first gets a test module like `platform_sdk.rs`'s:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::EmulatorPackage;
+    use crate::PackageId;
+
+    fn id(s: &str) -> PackageId {
+        PackageId::parse(s).unwrap()
+    }
+
+    #[test]
+    fn the_program_is_the_binary_apprun_links_to() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(tmp.path().join("usr/bin")).unwrap();
+        fs::write(tmp.path().join("usr/bin/eka2l1_qt"), b"").unwrap();
+        let p = EmulatorPackage::at(tmp.path().to_path_buf(), &id("emulator;2026.10.04")).unwrap();
+        assert_eq!(p.program(), tmp.path().join("usr/bin/eka2l1_qt"));
+    }
+
+    #[test]
+    fn a_missing_program_is_named_with_the_reinstall_command() {
+        let tmp = tempfile::tempdir().unwrap();
+        let e = EmulatorPackage::at(tmp.path().to_path_buf(), &id("emulator;2026.10.04"))
+            .unwrap_err()
+            .to_string();
+        assert!(e.starts_with(&tmp.path().join("usr/bin/eka2l1_qt").display().to_string()), "{e}");
+        assert!(e.contains("symdev sdk uninstall 'emulator;2026.10.04' && symdev sdk install 'emulator;2026.10.04'"), "{e}");
+    }
+
+    #[test]
+    fn refuses_an_id_that_is_not_an_emulator() {
+        let tmp = tempfile::tempdir().unwrap();
+        let e = EmulatorPackage::at(tmp.path().to_path_buf(), &id("gcce;12.1.0")).unwrap_err();
+        assert!(e.to_string().contains("gcce;12.1.0"), "{e}");
+    }
+}
+```
+
+`crates/symdev-sdk/src/firmware_package.rs`:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::FirmwarePackage;
+    use crate::PackageId;
+
+    fn id(s: &str) -> PackageId {
+        PackageId::parse(s).unwrap()
+    }
+
+    fn tree(root: &std::path::Path) {
+        fs::create_dir_all(root.join("roms/rm-469")).unwrap();
+        fs::create_dir_all(root.join("drives/z/rm-469")).unwrap();
+        fs::write(root.join("device.yml"), "RM-469:\n  firmcode: RM-469\n").unwrap();
+    }
+
+    #[test]
+    fn the_firmware_is_named_by_the_ids_second_segment() {
+        let tmp = tempfile::tempdir().unwrap();
+        tree(tmp.path());
+        let f = FirmwarePackage::at(tmp.path().to_path_buf(), &id("firmware;rm-469;1")).unwrap();
+        assert_eq!(f.name(), "rm-469");
+        assert_eq!(f.root(), tmp.path());
+    }
+
+    #[test]
+    fn each_missing_part_is_named_with_the_reinstall_command() {
+        for part in ["device.yml", "roms/rm-469", "drives/z/rm-469"] {
+            let tmp = tempfile::tempdir().unwrap();
+            tree(tmp.path());
+            let gone = tmp.path().join(part);
+            if gone.is_dir() { fs::remove_dir_all(&gone).unwrap() } else { fs::remove_file(&gone).unwrap() }
+            let e = FirmwarePackage::at(tmp.path().to_path_buf(), &id("firmware;rm-469;1"))
+                .unwrap_err()
+                .to_string();
+            assert!(e.starts_with(&gone.display().to_string()), "{part}: {e}");
+            assert!(e.contains("symdev sdk install 'firmware;rm-469;1'"), "{part}: {e}");
+        }
+    }
+
+    #[test]
+    fn refuses_an_id_that_is_not_a_firmware_of_three_segments() {
+        let tmp = tempfile::tempdir().unwrap();
+        tree(tmp.path());
+        for bad in ["sdk;s60-3rd-fp2;1.1", "firmware;1", "firmware;rm-469;1;x"] {
+            let e = FirmwarePackage::at(tmp.path().to_path_buf(), &id(bad)).unwrap_err();
+            assert!(e.to_string().contains("firmware;<firmware>;<n>"), "{bad}: {e}");
+        }
+    }
+}
+```
+
+`crates/symdev-sdk/src/manager/tests/bypass.rs` (and `mod bypass;` in `manager/tests.rs`):
+
+```rust
+//! The way around the sources that a failed lookup names, per kind of package.
+
+use super::repo::Repo;
+use super::{id, keyless_private, manager};
+use crate::Host;
+
+#[test]
+fn an_emulator_found_nowhere_names_symdev_eka2l1_and_sources_toml() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut repo = Repo::new(tmp.path().join("repo"));
+    repo.add("gcce;12.1.0", Host::X86_64Linux, &[]);
+    let mut progress = Vec::new();
+    let e = manager(&tmp, vec![repo.source("public")], false, &mut progress)
+        .ensure(&[id("emulator;2026.10.04")])
+        .unwrap_err()
+        .to_string();
+    assert_eq!(
+        e,
+        "emulator;2026.10.04 was not found in the sources searched: `public`; set \
+         SYMDEV_EKA2L1 to your own EKA2L1 with --control and --data-dir, or add a source \
+         that has it in /config/symdev/sources.toml"
+    );
+}
+
+#[test]
+fn a_firmware_behind_a_keyless_private_source_names_the_keys_and_symdev_eka2l1_data() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = Repo::new(tmp.path().join("repo"));
+    repo.write_index();
+    let sources = vec![repo.source("public"), keyless_private()];
+    let mut progress = Vec::new();
+    let e = manager(&tmp, sources, false, &mut progress)
+        .ensure(&[id("firmware;rm-469;1")])
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID"), "{e}");
+    assert!(
+        e.contains("or set SYMDEV_EKA2L1_DATA to an EKA2L1 data folder that has this firmware installed"),
+        "{e}"
+    );
+    assert_eq!(e.matches("SYMDEV_EKA2L1_DATA").count(), 1, "{e}");
+}
+
+#[test]
+fn a_gcce_found_nowhere_names_no_variable() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = Repo::new(tmp.path().join("repo"));
+    repo.write_index();
+    let mut progress = Vec::new();
+    let e = manager(&tmp, vec![repo.source("public")], false, &mut progress)
+        .ensure(&[id("gcce;99.0")])
+        .unwrap_err()
+        .to_string();
+    assert!(!e.contains("SYMDEV_"), "{e}");
+}
+```
+
+`Repo::new` writes no index; `write_index()` writes the empty one, so the source is
+searched rather than reported unreadable.
+
+- [x] **Step 2: Run them and see them fail**
+
+```bash
+cargo test -p symdev-sdk --offline -- pins:: emulator_package firmware_package bypass > /tmp/t4.log 2>&1; grep -E "^error|test result" /tmp/t4.log
+```
+
+Expected: compile errors (`no function or associated item named emulator`,
+`unresolved import super::EmulatorPackage`, `no associated item named ALL`). libtest takes several
+filters after `--` and runs what matches any of them.
+
+- [x] **Step 3: Implement**
+
+`crates/symdev-manifest/src/schema.rs`, below `enum Device`:
+
+```rust
+impl Device {
+    /// Every device symdev supports: what is made once per device (emulator profiles)
+    /// iterates over it.
+    pub const ALL: [Device; 1] = [Device::NokiaE52];
+}
+```
+
+`crates/symdev-sdk/src/pins.rs`, inside `impl Pins` (`<V>` from Task 1):
+
+```rust
+    /// The EKA2L1 `cargo run` starts when `SYMDEV_EKA2L1` is not set: the fork CI's build of
+    /// the integration branch this release was tested with (emulator packages spec §3).
+    pub fn emulator() -> PackageId {
+        PackageId::pinned("emulator;<V>")
+    }
+
+    /// The firmware an emulator profile of `device` is made from when `SYMDEV_EKA2L1_DATA`
+    /// is not set (emulator packages spec §4). Only a private source has it.
+    pub fn firmware(device: Device) -> PackageId {
+        match device {
+            Device::NokiaE52 => PackageId::pinned("firmware;rm-469;1"),
+        }
+    }
+```
+
+`crates/symdev-sdk/src/emulator_package.rs` (above its tests):
+
+```rust
+use std::path::PathBuf;
+
+use crate::{PackageId, Result, SdkError};
+
+/// An installed `emulator;<version>` package: the tree of the fork CI's EKA2L1 AppImage,
+/// extracted (emulator packages spec §3). symdev starts [`Self::PROGRAM`] itself: `AppRun`
+/// is only a link to it, and a process started through the link is named `AppRun`, which
+/// the device registry does not take for an EKA2L1 (experiment 115 §1.2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EmulatorPackage {
+    root: PathBuf,
+}
+
+impl EmulatorPackage {
+    /// The program, relative to the package root. Its `RUNPATH` and `qt.conf` find the
+    /// bundled libraries and Qt plugins without any environment.
+    pub const PROGRAM: &'static str = "usr/bin/eka2l1_qt";
+
+    /// The installed package of `id` (`emulator;…`); checks that the program is there.
+    pub fn at(root: PathBuf, id: &PackageId) -> Result<EmulatorPackage> {
+        if id.kind() != "emulator" {
+            return Err(SdkError::Other(format!(
+                "{id} is not an emulator package id (`emulator;<version>`)"
+            )));
+        }
+        let program = root.join(Self::PROGRAM);
+        if !program.is_file() {
+            return Err(SdkError::Other(format!(
+                "{} is missing from installed {id}; run `symdev sdk uninstall {word} && symdev \
+                 sdk install {word}`",
+                program.display(),
+                word = id.shell_word()
+            )));
+        }
+        Ok(EmulatorPackage { root })
+    }
+
+    pub fn program(&self) -> PathBuf {
+        self.root.join(Self::PROGRAM)
+    }
+}
+```
+
+`crates/symdev-sdk/src/firmware_package.rs` (above its tests):
+
+```rust
+use std::path::{Path, PathBuf};
+
+use crate::{PackageId, Result, SdkError};
+
+/// An installed `firmware;<firmware>;<n>` package (emulator packages spec §4): one
+/// firmware in EKA2L1's data layout, `roms/<firmware>/` and `drives/z/<firmware>/`, and
+/// that device's entry of EKA2L1's `devices.yml` as `device.yml`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FirmwarePackage {
+    root: PathBuf,
+    name: String,
+}
+
+impl FirmwarePackage {
+    /// The installed package of `id`; checks the three parts.
+    pub fn at(root: PathBuf, id: &PackageId) -> Result<FirmwarePackage> {
+        let segments: Vec<&str> = id.segments().collect();
+        let ["firmware", name, _] = segments[..] else {
+            return Err(SdkError::Other(format!(
+                "{id} is not a firmware package id (`firmware;<firmware>;<n>`)"
+            )));
+        };
+        for part in ["device.yml".to_string(), format!("roms/{name}"), format!("drives/z/{name}")] {
+            let path = root.join(&part);
+            if !path.exists() {
+                return Err(SdkError::Other(format!(
+                    "{} is missing from installed {id}; run `symdev sdk uninstall {word} && \
+                     symdev sdk install {word}`",
+                    path.display(),
+                    word = id.shell_word()
+                )));
+            }
+        }
+        Ok(FirmwarePackage {
+            root,
+            name: name.to_string(),
+        })
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// The firmware's folder name in EKA2L1's data (`rm-469`).
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
+```
+
+`lib.rs`: `pub use emulator_package::EmulatorPackage;` and `pub use
+firmware_package::FirmwarePackage;`, in the alphabetical places of the existing list.
+
+`catalog.rs`: replace `let sdk = id.kind() == "sdk";` with `let bypass = Self::bypass(id);`.
+`keys_hint` takes `bypass: Option<&str>` and appends `", or {way}"`. The final hint becomes
+`if let (Some(way), false) = (bypass, keyless) { message.push_str(&format!("; {way}, or add
+a source that has it in {file}")); } else if …`. `all()` passes `None`. And:
+
+```rust
+    /// The way around the sources for a package of `id`'s kind, named with every failed
+    /// lookup: the user's own copy, through the variable symdev reads before the packages.
+    fn bypass(id: &PackageId) -> Option<&'static str> {
+        match id.kind() {
+            "sdk" => Some("set SYMDEV_EPOCROOT to your own SDK"),
+            "emulator" => Some("set SYMDEV_EKA2L1 to your own EKA2L1 with --control and --data-dir"),
+            "firmware" => Some(
+                "set SYMDEV_EKA2L1_DATA to an EKA2L1 data folder that has this firmware installed",
+            ),
+            _ => None,
+        }
+    }
+```
+
+The `sdk` wording is unchanged, so `manager/tests/lookup.rs` passes as it is.
+
+- [x] **Step 4: Run the tests and the gates**
+
+```bash
+cargo test --workspace --offline > /tmp/t4-all.log 2>&1; grep -cE "^test result: ok" /tmp/t4-all.log; grep -E "FAILED|^error" /tmp/t4-all.log
+cargo clippy --workspace --all-targets --offline > /tmp/t4-clippy.log 2>&1; grep -cE "^(warning|error)" /tmp/t4-clippy.log
+cargo fmt --all --check
+```
+
+Expected: no `FAILED` or `error` line, clippy count `0`, fmt silent. `Pins::emulator` and the
+two package types are not yet used outside tests. A `dead_code` warning cannot appear on a
+`pub` item of a library crate; if one does, the item was made private by mistake.
+
+- [x] **Step 5: Commit**
+
+```bash
+git add crates/symdev-manifest/src/schema.rs crates/symdev-sdk/src/pins.rs \
+  crates/symdev-sdk/src/emulator_package.rs crates/symdev-sdk/src/firmware_package.rs \
+  crates/symdev-sdk/src/lib.rs crates/symdev-sdk/src/catalog.rs \
+  crates/symdev-sdk/src/manager/tests.rs crates/symdev-sdk/src/manager/tests/bypass.rs
+git commit -m "Pin the emulator and the E52 firmware, read their package layouts, and name SYMDEV_EKA2L1 or SYMDEV_EKA2L1_DATA when no source has them."
+```
+
+### Task 5: The private firmware recipe and `pkgtools device-entry`
+
+All in `~/worktrees/symdev-packages/cargo-run`. The staged tree and the archive live in
+`~/src/emu-pkg-scratch/firmware/`, never in the worktree.
+
+**Files:**
+- Create: `pkgtools/src/device_entry.rs` (`DeviceEntry`, with its tests)
+- Modify: `pkgtools/src/main.rs` (subcommand `device-entry`)
+- Create: `recipes/firmware/rm-469/1/recipe.toml`, `recipes/firmware/rm-469/1/stage.sh`
+- Create: `tests/firmware-stage.test`; Modify: `.github/workflows/tests.yml` (run it)
+
+**Interfaces:**
+- Produces: `pkgtools device-entry <devices.yml> <firmcode>` prints that device's entry
+  (its key line and indented lines) and exits 0; 1 with `error: …` otherwise.
+  `stage.sh <out>` makes `<out>/{device.yml,roms/rm-469/,drives/z/rm-469/}`. The recipe pins
+  the archive's SHA-256.
+
+- [x] **Step 1: Write the failing tests** in `pkgtools/src/device_entry.rs`
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::DeviceEntry;
+
+    const TWO: &str = "RM-469:\n  platver: epoc93fp2\n  manufacturer: Nokia\n  firmcode: RM-469\n  model: N00\n  machine-uid: 0\n  isolated-drives: false\nRM-356:\n  platver: epoc94\n  firmcode: RM-356\n";
+
+    #[test]
+    fn takes_one_device_with_its_indented_lines() {
+        let e = DeviceEntry::find(TWO, "RM-469").unwrap();
+        assert_eq!(
+            e.text(),
+            "RM-469:\n  platver: epoc93fp2\n  manufacturer: Nokia\n  firmcode: RM-469\n  model: N00\n  machine-uid: 0\n  isolated-drives: false\n"
+        );
+    }
+
+    #[test]
+    fn the_last_device_ends_at_the_end_of_the_file() {
+        let e = DeviceEntry::find(TWO, "RM-356").unwrap();
+        assert_eq!(e.text(), "RM-356:\n  platver: epoc94\n  firmcode: RM-356\n");
+    }
+
+    #[test]
+    fn a_missing_device_lists_the_ones_there() {
+        let e = DeviceEntry::find(TWO, "RM-1").unwrap_err().to_string();
+        assert!(e.contains("no device RM-1"), "{e}");
+        assert!(e.contains("RM-469, RM-356"), "{e}");
+    }
+
+    #[test]
+    fn an_entry_whose_firmcode_differs_is_refused() {
+        let text = "RM-469:\n  firmcode: RM-470\n";
+        let e = DeviceEntry::find(text, "RM-469").unwrap_err().to_string();
+        assert!(e.contains("firmcode RM-470"), "{e}");
+    }
+}
+```
+
+And a CLI test in `pkgtools/tests/cli.rs`:
+
+```rust
+#[test]
+fn device_entry_prints_the_entry_and_exits_1_without_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let yml = tmp.path().join("devices.yml");
+    fs::write(&yml, "RM-469:\n  firmcode: RM-469\n").unwrap();
+    let ok = pkgtools(&[&"device-entry", &yml, &"RM-469"]);
+    assert_eq!(ok.status.code(), Some(0), "{}", text(&ok.stderr));
+    assert_eq!(text(&ok.stdout), "RM-469:\n  firmcode: RM-469\n");
+    let missing = pkgtools(&[&"device-entry", &yml, &"RM-1"]);
+    assert_eq!(missing.status.code(), Some(1));
+    assert!(text(&missing.stderr).starts_with("error: "), "{}", text(&missing.stderr));
+}
+```
+
+- [x] **Step 2: Run them and see them fail**
+
+```bash
+cd ~/worktrees/symdev-packages/cargo-run && cargo test --locked -p pkgtools device_entry > /tmp/t5.log 2>&1; grep -E "^error|test result" /tmp/t5.log
+```
+
+Expected: `cannot find type DeviceEntry` (declare `mod device_entry;` in `main.rs` first)
+and an unknown subcommand in the CLI test.
+
+- [x] **Step 3: Implement** `pkgtools/src/device_entry.rs` (above its tests)
+
+```rust
+//! `DeviceEntry`: one device of EKA2L1's `devices.yml`, as the firmware recipe's stage.sh
+//! takes it into the package's `device.yml` (symdev experiment 115 §1.4: a top-level key
+//! per firmware code, its fields indented below it).
+
+use crate::tool_error::{Result, ToolError};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceEntry {
+    text: String,
+}
+
+impl DeviceEntry {
+    /// The entry whose key is `firmcode`: its key line and every indented line after it.
+    /// Its own `firmcode:` field must name the same code.
+    pub fn find(devices_yml: &str, firmcode: &str) -> Result<DeviceEntry> {
+        let key = format!("{firmcode}:");
+        let mut lines = devices_yml.lines().skip_while(|l| *l != key);
+        let Some(first) = lines.next() else {
+            let there: Vec<&str> = devices_yml
+                .lines()
+                .filter(|l| !l.starts_with([' ', '\t']) && l.ends_with(':'))
+                .map(|l| l.trim_end_matches(':'))
+                .collect();
+            return Err(ToolError::new(format!(
+                "devices.yml has no device {firmcode}; it has: {}; install that firmware in \
+                 EKA2L1 first",
+                there.join(", ")
+            )));
+        };
+        let mut text = format!("{first}\n");
+        for line in lines.take_while(|l| l.starts_with([' ', '\t'])) {
+            text.push_str(line);
+            text.push('\n');
+        }
+        let code = text
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("firmcode:"))
+            .map(str::trim);
+        match code {
+            Some(c) if c == firmcode => Ok(DeviceEntry { text }),
+            Some(c) => Err(ToolError::new(format!(
+                "devices.yml's entry {firmcode} has firmcode {c}"
+            ))),
+            None => Err(ToolError::new(format!(
+                "devices.yml's entry {firmcode} has no firmcode field"
+            ))),
+        }
+    }
+
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+}
+```
+
+`main.rs`: `mod device_entry;`, `use crate::device_entry::DeviceEntry;` and
+
+```rust
+    /// Print one device's entry of an EKA2L1 devices.yml (the firmware recipe's
+    /// device.yml). Exit 1 when it is missing or its firmcode differs.
+    DeviceEntry {
+        #[arg(value_name = "devices.yml")]
+        devices: PathBuf,
+        /// The device's key and firmware code, e.g. RM-469.
+        #[arg(value_name = "firmcode")]
+        firmcode: String,
+    },
+```
+
+with the arm
+
+```rust
+        Command::DeviceEntry { devices, firmcode } => match std::fs::read_to_string(&devices) {
+            Ok(text) => match DeviceEntry::find(&text, &firmcode) {
+                Ok(entry) => {
+                    let _ = out.write_all(entry.text().as_bytes());
+                    0
+                }
+                Err(e) => {
+                    let _ = writeln!(err, "error: {}: {e}", devices.display());
+                    1
+                }
+            },
+            Err(e) => {
+                let _ = writeln!(err, "error: {}: {e}", devices.display());
+                1
+            }
+        },
+```
+
+- [x] **Step 4: Run them and see them pass**, as in step 2. Expected: `test result: ok`.
+
+- [x] **Step 5: Write the driver's test first**, `tests/firmware-stage.test`
+
+```sh
+#!/bin/sh
+# stage.sh of firmware;rm-469;1 against a fake EKA2L1 data folder: the staged tree, the
+# device.yml it takes, the refusals, and that the data folder is not written.
+#
+#   sh tests/firmware-stage.test
+set -eu
+root=$(cd "$(dirname "$0")/.." && pwd)
+stage=$root/recipes/firmware/rm-469/1/stage.sh
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+cargo build --release --quiet --manifest-path "$root/Cargo.toml" -p pkgtools
+export PKGTOOLS="$root/target/release/pkgtools"
+failures=0
+check() { name=$1; shift; if "$@"; then echo "ok - $name"; else echo "not ok - $name"; failures=$((failures + 1)); fi; }
+
+data=$tmp/data
+mkdir -p "$data/roms/rm-469" "$data/drives/z/rm-469/sys/bin" "$data/drives/z/rm-469/z:/private" "$data/drives/c/x"
+printf 'rom' > "$data/roms/rm-469/SYM.ROM"
+printf 'dll' > "$data/drives/z/rm-469/sys/bin/avkonfep.dll.bak"
+printf 'RM-469:\n  platver: epoc93fp2\n  firmcode: RM-469\n  model: N00\nRM-1:\n  firmcode: RM-1\n' > "$data/devices.yml"
+before=$(cd "$data" && find . -type f -exec sha256sum {} + | sort)
+
+EKA2L1_DATA=$data bash "$stage" "$tmp/out" > "$tmp/out.log" 2>&1
+check "the ROM is staged" cmp -s "$data/roms/rm-469/SYM.ROM" "$tmp/out/roms/rm-469/SYM.ROM"
+check "drive Z is staged with its z: folder" test -d "$tmp/out/drives/z/rm-469/z:/private"
+check "device.yml is the RM-469 entry" sh -c "printf 'RM-469:\n  platver: epoc93fp2\n  firmcode: RM-469\n  model: N00\n' | cmp -s - '$tmp/out/device.yml'"
+check "drive C is not staged" test ! -e "$tmp/out/drives/c"
+check "the data folder is unchanged" sh -c "[ \"\$(cd '$data' && find . -type f -exec sha256sum {} + | sort)\" = '$before' ]"
+check "an existing output folder is refused" sh -c "! EKA2L1_DATA='$data' bash '$stage' '$tmp/out' 2>/dev/null"
+check "no EKA2L1_DATA is refused" sh -c "! env -u EKA2L1_DATA bash '$stage' '$tmp/out2' 2>/dev/null"
+rm -r "$data/roms/rm-469"
+check "a missing ROM is refused by name" sh -c "EKA2L1_DATA='$data' bash '$stage' '$tmp/out3' 2>&1 | grep -q 'roms/rm-469 is missing'"
+[ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }
+```
+
+Run `sh tests/firmware-stage.test`. Expected: it fails, because `stage.sh` does not exist.
+
+- [x] **Step 6: Write `recipes/firmware/rm-469/1/stage.sh`**
+
+```bash
+#!/usr/bin/env bash
+# Stage firmware;rm-469;1 from an EKA2L1 data folder, for `publish private`:
+#
+#   EKA2L1_DATA=~/.local/share/EKA2L1/data bash stage.sh <out-dir>
+#
+# <out-dir> must not exist. It gets roms/rm-469/ and drives/z/rm-469/ copied as they are,
+# and device.yml, the RM-469 entry of $EKA2L1_DATA/devices.yml (pkgtools device-entry).
+# Nothing in EKA2L1_DATA is written. PKGTOOLS names a pkgtools binary; by default this
+# repository's is run through cargo.
+set -euo pipefail
+if [ $# -ne 1 ]; then
+  echo "usage: EKA2L1_DATA=<EKA2L1 data folder> stage.sh <out-dir>" >&2
+  exit 2
+fi
+data=${EKA2L1_DATA:?set EKA2L1_DATA to the EKA2L1 data folder that holds devices.yml, roms/ and drives/}
+out=$1
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+pkgtools=${PKGTOOLS:-"cargo run --release --quiet --manifest-path $here/../../../../Cargo.toml -p pkgtools --"}
+if [ -e "$out" ]; then
+  echo "error: $out exists; stage.sh writes a new folder" >&2
+  exit 1
+fi
+for part in devices.yml roms/rm-469 drives/z/rm-469; do
+  if [ ! -e "$data/$part" ]; then
+    echo "error: $data/$part is missing; install the RM-469 firmware in EKA2L1 first" >&2
+    exit 1
+  fi
+done
+mkdir -p "$out/roms" "$out/drives/z"
+$pkgtools device-entry "$data/devices.yml" RM-469 > "$out/device.yml"
+cp -a "$data/roms/rm-469" "$out/roms/"
+cp -a "$data/drives/z/rm-469" "$out/drives/z/"
+echo "staged firmware;rm-469;1 in $out"
+```
+
+`sh tests/firmware-stage.test` now prints only `ok` lines. `.github/workflows/tests.yml`
+already triggers on `recipes/**` and `tests/**`; add a step after the install.sh ones:
+
+```yaml
+      - name: The firmware recipe's stage.sh
+        run: sh tests/firmware-stage.test
+```
+
+- [x] **Step 7: Write the recipe and pin its archive**
+
+`recipes/firmware/rm-469/1/recipe.toml`:
+
+```toml
+# firmware;rm-469;1 — the Nokia E52's firmware (RM-469) in EKA2L1's data layout, which
+# symdev makes emulator profiles from (symdev's 2026-10-03-emulator-firmware-packages-design
+# §4): roms/rm-469/SYM.ROM, drives/z/rm-469/ and device.yml, the RM-469 entry of EKA2L1's
+# devices.yml (platver epoc93fp2, firmcode RM-469, model N00, …).
+#
+# The bytes are Nokia's, with no known redistribution grant. They live only on the owner's
+# machine and in the private bucket: never in this repository, in CI or in the public
+# bucket (the publisher refuses a LicenseRef- licence there). The owner stages and
+# publishes them:
+#   EKA2L1_DATA=~/.local/share/EKA2L1/data bash recipes/firmware/rm-469/1/stage.sh <tree>
+#   cargo run --release -p publish -- private 'firmware;rm-469;1' --from <tree> \
+#     --recipe recipes/firmware/rm-469/1/recipe.toml
+#
+# Drive Z is in the state EKA2L1 leaves it after the first start: Z:\sys\bin\avkonfep.dll
+# moved to avkonfep.dll.bak (symdev experiment 115 §1.3).
+id = "firmware;rm-469;1"
+license = "LicenseRef-Nokia-firmware"
+host = "any"
+include = ["device.yml", "roms/rm-469", "drives/z/rm-469"]
+```
+
+Then, from the scratch folder (the dry run writes the 135 MB archive into the current
+directory):
+
+```bash
+mkdir -p ~/src/emu-pkg-scratch/firmware && cd ~/src/emu-pkg-scratch/firmware && rm -rf tree
+P=~/worktrees/symdev-packages/cargo-run
+EKA2L1_DATA=~/.local/share/EKA2L1/data bash $P/recipes/firmware/rm-469/1/stage.sh tree
+env -u PUBLISH_PRIVATE_URL cargo run --release --quiet --manifest-path $P/Cargo.toml -p publish -- \
+  private 'firmware;rm-469;1' --from tree --recipe $P/recipes/firmware/rm-469/1/recipe.toml --dry-run
+```
+
+Expected: an error that ends with ``record `sha256 = "<64 hex>"` in …recipe.toml and run
+again``. Add that line to the recipe. Above it, add a comment with the date and the
+`packed …` line's byte count and the file count (`find tree -type f | wc -l`). Run the dry run
+again; expected: `packed firmware;rm-469;1: …` and the index printed with
+`license = "LicenseRef-Nokia-firmware"`. Then check that the public bucket refuses it:
+
+```bash
+env -u PUBLISH_PUBLIC_URL cargo run --release --quiet --manifest-path $P/Cargo.toml -p publish -- \
+  public 'firmware;rm-469;1' --from tree --source-code /dev/null \
+  --recipe $P/recipes/firmware/rm-469/1/recipe.toml --dry-run
+```
+
+Expected: `… grants no right to publish it; only the private bucket may hold it`.
+
+- [x] **Step 8: Gates and commit** (packages worktree)
+
+```bash
+cd ~/worktrees/symdev-packages/cargo-run
+cargo test --locked > /tmp/t5-all.log 2>&1; grep -E "FAILED|^error" /tmp/t5-all.log
+cargo clippy --all-targets --locked > /tmp/t5-clippy.log 2>&1; grep -cE "^(warning|error)" /tmp/t5-clippy.log
+cargo fmt --all --check && sh tests/firmware-stage.test | grep -c '^not ok'
+git add pkgtools/src/device_entry.rs pkgtools/src/main.rs pkgtools/tests/cli.rs \
+  recipes/firmware/rm-469/1/recipe.toml recipes/firmware/rm-469/1/stage.sh \
+  tests/firmware-stage.test .github/workflows/tests.yml
+git commit -m "Add the private firmware;rm-469;1 recipe, staged from an EKA2L1 data folder and pinned to the owner's archive."
+```
+
+Expected: no failure lines, `0` clippy lines, `0` `not ok`. A developer's
+`PUBLISH_SIGNING_KEY` in the environment makes one existing publisher test fail (cargo-run
+notes); run the gate with `env -u PUBLISH_SIGNING_KEY`. Leave `~/src/emu-pkg-scratch/firmware/tree`
+for Task 6. Commit the symdev wip file too.
+
+### Task 6: A profile made from a read-only firmware package (experiment 115 §3)
+
+The spec: "Whether EKA2L1 writes into Z: or the ROM is observed first, with the package files
+read-only; if it writes, the profile gets copies instead." It also leaves open whether the
+firmware boots with an empty drive C and a `config.yml` holding only symdev's log filter.
+This task answers all three before Task 7 writes the code. It uses Task 1's host build, so
+that only the firmware side is new.
+
+**Files:**
+- Outside git: `~/src/emu-pkg-scratch/exp115/{pkg,profile,probe.py,run6.sh,run6.log,strace.txt}`
+- Modify: `docs/research/experiment-backlog.md` (experiment 115 §3)
+
+**Interfaces:**
+- Consumes: Task 5's staged tree, Task 1's `eka2l1-emupkg`.
+- Produces: the ruling **links** or **copies** for Task 7, and whether an empty C boots.
+
+- [x] **Step 1: Make the package and the profile by hand**
+
+```bash
+X=~/src/emu-pkg-scratch/exp115; rm -rf $X/pkg $X/profile; mkdir -p $X/pkg $X/profile/data/roms
+cp -a ~/src/emu-pkg-scratch/firmware/tree $X/pkg/rm-469 && chmod -R a-w $X/pkg/rm-469
+P=$X/pkg/rm-469; D=$X/profile/data
+mkdir -p $D/drives/c $D/drives/d $D/drives/e
+cp $P/device.yml $D/devices.yml
+ln -s $P/roms/rm-469 $D/roms/rm-469
+ln -s $P/drives/z $D/drives/z
+printf 'log-filter: "*:info Emulated.Stdout:trace Kernel:trace"\n' > $X/profile/config.yml
+cp ~/src/cargo-run-scratch/exec/probe10.py $X/probe.py
+```
+
+`$P/drives/z` is the folder that holds `rm-469/`; EKA2L1 finds Z under
+`data/drives/z/<firmware>`, as in the owner's layout. That layout is why
+`EmulatorProfile::create` links the whole `drives/z` today.
+
+- [x] **Step 2: Run it under strace and the agent lock**
+
+`run6.sh`:
+
+```bash
+#!/usr/bin/env bash
+# run6.sh — experiment 115 §3: Task 1's EKA2L1 on a profile made from the read-only firmware
+# package; every file call traced; hello installed and launched through the control socket.
+X=~/src/emu-pkg-scratch/exp115; S=$XDG_RUNTIME_DIR/symdev-exp115.sock; rm -f $S
+touch $X/marker
+setsid strace -f -e trace=%file -o $X/strace.txt ~/src/emu-pkg-scratch/bin/eka2l1-emupkg \
+  --data-dir $X/profile --control $S > $X/emu.out 2>&1 & pid=$!
+echo "pid $pid"
+python3 $X/probe.py $S ~/src/cargo-run-scratch/tree/symbian-rs/examples/hello/build/hello.sisx 0xef9f2cab $X/shots
+sleep 2; kids=$(pgrep -P $pid); kill -9 $kids $pid; sleep 1
+for p in $pid $kids; do kill -0 $p 2>/dev/null && echo "still alive: $p"; done
+grep -E "$X/pkg" $X/strace.txt | grep -E 'O_WRONLY|O_RDWR|O_CREAT|rename|unlink|mkdir' > $X/pkg-writes.txt
+echo "write attempts on the package: $(wc -l < $X/pkg-writes.txt)"
+find -L $X/pkg -newer $X/marker | head
+grep -iE 'error|fail|denied' $X/profile/EKA2L1.log | head -20
+ls -R $X/profile/data/drives/c | head -30
+```
+
+```bash
+flock ~/.local/share/EKA2L1/.symdev-agent.lock bash ~/src/emu-pkg-scratch/exp115/run6.sh > ~/src/emu-pkg-scratch/exp115/run6.log 2>&1
+```
+
+The script kills only the PID it started (strace) and that PID's children (EKA2L1),
+listed before strace dies. Once strace dies, its children belong to init and `pgrep -P`
+would no longer find them. The owner's own emulator is never matched. `run6.log` must
+have no `still alive` line.
+
+- [x] **Step 3: Read the answers and rule**
+
+From `run6.log`, `probe.py`'s JSON lines, `strace.txt` and `EKA2L1.log`:
+
+1. **Boots with empty C and a one-line config?** `emulator.info` names `RM-469` and
+   `apps.list` answers. If not, record the last log lines and stop: Task 7 cannot be written
+   without the answer, so report to the lead (the fix is a seed for C in the firmware
+   package, which changes the recipe).
+2. **Write attempts into the package** (`pkg-writes.txt`). Expected from §1.3: one
+   failing open of `…/sys/bin/avkonfep.dll` for writing (the backslash copy may not even
+   reach it), and no rename, because the staged Z already holds the `.bak`. Each line is
+   recorded.
+3. **Did a write attempt change behaviour?** `package.install` of hello answers `{}`, the
+   launch gives a pid, `event.app_exited` comes with `exit_type kill`, and the log shows no
+   error on Z or the ROM beyond the known avkonfep copy.
+
+**Ruling:** if 1 and 3 hold, Task 7 uses **links** (as written). If anything in 3 fails
+because Z or the ROM is read-only, Task 7 uses **copies**: the variant given in Task 7
+step 3. The profile then costs 259 MB each, and the rest of the plan is unchanged. Write
+the ruling, with the evidence, as experiment 115 §3, and into the wip file.
+
+**Executed 2026-10-03 (ruling: links).** With the package read-only, item 1 fails: EKA2L1
+opens `SYM.ROM` `O_RDWR|O_CREAT` and gets `EACCES`, so no device and no control socket. The
+open is for a `MAP_PRIVATE` mapping (`common/src/virtualmem.cpp`), which never writes the
+file. A second run with the package writable as symdev installs it (0644/0755) passes 1–3,
+with 0 of 15 597 package files changed and no other write-mode call on Z or the ROM. The
+spec's rule ("if it writes, the profile gets copies") keeps links; this step's literal
+"read-only fails → copies" is read as "EKA2L1 writes → copies". The write grep must match
+the profile's link paths (`profile/data/roms`, `profile/data/drives/z`), not `$X/pkg`.
+Experiment 115 §3 has the evidence.
+
+- [x] **Step 4: Commit** the experiment record and the wip file:
+  `Record experiment 115 §3: a profile made from a read-only firmware package.`
+  Restore write permission on the scratch copy afterwards (`chmod -R u+w
+  ~/src/emu-pkg-scratch/exp115/pkg`) so that later `rm -rf` works.
+
+### Task 7: Profiles made from a firmware package
+
+**Files:**
+- Create: `crates/symdev-emulator/src/device/firmware.rs` (`Firmware`)
+- Modify: `crates/symdev-emulator/src/device.rs` (`mod firmware; pub use firmware::Firmware;`)
+- Modify: `crates/symdev-emulator/src/device/emulator_profile.rs` (`create(&Firmware)`, `check()`)
+- Modify: `crates/symdev-emulator/src/device/emulator_instance.rs` (`start` calls `check` first)
+- Modify: `crates/symdev-emulator/src/results.rs` (delete `EmulatorData::from_env`)
+- Create: `crates/symdev-emulator/src/device/tests/firmware.rs`; Modify: `device/tests.rs`
+  (`mod firmware;`), `device/tests/profile.rs` (the three `create` calls)
+- Modify: `crates/symdev-cli/src/devices_cmd.rs` (only so the workspace builds: see step 4)
+
+**Interfaces:**
+- Consumes: Task 6's ruling (links or copies).
+- Produces:
+  - `Firmware::UserData { data: EmulatorData, name: String }`,
+    `Firmware::Package { root: PathBuf, name: String }`, `Firmware::name(&self) -> &str`,
+    `Firmware::in_user_data(data: &EmulatorData) -> Vec<Firmware>`.
+  - `EmulatorProfile::create(&self, firmware: &Firmware) -> Result<()>`,
+    `EmulatorProfile::check(&self) -> Result<()>`.
+  - `EmulatorData::from_env` no longer exists. The user's data is reached only through
+    `SYMDEV_EKA2L1_DATA`, which `Provision` reads (Task 9).
+
+- [x] **Step 1: Write the failing tests**, `crates/symdev-emulator/src/device/tests/firmware.rs`
+
+```rust
+use std::path::Path;
+
+use crate::EmulatorData;
+use crate::device::{DeviceRegistry, EmulatorInstance, EmulatorProfile, Firmware};
+
+/// An installed `firmware;rm-469;1` as Task 5's stage.sh makes it.
+fn package(root: &Path) -> Firmware {
+    for d in ["roms/rm-469", "drives/z/rm-469/sys/bin"] {
+        std::fs::create_dir_all(root.join(d)).unwrap();
+    }
+    std::fs::write(root.join("roms/rm-469/SYM.ROM"), b"rom").unwrap();
+    std::fs::write(root.join("device.yml"), "RM-469:\n  firmcode: RM-469\n").unwrap();
+    Firmware::Package {
+        root: root.to_path_buf(),
+        name: "rm-469".into(),
+    }
+}
+
+#[test]
+fn a_profile_from_a_package_links_its_rom_and_drive_z_and_starts_with_empty_drives() {
+    let pkg = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let p = EmulatorProfile::at(root.path(), "rm-469");
+    p.create(&package(pkg.path())).unwrap();
+    let data = p.dir().join("data");
+    assert_eq!(std::fs::read_link(data.join("roms/rm-469")).unwrap(), pkg.path().join("roms/rm-469"));
+    assert_eq!(std::fs::read_link(data.join("drives/z")).unwrap(), pkg.path().join("drives/z"));
+    for d in ["c", "d", "e"] {
+        let drive = data.join("drives").join(d);
+        assert!(drive.is_dir() && std::fs::read_dir(&drive).unwrap().next().is_none(), "{d}");
+    }
+}
+
+#[test]
+fn a_profile_from_a_package_lists_the_packages_device_and_only_symdevs_log_filter() {
+    let pkg = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let p = EmulatorProfile::at(root.path(), "rm-469");
+    p.create(&package(pkg.path())).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(p.dir().join("data/devices.yml")).unwrap(),
+        "RM-469:\n  firmcode: RM-469\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(p.dir().join("config.yml")).unwrap(),
+        "log-filter: \"*:info Emulated.Stdout:trace Kernel:trace\"\n"
+    );
+}
+
+#[test]
+fn a_profile_whose_package_is_gone_is_refused_before_start() {
+    let pkg = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let run = tempfile::tempdir().unwrap();
+    let p = EmulatorProfile::at(root.path(), "rm-469");
+    p.create(&package(pkg.path())).unwrap();
+    assert!(p.check().is_ok());
+    let gone = pkg.path().to_path_buf();
+    drop(pkg);
+    let e = p.check().unwrap_err().to_string();
+    assert!(e.contains("emulator profile rm-469"), "{e}");
+    assert!(e.contains(&gone.join("drives/z").display().to_string()), "{e}");
+    assert!(e.contains(&p.dir().display().to_string()), "{e}");
+    let registry = DeviceRegistry::at(run.path().join("devices"));
+    let start = EmulatorInstance::start(Path::new("/nonexistent/eka2l1"), &p, &registry)
+        .unwrap_err()
+        .to_string();
+    assert_eq!(start, e, "start must refuse before it runs anything");
+}
+
+#[test]
+fn the_users_firmwares_are_the_folders_of_data_roms_by_name() {
+    let user = tempfile::tempdir().unwrap();
+    for f in ["rm-469", "rm-356"] {
+        std::fs::create_dir_all(user.path().join("data/roms").join(f)).unwrap();
+    }
+    let data = EmulatorData::at(user.path());
+    let names: Vec<String> = Firmware::in_user_data(&data)
+        .iter()
+        .map(|f| f.name().to_string())
+        .collect();
+    assert_eq!(names, ["rm-356", "rm-469"]);
+    assert!(Firmware::in_user_data(&EmulatorData::at(&user.path().join("none"))).is_empty());
+}
+```
+
+In `device/tests/profile.rs`, the three calls `create(&EmulatorData::at(X), "rm-469")`
+become `create(&Firmware::UserData { data: EmulatorData::at(X), name: "rm-469".into() })`
+(import `crate::device::Firmware`). Their assertions stay as they are: the user-data route
+does not change.
+
+- [x] **Step 2: Run them and see them fail**
+
+```bash
+cargo test -p symdev-emulator --offline device:: > /tmp/t7.log 2>&1; grep -E "^error|test result" /tmp/t7.log
+```
+
+Expected: `unresolved import crate::device::Firmware` and `no method named check`.
+
+- [x] **Step 3: Implement**
+
+`crates/symdev-emulator/src/device/firmware.rs`:
+
+```rust
+//! `Firmware`: what an emulator profile is made from (emulator packages spec §5): a
+//! firmware installed in the user's EKA2L1 (reached through `SYMDEV_EKA2L1_DATA`), or an
+//! installed `firmware;<name>;<n>` package.
+use std::path::PathBuf;
+
+use crate::EmulatorData;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Firmware {
+    /// `data/roms/<name>` of the user's EKA2L1 data folder; drive Z, drive C,
+    /// `devices.yml` and `config.yml` are that folder's.
+    UserData { data: EmulatorData, name: String },
+    /// An installed package: `roms/<name>/`, `drives/z/<name>/` and `device.yml` under `root`.
+    Package { root: PathBuf, name: String },
+}
+
+impl Firmware {
+    /// The firmware's folder name, which is also its profile's name (`rm-469`).
+    pub fn name(&self) -> &str {
+        match self {
+            Firmware::UserData { name, .. } | Firmware::Package { name, .. } => name,
+        }
+    }
+
+    /// Every firmware installed in the user's data folder `data` (`data/roms/<name>/`), in
+    /// name order; none when the folder has no `data/roms`.
+    pub fn in_user_data(data: &EmulatorData) -> Vec<Firmware> {
+        let roms = data.root().join("data/roms");
+        let mut names: Vec<String> = std::fs::read_dir(&roms)
+            .map(|dir| {
+                dir.flatten()
+                    .filter(|e| e.path().is_dir())
+                    .filter_map(|e| e.file_name().into_string().ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        names.sort();
+        names
+            .into_iter()
+            .map(|name| Firmware::UserData {
+                data: data.clone(),
+                name,
+            })
+            .collect()
+    }
+}
+```
+
+`emulator_profile.rs`: today's `create(from, firmware)` body below the "already exists"
+check becomes `fn create_from_user(&self, from: &EmulatorData, firmware: &str) ->
+Result<()>`, unchanged. Then:
+
+```rust
+    /// Makes the profile from `firmware`; an existing profile is never overwritten. From
+    /// the user's data: ROM and the whole drive Z linked, `devices.yml`, drive C and
+    /// `config.yml` copied (experiment 114 §2). From a package: ROM and drive Z linked
+    /// into it, its `device.yml` as `devices.yml`, empty C, D and E, and a `config.yml`
+    /// holding only symdev's log filter, every other option at EKA2L1's default
+    /// (experiment 115 §3).
+    pub fn create(&self, firmware: &Firmware) -> Result<()> {
+        if self.dir.symlink_metadata().is_ok() {
+            return Err(Error::Other(format!(
+                "emulator profile {} already exists at {}",
+                self.name,
+                self.dir.display()
+            )));
+        }
+        match firmware {
+            Firmware::UserData { data, name } => self.create_from_user(data, name),
+            Firmware::Package { root, name } => self.create_from_package(root, name),
+        }
+    }
+
+    fn create_from_package(&self, root: &Path, name: &str) -> Result<()> {
+        let data = self.dir.join("data");
+        for dir in ["drives/c", "drives/d", "drives/e", "roms"] {
+            make_dir(&data.join(dir))?;
+        }
+        copy_file(&root.join("device.yml"), &data.join("devices.yml"))?;
+        link(&root.join("roms").join(name), &data.join("roms").join(name))?;
+        link(&root.join("drives/z"), &data.join("drives/z"))?;
+        let out = self.dir.join("config.yml");
+        std::fs::write(&out, format!("{LOG_FILTER}\n")).map_err(|e| file(&out, e))
+    }
+
+    /// Refuses a profile whose ROM or drive Z is a link to nothing (its firmware package
+    /// was uninstalled, or the user's EKA2L1 data moved), before EKA2L1 starts on it.
+    pub fn check(&self) -> Result<()> {
+        let data = self.dir.join("data");
+        let mut links = vec![data.join("drives/z")];
+        if let Ok(roms) = std::fs::read_dir(data.join("roms")) {
+            links.extend(roms.flatten().map(|e| e.path()));
+        }
+        for path in links {
+            let is_link = path.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink());
+            if is_link && !path.exists() {
+                let target = std::fs::read_link(&path).map_err(|e| file(&path, e))?;
+                return Err(Error::Other(format!(
+                    "emulator profile {} links {} to {}, which is gone: its firmware package \
+                     was uninstalled or its EKA2L1 data moved. Install it again (`symdev sdk \
+                     install`), or remove {} and symdev makes the profile again",
+                    self.name,
+                    path.display(),
+                    target.display(),
+                    self.dir.display()
+                )));
+            }
+        }
+        Ok(())
+    }
+```
+
+**If Task 6 ruled copies:** in `create_from_package`, replace the two `link` lines with
+`copy_tree(&root.join("roms"), &root.join("roms").join(name), &data.join("roms").join(name))?;`
+and `copy_tree(&root.join("drives/z"), &root.join("drives/z"), &data.join("drives/z"))?;`.
+Change the first test's two `read_link` assertions to `is_dir()` plus one copied file
+compared with `std::fs::read`. Delete `check()`, its call and its test, which then guard
+nothing, and drop Review Focus item 3 with a note in the wip file.
+
+`emulator_instance.rs`, first line of `start`: `profile.check()?;`.
+
+`results.rs`: delete `EmulatorData::from_env` and its doc comment. Rewrite the struct's doc so
+that it no longer names a default: "EKA2L1's data folder: a profile's own, or the user's
+named by `SYMDEV_EKA2L1_DATA`". The file then has no `std::env` use. Keep the imports
+clippy still needs.
+
+- [x] **Step 4: Keep the CLI building**
+
+`devices_cmd.rs`'s `profiles()` called `EmulatorData::from_env()`. Until Task 9 wires
+`Provision`, replace those lines with the equivalent that reads the variable in the CLI:
+
+```rust
+        let user = match std::env::var_os("SYMDEV_EKA2L1_DATA").filter(|v| !v.is_empty()) {
+            Some(dir) => EmulatorData::at(std::path::Path::new(&dir)),
+            None => return Ok(Vec::new()),
+        };
+        for firmware in Firmware::in_user_data(&user) {
+            self.profile(firmware.name()).create(&firmware)?;
+            eprintln!("created profile {}", firmware.name());
+        }
+```
+
+This is temporary; Task 9 replaces it. `crates/symdev-cli/tests/run.rs`'s
+`run_with_a_profile_to_start_and_no_emulator_names_symdev_eka2l1` now sets
+`SYMDEV_EKA2L1_DATA` to `user` (its `XDG_DATA_HOME/EKA2L1`) instead of relying on the default
+folder. It is the only CLI test that relied on the default: `tests/test_cmd.rs` already sets
+the variable, and the fake devices of `tests/common/fake_control.rs` need no firmware.
+`grep -rn 'EKA2L1' crates/symdev-cli/tests` confirms it at execution.
+
+- [x] **Step 5: Run the tests and the gates** (Task 4 step 4's three commands). Expected: all
+  pass, 0 clippy lines.
+
+- [x] **Step 6: Commit**
+
+```bash
+git add crates/symdev-emulator/src/device.rs crates/symdev-emulator/src/device/firmware.rs \
+  crates/symdev-emulator/src/device/emulator_profile.rs crates/symdev-emulator/src/device/emulator_instance.rs \
+  crates/symdev-emulator/src/results.rs crates/symdev-emulator/src/device/tests.rs \
+  crates/symdev-emulator/src/device/tests/firmware.rs crates/symdev-emulator/src/device/tests/profile.rs \
+  crates/symdev-cli/src/devices_cmd.rs
+git add <each test file step 4 changed, by name>
+git commit -m "Make an emulator profile from a firmware package, refuse one whose firmware is gone, and read the user's EKA2L1 data only through SYMDEV_EKA2L1_DATA."
+```
+
+### Task 8: The EKA2L1 to start: the user's or the package's
+
+**Files:**
+- Create: `crates/symdev-emulator/src/device/eka2l1.rs` (`Eka2l1`, with its tests)
+- Modify: `crates/symdev-emulator/src/device.rs` (`mod eka2l1; pub use eka2l1::Eka2l1;`)
+- Modify: `crates/symdev-emulator/src/device/emulator_instance.rs` (`start`, `has_control` take `&Eka2l1`)
+- Modify: `crates/symdev-emulator/src/lib.rs` (delete `Eka2l1Backend`)
+- Modify: `crates/symdev-emulator/src/device/tests/firmware.rs` (Task 7's `start` call)
+- Modify: `crates/symdev-cli/src/devices_cmd.rs`, `crates/symdev-cli/src/run/device_pick.rs`
+  (only so the workspace builds; Task 9 replaces it)
+
+**Interfaces:**
+- Produces: `Eka2l1::User(PathBuf)`, `Eka2l1::Package(PathBuf)`, `.program() -> &Path`,
+  `.prepare(&self, command: &mut std::process::Command)`, `.describe() -> String`,
+  `Eka2l1::HOST_LIBRARY_VARIABLES`; `EmulatorInstance::start(eka2l1: &Eka2l1, profile:
+  &EmulatorProfile, registry: &DeviceRegistry) -> Result<RegistryEntry>`,
+  `EmulatorInstance::has_control(eka2l1: &Eka2l1) -> Result<bool>`.
+
+- [x] **Step 1: Write the failing tests** at the end of `eka2l1.rs`
+
+```rust
+#[cfg(test)]
+mod tests {
+    use std::process::Command;
+
+    use super::Eka2l1;
+
+    fn removed(c: &Command) -> Vec<String> {
+        let mut names: Vec<String> = c
+            .get_envs()
+            .filter(|(_, value)| value.is_none())
+            .map(|(name, _)| name.to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn a_packaged_eka2l1_does_not_inherit_the_hosts_library_paths() {
+        let mut c = Command::new("setsid");
+        Eka2l1::Package("/p/usr/bin/eka2l1_qt".into()).prepare(&mut c);
+        assert_eq!(removed(&c), ["LD_LIBRARY_PATH", "QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH"]);
+    }
+
+    #[test]
+    fn the_users_eka2l1_keeps_its_environment() {
+        let mut c = Command::new("setsid");
+        Eka2l1::User("/home/u/.local/bin/eka2l1".into()).prepare(&mut c);
+        assert_eq!(c.get_envs().count(), 0);
+    }
+
+    #[test]
+    fn each_says_where_it_comes_from() {
+        let user = Eka2l1::User("/u/eka2l1".into()).describe();
+        assert_eq!(user, "SYMDEV_EKA2L1 (/u/eka2l1)");
+        let package = Eka2l1::Package("/h/emulator/2026.10.04/usr/bin/eka2l1_qt".into()).describe();
+        assert_eq!(package, "the emulator package's /h/emulator/2026.10.04/usr/bin/eka2l1_qt");
+    }
+}
+```
+
+Run `cargo test -p symdev-emulator --offline eka2l1 > /tmp/t8.log 2>&1; grep -E "^error|test result"
+/tmp/t8.log` (declare `mod eka2l1;` in `device.rs` first). Expected: `cannot find type Eka2l1`.
+
+- [x] **Step 2: Implement** `crates/symdev-emulator/src/device/eka2l1.rs` (above the tests)
+
+```rust
+//! `Eka2l1`: the EKA2L1 symdev starts (emulator packages spec §5): the user's own, named by
+//! `SYMDEV_EKA2L1` and started as it is, or an installed `emulator` package's program.
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Eka2l1 {
+    /// `SYMDEV_EKA2L1`: a binary or the user's wrapper, with the user's environment.
+    User(PathBuf),
+    /// `<package>/usr/bin/eka2l1_qt` of an installed `emulator` package (experiment 115 §1.2).
+    Package(PathBuf),
+}
+
+impl Eka2l1 {
+    /// What a packaged EKA2L1 must not inherit: these make the loader and Qt take the host's
+    /// libraries and plugins before the bundled ones. Nothing else changes, so GL settings
+    /// in the user's environment still reach it.
+    pub const HOST_LIBRARY_VARIABLES: [&'static str; 3] =
+        ["LD_LIBRARY_PATH", "QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH"];
+
+    pub fn program(&self) -> &Path {
+        match self {
+            Eka2l1::User(program) | Eka2l1::Package(program) => program,
+        }
+    }
+
+    /// Readies `command`, which runs [`Self::program`] (directly or through `setsid`):
+    /// the package's loses the host's library paths, the user's keeps everything.
+    pub fn prepare(&self, command: &mut Command) {
+        if let Eka2l1::Package(_) = self {
+            for name in Self::HOST_LIBRARY_VARIABLES {
+                command.env_remove(name);
+            }
+        }
+    }
+
+    /// Where it comes from, for messages.
+    pub fn describe(&self) -> String {
+        match self {
+            Eka2l1::User(p) => format!("SYMDEV_EKA2L1 ({})", p.display()),
+            Eka2l1::Package(p) => format!("the emulator package's {}", p.display()),
+        }
+    }
+}
+```
+
+`emulator_instance.rs`:
+- `start(eka2l1: &Eka2l1, …)`: after `profile.check()?`, build the command as
+  `let argv = Self::argv(eka2l1.program(), profile.dir(), &socket); let mut command =
+  Command::new(&argv[0]); command.args(&argv[1..]); eka2l1.prepare(&mut command);`, then the
+  existing `.stdin(…).stdout(out).stderr(err).spawn()` on `command`. Every `eka2l1.display()`
+  in its messages becomes `eka2l1.program().display()`.
+- `has_control(eka2l1: &Eka2l1)`: `let mut probe = Command::new(eka2l1.program());
+  eka2l1.prepare(&mut probe);` before the existing `XAUTHORITY` lines. Messages likewise.
+- `argv` keeps its `&Path` signature: its test stays as it is.
+
+`lib.rs`: delete `Eka2l1Backend` and its `impl`, and the `use std::path::PathBuf;` and
+`use symdev_core::{Error, Result};` lines if nothing else uses them. Change the module doc's
+first line to `//! EKA2L1 as a separate process (GPL-3.0: never linked or vendored): the
+devices symdev starts and the control protocol.`
+
+Task 7's test calls `EmulatorInstance::start(&Eka2l1::User("/nonexistent/eka2l1".into()), &p,
+&registry)` now.
+
+- [x] **Step 3: Keep the CLI building**
+
+In `devices_cmd.rs`, `eka2l1_with_control()` returns `Result<Eka2l1>`. Its first line
+becomes the CLI's own reading of the variable, until Task 9:
+
+```rust
+    let eka2l1 = match std::env::var_os("SYMDEV_EKA2L1").filter(|v| !v.is_empty()) {
+        Some(program) => Eka2l1::User(PathBuf::from(program)),
+        None => {
+            return Err(Error::Other(
+                "missing emulator: SYMDEV_EKA2L1 (path to eka2l1_qt or a wrapper)".into(),
+            ));
+        }
+    };
+```
+
+Its `has_control(&eka2l1)` error names `eka2l1.describe()` instead of the hard-coded
+"SYMDEV_EKA2L1 (…)". `start()` and `device_pick.rs` pass `&eka2l1`.
+
+- [x] **Step 4: Run the tests and the gates** (Task 4 step 4's three commands). Expected:
+  all pass; `crates/symdev-cli/tests/run.rs`'s SYMDEV_EKA2L1 test still finds
+  `SYMDEV_EKA2L1` in the error.
+
+- [x] **Step 5: Commit**
+
+```bash
+git add crates/symdev-emulator/src/device.rs crates/symdev-emulator/src/device/eka2l1.rs \
+  crates/symdev-emulator/src/device/emulator_instance.rs crates/symdev-emulator/src/lib.rs \
+  crates/symdev-emulator/src/device/tests/firmware.rs crates/symdev-cli/src/devices_cmd.rs \
+  crates/symdev-cli/src/run/device_pick.rs
+git commit -m "Start either the user's EKA2L1 as it is or a packaged one without the host's library paths."
+```
+
+### Task 9: `Provision` resolves the emulator and the firmware; every command uses it
+
+**Files:**
+- Create: `crates/symdev-cli/src/provision/emulator.rs`, `crates/symdev-cli/src/provision/emulator/tests.rs`
+- Modify: `crates/symdev-cli/src/provision.rs` (`mod emulator;`)
+- Modify: `crates/symdev-cli/src/devices_cmd.rs` (`profiles`, `make_profiles`,
+  `profiles_or_make`, `eka2l1_with_control(&Provision)`, `list(&Provision)`, `start(&str, &Provision)`)
+- Modify: `crates/symdev-cli/src/run/device_pick.rs` (`pick_device(terminal, &Provision)`, lazy profiles)
+- Modify: `crates/symdev-cli/src/run.rs`, `crates/symdev-cli/src/test_cmd.rs`, `crates/symdev-cli/src/main.rs`
+- Create: `crates/symdev-cli/tests/emulator_packages.rs`
+- Modify: `crates/symdev-cli/tests/run.rs` (`run_without_any_device_…`)
+
+**Interfaces:**
+- Consumes: `Pins::emulator`, `Pins::firmware`, `Device::ALL`, `EmulatorPackage`,
+  `FirmwarePackage` (Task 4); `Firmware` (Task 7); `Eka2l1` (Task 8).
+- Produces: `Provision::eka2l1(&self) -> Result<Eka2l1, Error>`,
+  `Provision::firmwares(&self) -> Result<Vec<Firmware>, Error>`. A profile is made only when
+  a start needs one: nothing is running, or `SYMDEV_DEVICE` names a profile. A fake
+  running device in the CLI tests therefore never reaches a source.
+
+- [x] **Step 1: Write the failing unit tests**, `provision/emulator/tests.rs`
+
+```rust
+use std::collections::BTreeMap;
+use std::ffi::OsString;
+use std::path::Path;
+
+use symdev_emulator::device::Eka2l1;
+use symdev_sdk::Pins;
+
+use crate::provision::Provision;
+
+fn provision(offline: bool, vars: &[(&str, &Path)]) -> Provision {
+    let vars: BTreeMap<String, OsString> = vars
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.as_os_str().to_owned()))
+        .collect();
+    Provision::from_lookup(offline, None, move |key| vars.get(key).cloned())
+}
+
+/// No HOME and no SYMDEV_HOME: any look at the packages would be an error.
+#[test]
+fn symdev_eka2l1_is_started_as_it_is_and_no_package_is_looked_at() {
+    let p = provision(false, &[("SYMDEV_EKA2L1", Path::new("/u/eka2l1"))]);
+    assert_eq!(p.eka2l1().unwrap(), Eka2l1::User("/u/eka2l1".into()));
+}
+
+#[test]
+fn symdev_eka2l1_data_gives_its_firmwares_and_no_package_is_looked_at() {
+    let user = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(user.path().join("data/roms/rm-469")).unwrap();
+    let p = provision(false, &[("SYMDEV_EKA2L1_DATA", user.path())]);
+    let names: Vec<String> = p.firmwares().unwrap().iter().map(|f| f.name().to_string()).collect();
+    assert_eq!(names, ["rm-469"]);
+}
+
+#[test]
+fn symdev_eka2l1_data_without_a_firmware_names_the_package_instead() {
+    let user = tempfile::tempdir().unwrap();
+    let p = provision(false, &[("SYMDEV_EKA2L1_DATA", user.path())]);
+    let e = p.firmwares().unwrap_err().to_string();
+    assert!(e.contains("no firmware in data/roms/"), "{e}");
+    assert!(e.contains("firmware;rm-469;1"), "{e}");
+}
+
+#[test]
+fn without_the_variables_offline_names_the_install_commands() {
+    let home = tempfile::tempdir().unwrap();
+    let p = provision(true, &[("HOME", home.path())]);
+    let e = p.eka2l1().unwrap_err().to_string();
+    let install = format!("symdev sdk install {}", Pins::emulator().shell_word());
+    assert!(e.contains(&install), "{e}");
+    let e = p.firmwares().unwrap_err().to_string();
+    assert!(e.contains("symdev sdk install 'firmware;rm-469;1'"), "{e}");
+}
+```
+
+- [x] **Step 2: Write the failing CLI tests**, `crates/symdev-cli/tests/emulator_packages.rs`
+
+```rust
+//! `symdev emulator start` and `symdev devices` against a `file://` source holding the
+//! emulator and firmware packages (emulator packages spec §5, Review Focus 2, 4, 5).
+use std::path::{Path, PathBuf};
+
+use predicates::prelude::*;
+use symdev_sdk::{Host, Pins};
+
+mod common;
+use common::bin;
+use common::repo::World;
+
+const DEVICE_YML: &str = "RM-469:\n  platver: epoc93fp2\n  firmcode: RM-469\n";
+
+fn with_firmware(world: &mut World) {
+    world.add(
+        "firmware;rm-469;1",
+        Host::Any,
+        &[
+            ("device.yml", DEVICE_YML, false),
+            ("roms/rm-469/SYM.ROM", "rom", false),
+            ("drives/z/rm-469/sys/bin/avkonfep.dll.bak", "dll", false),
+        ],
+    );
+}
+
+/// An EKA2L1 whose `--help` lists `--data-dir` only: one without the control server.
+fn old_eka2l1(dir: &Path) -> PathBuf {
+    let path = dir.join("old-eka2l1");
+    std::fs::write(&path, "#!/bin/sh\necho '  --data-dir <dir>'\n").unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+fn profile(world: &World) -> PathBuf {
+    world.tmp.path().join("data/symdev/emulators/rm-469")
+}
+
+#[test]
+fn emulator_start_installs_the_firmware_package_and_makes_its_profile() {
+    let mut world = World::new();
+    with_firmware(&mut world);
+    world
+        .bin()
+        .env("SYMDEV_EKA2L1", old_eka2l1(world.tmp.path()))
+        .args(["emulator", "start", "rm-469"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("installing firmware;rm-469;1"))
+        .stderr(predicate::str::contains("created profile rm-469"));
+    let package = world.package_dir("firmware;rm-469;1");
+    let data = profile(&world).join("data");
+    assert_eq!(std::fs::read_link(data.join("roms/rm-469")).unwrap(), package.join("roms/rm-469"));
+    assert_eq!(std::fs::read_link(data.join("drives/z")).unwrap(), package.join("drives/z"));
+    assert_eq!(std::fs::read_to_string(data.join("devices.yml")).unwrap(), DEVICE_YML);
+}
+
+#[test]
+fn an_old_symdev_eka2l1_is_named_with_the_way_to_the_package() {
+    let mut world = World::new();
+    with_firmware(&mut world);
+    world
+        .bin()
+        .env("SYMDEV_EKA2L1", old_eka2l1(world.tmp.path()))
+        .args(["emulator", "start", "rm-469"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("SYMDEV_EKA2L1 ("))
+        .stderr(predicate::str::contains("has no --control"))
+        .stderr(predicate::str::contains(format!(
+            "unset SYMDEV_EKA2L1 to use the {} package",
+            Pins::emulator()
+        )));
+}
+
+#[test]
+fn without_symdev_eka2l1_the_emulator_package_is_installed_and_probed() {
+    let mut world = World::new();
+    with_firmware(&mut world);
+    let emulator = Pins::emulator();
+    world.add(
+        emulator.as_str(),
+        Host::X86_64Linux,
+        &[("usr/bin/eka2l1_qt", "#!/bin/sh\necho '  --data-dir <dir>'\n", true)],
+    );
+    world
+        .bin()
+        .args(["emulator", "start", "rm-469"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(format!("installing {emulator}")))
+        .stderr(predicate::str::contains("the emulator package's"))
+        .stderr(predicate::str::contains("usr/bin/eka2l1_qt has no --control"));
+}
+
+#[test]
+fn the_default_eka2l1_folder_is_not_read_without_symdev_eka2l1_data() {
+    let world = World::new();
+    let default = world.tmp.path().join("data/EKA2L1");
+    std::fs::create_dir_all(default.join("data/roms/rm-469")).unwrap();
+    std::fs::write(default.join("data/devices.yml"), DEVICE_YML).unwrap();
+    let before: Vec<_> = walk(&default);
+    world
+        .bin()
+        .args(["emulator", "start", "rm-469"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("firmware;rm-469;1 was not found"))
+        .stderr(predicate::str::contains("SYMDEV_EKA2L1_DATA"));
+    assert!(!profile(&world).exists());
+    assert_eq!(walk(&default), before);
+}
+
+#[test]
+fn an_existing_profile_needs_no_firmware_package() {
+    let home = tempfile::tempdir().unwrap();
+    let emulators = home.path().join("data/symdev/emulators/rm-469");
+    std::fs::create_dir_all(&emulators).unwrap();
+    bin()
+        .env("XDG_DATA_HOME", home.path().join("data"))
+        .args(["--offline", "devices"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("profile rm-469"))
+        .stderr(predicate::str::contains("installing").not());
+}
+
+/// Every path under `dir` with its modification time, sorted.
+fn walk(dir: &Path) -> Vec<(PathBuf, std::time::SystemTime)> {
+    let mut found = Vec::new();
+    let mut todo = vec![dir.to_path_buf()];
+    while let Some(d) = todo.pop() {
+        for e in std::fs::read_dir(&d).unwrap().flatten() {
+            let meta = e.metadata().unwrap();
+            if meta.is_dir() {
+                todo.push(e.path());
+            }
+            found.push((e.path(), meta.modified().unwrap()));
+        }
+    }
+    found.sort();
+    found
+}
+```
+
+`crates/symdev-cli/tests/run.rs`: `run_without_any_device_says_to_install_a_firmware` becomes
+`run_without_any_device_names_the_firmware_package_and_symdev_eka2l1_data`, asserting
+`firmware;rm-469;1` and `SYMDEV_EKA2L1_DATA` in stderr instead of `install a firmware in
+EKA2L1` (`bin()`'s `sources.toml` has no source, so the lookup fails without a network).
+
+- [x] **Step 3: Run them and see them fail**
+
+```bash
+cargo test -p symdev-cli --offline --test emulator_packages > /tmp/t9.log 2>&1; grep -E "^error|test result|FAILED|panicked" /tmp/t9.log
+cargo test -p symdev-cli --offline --bin symdev provision::emulator > /tmp/t9u.log 2>&1; grep -E "^error|test result" /tmp/t9u.log
+```
+
+Expected: the unit tests do not compile (`no method named eka2l1`). The CLI tests fail: no
+install line, the old "missing emulator: SYMDEV_EKA2L1" error, profiles not made from the
+package.
+
+- [x] **Step 4: Implement** `crates/symdev-cli/src/provision/emulator.rs`
+
+```rust
+//! The EKA2L1 and the firmware an emulator runs (emulator packages spec §5): the user's
+//! own through `SYMDEV_EKA2L1` / `SYMDEV_EKA2L1_DATA` first, the pinned packages second.
+
+use symdev_core::Error;
+use symdev_emulator::EmulatorData;
+use symdev_emulator::device::{Eka2l1, Firmware};
+use symdev_manifest::Device;
+use symdev_sdk::{EmulatorPackage, FirmwarePackage, PackageId, Pins};
+
+use super::Provision;
+
+const EKA2L1: &str = "SYMDEV_EKA2L1";
+const DATA: &str = "SYMDEV_EKA2L1_DATA";
+
+impl Provision {
+    /// `SYMDEV_EKA2L1` as it is when set; else the pinned `emulator` package's program,
+    /// installed now if missing, by the rules of every package (`--offline`, keyless and
+    /// unreadable sources, no source read once it is installed).
+    pub fn eka2l1(&self) -> Result<Eka2l1, Error> {
+        if let Some(program) = self.var(EKA2L1) {
+            return Ok(Eka2l1::User(program));
+        }
+        let id = Pins::emulator();
+        let home = self.install_missing(std::slice::from_ref(&id))?;
+        let package = EmulatorPackage::at(home.package_dir(&id), &id)?;
+        Ok(Eka2l1::Package(package.program()))
+    }
+
+    /// What emulator profiles are made from: with `SYMDEV_EKA2L1_DATA`, every firmware
+    /// installed in that EKA2L1 data folder; else the pinned firmware package of every
+    /// supported device, installed now when a configured source has it. A failed lookup
+    /// names both ways (the catalog adds `SYMDEV_EKA2L1_DATA` for a firmware id).
+    pub fn firmwares(&self) -> Result<Vec<Firmware>, Error> {
+        let ids: Vec<PackageId> = Device::ALL.into_iter().map(Pins::firmware).collect();
+        if let Some(dir) = self.var(DATA) {
+            let found = Firmware::in_user_data(&EmulatorData::at(&dir));
+            if found.is_empty() {
+                let names: Vec<&str> = ids.iter().map(PackageId::as_str).collect();
+                return Err(Error::Other(format!(
+                    "{DATA} is {}, which has no firmware in data/roms/: install one in EKA2L1, \
+                     or unset {DATA} to use the {} package",
+                    dir.display(),
+                    names.join(" and ")
+                )));
+            }
+            return Ok(found);
+        }
+        let home = self.install_missing(&ids)?;
+        ids.iter()
+            .map(|id| {
+                let package = FirmwarePackage::at(home.package_dir(id), id)?;
+                Ok(Firmware::Package {
+                    root: package.root().to_path_buf(),
+                    name: package.name().to_string(),
+                })
+            })
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests;
+```
+
+`provision.rs`: `mod emulator;` beside `mod rust_sdk;`. The file is near 300 lines; this
+adds one.
+
+`devices_cmd.rs`. `Devices` gets these three methods; the old `profiles()` that created
+profiles goes away:
+
+```rust
+    /// The profiles that exist, by name. Makes none.
+    pub fn profiles(&self) -> Vec<String> {
+        Self::dirs(&self.profiles_root)
+    }
+
+    /// A profile per firmware of `firmwares`, made now (spec §5: on first need).
+    pub fn make_profiles(&self, firmwares: Vec<Firmware>) -> Result<Vec<String>> {
+        for firmware in firmwares {
+            self.profile(firmware.name()).create(&firmware)?;
+            eprintln!("created profile {}", firmware.name());
+        }
+        Ok(self.profiles())
+    }
+
+    /// The profiles, made from `provision`'s firmware when there are none.
+    pub fn profiles_or_make(&self, provision: &Provision) -> Result<Vec<String>> {
+        match self.profiles() {
+            none if none.is_empty() => self.make_profiles(provision.firmwares()?),
+            some => Ok(some),
+        }
+    }
+```
+
+and `eka2l1_with_control` resolves through `Provision`:
+
+```rust
+/// The EKA2L1 to start, which must have the control server.
+pub(crate) fn eka2l1_with_control(provision: &Provision) -> Result<Eka2l1> {
+    let eka2l1 = provision.eka2l1()?;
+    if EmulatorInstance::has_control(&eka2l1)? {
+        return Ok(eka2l1);
+    }
+    let fix = match &eka2l1 {
+        Eka2l1::User(_) => format!(
+            "unset SYMDEV_EKA2L1 to use the {} package, or point it at an EKA2L1 built from \
+             our fork's symdev branch",
+            Pins::emulator()
+        ),
+        Eka2l1::Package(_) => format!(
+            "the package is damaged: run `symdev sdk uninstall {w} && symdev sdk install {w}`",
+            w = Pins::emulator().shell_word()
+        ),
+    };
+    Err(Error::Other(format!(
+        "{} has no --control: cargo run needs an EKA2L1 with the control server \
+         (EKA2L1#770–#772); {fix}",
+        eka2l1.describe()
+    )))
+}
+```
+
+`devices_cmd.rs` imports `symdev_emulator::device::{Eka2l1, Firmware}`, `symdev_sdk::Pins`
+and `crate::provision::Provision`, and no longer `symdev_emulator::EmulatorData`.
+`list(provision: &Provision)` and `start(profile: &str, provision: &Provision)` call
+`devices.profiles_or_make(provision)?` where they called `profiles()`. `start` passes
+`&eka2l1_with_control(provision)?` to `EmulatorInstance::start`.
+
+`run/device_pick.rs`:
+
+```rust
+pub(crate) fn pick_device(terminal: bool, provision: &Provision) -> Result<RegistryEntry> {
+    let devices = Devices::from_env()?;
+    let running = devices.live()?;
+    let requested = std::env::var("SYMDEV_DEVICE")
+        .ok()
+        .filter(|v| !v.is_empty());
+    // A profile is made only when a start needs one: nothing runs, or SYMDEV_DEVICE names
+    // a profile rather than an emulator id.
+    let wants_profile = running.is_empty()
+        || requested.as_deref().is_some_and(|r| DeviceId::parse(r).is_none());
+    let mut profiles = devices.profiles();
+    if profiles.is_empty() && wants_profile {
+        profiles = devices.make_profiles(provision.firmwares()?)?;
+    }
+```
+
+The rest of the function stays as it is, from `let choice = DeviceChoice {` to the end,
+except that the `Offer::Profile` arm calls `eka2l1_with_control(provision)?` and passes
+`&eka2l1` to `EmulatorInstance::start`. Add `use symdev_emulator::device::DeviceId;` and
+`use crate::provision::Provision;`.
+
+`run.rs`: `pub(crate) fn run(exe: Option<PathBuf>, args: Vec<String>, provision: &Provision)`
+passes it to `pick_device`. `test_cmd.rs`: `test_project(m, emulator, provision:
+&Provision)`. `main.rs`: `run::run(exe, args, &provision)`, `test_cmd::test_project(m,
+emulator, &provision)`, `devices_cmd::list(&provision)`, `devices_cmd::start(&profile,
+&provision)`. Delete Task 7's and Task 8's temporary environment reads in `devices_cmd.rs`.
+After this step, `grep -rn 'SYMDEV_EKA2L1' crates/symdev-cli/src` shows only
+`provision/emulator.rs` and messages.
+
+- [x] **Step 5: Run the tests and the gates**
+
+Step 3's two commands, then Task 4 step 4's three commands. Expected: all pass, 0 clippy
+lines. If a test under `crates/symdev-cli/tests/` now reaches the built-in source (an
+`installing …` line, or a network error in its output), it lacked a running device or a
+profile and asked for a firmware. Give it a profile directory or `SYMDEV_EKA2L1_DATA`, as
+its intent requires; do not turn the lazy rule off.
+
+- [x] **Step 6: Commit**
+
+```bash
+git add crates/symdev-cli/src/provision.rs crates/symdev-cli/src/provision/emulator.rs \
+  crates/symdev-cli/src/provision/emulator/tests.rs crates/symdev-cli/src/devices_cmd.rs \
+  crates/symdev-cli/src/run/device_pick.rs crates/symdev-cli/src/run.rs \
+  crates/symdev-cli/src/test_cmd.rs crates/symdev-cli/src/main.rs \
+  crates/symdev-cli/tests/emulator_packages.rs crates/symdev-cli/tests/run.rs
+git commit -m "Install the emulator and firmware packages on first need when SYMDEV_EKA2L1 and SYMDEV_EKA2L1_DATA are unset."
+```
+
+### Task 10: The public emulator recipe and the `pkgtools` checks it runs
+
+All in `~/worktrees/symdev-packages/cargo-run`. This task builds the package from the
+**rehearsal** AppImage (Task 3). Task 16 points it at the CI's.
+
+**Files:**
+- Modify: `pkgtools/Cargo.toml` (`object`, read-only ELF)
+- Create: `pkgtools/src/emulator_tree.rs` (`EmulatorTree`), `pkgtools/src/emulator_tree/glibc_version.rs`
+  (`GlibcVersion`), `pkgtools/src/emulator_tree/tool.rs` (`EmulatorTreeTool`), `pkgtools/src/emulator_tree/tests.rs`
+- Create: `pkgtools/src/emulator_notices.rs` (`EmulatorNotices`), `pkgtools/src/emulator_notices/submodules.rs`
+  (`Submodules`), `pkgtools/src/emulator_notices/bundled_list.rs` (`BundledList`), `pkgtools/src/emulator_notices/tests.rs`
+- Modify: `pkgtools/src/main.rs` (subcommands `emulator-tree`, `emulator-notices`)
+- Create: `recipes/emulator/<V>/{recipe.toml,artifact.toml,build.sh}`, `tests/emulator-build.test`
+- Modify: `.github/workflows/tests.yml` (run the new test)
+
+**Interfaces:**
+- Produces:
+  - `pkgtools emulator-tree <tree> --glibc <x.y>`: exit 0 and `glibc floor <x.y>` when the
+    tree has the observed layout and its newest needed `GLIBC_` version is `<x.y>`; exit 1
+    with `error: …` otherwise.
+  - `pkgtools emulator-notices <eka2l1-src> <tree> --id <id> --commit <sha> [--packages
+    <tsv>] [--extra <list>]` writes `<tree>/share/doc/eka2l1/{COPYING,third-party/…,
+    BUNDLED.tsv,SOURCE.txt}`.
+  - `build.sh <absolute prefix>` makes the package tree; `EMULATOR_ARTIFACT_DIR` replaces
+    the download. Every AppImage or package list whose SHA-256 differs from `artifact.toml`
+    is refused, and so are `artifact.toml`'s zeros.
+
+- [x] **Step 1: Add the dependency**
+
+In `pkgtools/Cargo.toml`: `object = { version = "0.39", default-features = false, features
+= ["read_core", "elf", "std"] }`. `object 0.39.1` is in this machine's cargo cache. Run `cargo
+fetch` once online if `--locked` reports a missing lock entry, and record the new
+`Cargo.lock` lines.
+
+- [x] **Step 2: Write the failing tests**, `pkgtools/src/emulator_tree/tests.rs`
+
+```rust
+use std::fs;
+use std::path::Path;
+
+use super::{EmulatorTree, GlibcVersion};
+
+fn v(s: &str) -> GlibcVersion {
+    GlibcVersion::parse(s).unwrap()
+}
+
+#[test]
+fn versions_compare_by_number_not_by_text() {
+    assert!(v("2.2.5") < v("2.17"));
+    assert!(v("2.17") < v("2.38"));
+    assert_eq!(v("2.38").to_string(), "2.38");
+    assert!(GlibcVersion::parse("PRIVATE").is_none());
+}
+
+#[test]
+fn this_test_binary_needs_some_glibc_and_text_needs_none() {
+    let me = fs::read(std::env::current_exe().unwrap()).unwrap();
+    assert!(GlibcVersion::needed_by(&me).unwrap() >= Some(v("2.2.5")));
+    assert_eq!(GlibcVersion::needed_by(b"not an ELF file").unwrap(), None);
+}
+
+/// The layout of experiment 115 §1.2, with this test binary as `eka2l1_qt`.
+fn tree(root: &Path) {
+    fs::create_dir_all(root.join("usr/bin")).unwrap();
+    fs::copy(std::env::current_exe().unwrap(), root.join("usr/bin/eka2l1_qt")).unwrap();
+    std::os::unix::fs::symlink("usr/bin/eka2l1_qt", root.join("AppRun")).unwrap();
+    fs::write(root.join("usr/bin/qt.conf"), "# generated by linuxdeploy-plugin-qt\n[Paths]\nPrefix = ../\nPlugins = plugins\n").unwrap();
+}
+
+#[test]
+fn the_observed_layout_is_accepted_and_its_floor_is_the_programs() {
+    let tmp = tempfile::tempdir().unwrap();
+    tree(tmp.path());
+    let t = EmulatorTree::at(tmp.path()).unwrap();
+    let me = fs::read(std::env::current_exe().unwrap()).unwrap();
+    assert_eq!(Some(t.glibc_floor().unwrap()), GlibcVersion::needed_by(&me).unwrap());
+}
+
+#[test]
+fn an_apprun_that_is_not_the_link_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    tree(tmp.path());
+    fs::remove_file(tmp.path().join("AppRun")).unwrap();
+    fs::write(tmp.path().join("AppRun"), "#!/bin/sh\n").unwrap();
+    let e = EmulatorTree::at(tmp.path()).err().unwrap().to_string();
+    assert!(e.contains("AppRun"), "{e}");
+}
+
+#[test]
+fn apprun_hooks_are_refused_until_observed() {
+    let tmp = tempfile::tempdir().unwrap();
+    tree(tmp.path());
+    fs::create_dir(tmp.path().join("apprun-hooks")).unwrap();
+    let e = EmulatorTree::at(tmp.path()).err().unwrap().to_string();
+    assert!(e.contains("apprun-hooks"), "{e}");
+}
+
+#[test]
+fn a_qt_conf_without_the_plugin_path_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    tree(tmp.path());
+    fs::write(tmp.path().join("usr/bin/qt.conf"), "[Paths]\nPrefix = ../\n").unwrap();
+    let e = EmulatorTree::at(tmp.path()).err().unwrap().to_string();
+    assert!(e.contains("Plugins = plugins"), "{e}");
+}
+```
+
+Run `cargo test --locked -p pkgtools emulator_tree > /tmp/t10.log 2>&1; grep -E "^error|test
+result" /tmp/t10.log` (with `mod emulator_tree;` in `main.rs`). Expected: unresolved
+`EmulatorTree`, `GlibcVersion`.
+
+- [x] **Step 3: Implement the tree check**
+
+`pkgtools/src/emulator_tree/glibc_version.rs`:
+
+```rust
+//! `GlibcVersion`: a `GLIBC_x.y[.z]` symbol version, and the newest one an ELF file needs.
+
+use std::fmt;
+
+use object::Endianness;
+use object::elf::FileHeader64;
+use object::read::elf::FileHeader;
+
+use crate::tool_error::{Result, ToolError};
+
+/// Compared number by number, so 2.2.5 < 2.17 < 2.38.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GlibcVersion(Vec<u32>);
+
+impl GlibcVersion {
+    /// `2.38`, `2.2.5`; `None` for anything else (`PRIVATE`).
+    pub fn parse(text: &str) -> Option<GlibcVersion> {
+        let parts: Option<Vec<u32>> = text.split('.').map(|p| p.parse().ok()).collect();
+        parts.filter(|p| p.len() >= 2).map(GlibcVersion)
+    }
+
+    /// The newest `GLIBC_` version the file's version-needs section names; `None` for a
+    /// file that is not ELF or needs none. A 32-bit or damaged ELF file is an error.
+    pub fn needed_by(data: &[u8]) -> Result<Option<GlibcVersion>> {
+        if !data.starts_with(b"\x7fELF") {
+            return Ok(None);
+        }
+        let bad = |e: object::read::Error| ToolError::new(format!("not a readable 64-bit ELF file: {e}"));
+        let header = FileHeader64::<Endianness>::parse(data).map_err(bad)?;
+        let endian = header.endian().map_err(bad)?;
+        let sections = header.sections(endian, data).map_err(bad)?;
+        let Some((mut needs, link)) = sections.gnu_verneed(endian, data).map_err(bad)? else {
+            return Ok(None);
+        };
+        let strings = sections.strings(endian, data, link).map_err(bad)?;
+        let mut newest = None;
+        while let Some((_, mut names)) = needs.next().map_err(bad)? {
+            while let Some(aux) = names.next().map_err(bad)? {
+                let name = aux.name(endian, strings).map_err(bad)?;
+                let version = name
+                    .strip_prefix(b"GLIBC_")
+                    .and_then(|v| std::str::from_utf8(v).ok())
+                    .and_then(GlibcVersion::parse);
+                newest = newest.max(version);
+            }
+        }
+        Ok(newest)
+    }
+}
+
+impl fmt::Display for GlibcVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let parts: Vec<String> = self.0.iter().map(u32::to_string).collect();
+        f.write_str(&parts.join("."))
+    }
+}
+```
+
+Check these `object` calls against `object 0.39.1`'s `read::elf` docs (`cargo doc --open -p
+object`). They were read from its source: `FileHeader::parse`, `endian`, `sections`,
+`SectionTable::gnu_verneed` and `strings`, `VerneedIterator::next`, `Vernaux::name`.
+
+`pkgtools/src/emulator_tree.rs`:
+
+```rust
+//! `EmulatorTree`: the extracted AppImage an `emulator` package is, checked for the layout
+//! symdev starts it by (symdev experiment 115 §1.2) and for its glibc floor.
+
+mod glibc_version;
+mod tool;
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+pub use glibc_version::GlibcVersion;
+pub use tool::EmulatorTreeTool;
+
+use crate::tool_error::{Result, ToolError};
+use crate::tree_walk::TreeWalk;
+
+pub struct EmulatorTree {
+    root: PathBuf,
+}
+
+impl EmulatorTree {
+    /// What symdev starts (its EmulatorPackage::PROGRAM).
+    pub const PROGRAM: &'static str = "usr/bin/eka2l1_qt";
+
+    /// The tree at `root`, if it has the observed layout: `AppRun` a link to the program,
+    /// no AppRun hooks, the program an ELF file, `qt.conf` pointing Qt at the bundle.
+    pub fn at(root: &Path) -> Result<EmulatorTree> {
+        let apprun = root.join("AppRun");
+        let target = fs::read_link(&apprun)
+            .map_err(|e| ToolError::io(format!("{} is not a symlink", apprun.display()), &e))?;
+        if target != Path::new(Self::PROGRAM) {
+            return Err(ToolError::new(format!(
+                "AppRun links to {}, not {}: symdev starts {} itself (experiment 115 §1.2), so \
+                 another layout needs a new observation",
+                target.display(),
+                Self::PROGRAM,
+                Self::PROGRAM
+            )));
+        }
+        for hook in ["apprun-hooks", "AppRun.wrapped"] {
+            if root.join(hook).symlink_metadata().is_ok() {
+                return Err(ToolError::new(format!(
+                    "{hook} exists: the AppImage sets up an environment that symdev does not \
+                     give eka2l1_qt; observe what it needs before packing it"
+                )));
+            }
+        }
+        let program = root.join(Self::PROGRAM);
+        let head = fs::read(&program).map_err(|e| ToolError::io(program.display(), &e))?;
+        if !head.starts_with(b"\x7fELF") {
+            return Err(ToolError::new(format!("{} is not an ELF file", program.display())));
+        }
+        let qt_conf = root.join("usr/bin/qt.conf");
+        let text = fs::read_to_string(&qt_conf).map_err(|e| ToolError::io(qt_conf.display(), &e))?;
+        for line in ["Prefix = ../", "Plugins = plugins"] {
+            if !text.lines().any(|l| l.trim() == line) {
+                return Err(ToolError::new(format!(
+                    "{} has no `{line}`: Qt would not find the bundled plugins",
+                    qt_conf.display()
+                )));
+            }
+        }
+        Ok(EmulatorTree { root: root.to_path_buf() })
+    }
+
+    /// The newest glibc version any ELF file of the tree needs (links are skipped: they
+    /// name files the walk reads anyway).
+    pub fn glibc_floor(&self) -> Result<GlibcVersion> {
+        let mut newest = None;
+        for file in TreeWalk::files(&self.root, |_| true)? {
+            if file.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
+                continue;
+            }
+            let data = fs::read(&file).map_err(|e| ToolError::io(file.display(), &e))?;
+            let needed = GlibcVersion::needed_by(&data)
+                .map_err(|e| ToolError::new(format!("{}: {e}", file.display())))?;
+            newest = newest.max(needed);
+        }
+        newest.ok_or_else(|| ToolError::new("no ELF file of the tree needs a glibc version"))
+    }
+}
+
+#[cfg(test)]
+mod tests;
+```
+
+`pkgtools/src/emulator_tree/tool.rs`:
+
+```rust
+//! `EmulatorTreeTool`: `pkgtools emulator-tree <tree> --glibc <x.y>`.
+
+use std::io::Write;
+use std::path::Path;
+
+use super::{EmulatorTree, GlibcVersion};
+
+pub struct EmulatorTreeTool;
+
+impl EmulatorTreeTool {
+    /// Exit 0 when the tree has the layout and the recorded floor; 1 with the reason.
+    pub fn run(tree: &Path, glibc: &str, out: &mut impl Write, err: &mut impl Write) -> u8 {
+        let Some(recorded) = GlibcVersion::parse(glibc) else {
+            let _ = writeln!(err, "error: --glibc {glibc} is not a version like 2.38");
+            return 1;
+        };
+        let floor = EmulatorTree::at(tree).and_then(|t| t.glibc_floor());
+        match floor {
+            Ok(floor) if floor == recorded => {
+                let _ = writeln!(out, "glibc floor {floor}");
+                0
+            }
+            Ok(floor) => {
+                let _ = writeln!(
+                    err,
+                    "error: the tree needs GLIBC_{floor}, artifact.toml records {recorded}: \
+                     record what the tree needs; a floor above 2.38 goes to the owner first \
+                     (plan finding F1)"
+                );
+                1
+            }
+            Err(e) => {
+                let _ = writeln!(err, "error: {}: {e}", tree.display());
+                1
+            }
+        }
+    }
+}
+```
+
+`main.rs`: `mod emulator_tree;`, `use crate::emulator_tree::EmulatorTreeTool;`, and
+
+```rust
+    /// Check an extracted EKA2L1 AppImage for the layout symdev starts it by and for the
+    /// glibc floor artifact.toml records. Exit 1 on any difference.
+    EmulatorTree {
+        #[arg(value_name = "tree")]
+        tree: PathBuf,
+        /// The recorded floor, e.g. 2.38.
+        #[arg(long, value_name = "x.y")]
+        glibc: String,
+    },
+```
+
+with `Command::EmulatorTree { tree, glibc } => EmulatorTreeTool::run(&tree, &glibc, &mut out,
+&mut err),`. Run step 2's command again; expected `test result: ok`.
+
+- [x] **Step 4: Write the failing notice tests**, `pkgtools/src/emulator_notices/tests.rs`
+
+```rust
+use std::fs;
+use std::path::Path;
+
+use super::EmulatorNotices;
+
+fn write(path: &Path, text: &str) {
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, text).unwrap();
+}
+
+/// EKA2L1's source: its LICENSE, two submodules, one with a nested submodule.
+fn source(src: &Path) {
+    write(&src.join("LICENSE"), "GNU GENERAL PUBLIC LICENSE\nVersion 3\n");
+    write(&src.join(".gitmodules"), "[submodule \"fmt\"]\n\tpath = src/external/fmt\n\turl = x\n[submodule \"dyn\"]\n\tpath = src/external/dynarmic\n\turl = y\n");
+    write(&src.join("src/external/fmt/LICENSE.rst"), "MIT\n");
+    write(&src.join("src/external/dynarmic/LICENSE.txt"), "0BSD\n");
+    write(&src.join("src/external/dynarmic/.gitmodules"), "[submodule \"z\"]\n\tpath = externals/zydis\n\turl = z\n");
+    write(&src.join("src/external/dynarmic/externals/zydis/LICENSE"), "MIT zydis\n");
+}
+
+fn tree(root: &Path) {
+    write(&root.join("usr/share/doc/libfoo1/copyright"), "Format: …\n");
+}
+
+fn notices(src: &Path, tree: &Path, packages: Option<&Path>) -> EmulatorNotices {
+    EmulatorNotices {
+        src: src.to_path_buf(),
+        tree: tree.to_path_buf(),
+        id: "emulator;2026.10.04".into(),
+        commit: "0123456789abcdef0123456789abcdef01234567".into(),
+        packages: packages.map(Path::to_path_buf),
+        extra: Vec::new(),
+    }
+}
+
+#[test]
+fn writes_the_gpl_every_submodules_licence_and_where_the_source_is() {
+    let (src, out) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    source(src.path());
+    tree(out.path());
+    notices(src.path(), out.path(), None).write().unwrap();
+    let doc = out.path().join("share/doc/eka2l1");
+    assert_eq!(fs::read_to_string(doc.join("COPYING")).unwrap(), "GNU GENERAL PUBLIC LICENSE\nVersion 3\n");
+    for f in ["src/external/fmt/LICENSE.rst", "src/external/dynarmic/LICENSE.txt", "src/external/dynarmic/externals/zydis/LICENSE"] {
+        assert!(doc.join("third-party").join(f).is_file(), "{f}");
+    }
+    let source = fs::read_to_string(doc.join("SOURCE.txt")).unwrap();
+    assert!(source.contains("emulator;2026.10.04") && source.contains("0123456789abcdef0123456789abcdef01234567"), "{source}");
+    assert!(source.contains("source-code"), "{source}");
+}
+
+#[test]
+fn a_submodule_without_a_licence_file_is_named_until_listed_as_extra() {
+    let (src, out) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    source(src.path());
+    tree(out.path());
+    fs::remove_file(src.path().join("src/external/fmt/LICENSE.rst")).unwrap();
+    write(&src.path().join("src/external/fmt/README.md"), "MIT, see header\n");
+    let e = notices(src.path(), out.path(), None).write().unwrap_err().to_string();
+    assert!(e.contains("src/external/fmt"), "{e}");
+    let mut n = notices(src.path(), out.path(), None);
+    n.extra = vec!["src/external/fmt/README.md".into()];
+    n.write().unwrap();
+    assert!(out.path().join("share/doc/eka2l1/third-party/src/external/fmt/README.md").is_file());
+}
+
+#[test]
+fn the_bundled_list_points_at_each_packages_copyright_and_refuses_a_missing_one() {
+    let (src, out) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    source(src.path());
+    tree(out.path());
+    let tsv = src.path().join("packages.tsv");
+    write(&tsv, "libfoo1:amd64\t1.2-3\tfoo\t1.2-3\n");
+    notices(src.path(), out.path(), Some(&tsv)).write().unwrap();
+    let list = fs::read_to_string(out.path().join("share/doc/eka2l1/BUNDLED.tsv")).unwrap();
+    assert_eq!(
+        list,
+        "package\tversion\tsource\tsource version\tcopyright\n\
+         libfoo1:amd64\t1.2-3\tfoo\t1.2-3\tusr/share/doc/libfoo1/copyright\n"
+    );
+    write(&tsv, "libbar2:amd64\t2\tbar\t2\n");
+    let e = notices(src.path(), out.path(), Some(&tsv)).write().unwrap_err().to_string();
+    assert!(e.contains("usr/share/doc/libbar2/copyright"), "{e}");
+}
+```
+
+Run `cargo test --locked -p pkgtools emulator_notices` (with `mod emulator_notices;` in
+`main.rs`). Expected: unresolved `EmulatorNotices`.
+
+- [x] **Step 5: Implement the notices**
+
+`pkgtools/src/emulator_notices.rs`:
+
+```rust
+//! `EmulatorNotices`: `share/doc/eka2l1/` of the emulator package (symdev's emulator packages
+//! spec §3): EKA2L1's GPL-3.0, the licence files of every submodule it builds from, the list of
+//! bundled Ubuntu packages with their copyright files, and where the corresponding source is.
+
+mod bundled_list;
+mod submodules;
+
+use std::fs;
+use std::path::PathBuf;
+
+pub use bundled_list::BundledList;
+pub use submodules::Submodules;
+
+use crate::tool_error::{Result, ToolError};
+
+pub struct EmulatorNotices {
+    /// The fork commit's checkout, submodules included.
+    pub src: PathBuf,
+    /// The extracted AppImage the notices go into.
+    pub tree: PathBuf,
+    pub id: String,
+    pub commit: String,
+    /// The artifact's `eka2l1-qt-x64.packages.tsv` (D1 = A).
+    pub packages: Option<PathBuf>,
+    /// Licence files, relative to `src`, for submodules that have none under a usual name.
+    pub extra: Vec<PathBuf>,
+}
+
+impl EmulatorNotices {
+    /// Writes the notices; returns how many licence files and bundled packages it listed.
+    pub fn write(&self) -> Result<(usize, usize)> {
+        let doc = self.tree.join("share/doc/eka2l1");
+        let third = doc.join("third-party");
+        fs::create_dir_all(&third).map_err(|e| ToolError::io(third.display(), &e))?;
+        copy(&self.src.join("LICENSE"), &doc.join("COPYING"))?;
+        let files = Submodules::read(&self.src)?.licence_files(&self.extra)?;
+        for rel in &files {
+            copy(&self.src.join(rel), &third.join(rel))?;
+        }
+        let bundled = match &self.packages {
+            Some(tsv) => {
+                let list = BundledList::read(tsv, &self.tree)?;
+                let out = doc.join("BUNDLED.tsv");
+                fs::write(&out, list.to_tsv()).map_err(|e| ToolError::io(out.display(), &e))?;
+                list.count()
+            }
+            None => 0,
+        };
+        let text = format!(
+            "{id} is EKA2L1 (GPL-3.0-or-later, COPYING) built by the CI of\n\
+             https://github.com/4akloon/EKA2L1 at commit {commit}, with the libraries listed\n\
+             in BUNDLED.tsv (each one's licence: usr/share/doc/<package>/copyright).\n\n\
+             The corresponding source of everything in this package is the archive the\n\
+             index.toml beside it lists as `source-code` for {id}.\n",
+            id = self.id,
+            commit = self.commit
+        );
+        let out = doc.join("SOURCE.txt");
+        fs::write(&out, text).map_err(|e| ToolError::io(out.display(), &e))?;
+        Ok((files.len(), bundled))
+    }
+}
+
+fn copy(from: &std::path::Path, to: &std::path::Path) -> Result<()> {
+    if let Some(parent) = to.parent() {
+        fs::create_dir_all(parent).map_err(|e| ToolError::io(parent.display(), &e))?;
+    }
+    fs::copy(from, to).map(|_| ()).map_err(|e| ToolError::io(from.display(), &e))
+}
+
+#[cfg(test)]
+mod tests;
+```
+
+`pkgtools/src/emulator_notices/submodules.rs`:
+
+```rust
+//! `Submodules`: a checkout's submodule folders, nested ones included (each `.gitmodules`'s
+//! `path = …` lines), and the licence files at their top.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use crate::tool_error::{Result, ToolError};
+
+/// The names a licence file starts with, in any case.
+const NAMES: [&str; 5] = ["LICENSE", "LICENCE", "COPYING", "NOTICE", "COPYRIGHT"];
+
+pub struct Submodules {
+    src: PathBuf,
+    /// Relative to `src`, sorted.
+    paths: Vec<PathBuf>,
+}
+
+impl Submodules {
+    pub fn read(src: &Path) -> Result<Submodules> {
+        let mut paths = Vec::new();
+        let mut todo = vec![PathBuf::new()];
+        while let Some(base) = todo.pop() {
+            let file = src.join(&base).join(".gitmodules");
+            let Ok(text) = fs::read_to_string(&file) else { continue };
+            for line in text.lines() {
+                if let Some(p) = line.trim().strip_prefix("path = ") {
+                    let rel = base.join(p.trim());
+                    todo.push(rel.clone());
+                    paths.push(rel);
+                }
+            }
+        }
+        paths.sort();
+        Ok(Submodules { src: src.to_path_buf(), paths })
+    }
+
+    /// Every submodule's licence files and `extra`, relative to the checkout. A submodule
+    /// with neither is an error naming all such submodules: read each and list its licence
+    /// file in the recipe's `notices-extra.txt`.
+    pub fn licence_files(&self, extra: &[PathBuf]) -> Result<Vec<PathBuf>> {
+        let (mut found, mut missing) = (Vec::new(), Vec::new());
+        for sub in &self.paths {
+            let dir = self.src.join(sub);
+            let entries = fs::read_dir(&dir).map_err(|e| ToolError::io(dir.display(), &e))?;
+            let mut here: Vec<PathBuf> = entries
+                .flatten()
+                .filter(|e| e.path().is_file())
+                .filter(|e| {
+                    let name = e.file_name().to_string_lossy().to_uppercase();
+                    NAMES.iter().any(|n| name.starts_with(n))
+                })
+                .map(|e| sub.join(e.file_name()))
+                .collect();
+            here.sort();
+            if here.is_empty() && !extra.iter().any(|x| self.owner(x) == Some(sub)) {
+                missing.push(sub.display().to_string());
+            }
+            found.extend(here);
+        }
+        if !missing.is_empty() {
+            return Err(ToolError::new(format!(
+                "no licence file at the top of: {}; read each one and list its licence file, \
+                 relative to the checkout, in the recipe's notices-extra.txt",
+                missing.join(", ")
+            )));
+        }
+        found.extend(extra.iter().cloned());
+        found.sort();
+        found.dedup();
+        Ok(found)
+    }
+
+    /// The deepest submodule that holds `path`.
+    fn owner(&self, path: &Path) -> Option<&PathBuf> {
+        self.paths
+            .iter()
+            .filter(|p| path.starts_with(p))
+            .max_by_key(|p| p.components().count())
+    }
+}
+```
+
+`pkgtools/src/emulator_notices/bundled_list.rs`:
+
+```rust
+//! `BundledList`: the artifact's package list (D1 = A), each package with the copyright file
+//! linuxdeploy put into the tree for it.
+
+use std::fs;
+use std::path::Path;
+
+use crate::tool_error::{Result, ToolError};
+
+pub struct BundledList {
+    /// The list's line and the copyright file, relative to the tree.
+    rows: Vec<(String, String)>,
+}
+
+impl BundledList {
+    pub fn read(tsv: &Path, tree: &Path) -> Result<BundledList> {
+        let text = fs::read_to_string(tsv).map_err(|e| ToolError::io(tsv.display(), &e))?;
+        let (mut rows, mut missing) = (Vec::new(), Vec::new());
+        for line in text.lines().filter(|l| !l.is_empty()) {
+            let fields: Vec<&str> = line.split('\t').collect();
+            let [package, _, _, _] = fields[..] else {
+                return Err(ToolError::new(format!(
+                    "{}: `{line}` is not package, version, source, source version",
+                    tsv.display()
+                )));
+            };
+            let name = package.split(':').next().unwrap_or(package);
+            let copyright = format!("usr/share/doc/{name}/copyright");
+            if !tree.join(&copyright).is_file() {
+                missing.push(copyright.clone());
+            }
+            rows.push((line.to_string(), copyright));
+        }
+        if !missing.is_empty() {
+            return Err(ToolError::new(format!(
+                "the tree has no {}: a bundled package without its licence",
+                missing.join(", ")
+            )));
+        }
+        Ok(BundledList { rows })
+    }
+
+    pub fn count(&self) -> usize {
+        self.rows.len()
+    }
+
+    pub fn to_tsv(&self) -> String {
+        let mut out = String::from("package\tversion\tsource\tsource version\tcopyright\n");
+        for (line, copyright) in &self.rows {
+            out.push_str(&format!("{line}\t{copyright}\n"));
+        }
+        out
+    }
+}
+```
+
+`main.rs`: `mod emulator_notices;`,
+`use crate::emulator_notices::EmulatorNotices;`, and
+
+```rust
+    /// Write share/doc/eka2l1/ into an extracted EKA2L1 AppImage: COPYING, every
+    /// submodule's licence files, BUNDLED.tsv (with --packages) and SOURCE.txt.
+    EmulatorNotices {
+        #[arg(value_name = "eka2l1-src")]
+        src: PathBuf,
+        #[arg(value_name = "tree")]
+        tree: PathBuf,
+        #[arg(long, value_name = "id")]
+        id: String,
+        #[arg(long, value_name = "sha")]
+        commit: String,
+        #[arg(long, value_name = "packages.tsv")]
+        packages: Option<PathBuf>,
+        /// A file listing extra licence files, one path relative to <eka2l1-src> per line.
+        #[arg(long, value_name = "list")]
+        extra: Option<PathBuf>,
+    },
+```
+
+with an arm that reads `extra` (one path per non-empty line, `#` lines skipped) and calls
+`EmulatorNotices { … }.write()`. On `Ok((files, packages))` it prints `wrote
+share/doc/eka2l1: COPYING, {files} licence files, {packages} bundled packages, SOURCE.txt`
+and returns 0; on `Err` it prints `error: {e}` and returns 1. Run step 4's command; expected
+`test result: ok`.
+
+- [x] **Step 6: Write the recipe**
+
+`recipes/emulator/<V>/recipe.toml`:
+
+```toml
+# emulator;<V> — EKA2L1 with symdev's control server and per-instance data folders: the
+# Linux AppImage that the CI of 4akloon/EKA2L1 built from its `symdev` integration branch
+# (upstream master + our open PRs + the package-list commit; symdev's
+# 2026-10-03-emulator-firmware-packages-design §2–§3), extracted. symdev starts
+# usr/bin/eka2l1_qt itself (symdev experiment 115 §1.2). No FUSE is needed at run time.
+#
+# build.sh reads artifact.toml (the CI run, the artifact and its SHA-256s), checks the
+# artifact against it, extracts it, checks the tree (pkgtools emulator-tree) and writes
+# share/doc/eka2l1/ (pkgtools emulator-notices). source.sh writes the corresponding source
+# archive that `publish public --source-code` uploads beside the package.
+#
+# licence: EKA2L1 is GPL-3.0-or-later and Qt LGPL-3.0-only; LicenseRef-EKA2L1-bundle stands
+# for the other bundled libraries, each listed in share/doc/eka2l1/BUNDLED.tsv with its
+# usr/share/doc/<package>/copyright (plan decision D1).
+id = "emulator;<V>"
+license = "GPL-3.0-or-later AND LGPL-3.0-only AND LicenseRef-EKA2L1-bundle"
+host = "x86_64-linux"
+build = "build.sh"
+```
+
+`recipes/emulator/<V>/artifact.toml` (Task 16 fills in the run and the hashes):
+
+```toml
+# The fork CI run this package is made from. build.sh refuses the zeros: they stand for
+# "not run yet" (the push that starts the run is the lead's step L1).
+repository = "4akloon/EKA2L1"
+commit = "<C>"
+run = "0"
+artifact = "eka2l1-<c>-linux"
+appimage-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+packages-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+# The newest GLIBC_ version the tree needs (pkgtools emulator-tree checks it; plan F1).
+glibc = "2.38"
+```
+
+`recipes/emulator/<V>/build.sh`:
+
+```bash
+#!/usr/bin/env bash
+# Build emulator;<V> into <prefix>: the fork CI's EKA2L1 AppImage that artifact.toml names,
+# extracted, checked and given its notices.
+#
+#   build.sh <absolute prefix>
+#
+# Runs in the current directory. The artifact's files come from EMULATOR_ARTIFACT_DIR when
+# it is set, else from `gh run download` (GH_TOKEN must be able to read the fork's Actions).
+# Their SHA-256s must be artifact.toml's: an artifact expires, the package does not, and a
+# different file is never packed. The fork commit is cloned with its submodules into
+# ./eka2l1-src (EKA2L1_GIT overrides where from), for the notices and for source.sh.
+# PKGTOOLS names a pkgtools binary; by default this repository's runs through cargo.
+set -euo pipefail
+if [ $# -ne 1 ] || [ "${1#/}" = "$1" ]; then
+  echo "usage: build.sh <absolute prefix>" >&2
+  exit 2
+fi
+prefix=$1
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+pkgtools=${PKGTOOLS:-"cargo run --release --quiet --manifest-path $here/../../../Cargo.toml -p pkgtools --"}
+value() { sed -n "s/^$1 = \"\(.*\)\"$/\1/p" "$2"; }
+a=$here/artifact.toml
+repository=$(value repository "$a"); commit=$(value commit "$a"); run=$(value run "$a")
+artifact=$(value artifact "$a"); glibc=$(value glibc "$a")
+appimage_sha=$(value appimage-sha256 "$a"); packages_sha=$(value packages-sha256 "$a")
+id=$(value id "$here/recipe.toml")
+for v in "$run" "$appimage_sha" ${packages_sha:+"$packages_sha"}; do
+  case $v in
+    *[!0]*) ;;
+    *) echo "error: $a still has zeros: fill in the CI run and its hashes (plan Task 16)" >&2; exit 1 ;;
+  esac
+done
+
+rm -rf artifact squashfs-root && mkdir artifact
+if [ -n "${EMULATOR_ARTIFACT_DIR:-}" ]; then
+  cp "$EMULATOR_ARTIFACT_DIR"/eka2l1-qt-x64.* artifact/
+else
+  gh run download "$run" -R "$repository" -n "$artifact" -D artifact
+fi
+{
+  echo "$appimage_sha  eka2l1-qt-x64.AppImage"
+  if [ -n "$packages_sha" ]; then echo "$packages_sha  eka2l1-qt-x64.packages.tsv"; fi
+} > artifact/SHA256SUMS
+(cd artifact && sha256sum -c SHA256SUMS)
+
+chmod u+x artifact/eka2l1-qt-x64.AppImage
+artifact/eka2l1-qt-x64.AppImage --appimage-extract > /dev/null
+$pkgtools emulator-tree squashfs-root --glibc "$glibc"
+
+# Shallow: the commit and each submodule's recorded commit only (a full clone with every
+# submodule's history does not fit a runner's disk comfortably).
+if [ ! -d eka2l1-src ]; then
+  git init --quiet eka2l1-src
+  git -C eka2l1-src remote add origin "${EKA2L1_GIT:-https://github.com/$repository}"
+fi
+git -C eka2l1-src fetch --quiet --depth 1 origin "$commit"
+git -C eka2l1-src checkout --quiet --detach FETCH_HEAD
+git -C eka2l1-src submodule update --init --recursive --depth 1 --quiet
+[ "$(git -C eka2l1-src rev-parse HEAD)" = "$commit" ]
+
+notices=(--id "$id" --commit "$commit")
+if [ -n "$packages_sha" ]; then notices+=(--packages artifact/eka2l1-qt-x64.packages.tsv); fi
+if [ -f "$here/notices-extra.txt" ]; then notices+=(--extra "$here/notices-extra.txt"); fi
+$pkgtools emulator-notices eka2l1-src squashfs-root "${notices[@]}"
+rm -rf "$prefix" && mkdir -p "$(dirname "$prefix")" && mv squashfs-root "$prefix"
+echo "built $id in $prefix"
+```
+
+Without D1 = A, delete the `packages-sha256` line: build.sh then neither checks nor lists
+packages.
+
+- [x] **Step 7: Test the driver**, `tests/emulator-build.test`
+
+A fake AppImage is a shell script that answers `--appimage-extract` with the observed
+layout. Its `eka2l1_qt` is a copy of the `pkgtools` binary, a real ELF file that needs
+glibc. `/bin/true` would not do: on this host it may be a static multicall binary.
+
+```sh
+#!/bin/sh
+# build.sh of the emulator recipe against a fake artifact and a tiny local EKA2L1 git repo:
+# the built tree, and the refusals (zeros, a changed AppImage, a changed package list).
+#
+#   sh tests/emulator-build.test
+set -eu
+root=$(cd "$(dirname "$0")/.." && pwd)
+recipe=$(ls -d "$root"/recipes/emulator/*/ | tail -n 1)
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+cargo build --release --quiet --manifest-path "$root/Cargo.toml" -p pkgtools
+export PKGTOOLS="$root/target/release/pkgtools"
+failures=0
+check() { name=$1; shift; if "$@"; then echo "ok - $name"; else echo "not ok - $name"; failures=$((failures + 1)); fi; }
+
+# The fake artifact.
+mkdir -p "$tmp/art"
+cat > "$tmp/art/eka2l1-qt-x64.AppImage" <<'APPIMAGE'
+#!/bin/sh
+[ "$1" = --appimage-extract ] || exit 9
+mkdir -p squashfs-root/usr/bin squashfs-root/usr/share/doc/libfoo1
+cp "$PKGTOOLS" squashfs-root/usr/bin/eka2l1_qt
+printf '[Paths]\nPrefix = ../\nPlugins = plugins\n' > squashfs-root/usr/bin/qt.conf
+ln -s usr/bin/eka2l1_qt squashfs-root/AppRun
+echo copyright > squashfs-root/usr/share/doc/libfoo1/copyright
+APPIMAGE
+printf 'libfoo1:amd64\t1\tfoo\t1\n' > "$tmp/art/eka2l1-qt-x64.packages.tsv"
+(cd "$tmp/art" && sh ./eka2l1-qt-x64.AppImage --appimage-extract)
+floor=$("$PKGTOOLS" emulator-tree "$tmp/art/squashfs-root" --glibc 0.0 2>&1 | sed -n 's/.*needs GLIBC_\([0-9.]*\),.*/\1/p')
+rm -rf "$tmp/art/squashfs-root"
+
+# The tiny EKA2L1.
+git init --quiet "$tmp/eka"; echo "GPL-3" > "$tmp/eka/LICENSE"
+git -C "$tmp/eka" add LICENSE; git -C "$tmp/eka" -c user.name=t -c user.email=t@t commit --quiet -m x
+commit=$(git -C "$tmp/eka" rev-parse HEAD)
+
+# A copy of the recipe whose artifact.toml names the fake.
+stage() {
+  rm -rf "$tmp/r" "$tmp/work" "$tmp/out"; mkdir -p "$tmp/work"; cp -R "$recipe" "$tmp/r"
+  sha() { sha256sum "$tmp/art/$1" | cut -d' ' -f1; }
+  sed -i -e "s/^commit = .*/commit = \"$commit\"/" -e 's/^run = .*/run = "1"/' \
+    -e "s/^appimage-sha256 = .*/appimage-sha256 = \"$(sha eka2l1-qt-x64.AppImage)\"/" \
+    -e "s/^packages-sha256 = .*/packages-sha256 = \"$(sha eka2l1-qt-x64.packages.tsv)\"/" \
+    -e "s/^glibc = .*/glibc = \"$floor\"/" "$tmp/r/artifact.toml"
+}
+build() { (cd "$tmp/work" && EMULATOR_ARTIFACT_DIR="$tmp/art" EKA2L1_GIT="$tmp/eka" bash "$tmp/r/build.sh" "$tmp/out") > "$tmp/log" 2>&1; }
+
+stage; build
+check "the tree is built" test -L "$tmp/out/AppRun" -a -f "$tmp/out/usr/bin/eka2l1_qt"
+check "with EKA2L1's licence" grep -q GPL-3 "$tmp/out/share/doc/eka2l1/COPYING"
+check "and the bundled list" grep -q 'usr/share/doc/libfoo1/copyright' "$tmp/out/share/doc/eka2l1/BUNDLED.tsv"
+stage; sed -i 's/^run = .*/run = "0"/' "$tmp/r/artifact.toml"
+if build; then built=yes; else built=no; fi
+check "zeros are refused" test "$built" = no
+check "by name" grep -q 'still has zeros' "$tmp/log"
+stage; echo '# changed' >> "$tmp/art/eka2l1-qt-x64.AppImage"
+if build; then built=yes; else built=no; fi
+check "a changed AppImage is refused" test "$built" = no
+check "with sha256sum's FAILED line" grep -q FAILED "$tmp/log"
+check "and nothing is built" test ! -e "$tmp/out"
+[ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }
+```
+
+Run `sh tests/emulator-build.test`; expected: only `ok` lines. Add the step
+`- name: The emulator recipe's build.sh` / `run: sh tests/emulator-build.test` to
+`.github/workflows/tests.yml`. It needs no network: the fake repo has no submodules.
+
+- [x] **Step 8: Build the package from the rehearsal AppImage**
+
+```bash
+E=~/src/emu-pkg-scratch/emulator; rm -rf $E; mkdir -p $E/work
+P=~/worktrees/symdev-packages/cargo-run; cp -R $P/recipes/emulator/<V> $E/recipe
+R=~/src/emu-pkg-scratch/rehearsal/out
+sed -i -e 's/^run = .*/run = "rehearsal"/' \
+  -e "s/^appimage-sha256 = .*/appimage-sha256 = \"$(sed -n 's/  eka2l1-qt-x64.AppImage$//p' $R/SHA256SUMS)\"/" \
+  -e "s/^packages-sha256 = .*/packages-sha256 = \"$(sed -n 's/  eka2l1-qt-x64.packages.tsv$//p' $R/SHA256SUMS)\"/" \
+  $E/recipe/artifact.toml
+(cd $E/work && EMULATOR_ARTIFACT_DIR=$R EKA2L1_GIT=~/src/EKA2L1-wt/emulator-pkg \
+  PKGTOOLS=$P/target/release/pkgtools bash $E/recipe/build.sh $E/prefix) > $E/build.log 2>&1; echo "EXIT=$?" >> $E/build.log
+```
+
+The recipe copy lives in scratch because `run = "rehearsal"` must never be committed.
+`EKA2L1_GIT` is the local copy, since `<C>` is not on the fork before L1. Expected: `EXIT=0`,
+`glibc floor 2.38`, and `wrote share/doc/eka2l1: COPYING, <n> licence files, <m> bundled
+packages`. Each submodule `emulator-notices` reports without a licence file gets read by
+hand. Its licence file (or the header that carries the licence) goes into
+`recipes/emulator/<V>/notices-extra.txt`, one path per line with a `#` comment naming the
+licence, in the real recipe, not the scratch copy. Then copy it to `$E/recipe/` and run
+again. Record the tree's size (`du -sh $E/prefix`), `<n>` and `<m>` in the wip file.
+
+- [x] **Step 9: Gates and commit** (packages worktree; `env -u PUBLISH_SIGNING_KEY` as in Task 5)
+
+```bash
+cargo test --locked > /tmp/t10-all.log 2>&1; grep -E "FAILED|^error" /tmp/t10-all.log
+cargo clippy --all-targets --locked > /tmp/t10-clippy.log 2>&1; grep -cE "^(warning|error)" /tmp/t10-clippy.log
+cargo fmt --all --check && sh tests/emulator-build.test | grep -c '^not ok'
+git add pkgtools/Cargo.toml Cargo.lock pkgtools/src/main.rs pkgtools/src/emulator_tree.rs \
+  pkgtools/src/emulator_tree/glibc_version.rs pkgtools/src/emulator_tree/tool.rs \
+  pkgtools/src/emulator_tree/tests.rs pkgtools/src/emulator_notices.rs \
+  pkgtools/src/emulator_notices/submodules.rs pkgtools/src/emulator_notices/bundled_list.rs \
+  pkgtools/src/emulator_notices/tests.rs recipes/emulator/<V>/recipe.toml \
+  recipes/emulator/<V>/artifact.toml recipes/emulator/<V>/build.sh tests/emulator-build.test \
+  .github/workflows/tests.yml
+git add recipes/emulator/<V>/notices-extra.txt   # if step 8 made it
+git commit -m "Add the emulator;<V> recipe: the fork CI's AppImage taken by its SHA-256, extracted, checked and given its notices."
+```
+
+### Task 11: The corresponding source archive (Ubuntu part: D1 = A)
+
+All in `~/worktrees/symdev-packages/cargo-run`. This uses the publisher's existing
+source-archive mechanism unchanged: `publish public --source-code <tar.gz>` uploads the
+archive as `src/emulator/<V>/<sha256>.tar.gz` and names it in the index's `source-code`.
+
+**Files:**
+- Create: `pkgtools/src/dsc.rs` (`Dsc`, with its tests); Modify: `pkgtools/src/main.rs` (`dsc-files`)
+- Create: `recipes/emulator/<V>/source.sh`
+- Modify: `.github/workflows/tests.yml` only if a test of `source.sh` is added (none: it needs the network)
+
+**Interfaces:**
+- Consumes: build.sh's working directory (`./eka2l1-src`, `./artifact/`), Task 10.
+- Produces: `pkgtools dsc-files <file.dsc>` prints `<sha256>  <name>` per file of its
+  `Checksums-Sha256` field (the `sha256sum -c` format). `source.sh <out.tar.gz>` writes the
+  archive: `<name>/eka2l1/` (the fork commit and every submodule at its recorded commit),
+  `<name>/recipe/`, `<name>/ubuntu/<source>/` (D1 = A), and `<name>/SHA256SUMS`.
+
+- [x] **Step 1: Write the failing tests** at the end of `pkgtools/src/dsc.rs`
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::Dsc;
+
+    const SIGNED: &str = "-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA512\n\nFormat: 3.0 (quilt)\nSource: x264\nVersion: 2:0.164.3108+git31e19f9-1\nChecksums-Sha1:\n 1111111111111111111111111111111111111111 100 x264_0.164.orig.tar.gz\nChecksums-Sha256:\n aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 100 x264_0.164.orig.tar.gz\n bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 20 x264_0.164-1.debian.tar.xz\nFiles:\n 0123 100 x264_0.164.orig.tar.gz\n\n-----BEGIN PGP SIGNATURE-----\nxx\n-----END PGP SIGNATURE-----\n";
+
+    #[test]
+    fn lists_the_sha256_of_every_file_and_nothing_else() {
+        let dsc = Dsc::parse(SIGNED).unwrap();
+        assert_eq!(
+            dsc.sha256sums(),
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  x264_0.164.orig.tar.gz\n\
+             bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  x264_0.164-1.debian.tar.xz\n"
+        );
+    }
+
+    #[test]
+    fn a_dsc_without_sha256_checksums_is_refused() {
+        let e = Dsc::parse("Source: x\nFiles:\n 0123 1 x.tar.gz\n").unwrap_err();
+        assert!(e.to_string().contains("Checksums-Sha256"), "{e}");
+    }
+
+    #[test]
+    fn a_file_name_with_a_path_is_refused() {
+        let text = "Checksums-Sha256:\n aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 1 ../x.tar.gz\n";
+        let e = Dsc::parse(text).unwrap_err();
+        assert!(e.to_string().contains("../x.tar.gz"), "{e}");
+    }
+}
+```
+
+Run `cargo test --locked -p pkgtools dsc` (with `mod dsc;` in `main.rs`). Expected:
+unresolved `Dsc`.
+
+- [x] **Step 2: Implement** `pkgtools/src/dsc.rs` (above the tests)
+
+```rust
+//! `Dsc`: the files of a Debian source package and their SHA-256s, from its `.dsc`
+//! (Debian Policy §5.4: the `Checksums-Sha256` field, one ` <sha256> <size> <name>` per line).
+
+use crate::tool_error::{Result, ToolError};
+
+pub struct Dsc {
+    files: Vec<(String, String)>,
+}
+
+impl Dsc {
+    pub fn parse(text: &str) -> Result<Dsc> {
+        let mut lines = text.lines().skip_while(|l| *l != "Checksums-Sha256:");
+        if lines.next().is_none() {
+            return Err(ToolError::new("the .dsc has no Checksums-Sha256 field"));
+        }
+        let mut files = Vec::new();
+        for line in lines.take_while(|l| l.starts_with(' ')) {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            let [sha, _size, name] = fields[..] else {
+                return Err(ToolError::new(format!("`{line}` is not ` <sha256> <size> <name>`")));
+            };
+            let hex = sha.len() == 64 && sha.chars().all(|c| c.is_ascii_hexdigit());
+            if !hex || name.contains('/') || name.starts_with('.') {
+                return Err(ToolError::new(format!("`{line}`: not a sha256 and a plain file name")));
+            }
+            files.push((sha.to_string(), name.to_string()));
+        }
+        Ok(Dsc { files })
+    }
+
+    /// `<sha256>  <name>` per file, as `sha256sum -c` reads it.
+    pub fn sha256sums(&self) -> String {
+        self.files.iter().map(|(sha, name)| format!("{sha}  {name}\n")).collect()
+    }
+}
+```
+
+`main.rs`: `DscFiles { #[arg(value_name = "file.dsc")] dsc: PathBuf }` ("Print the files of
+a Debian source package with their SHA-256s, from its .dsc, in sha256sum -c format"). The
+arm reads the file, prints `Dsc::parse(..)?.sha256sums()` and returns 0, or prints `error:
+<path>: <e>` and returns 1. Run step 1's command; expected `test result: ok`.
+
+- [x] **Step 3: Write `recipes/emulator/<V>/source.sh`**
+
+```bash
+#!/usr/bin/env bash
+# The corresponding source of emulator;<V>, one archive for `publish public --source-code`:
+#   <name>/eka2l1/     the fork commit and every submodule at its recorded commit (git archive)
+#   <name>/recipe/     this recipe directory
+#   <name>/ubuntu/<source>/   each Ubuntu source package of the artifact's package list at its
+#                      exact version, from Launchpad, checked against its .dsc (plan D1 = A)
+#   <name>/SHA256SUMS  of every file above
+#
+#   source.sh <out.tar.gz>      (in build.sh's directory, after build.sh)
+set -euo pipefail
+if [ $# -ne 1 ]; then echo "usage: source.sh <out.tar.gz>" >&2; exit 2; fi
+out=$1
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+pkgtools=${PKGTOOLS:-"cargo run --release --quiet --manifest-path $here/../../../Cargo.toml -p pkgtools --"}
+id=$(sed -n 's/^id = "\(.*\)"$/\1/p' "$here/recipe.toml")
+name="${id//;/-}-source"
+[ -d eka2l1-src ] || { echo "error: no ./eka2l1-src: run build.sh here first" >&2; exit 1; }
+rm -rf src-out && mkdir -p "src-out/$name/eka2l1" "src-out/$name/recipe"
+(cd eka2l1-src && git archive --format=tar HEAD &&
+  git submodule foreach --quiet --recursive 'git archive --format=tar --prefix="$displaypath/" HEAD') |
+  tar -x -i -C "src-out/$name/eka2l1"
+cp -R "$here/." "src-out/$name/recipe/"
+lp=https://launchpad.net/ubuntu/+archive/primary/+sourcefiles
+if [ -f artifact/eka2l1-qt-x64.packages.tsv ]; then
+  cut -f3,4 artifact/eka2l1-qt-x64.packages.tsv | sort -u | while IFS=$'\t' read -r src ver; do
+    dir="src-out/$name/ubuntu/$src"
+    dsc="${src}_${ver#*:}.dsc"
+    mkdir -p "$dir"
+    curl -fsSL --retry 3 -o "$dir/$dsc" "$lp/$src/$ver/$dsc"
+    $pkgtools dsc-files "$dir/$dsc" > "$dir/SHA256SUMS"
+    while read -r _ file; do
+      curl -fsSL --retry 3 -o "$dir/$file" "$lp/$src/$ver/$file"
+    done < "$dir/SHA256SUMS"
+    (cd "$dir" && sha256sum -c --quiet SHA256SUMS)
+  done
+fi
+(cd "src-out/$name" && find . -type f ! -path ./SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -C src-out -cf - "$name" | gzip -n -9 > "$out"
+echo "wrote $out ($(stat -c %s "$out") bytes)"
+```
+
+Launchpad keeps every published version's files under
+`+sourcefiles/<source>/<version>/<file>`. The `.dsc`'s name drops the epoch (`2:0.164…` →
+`x264_0.164…dsc`). Observe the first package by hand before the whole run:
+`curl -fsSIL "$lp/<src>/<ver>/<dsc>" | head -3` must end in a `200`. If it answers 404, try
+`https://launchpad.net/ubuntu/+archive/primary/+files/<file>`. Record which form works, and
+use only that one, in the script and in the notes.
+
+- [x] **Step 4: Make the archive from the rehearsal and dry-run the publish**
+
+```bash
+E=~/src/emu-pkg-scratch/emulator; P=~/worktrees/symdev-packages/cargo-run
+cp $P/recipes/emulator/<V>/source.sh $E/recipe/
+(cd $E/work && PKGTOOLS=$P/target/release/pkgtools bash $E/recipe/source.sh $E/source.tar.gz) > $E/source.log 2>&1; echo "EXIT=$?" >> $E/source.log
+cd $E && env -u PUBLISH_PUBLIC_URL -u PUBLISH_SIGNING_KEY cargo run --release --quiet \
+  --manifest-path $P/Cargo.toml -p publish -- public 'emulator;<V>' --from $E/prefix \
+  --source-code $E/source.tar.gz --recipe $E/recipe/recipe.toml --dry-run > $E/dry-run.toml 2> $E/dry-run.log
+cat $E/dry-run.log; grep -A3 'id = "emulator' $E/dry-run.toml
+```
+
+Expected: `EXIT=0` in `source.log`. `dry-run.log` says `packed emulator;<V>: …` with the
+package's size, then `would upload emulator/<V>/<sha>.tar.gz`, `would upload
+src/emulator/<V>/<sha>.tar.gz` and `would upload index.toml`. The printed index has the
+licence of Task 10 and a `source-code` key. Record in the wip file: the package's packed
+size, the source archive's size, how many Ubuntu source packages it holds, and the time.
+These sizes are D1's "cost" column, measured.
+
+- [x] **Step 5: Gates and commit** (Task 10 step 9's gate commands)
+
+```bash
+git add pkgtools/src/dsc.rs pkgtools/src/main.rs recipes/emulator/<V>/source.sh
+git commit -m "Write the emulator package's corresponding source: the fork commit with its submodules, the recipe, and every bundled Ubuntu source package at its exact version."
+```
+
+### Task 12: The emulator workflow
+
+All in `~/worktrees/symdev-packages/cargo-run`. Nothing here runs until L4 pushes the
+branch; the YAML is checked locally.
+
+**Files:**
+- Create: `.github/workflows/emulator.yml`
+- Modify: `README.md` of the packages repo (the emulator and firmware recipes, and the
+  `EKA2L1_ARTIFACT_TOKEN` secret)
+
+**Interfaces:**
+- Consumes: Tasks 10–11's `build.sh` and `source.sh`.
+- Produces: on a PR that touches `recipes/emulator/**`, a build and a `publish --dry-run`.
+  On a push to `main` that touches it, or a manual run, the upload of `emulator;<V>` and
+  its source (that is L2).
+
+- [x] **Step 1: Write `.github/workflows/emulator.yml`**
+
+```yaml
+# emulator;<version> (symdev's 2026-10-03-emulator-firmware-packages-design §3):
+# recipes/emulator/<version>/ names a run of 4akloon/EKA2L1's CI and the SHA-256 of its
+# Linux AppImage. build.sh downloads that artifact, refuses any other bytes, extracts it and
+# adds the notices; source.sh writes the corresponding source. Every run packs the package
+# with `publish --dry-run` against the public index (an id already published fails here).
+# A push to main (merging the recipe is the release) or a manual run then uploads the
+# package and its source, and the index last.
+#
+# The artifact is another repository's. `gh run download` reads it with the token in
+# EKA2L1_ARTIFACT_TOKEN when that repository secret is set (a fine-grained token with
+# Actions: read on 4akloon/EKA2L1), else with this run's own token. Whether the own token
+# can read a public repository's artifacts is checked by the first PR run (plan, step L2).
+# The fork keeps artifacts for 90 days at most, so a recipe is built from them within that
+# time. The package in the bucket stays.
+#
+# Settings as for symdev.yml: variable PUBLIC_READ_URL (dry run); environment `publish` with
+# PUBLISH_PUBLIC_URL, PUBLISH_ACCESS_KEY_ID, PUBLISH_SECRET_ACCESS_KEY, PUBLISH_SIGNING_KEY.
+name: emulator
+
+on:
+  pull_request:
+    paths:
+      - "recipes/emulator/**"
+      - "pkgtools/**"
+      - ".github/workflows/emulator.yml"
+  push:
+    branches: [main]
+    paths:
+      - "recipes/emulator/**"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The recipe to build and publish: recipes/emulator/<version>"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.recipe.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Choose the recipe
+        id: recipe
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          versions=
+          if [ "$EVENT" = workflow_dispatch ]; then
+            versions=$INPUT_VERSION
+          elif git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            versions=$(git diff --name-only "$BASE" HEAD -- recipes/emulator/ | cut -d/ -f3 | sort -u)
+          fi
+          if [ -z "$versions" ]; then
+            versions=$(ls recipes/emulator | sort -V | tail -n 1)
+          fi
+          if [ "$(printf '%s\n' "$versions" | wc -l)" -ne 1 ]; then
+            echo "::error::this change touches several emulator recipes ($(echo $versions)); release one per change"
+            exit 1
+          fi
+          case $versions in
+            *[!0-9.]* | "") echo "::error::'$versions' is not a yyyy.mm.dd version"; exit 1 ;;
+          esac
+          [ -f "recipes/emulator/$versions/recipe.toml" ] || { echo "::error::no recipes/emulator/$versions/recipe.toml"; exit 1; }
+          echo "version=$versions" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust 1.98.1
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
+
+      - name: Build pkgtools
+        run: cargo build --release --locked -p pkgtools
+
+      - name: Build the package
+        env:
+          GH_TOKEN: ${{ secrets.EKA2L1_ARTIFACT_TOKEN || github.token }}
+          PKGTOOLS: ${{ github.workspace }}/target/release/pkgtools
+          VERSION: ${{ steps.recipe.outputs.version }}
+        run: |
+          mkdir work && cd work
+          bash "$GITHUB_WORKSPACE/recipes/emulator/$VERSION/build.sh" "$RUNNER_TEMP/emulator"
+          bash "$GITHUB_WORKSPACE/recipes/emulator/$VERSION/source.sh" "$RUNNER_TEMP/emulator-source.tar.gz"
+
+      - name: Pack it (dry run)
+        env:
+          PUBLISH_PUBLIC_URL: ${{ vars.PUBLIC_READ_URL }}
+          VERSION: ${{ steps.recipe.outputs.version }}
+        run: |
+          cargo run --release --locked -p publish -- public "emulator;$VERSION" \
+            --from "$RUNNER_TEMP/emulator" --source-code "$RUNNER_TEMP/emulator-source.tar.gz" \
+            --recipe "recipes/emulator/$VERSION/recipe.toml" --dry-run
+
+      # An artifact keeps neither file modes nor symlinks; a tar does.
+      - name: Hand the build to the publish job
+        run: tar -C "$RUNNER_TEMP" -cf emulator-build.tar emulator emulator-source.tar.gz
+
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: emulator-build
+          path: emulator-build.tar
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    environment: publish
+    concurrency:
+      group: publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: emulator-build
+          path: ${{ runner.temp }}
+
+      - name: Unpack the build
+        run: tar -C "$RUNNER_TEMP" -xf "$RUNNER_TEMP/emulator-build.tar"
+
+      - name: Install Rust 1.98.1
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
+
+      - name: Publish emulator;${{ needs.build.outputs.version }}
+        env:
+          PUBLISH_PUBLIC_URL: ${{ vars.PUBLISH_PUBLIC_URL }}
+          PUBLISH_ACCESS_KEY_ID: ${{ secrets.PUBLISH_ACCESS_KEY_ID }}
+          PUBLISH_SECRET_ACCESS_KEY: ${{ secrets.PUBLISH_SECRET_ACCESS_KEY }}
+          PUBLISH_SIGNING_KEY: ${{ secrets.PUBLISH_SIGNING_KEY }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          cargo run --release --locked -p publish -- public "emulator;$VERSION" \
+            --from "$RUNNER_TEMP/emulator" --source-code "$RUNNER_TEMP/emulator-source.tar.gz" \
+            --recipe "recipes/emulator/$VERSION/recipe.toml"
+```
+
+- [x] **Step 2: Check it**
+
+```bash
+cd ~/worktrees/symdev-packages/cargo-run
+python3 -c 'import yaml; yaml.safe_load(open(".github/workflows/emulator.yml")); print("ok")'
+grep -n "uses:" .github/workflows/emulator.yml | sort -u -k2 | head
+```
+
+Expected: `ok`. Every `uses:` pin is one that `publish.yml` or `build.yml` already uses
+(same SHA, same comment).
+
+- [x] **Step 3: Document and commit**
+
+In the packages `README.md`, next to the GCCE and symdev recipes, add a short section with:
+the two new recipes; who runs what (the owner runs the firmware's stage and `publish
+private`; the emulator is published by `emulator.yml`); the optional `EKA2L1_ARTIFACT_TOKEN`
+secret; and the 90-day limit on the fork's artifacts.
+
+```bash
+git add .github/workflows/emulator.yml README.md
+git commit -m "Build the emulator recipe on pull requests and publish it from main."
+```
+
+### Task 13: The packaged emulator runs `cargo run` and `cargo test` (experiment 115 §4)
+
+The spec's real check: "the extracted AppImage starts with `--data-dir` and `--control`,
+answers `apps.list`, installs and launches `hello`; whether Z:/ROM are written". This task
+runs it through symdev itself, with the two packages served from `file://` sources.
+
+**Files:**
+- Outside git: `~/src/emu-pkg-scratch/stage/{stager/,public/,private/}`,
+  `~/src/emu-pkg-scratch/exp115/{run13.sh,run13.log,shots/}`
+- Modify: `docs/research/experiment-backlog.md` (experiment 115 §4)
+
+**Interfaces:**
+- Consumes: Tasks 4–9 (symdev), Task 10's `$E/prefix`, Task 5's staged firmware tree.
+- Produces: the evidence that the package route works on this host, or the failures that
+  send work back to Tasks 7–10.
+
+- [x] **Step 1: A stager for any packages** (scratch, research tool)
+
+Copy `~/src/cargo-run-scratch/accept/stager` to `~/src/emu-pkg-scratch/stage/stager`. Change
+its `main` to take `<repo> <id>=<tree>@<host>…` (host `x86_64-linux` or `any`), pack each
+tree with `ReproducibleTarGz::pack` as it does now, and write an unsigned `index.toml`. Its
+`Cargo.toml` names this branch's `crates/symdev-sdk` by path. Then:
+
+```bash
+S=~/src/emu-pkg-scratch/stage; rm -rf $S/public $S/private
+(cd $S/stager && cargo run --quiet --release --offline -- $S/public \
+  'emulator;<V>'=$HOME/src/emu-pkg-scratch/emulator/prefix@x86_64-linux)
+(cd $S/stager && cargo run --quiet --release --offline -- $S/private \
+  'firmware;rm-469;1'=$HOME/src/emu-pkg-scratch/firmware/tree@any)
+```
+
+- [x] **Step 2: Write `run13.sh`**
+
+```bash
+#!/usr/bin/env bash
+# run13.sh — experiment 115 §4: symdev of this branch, no SYMDEV_EKA2L1 / SYMDEV_EKA2L1_DATA,
+# the emulator and firmware packages from file:// sources (public, private), on this host.
+# Starts an emulator, runs cargo run and cargo test of a fresh project, checks the process
+# and the packages, then repeats the start with the host's Qt library paths exported.
+set -u
+X=~/src/emu-pkg-scratch/exp115; S=~/src/emu-pkg-scratch/stage; W=~/worktrees/symdev/cargo-run
+T=$X/t13; rm -rf $T; mkdir -p $T/bin $T/config/symdev $X/shots
+cargo build --release --offline -p symdev-cli --manifest-path $W/Cargo.toml --target-dir $X/target > $T/build.log 2>&1
+cp $X/target/release/symdev $T/bin/ && $T/bin/symdev setup-linker
+printf 'builtin = false\n\n[[source]]\nname = "public"\nurl = "file://%s/public"\n\n[[source]]\nname = "private"\nurl = "file://%s/private"\n' $S $S \
+  > $T/config/symdev/sources.toml
+unset SYMDEV_EKA2L1 SYMDEV_EKA2L1_DATA SYMDEV_DEVICE LD_LIBRARY_PATH QT_PLUGIN_PATH
+export PATH=$T/bin:$PATH SYMDEV_HOME=$T/home XDG_DATA_HOME=$T/data XDG_CONFIG_HOME=$T/config XDG_CACHE_HOME=$T/cache
+touch $X/marker13
+symdev emulator start rm-469; echo "start rc=$?"
+pid=$(sed -n 's/^pid = //p' $XDG_RUNTIME_DIR/symdev/devices/emulator-1.toml)
+echo "comm: $(cat /proc/$pid/comm)  exe: $(readlink /proc/$pid/exe)"
+symdev devices
+cd $T && symdev new t13 --lang rust > new.log 2>&1; cd $T/t13
+cargo run > $T/run.out 2>&1 & job=$!
+for _ in $(seq 1 600); do grep -q 'Hello from Rust SDK' $T/run.out && break; kill -0 $job 2>/dev/null || break; sleep 0.25; done
+python3 ~/src/cargo-run-scratch/t18/shoot.py $pid $X/shots/t13-hello.png
+wait $job; echo "cargo run rc=$?"; grep -v '^\s*Compiling' $T/run.out
+cargo test > $T/test.out 2>&1; echo "cargo test rc=$?"; grep -v '^\s*Compiling' $T/test.out
+symdev emulator stop emulator-1; echo "stop rc=$?"
+echo "package files newer than the start: $(find $SYMDEV_HOME/emulator $SYMDEV_HOME/firmware -newer $X/marker13 -type f | wc -l)"
+export LD_LIBRARY_PATH=/home/genius/.local/eka2l1-sysroot/usr/lib/x86_64-linux-gnu:/home/genius/.local/Qt/6.8.3/gcc_64/lib
+export QT_PLUGIN_PATH=/home/genius/.local/Qt/6.8.3/gcc_64/plugins
+symdev emulator start rm-469; echo "start with the host's Qt paths rc=$?"
+pid=$(sed -n 's/^pid = //p' $XDG_RUNTIME_DIR/symdev/devices/emulator-1.toml)
+tr '\0' '\n' < /proc/$pid/environ | grep -cE '^(LD_LIBRARY_PATH|QT_PLUGIN_PATH)=' 
+symdev emulator stop emulator-1
+```
+
+The project builds against the toolchain variables already in the developer's environment
+(`SYMDEV_EPOCROOT` and the rest). Only the emulator and firmware come from the packages.
+This host's software-GL variables (`QT_OPENGL`, `LIBGL_ALWAYS_SOFTWARE`, `GALLIUM_DRIVER`,
+`MESA_LOADER_DRIVER_OVERRIDE`, `__GLX_VENDOR_LIBRARY_NAME`, `QT_QPA_PLATFORM=xcb`, from
+`~/.local/bin/eka2l1`) are **not** set on the first run. If the window stays black or EKA2L1
+exits, rerun with them exported. Record which is needed: the package imposes none, and
+the user sets them in his shell (spec §5).
+
+- [x] **Step 3: Run it under the agent lock**
+
+```bash
+flock ~/.local/share/EKA2L1/.symdev-agent.lock bash ~/src/emu-pkg-scratch/exp115/run13.sh > ~/src/emu-pkg-scratch/exp115/run13.log 2>&1
+```
+
+Expected in `run13.log`:
+- `installing firmware;rm-469;1 (… MB) from private…`, `created profile rm-469`,
+  `installing emulator;<V> (… MB) from public…`, `emulator-1`, `start rc=0`;
+- `comm: eka2l1_qt` and `exe:` under `$T/home/emulator/<V>/usr/bin/eka2l1_qt`;
+- `Hello from Rust SDK (19 chars)` in the run output and `cargo run rc=0`; `test … ok`,
+  `cargo test rc=0`;
+- `package files newer than the start: 0`;
+- `start with the host's Qt paths rc=0` and `0` from the `environ` count.
+
+Look at `shots/t13-hello.png` (the Read tool shows it). It must be this instance's window
+with the app list or the app. A failure here goes back to the task that owns it (7–10)
+with a failing test first. Record every line above, the timings, the screenshot's path and
+the GL finding as experiment 115 §4. Check that `~/.local/share/EKA2L1` has nothing newer
+than `$X/marker13` (`find ~/.local/share/EKA2L1 -newer … | wc -l` is `0`).
+
+**Executed 2026-10-03.** run13.sh exports the developer's toolchain variables itself
+(cargo-run's `env.sh`), which this shell does not have. `package files newer than the start`
+counts the install (the marker precedes it): the packages were compared by content with the
+trees they were packed from instead (unchanged but for the receipt). No GL variable was
+needed. Experiment 115 §4 has the results.
+
+- [x] **Step 4: Commit** the experiment record and the wip file:
+  `Record experiment 115 §4: cargo run and cargo test on the packaged emulator and firmware.`
+
+### Task 14: Requirements, licensing rules and the emulator crate's README
+
+**Files:**
+- Modify: `README.md` (the EKA2L1 row of the requirements table, and the "Toolchain
+  packages" paragraph)
+- Modify: `docs/research/licensing.md` (rules for the emulator and the firmware packages)
+- Modify: `crates/symdev-emulator/README.md` (rewritten: it still documents the deleted
+  `Eka2l1Backend::run`/`previous`)
+- Modify: `docs/superpowers/specs/2026-10-02-toolchain-manager-design.md` (§2 table row
+  `emulator;…`, `firmware;rm-469;…`)
+
+**Interfaces:** documents Tasks 4–13; no code.
+
+- [x] **Step 1: README requirements row** becomes:
+
+```markdown
+| EKA2L1 with `--control` and `--data-dir`, and the E52 firmware | `cargo run`, `cargo test`, `symdev run`, `symdev test --emulator`, `symdev emulator`, `symdev devices` | packages `emulator;<V>` (public, glibc 2.38 or newer) and `firmware;rm-469;1` (private source only), installed on first need; or `SYMDEV_EKA2L1` (your own EKA2L1 or a wrapper that sets your host's GL variables) and `SYMDEV_EKA2L1_DATA` (an EKA2L1 data folder with the firmware installed) |
+```
+
+Add one sentence to "Toolchain packages": the emulator and firmware packages are installed
+by the first command that starts an emulator, not by `symdev build`. Add a second: without
+`SYMDEV_EKA2L1_DATA`, symdev never reads `~/.local/share/EKA2L1`.
+
+- [x] **Step 2: `licensing.md`**
+
+Under "## EKA2L1", after the existing sentence, add (wording for D1 = A; for B or C, adjust
+the second bullet to the choice):
+
+```markdown
+- **`emulator;<version>` (public bucket).** The fork CI's AppImage of our integration
+  branch, extracted: EKA2L1 (GPL-3.0-or-later) with the Qt (LGPL-3.0) and other free
+  libraries linuxdeploy bundled from Ubuntu. The package carries `share/doc/eka2l1/` (the GPL
+  text, every submodule's licence, `BUNDLED.tsv` with each Ubuntu package's copyright file,
+  `SOURCE.txt`). Its corresponding source is published beside it through `publish
+  --source-code`: the fork commit with every submodule, the recipe, and every bundled
+  Ubuntu source package at the exact version the CI used. symdev still only starts it as
+  a separate process.
+- **`firmware;<firmware>;<n>` (private bucket only).** Nokia's ROM and drive Z in EKA2L1's
+  layout, like the SDK: the owner's own copy, staged on his machine
+  (`recipes/firmware/…/stage.sh`), published with `publish private`, licence
+  `LicenseRef-Nokia-firmware`, which the publisher refuses for the public bucket. Never in
+  git, CI or the public bucket.
+```
+
+`CLAUDE.md` says "the built-in public source carries only GPL/MIT packages and their
+sources". The emulator package also carries LGPL, BSD, Apache and other free licences
+(D1). Do **not** edit `CLAUDE.md`. Write the proposed wording ("only free-software
+packages under licences compatible with GPL-3.0, with their corresponding source") into
+the wip file for the lead to take to the owner.
+
+- [x] **Step 3: `crates/symdev-emulator/README.md`**
+
+Rewrite "Usage" for what the crate is now: `device::{Eka2l1, Firmware, EmulatorProfile,
+EmulatorInstance, DeviceRegistry, DeviceChoice}` and `control::ControlClient`, one
+sentence each. Say who resolves `SYMDEV_EKA2L1` / `SYMDEV_EKA2L1_DATA` and the packages
+(`symdev-cli`'s `Provision`); this crate reads no environment for them. Keep "Not a device".
+Delete the paragraphs about `Eka2l1Backend`.
+
+- [x] **Step 4: Toolchain spec §2 row** becomes
+  `| emulator;<yyyy.mm.dd>, firmware;rm-469;<n> | see 2026-10-03-emulator-firmware-packages-design.md | x86_64-linux, any |`.
+
+- [x] **Step 5: Commit**
+
+```bash
+git add README.md docs/research/licensing.md crates/symdev-emulator/README.md \
+  docs/superpowers/specs/2026-10-02-toolchain-manager-design.md docs/research/wip/emulator-packages.md
+git commit -m "Document the emulator and firmware packages: requirements, licensing rules and the emulator crate."
+```
+
+### Task 15: Staged acceptance from an empty home (experiment 115 §5), then stop for L1
+
+The spec's acceptance, with `file://` sources in place of the buckets and the rehearsal
+AppImage in place of the CI's. Task 16 reruns it with the CI's AppImage, and the lead
+reruns it against the real buckets.
+
+**Files:**
+- Outside git: `~/src/emu-pkg-scratch/accept/{stage.sh,accept.sh,inner.sh,out/}`
+- Modify: `docs/research/experiment-backlog.md` (experiment 115 §5), the wip file
+
+**Interfaces:**
+- Consumes: everything above; the packages branch's `install.sh`.
+
+- [x] **Step 1: Stage two sources** (`stage.sh`, adapted from
+  `~/src/cargo-run-scratch/accept/stage.sh`)
+
+- **public** (`accept/public/`): `symdev;0.4.0` (this branch, `SYMDEV_RELEASE=1` release
+  build), `rust-sdk;0.4.0` (HEAD cut with the 0.4.0 recipe's include list plus experiment
+  113's `prebuilt/`, as cargo-run's `stage.sh` cuts it) and `emulator;<V>` (`$E/prefix`).
+  Its index is signed with `install.sh.test`'s throwaway key by the same `openssl` lines as
+  cargo-run's `stage.sh`, because `install.sh` verifies it.
+- **private** (`accept/private/`): `sdk;s60-3rd-fp2;1.1` (the cargo-run staging's tree)
+  and `firmware;rm-469;1` (Task 5's tree).
+
+Use Task 13's stager for both.
+
+- [x] **Step 2: Write `accept.sh` and `inner.sh`**
+
+`accept.sh` takes the agent lock and hides the owner's EKA2L1 folder:
+
+```bash
+#!/usr/bin/env bash
+# accept.sh — experiment 115 §5 (spec §6 acceptance, staged): inner.sh in an empty HOME,
+# with the owner's ~/.local/share/EKA2L1 hidden by an empty tmpfs (bwrap), under the agent
+# lock, which is taken before the folder is hidden.
+A=~/src/emu-pkg-scratch/accept; touch $A/marker
+flock ~/.local/share/EKA2L1/.symdev-agent.lock \
+  bwrap --dev-bind / / --tmpfs /home/genius/.local/share/EKA2L1 -- bash $A/inner.sh > $A/out/accept.log 2>&1
+echo "accept rc=$?"
+echo "owner's EKA2L1 files newer than the run: $(find ~/.local/share/EKA2L1 -newer $A/marker | wc -l)"
+```
+
+`inner.sh` is cargo-run's `accept.sh` with these changes:
+- the environment has **no** `SYMDEV_EKA2L1` and **no** `SYMDEV_EKA2L1_DATA`;
+- it does have this host's GL variables, if Task 13 found them needed (the user's shell
+  would);
+- `sources.toml` lists `public` and `private` as `file://` sources (`builtin = false`), and
+  `SYMDEV_INSTALL_URL` is `file://$A/public/`;
+- it first prints `ls -A /home/genius/.local/share/EKA2L1 | wc -l`, which must be `0`.
+
+The rest is cargo-run's `accept.sh` unchanged: `install.sh`, `symdev new accept --lang rust`, `cargo run` with the
+PID-bound screenshot (`$A/out/accept.png`), `cargo test`, `symdev devices`, `symdev emulator
+stop` for each id, and `ls $H/.local/share/symdev`.
+
+- [x] **Step 3: Run it and read the result**
+
+```bash
+mkdir -p ~/src/emu-pkg-scratch/accept/out && bash ~/src/emu-pkg-scratch/accept/stage.sh && bash ~/src/emu-pkg-scratch/accept/accept.sh
+```
+
+Expected in `out/accept.log`: `0` from the `ls` line; `install.sh` installed symdev 0.4.0 and
+linked the three names; `symdev new` installed `rust-sdk;0.4.0`; `cargo run` printed
+`installing firmware;rm-469;1 … from private`, `created profile rm-469`, `installing
+emulator;<V> … from public`, `emulator-1 is Nokia N00 (RM-469)` and `Hello from Rust SDK (19
+chars)`, status 0; `cargo test` printed `test result: ok`, status 0; the installed list
+holds `emulator`, `firmware`, `rust-sdk`, `sdk`, `symdev` and no `gcce`. From `accept.sh`:
+`accept rc=0` and `0` owner files newer than the run. Look at `accept.png`. Record it all
+as experiment 115 §5.
+
+- [ ] **Step 4: Final gates on both branches**
+
+symdev (`~/worktrees/symdev/cargo-run`): Task 4 step 4's three commands, plus `find crates
+-name '*.rs' -exec wc -l {} + | awk '$1 > 300 && $2 != "total"'` printing nothing. Packages:
+Task 10 step 9's commands and both shell tests. Then a review of the whole change:
+superpowers:requesting-code-review on symdev's `cargo-run` since `2694821`. Fix what it finds,
+each with a failing test first.
+
+- [ ] **Step 5: Push symdev's branch and stop**
+
+```bash
+git -C ~/worktrees/symdev/cargo-run push origin cargo-run
+```
+
+Do not push the packages branch, and do not push the EKA2L1 branch. Write to the wip file:
+"Phase A done at `<symdev HEAD>` / packages `<HEAD>` / EKA2L1 `symdev` `<C>`; waiting for L1
+(the lead pushes the integration branch after the owner's go). Next: Task 16 with the run
+id." Commit and push that too. Then report to the lead: D1 still open (if it is), F1,
+experiment 115 §2–§5 in one line each, and the three branch heads.
+
+## Phase B — after L1 (the lead pushed `symdev` and the fork's CI is green)
+
+### Task 16: The recipe pinned to the CI's artifact
+
+**Files:**
+- Modify (packages worktree): `recipes/emulator/<V>/artifact.toml`
+- Modify: `docs/research/experiment-backlog.md` (experiment 115 §6), the wip file
+
+**Interfaces:**
+- Consumes: the run id the lead gives after L1.
+- Produces: an `artifact.toml` with no zeros; the package and source built from the CI's
+  artifact, which is what L2 publishes.
+
+- [ ] **Step 1: Fetch the artifact and compare it with the rehearsal**
+
+```bash
+C=~/src/emu-pkg-scratch/ci; rm -rf $C; mkdir -p $C
+gh run view <run> -R 4akloon/EKA2L1 --json headSha,conclusion,jobs --jq '.headSha, .conclusion'
+gh run download <run> -R 4akloon/EKA2L1 -n eka2l1-<c>-linux -D $C/artifact
+(cd $C/artifact && sha256sum eka2l1-qt-x64.AppImage eka2l1-qt-x64.packages.tsv)
+gh run view <run> -R 4akloon/EKA2L1 --log | grep -m2 -E 'Image: |Version: '   # the runner image
+(cd $C && $C/artifact/eka2l1-qt-x64.AppImage --appimage-extract > /dev/null)
+diff <(cd ~/src/emu-pkg-scratch/rehearsal/x/squashfs-root && find . | sort) <(cd $C/squashfs-root && find . | sort)
+diff ~/src/emu-pkg-scratch/rehearsal/out/eka2l1-qt-x64.packages.tsv $C/artifact/eka2l1-qt-x64.packages.tsv
+~/worktrees/symdev-packages/cargo-run/target/release/pkgtools emulator-tree $C/squashfs-root --glibc 2.38
+```
+
+Expected: `headSha` is `<C>`, `conclusion` `success`. The file lists are equal. The package
+lists are equal, or differ only in versions (the runner image moved): record each
+difference. Record the runner image. `glibc floor 2.38`. A different floor stops the task:
+F1 goes to the owner again. A different layout stops the task too; report to the lead.
+
+- [ ] **Step 2: Fill in `artifact.toml`** in the packages worktree: `run = "<run>"`, the two
+  SHA-256s from step 1, and the `glibc` value `emulator-tree` printed. `commit` and
+  `artifact` are already `<C>` and `eka2l1-<c>-linux`.
+
+- [ ] **Step 3: Build exactly as the workflow will**
+
+```bash
+E=~/src/emu-pkg-scratch/emulator-ci; P=~/worktrees/symdev-packages/cargo-run; rm -rf $E; mkdir -p $E/work
+(cd $E/work && GH_TOKEN=$(gh auth token) PKGTOOLS=$P/target/release/pkgtools \
+  bash $P/recipes/emulator/<V>/build.sh $E/prefix && \
+  PKGTOOLS=$P/target/release/pkgtools bash $P/recipes/emulator/<V>/source.sh $E/source.tar.gz) > $E/build.log 2>&1
+echo "EXIT=$?"; tail -3 $E/build.log
+cd $E && env -u PUBLISH_PUBLIC_URL -u PUBLISH_SIGNING_KEY cargo run --release --quiet --manifest-path $P/Cargo.toml \
+  -p publish -- public 'emulator;<V>' --from $E/prefix --source-code $E/source.tar.gz \
+  --recipe $P/recipes/emulator/<V>/recipe.toml --dry-run > dry-run.toml 2> dry-run.log; cat dry-run.log
+```
+
+This time the artifact comes through `gh run download` and the source through the fork's
+GitHub URL (no `EMULATOR_ARTIFACT_DIR`, no `EKA2L1_GIT`). Expected: `EXIT=0` and the dry
+run's `packed …` and `would upload …` lines.
+
+- [ ] **Step 4: Rerun the real checks with the CI's package**
+
+Point Task 13's stager at `$E/prefix` instead of the rehearsal's (`emulator;<V>` only),
+then rerun `run13.sh` (Task 13 step 3) and the acceptance (Task 15 steps 1–3, with
+`$E/prefix` in `stage.sh`). Expected: the same results as experiment 115 §4 and §5. Record
+them as experiment 115 §6, with the run id, the hashes, the package and source sizes, and
+whether this host needed the GL variables.
+
+- [ ] **Step 5: Commit, do not push, stop**
+
+```bash
+cd ~/worktrees/symdev-packages/cargo-run
+git add recipes/emulator/<V>/artifact.toml
+git commit -m "Pin emulator;<V> to the fork CI's run <run> and the SHA-256 of its AppImage."
+```
+
+Commit symdev's experiment record and the wip file on `cargo-run` and push that branch.
+Then stop, and report to the lead: the packages branch is ready for L4 → L2, and the
+firmware for L3. Include the dry run's sizes and the one open question, whether the
+workflow's own token can download the fork's artifact (Task 12).
+
+## For the lead, after L2 and L3: the acceptance against the real buckets
+
+Not for implementing agents. After `emulator;<V>` is in the public index (L2) and
+`firmware;rm-469;1` in the private one (L3):
+
+1. Rerun Task 15's `accept.sh` with `SYMDEV_INSTALL_URL` unset (the real `install.sh`
+   source). `sources.toml` gets the built-in public source plus the private source as the
+   toolchain spec §2 shows. The private keys come from the owner's environment
+   (`SYMDEV_SOURCE_PRIVATE_ACCESS_KEY_ID`, `SYMDEV_SOURCE_PRIVATE_SECRET_ACCESS_KEY`). The
+   `symdev;0.4.0` and `rust-sdk;0.4.0` packages must be published first: that is the 0.4.0
+   release, outside this plan. Until then, keep the staged `public` source for those two and
+   add the real buckets as further sources.
+2. Expected as in experiment 115 §5. `installing emulator;<V> … from public`, `installing
+   firmware;rm-469;1 … from private`. Record it as experiment 115 §7.
+3. `Pins::emulator()` in the 0.4.0 release is `emulator;<V>`. A later rebuild of the
+   integration branch is a new recipe directory, a new version and a new pin.

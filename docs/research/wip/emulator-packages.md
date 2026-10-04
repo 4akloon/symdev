@@ -1,0 +1,303 @@
+# WIP: emulator and firmware packages plan
+
+Task: write the implementation plan for
+`docs/superpowers/specs/2026-10-03-emulator-firmware-packages-design.md` as
+`docs/superpowers/plans/2026-10-03-emulator-firmware-packages.md` on branch `cargo-run`
+(worktree `~/worktrees/symdev/cargo-run`). Push only `cargo-run`.
+Scratch: `~/src/emu-pkg-scratch/`. Read-only observations go to experiment 115 §1 in
+`docs/research/experiment-backlog.md`. No emulator runs, CI triggers, fork pushes.
+
+## Status
+
+- [x] read inputs (spec, cargo-run spec/plan/wip, toolchain spec §1 §2 §4 §5 §6 §12, real code)
+- [x] read symdev-packages (publish/, recipes/gcce/12.1.0, workflows)
+- [x] read EKA2L1 copies and fork CI build.yml
+- [x] experiment 115 §1 written + committed (experiment-backlog.md end)
+- [x] plan written, self-reviewed, committed, pushed (16 tasks + lead acceptance)
+
+## Facts
+- Fork CI (`integration` copy, branch symdev d07d5ac, `.github/workflows/build.yml`): job
+  `build-desktop`, matrix label `linux`, `ubuntu-latest`, Qt 6 + SDL2 from apt, cmake Release
+  `-DCI=ON -DEKA2L1_ENABLE_UNEXPECTED_EXCEPTION_HANDLER=ON -DEKA2L1_NO_TERMINAL=ON
+  -DEKA2L1_ENABLE_DISCORD_RICH_PRESENCE=ON`; `scripts/generate_appimage.sh` (linuxdeploy +
+  plugin-qt + plugin-appimage, all `continuous`, wget'd unpinned) with APPIMAGE_EXTRACT_AND_RUN=1;
+  artifact `eka2l1-<short sha>-linux` = `build/eka2l1-qt-x64.AppImage`; no `retention-days`
+  (repo default). Triggers: push, pull_request, workflow_dispatch.
+- Local AppImage `~/Downloads/EKA2L1-Linux-x86_64.AppImage.unpatched` (94 452 216 B, sha256
+  d8f6c8fe…fb85, Sep 18; the non-.unpatched file is a 51-byte sh stub → ~/.local/bin/eka2l1).
+  Extracted WITHOUT running it: `unsquashfs -o 944632` (ELF runtime size = e_shoff+shnum*shentsize)
+  into `~/src/emu-pkg-scratch/appimage-upstream/`. squashfs zstd, 786 inodes.
+- Layout: `AppRun -> usr/bin/eka2l1_qt` (a SYMLINK, no apprun-hooks), `.DirIcon`, desktop+icon
+  links; `usr/bin/{eka2l1_qt, compat/, patch/, resources/, scripts/, tools/, panic.json,
+  libscripting.a, qt.conf, …}`, `usr/lib/` 187 libs (203 MB), `usr/plugins/` 16 Qt plugins,
+  `usr/translations/`, `usr/share/doc/<deb pkg>/copyright` ×167. Extracted 254 MB.
+  `usr/bin/qt.conf` (linuxdeploy-plugin-qt): Prefix=../, Plugins=plugins. eka2l1_qt RUNPATH
+  `$ORIGIN/../lib` ⇒ starting usr/bin/eka2l1_qt directly finds libs and plugins.
+- AppRun is a symlink ⇒ exec'ing AppRun gives /proc/<pid>/comm "AppRun", which
+  `device::is_eka2l1` (comm contains "eka2l1") rejects ⇒ symdev must exec usr/bin/eka2l1_qt.
+- Qt 6.4.2 (Ubuntu 24.04 apt, GCC 13.2.0). glibc floor GLIBC_2.38 (many Ubuntu libs:
+  libxml2, libxkbcommon, libx264…); this host glibc 2.43. Not bundled: libc, libstdc++,
+  libgcc_s, libGL/GLX/EGL, libX11, libxcb, fontconfig/freetype, libz (host must provide).
+- Bundle carries Ubuntu ffmpeg (libavcodec60…) via Qt's multimedia ffmpeg plugin, x264, x265,
+  libzvbi etc.: copyleft beyond Qt ⇒ corresponding source for MORE than Qt (spec §3 gap).
+
+- Fork 4akloon/EKA2L1 (public fork of EKA2L1/EKA2L1): build.yml workflow state `active`, but
+  ZERO runs of it ever (only one Dependency Graph run, master c396ac8); `symdev` d07d5ac pushed
+  09:02Z made no run ⇒ a push may not start CI; lead must check a run appears, else dispatch.
+  Artifacts: 0. Upstream master fbf0060 (2026-10-03 13:45Z); fork master stale c396ac8.
+- Our 11 open PRs → fork heads: #724 fix/command-list-overflow 7ff9a13, #726
+  fix/cli-install-then-run 2338a37, #727 fix/property-cancel-during-wipeout e836a07, #728
+  fix/applist-no-localisable-rsc f7b7888, #766 dev/data-dir a3ec972, #767
+  dev/anim-window-lifetime 681a9ef, #768 dev/applist-reload 25de6ec, #769 dev/applist-lock
+  c597988, #770 dev/control-server d1cdb4a, #771 dev/control-input 89e61e2, #772
+  dev/control-events c323b64. Stacked: 770 ⊂ 771 ⊂ 772; others independent; data-dir on master.
+  Known conflict (cargo-run copy): data-dir × control-events in qt/src/thread.cpp and
+  qt/include/qt/cmdhandler.h option lists — keep both.
+- EKA2L1 with --data-dir copies shipped patch/, resources/, scripts/ (compat/ if missing) from
+  the exe dir into the data folder at start (data-dir.PR.md); Qt settings go to
+  <folder>/EKA2L1/EKA2L1.ini. Config: each key defaults if missing (get_yaml_value), so a
+  config.yml holding only `log-filter:` is valid by reading; `device: 0`, `data-storage: data`.
+- EKA2L1 WRITES Z: at every start for epoc93fp1+: moves Z:\sys\bin\avkonfep.dll to .bak (if no
+  .bak) then copies patch\avkonfep_general.dll (fails on Linux: backslash) — qt/src/state.cpp.
+  Owner's Z has avkonfep.dll.bak (Sep 18 17:02) and no avkonfep.dll ⇒ a package made from it
+  carries the .bak state, and EKA2L1 then only attempts the failing copy.
+- Owner data (read-only): devices.yml 124 B (RM-469: platver epoc93fp2, manufacturer Nokia,
+  firmcode RM-469, model N00, machine-uid 0, isolated-drives false; rewritten by EKA2L1 at
+  start, mtime 18:36 = the incident); roms/rm-469/SYM.ROM 51 MB; drives/z/rm-469 208 MB,
+  15 595 files, 0 symlinks, has a dir literally named `z:`; drives/c 17 MB (user state).
+- symdev side today: `Devices::profiles()` makes profiles from `EmulatorData::from_env()`
+  (SYMDEV_EKA2L1_DATA else ~/.local/share/EKA2L1 default!) when none exist;
+  `EmulatorProfile::create(from, firmware)` links data/roms/<fw> and the WHOLE data/drives/z,
+  copies devices.yml, drive C (copy_tree), config.yml (+ symdev log filter).
+  `eka2l1_with_control()` = Eka2l1Backend::from_env (SYMDEV_EKA2L1 only) + has_control.
+  `is_eka2l1(pid)` = /proc comm contains "eka2l1". Provision::install_missing/manager =
+  how symdev build installs SDK. Pins: gcce, platform_sdk(device), rust_sdk. Installed files
+  0644/0755 (tar_gz.rs), relative in-package symlinks allowed (reproducible.rs packs them).
+- Packages repo: `publish public <id> --from <prefix> --source-code <tar.gz> --recipe`;
+  `publish private` needs a pinned sha256 and takes `include` lists; source key
+  `src/<id path>/<sha>.tar.gz`. Workflows: build.yml (gcce, PR), publish.yml (main), symdev.yml
+  (recipes/symdev/**), tests.yml. Supported host floor: glibc 2.28 (gcce on AlmaLinux 8).
+
+## Decisions
+- Plan has an owner decision D1 (corresponding source + licence field + CLAUDE.md's
+  "GPL/MIT only" wording vs a bundle of many free licences). Recommend A: symdev-only CI
+  commit on the integration branch writes the bundled Ubuntu packages+versions; recipe
+  fetches their sources by exact version from Launchpad; one source archive.
+- glibc floor 2.38 vs symdev's 2.28: finding for the owner (spec says so), recorded in recipe.
+- Start `usr/bin/eka2l1_qt` (comm), not AppRun. Package route strips LD_LIBRARY_PATH,
+  QT_PLUGIN_PATH, QT_QPA_PLATFORM_PLUGIN_PATH from the child env (host Qt must not load into
+  the bundle); SYMDEV_EKA2L1 route untouched.
+- Types: symdev-sdk `EmulatorPackage`, `FirmwarePackage` (like PlatformSdk), `Pins::emulator()`,
+  `Pins::firmware(device)`; symdev-emulator `Eka2l1` enum (User/Package), `Firmware` enum
+  (UserData/Package), `EmulatorProfile::create(&Firmware)`; CLI `Provision::eka2l1()`,
+  `Provision::firmware()` in provision/emulator.rs; catalog bypass hint per kind.
+  Delete `Eka2l1Backend` and `EmulatorData::from_env` (default ~/.local/share/EKA2L1 route
+  goes: spec says SYMDEV_EKA2L1_DATA only).
+- Phases: A implementers (integration rebuild local, docker CI rehearsal, symdev code,
+  recipes, firmware observation with local cargo-run EKA2L1, staged acceptance with the
+  rehearsal AppImage) → L1 lead push fork → B implementers (pin recipe to the CI artifact,
+  exp 115 §2 with it) → L2 public publish, L3 private publish, L4 packages push (lead).
+
+## Dead ends
+
+## Plan progress
+- Written + committed: header, constraints, "what exp 115 changed", D1, F1, lead steps L1–L4,
+  review focus, file structure.
+- Task list: 1 integration rebuild; 2 (D1=A) CI package list commit; 3 docker CI rehearsal;
+  4 symdev-sdk pins/packages/hints; 5 firmware recipe + pkgtools device-entry; 6 observe
+  profile from read-only firmware package (exp 115 §3); 7 Firmware + profile from package +
+  check(); 8 Eka2l1 enum + env; 9 Provision + wiring + CLI tests; 10 emulator recipe +
+  pkgtools emulator-tree/notices; 11 (D1=A) source.sh + pkgtools dsc; 12 emulator.yml;
+  13 packaged emulator real run (exp 115 §4); 14 docs/licensing; 15 staged acceptance
+  (exp 115 §5) → STOP L1; 16 pin to CI artifact → STOP L2–L4; lead real-bucket acceptance.
+
+- Tasks 1–4 written + committed (Task 4: Device::ALL, Pins, EmulatorPackage, FirmwarePackage,
+  catalog bypass, tests in manager/tests/bypass.rs).
+
+- Tasks 5–8 written + committed. Ruling for Task 9: profile creation is LAZY in pick_device
+  (only when no emulator runs, or SYMDEV_DEVICE names a profile) — otherwise fake_control
+  tests (running fake, no profile, no sources.toml → builtin source) would hit the network.
+  `Devices::profiles()` = existing only; `Devices::make_profiles(firmwares)` creates.
+  list()/start() make on first need (as 0.4.0 cargo-run did).
+
+- Task 9 written + committed (provision/emulator.rs, devices_cmd profiles/make_profiles/
+  profiles_or_make, lazy pick_device, tests/emulator_packages.rs).
+- Task 10 design: pkgtools `emulator-tree <tree> --glibc X.Y` (EmulatorTree layout +
+  GlibcVersion via `object` 0.39 verneed; test on current_exe), `emulator-notices <src>
+  <tree> --id --commit [--packages tsv] [--extra list]` (COPYING, third-party/ per
+  submodule from .gitmodules recursive, BUNDLED.tsv, SOURCE.txt); recipe.toml +
+  artifact.toml (zeros until Task 16) + build.sh (gh run download or
+  EMULATOR_ARTIFACT_DIR; sha256sum; --appimage-extract; clone fork commit w/ submodules
+  into ./eka2l1-src); tests/emulator-build.test (hash refusal, zeros refusal).
+
+- Task 10 written + committed (pkgtools emulator-tree/notices, recipe.toml, artifact.toml,
+  build.sh, tests/emulator-build.test, rehearsal build in scratch).
+- Task 11 design: source.sh <out.tar.gz> (run after build.sh, reuses ./eka2l1-src and
+  ./artifact): eka2l1/ = git archive of <C> + each submodule's git archive at its commit
+  (git submodule foreach --recursive); recipe/ = the recipe dir; ubuntu/ = for each source
+  pkg in packages.tsv: .dsc from launchpad +files, pkgtools dsc-files verifies sha256 of
+  the files listed under Checksums-Sha256; tar --sort=name --mtime=@0 … | gzip -n -9.
+  Then publish public --dry-run (rehearsal prefix + source) → record sizes.
+
+- Tasks 11 (dsc + source.sh + dry run) and 12 (emulator.yml) written + committed.
+  build.sh now fetches shallow (init + fetch --depth 1 <commit> + submodule --depth 1).
+- Remaining design: 13 = exp 115 §4 real runs with the rehearsal package via file://
+  sources (scratch stager generic `<repo> <id>=<tree>@<host>`), emulator start, cargo run,
+  cargo test, LD_LIBRARY_PATH run, comm/exe check, package files unchanged; 14 = docs
+  (README row, licensing.md, symdev-emulator README, toolchain spec §2 row; CLAUDE.md
+  wording only proposed); 15 = staged acceptance (bwrap --tmpfs ~/.local/share/EKA2L1,
+  install.sh, two file:// sources) + gates + push symdev cargo-run → STOP L1; 16 = pin
+  artifact.toml to CI run, rebuild, rerun 13/15 → STOP L2–L4; lead real-bucket acceptance.
+
+- All 16 tasks + lead acceptance written and committed.
+
+- Self-review done: spec coverage (§2–§6 each mapped), placeholders (only the computed
+  <V>/<C>/<c>/<run>), names consistent across tasks, RF tests in owning tasks. Fixes:
+  rehearsal package-list script copied after clone; fake AppImage uses pkgtools as ELF;
+  setup-linker without arg; L4 note (packages branch carries unreleased 0.4.0 recipe →
+  merging starts symdev.yml); lazy profiles in pick_device.
+- Spec places found wrong/incomplete: corresponding source = 167 Ubuntu pkgs not just Qt
+  (D1); CLAUDE.md "GPL/MIT only" vs bundle; glibc 2.38 (F1); today's code reads the
+  default EKA2L1 folder without SYMDEV_EKA2L1_DATA; AppRun can't be the entry (comm);
+  fork CI never ran (push may start nothing).
+
+## Next step
+
+None for the planning task: hand back to the lead. Execution waits for the owner's review
+of the plan and D1; recommended execution: one agent (superpowers:executing-plans), tasks
+1 → 15, stop before L1; final whole-branch review.
+
+# Execution: Phase A, Tasks 1-15 (started 2026-10-03)
+
+Executor: one agent, superpowers:executing-plans; ledger
+`.superpowers/sdd/2026-10-03-emulator-firmware-packages/progress.md` (git-ignored).
+Trees: symdev `~/worktrees/symdev/cargo-run` (push cargo-run only); packages
+`~/worktrees/symdev-packages/cargo-run` (commit, no push); EKA2L1 `~/src/EKA2L1-wt/emulator-pkg`
+(commit, no push). Stop before L1, write "READY FOR L1" here.
+
+## Execution status
+- [x] Task 1: emulator-pkg copy, branch `symdev` rebuilt on upstream fbf0060 + 9 merges (11 PRs),
+  2 conflicts (applistwidget.cpp lock×reload; option lists) — ~/src/EKA2L1-wt/emulator-pkg.NOTES.md.
+  Host build ~/src/EKA2L1-wt-build/emulator-pkg EXIT=0, ekatests all passed (388 cases),
+  --help lists --data-dir and --control (wrapper ~/src/emu-pkg-scratch/bin/eka2l1-emupkg).
+- [x] Task 2 committed on symdev: <C> = 29d5f58aecc8826a7832c3acdce36461021da39f, <c> 29d5f58,
+  <V> = 2026.10.03 (merges-only head 50a419f).
+- [x] Task 3: rehearsal EXIT=0 in 11 min 40 s, no apt or source change (Qt 6.4.2 builds our PRs).
+  Rehearsal AppImage ~/src/emu-pkg-scratch/rehearsal/out/: AppImage 95 668 728 B sha256 86bfbfd3…a268,
+  packages.tsv 167 pkgs / 131 sources sha256 ab0ef7a7…7d01. Layout = exp 115 §1.2, GLIBC_2.38.
+  Extracted at ~/src/emu-pkg-scratch/rehearsal/x/squashfs-root. Exp 115 §2 written.
+- [x] Task 4: Device::ALL, Pins::emulator (emulator;2026.10.03) / firmware, EmulatorPackage,
+  FirmwarePackage, catalog bypass. Gates green (tests 55 ok, clippy 0, fmt ok).
+- [x] Task 5: packages ae57739: pkgtools device-entry, recipes/firmware/rm-469/1/{recipe.toml,stage.sh},
+  tests/firmware-stage.test (8 ok), tests.yml step. Staged tree ~/src/emu-pkg-scratch/firmware/tree
+  (15 597 files, 258 MB); archive sha256 032b6e1d…b25b, 133 668 334 B (pinned). Public dry run
+  refuses it. Gates: cargo test 5 ok (env -u PUBLISH_SIGNING_KEY), clippy 0, fmt ok,
+  install.sh.test dash 81 ok.
+- [x] Task 6: exp 115 §3. RULING: LINKS. Read-only ROM stops the boot (SYM.ROM opened O_RDWR|O_CREAT for a
+  MAP_PRIVATE map, never written); writable package (as installed, 0644) boots with empty C and
+  one-line config, hello installs/launches/exits kill, 0 of 15 597 package files changed, no
+  other write on Z/ROM. Package must carry Z:\stubcached (it does). Plan Task 6 got a note.
+- [x] Task 7: Firmware enum, EmulatorProfile::create(&Firmware) (package: links, empty C/D/E,
+  one-line config), check() before start, EmulatorData::from_env deleted; devices_cmd reads
+  SYMDEV_EKA2L1_DATA directly until Task 9. Gates green (55 ok, clippy 0, fmt ok).
+- [x] Task 8: Eka2l1 enum (User/Package; Package strips LD_LIBRARY_PATH, QT_PLUGIN_PATH,
+  QT_QPA_PLATFORM_PLUGIN_PATH), start/has_control take &Eka2l1, Eka2l1Backend deleted. Gates green.
+- [x] Task 9: Provision::eka2l1()/firmwares() (provision/emulator.rs), Devices::profiles/make_profiles/
+  profiles_or_make, eka2l1_with_control(&Provision) naming the package, lazy pick_device, CLI wiring,
+  tests/emulator_packages.rs (5 ok). Gates green (56 ok, clippy 0, fmt ok).
+- [x] Task 10: packages 31f6b50: object 0.39.1, pkgtools emulator-tree (GlibcVersion, EmulatorTree) and
+  emulator-notices (Submodules, BundledList, read_extra), recipes/emulator/2026.10.03/{recipe.toml,
+  artifact.toml (zeros), build.sh, notices-extra.txt}, tests/emulator-build.test (8 ok), tests.yml.
+  Rehearsal build: ~/src/emu-pkg-scratch/emulator/prefix, 258 MB, glibc floor 2.38, 78 licence
+  files, 167 bundled packages. notices-extra.txt: 5 submodules read by hand (RectangleBinPack PD,
+  microprofile Unlicense, stb PD/MIT, sdl2-cmake-scripts BSD-2, upscale-shaders per-file headers).
+- [x] Task 11: packages 8693baf: Dsc + dsc-files, source.sh (Launchpad +sourcefiles/<src>/<ver>/<file>,
+  303 -> 200, epoch kept). source.sh EXIT=0 in ~7 min (21:36:54-21:43:51Z): 131 Ubuntu source
+  packages, each checked against its .dsc; src-out 1.3 GB unpacked; archive
+  ~/src/emu-pkg-scratch/emulator/source.tar.gz = 785 617 958 bytes. Publish dry run rc 0: packed
+  emulator;2026.10.03 102 819 047 B (sha256 7dc84337...38fd), would upload
+  src/emulator/2026.10.03/411a272e...5bea.tar.gz; index license "GPL-3.0-or-later AND LGPL-3.0-only
+  AND LicenseRef-EKA2L1-bundle" with a source-code key.
+- [x] Task 12: packages 777a48f: .github/workflows/emulator.yml (YAML ok, pins = publish.yml's),
+  README section "The emulator and the firmware" + pkgtools rows.
+- [x] Task 13: exp 115 §4: start rc 0 (installs firmware+emulator from file:// sources, 3 s),
+  comm eka2l1_qt, cargo run "Hello from Rust SDK (19 chars)" rc 0, cargo test ok rc 0, packages
+  unchanged by content, host LD_LIBRARY_PATH/QT_PLUGIN_PATH stripped (environ count 0), no GL
+  variables needed. Stager ~/src/emu-pkg-scratch/stage/stager; run ~/src/emu-pkg-scratch/exp115/run13.sh.
+- [x] Task 14: README requirements row + Toolchain packages sentences + device paragraph,
+  licensing.md (public-source rule aligned with CLAUDE.md d2e3f57; emulator/firmware bullets),
+  symdev-emulator README rewritten, toolchain spec §2 row. CLAUDE.md untouched (owner changed it).
+- [ ] Task 15: exp 115 §5 staged acceptance PASSED (accept.sh, bwrap, owner's EKA2L1 dir hidden:
+  0 entries; empty HOME; install.sh rc 0 from file:// public; symdev new rc 0; cargo run rc 0 in
+  24.1 s: installs rust-sdk, sdk (private), firmware rm-469 (private), emulator (public), creates
+  profile rm-469, "emulator-1 is Nokia N00 (RM-469)", "Hello from Rust SDK (19 chars)"; cargo test
+  rc 0 (1 passed); emulator stopped with symdev emulator stop; packages: emulator emulators firmware
+  rust-sdk sdk symdev, no gcce; owner's EKA2L1 files newer than the run: 0; accept rc=0).
+  Shot ~/src/emu-pkg-scratch/accept/out/accept.png: the packaged EKA2L1's window, device
+  "N00 (RM-469 - S60v3 FP2)". No eka2l1_qt left. §5 written (067d31f). Final gates green on both
+  trees (symdev: 56 test results ok, clippy 0, fmt ok, no .rs over 300; packages: cargo test ok,
+  clippy 0, fmt ok, firmware-stage ok, install.sh.test dash all passed, emulator-build 8 ok after
+  packages 8d1ea23 fixed its tiny EKA2L1). Whole-branch review dispatched (fresh reviewer, range
+  2694821..067d31f) but its result had not arrived when this agent handed back. NOT yet READY FOR
+  L1. Next: read the review, fix Critical/Important test-first, rerun gates, then write READY FOR L1.
+- [ ] L1 (lead, 2026-10-03): `git push --force-with-lease fork symdev` (d07d5ac -> 29d5f58) was refused by
+  the auto-mode classifier as a destructive git action, despite the owner's "Так, роби". Not retried,
+  not worked around; asked the owner. The whole-branch review (agent a55be6b) is still running.
+- (2026-10-04 08:40) Reviewer a55be6b died mid-review (jsonl ends on a cargo test call, no report).
+  Fresh opus reviewer dispatched on 2694821..2257b36 (+ packages commits); report goes to
+  .superpowers/sdd/emulator-packages-final-review.md. Next: read it, fix Critical/Important
+  test-first, rerun gates, write READY FOR L1; L1 force push still needs the owner's explicit yes.
+- (2026-10-04) Final-review fixes 1, 2, 5, 6, 7 done test-first: profile built in
+  `<dir>.partial-<pid>` and renamed (existing after a lost race = success), check() needs
+  data/roms entry + data/drives/z and names the firmware id with `symdev sdk install`;
+  `symdev devices` lists profiles() only; relative SYMDEV_EKA2L1_DATA rejected.
+  Item 8, observed, not handled: device/eka2l1.rs strips only three host variables
+  (LD_LIBRARY_PATH, QT_PLUGIN_PATH and one more); QML2_IMPORT_PATH, QML_IMPORT_PATH and
+  QT_QPA_PLATFORM from the host reach the packaged EKA2L1 (exp 115 §3 saw no effect on the
+  test host, which sets none of them). No code change.
+- (2026-10-04 ~09:30) Review fixed: symdev b35dc6d be20056 4a690fe, packages f4f7ff7 c9ad36d 34c9011 b2fcc3d
+  (gates green on both; symdev rerun by the lead: tests ok, clippy 0, fmt ok, no .rs > 300).
+  cargo-run pushed to origin (4a690fe, PR 17). READY FOR L1.
+- L1 force push (`git push --force-with-lease=symdev:d07d5ac fork HEAD:symdev` in ~/src/EKA2L1-wt/emulator-pkg)
+  was refused by the auto-mode classifier a second time, after the owner said "так, роби форс пуш" in chat.
+  Not retried, not worked around. The owner has to run it or add a Bash permission rule.
+  Everything after (Task 16 recipe pin, L2, L3, L4) waits on it.
+- (2026-10-04 08:55) L1 DONE: the owner ran the force push himself (d07d5ac -> 29d5f58). No push-triggered CI
+  started in ~5 min, so dispatched `gh workflow run build.yml -R 4akloon/EKA2L1 --ref symdev`: run 37184126387
+  (head 29d5f58). A runner agent watches it. Next: when `build-desktop (linux)` is green, Task 16 (recipe
+  pinned to this run id) by a fresh implementer, then L4 → L2, L3 (each needs the owner's go; given in chat
+  "Так, роби" on 2026-10-03, re-confirm before pushing the packages repo if the classifier refuses).
+- (2026-10-04) Task 16 step 4 DONE: run13.sh and the staged acceptance rerun with the fork CI's package
+  (run 37184126387, package 102808383 B `b5b180e7…`, source 785603334 B): all green, no GL variables needed;
+  experiment 115 §6. Packages branch (91a65f3) is ready for L4 -> L2 and the firmware for L3; open question: can
+  the workflow's own token download the fork's artifact (unauthenticated zip GET is 401).
+- (2026-10-04 ~10:30) Fork CI run 37184126387 green on linux (artifact eka2l1-29d5f58ae-linux). Task 16 done:
+  packages cargo-run 91a65f3; exp 115 §6 passed (82810e8). Because cargo-run's packages branch also carries
+  recipes/symdev/0.4.0 (zeros), the lead cut a clean branch `emulator-packages` from packages main
+  (d81ddee) with the 11 emulator/firmware/review commits (no 3fe6a76), head cbac80a; gates green
+  (cargo test, clippy 0, fmt, emulator-build, firmware-stage, install.sh.test dash). L4 done: pushed it and
+  opened https://github.com/4akloon/symdev-packages/pull/4. PR checks: emulator.yml build GREEN (the run's own
+  token DID download the fork's artifact: open question answered); build.yml `pack` and symdev.yml `build`
+  RED with "gcce;12.1.0 / rust-sdk;0.3.0 is already published; a rebuild is a new version" — those two
+  workflows rebuild the newest recipe on every PR, same flaw as the one fixed for emulator.yml (b2fcc3d);
+  pre-existing, and the push run on main fails the same way (seen at d81ddee).
+- BLOCKED by the auto-mode classifier, not retried or worked around:
+  L2 `gh pr merge 4 -R 4akloon/symdev-packages --merge` ([Merge Without Review]) and
+  L3 `cargo run --release -p publish -- private 'firmware;rm-469;1' --from ~/src/emu-pkg-scratch/firmware/tree
+  --recipe recipes/firmware/rm-469/1/recipe.toml` run in ~/worktrees/symdev-packages/emulator-packages
+  ([Production Deploy]; PUBLISH_* keys are in the environment). The owner must merge PR 4 / run L3, or add Bash
+  permission rules. Then: the real-bucket acceptance (plan's "For the lead", exp 115 §7).
+- (2026-10-04) The owner said "Роби l2 l4" in chat (L4 was already done: PR 4 is open). L2 (`gh pr merge 4`)
+  and L3 (`publish private firmware;rm-469;1`) were each refused once more by the auto-mode classifier
+  ([Merge Without Review] both times). Not retried. PR 4 checks at cbac80a: emulator build, gcce, tests green;
+  `pack` and the symdev `build` red by the known "already published" flaw. Still waiting for the owner to run
+  both commands or to add Bash permission rules.
+- (2026-10-04) Real-bucket acceptance (exp 115 §7) PASSED: emulator from real public, firmware+sdk from real private, cargo test green, owner's folder untouched.
+- (2026-10-04) Emulator/firmware packages DONE: PR 4 merged by the owner, `emulator;2026.10.03` public, firmware
+  private, exp 115 §7 passed (a9fc95c). 0.4.0 release started on the owner's "роби": cargo-run merged with main
+  (9b02e04, pushed); gates rerun by the lead: 979 tests, 0 failed, clippy 0 warnings. PR 17 (cargo-run -> main)
+  is CLEAN with green checks. `gh pr merge 17` and a local packages branch `release-0.4.0` were refused by the
+  auto-mode classifier ([Merge Without Review]); not retried. Sequence left: owner merges PR 17 -> tag v0.4.0
+  -> packages branch `release-0.4.0` from main + cherry-pick 3fe6a76 (recipes/symdev/0.4.0), `commit` =
+  `git rev-parse v0.4.0^{commit}`, bump pkgtools/publish `tag = "v0.4.0"` if wanted -> merge -> dispatch
+  `symdev.yml -f version=0.4.0` (the push run fails by design, as at 0.3.0) -> empty-HOME acceptance.

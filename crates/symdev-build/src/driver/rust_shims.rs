@@ -7,7 +7,7 @@
 //! `E32Main` of its own that a console application must not be given.
 use std::path::{Path, PathBuf};
 
-use symdev_core::{Project, RemotePath, Result};
+use symdev_core::{RemotePath, Result};
 use symdev_elf2e32::Target2Rewrite;
 
 use super::{CompileFlags, CompileIncludes, RustBuild, arg, io};
@@ -15,14 +15,12 @@ use crate::resources::SdkIncludeCaseFold;
 use crate::{RustLinker, RustPrebuilt, file_error};
 
 impl RustBuild {
-    /// Where the shim object for `source` goes: `build/shims/<stem>.o`, under the
-    /// project's `build/` like everything else cargo and the linker produce.
-    pub fn shim_object(&self, project: &Project, source: &Path) -> PathBuf {
+    /// Where the shim object for `source` goes: `<work>/shims/<stem>.o`. `work` is the
+    /// link's own directory (`<out>.symdev/`, which `symdev-ld` gives each link), so
+    /// two links of one project under `cargo test` never share an object.
+    pub fn shim_object(&self, work: &Path, source: &Path) -> PathBuf {
         let stem = source.file_stem().unwrap_or_default();
-        project
-            .root
-            .join("build/shims")
-            .join(Path::new(stem).with_extension("o"))
+        work.join("shims").join(Path::new(stem).with_extension("o"))
     }
 
     /// The shim is compiled with **`GcceBuild`'s own C++ argv**, so it sees `gcce.h`,
@@ -94,7 +92,7 @@ impl RustBuild {
         )
     }
 
-    /// `build/shims/libsymrs.a`: the shim as a static library.
+    /// `<work>/shims/libsymrs.a`: the shim as a static library.
     ///
     /// An **archive**, not a list of objects, and for one measured reason. Objects are
     /// linked whole, so an unused wrapper's reference to its DLL still makes ld record a
@@ -103,8 +101,8 @@ impl RustBuild {
     /// happens after it. A `hello` that calls nothing came out at 3219 bytes and loaded
     /// `bafl.dll` for no reason. From an archive a member nobody references is never
     /// pulled and the question does not arise.
-    pub fn shim_archive(&self, project: &Project) -> PathBuf {
-        project.root.join("build/shims/libsymrs.a")
+    pub fn shim_archive(&self, work: &Path) -> PathBuf {
+        work.join("shims/libsymrs.a")
     }
 
     /// `ar cr <archive> <objects…>`, the one archiver invocation.
@@ -125,14 +123,14 @@ impl RustBuild {
     /// archive is left exactly as `ar` wrote it.
     pub(super) fn shim_archives(
         &self,
-        project: &Project,
         cwd: &RemotePath,
         prebuilt: Option<&RustPrebuilt>,
+        work: &Path,
     ) -> Result<Vec<PathBuf>> {
         if let Some(p) = prebuilt {
             return Ok(p.shims(self.ui.is_some()));
         }
-        let Some(archive) = self.build_shims(project, cwd)? else {
+        let Some(archive) = self.build_shims(cwd, work)? else {
             return Ok(Vec::new());
         };
         if matches!(self.linker, RustLinker::Lld { .. }) {
@@ -143,37 +141,32 @@ impl RustBuild {
         Ok(vec![archive])
     }
 
-    /// Compiles every SDK shim source into `build/shims/` and archives the objects.
-    pub(super) fn build_shims(
-        &self,
-        project: &Project,
-        cwd: &RemotePath,
-    ) -> Result<Option<PathBuf>> {
+    /// Compiles every SDK shim source into `<work>/shims/` and archives the objects.
+    pub(super) fn build_shims(&self, cwd: &RemotePath, work: &Path) -> Result<Option<PathBuf>> {
         let sources = self.sdk.shim_sources(self.ui.is_some())?;
         if sources.is_empty() {
             return Ok(None);
         }
-        let build_dir = project.root.join("build");
         // Only the Avkon headers need it, so a console application does not pay for
         // building the overlay at all.
         let casefold = match self.ui {
             Some(_) => Some(SdkIncludeCaseFold::ensure(
                 &self.gcce.tools.epocroot.join("epoc32/include"),
-                &build_dir.join("sdk-include-casefold"),
+                &work.join("sdk-include-casefold"),
             )?),
             None => None,
         };
-        std::fs::create_dir_all(project.root.join("build/shims")).map_err(io)?;
+        std::fs::create_dir_all(work.join("shims")).map_err(io)?;
         let mut objects = Vec::new();
         for source in sources {
-            let obj = self.shim_object(project, &source);
+            let obj = self.shim_object(work, &source);
             self.gcce.run_tool(
                 &self.shim_compile_args(&source, &obj, casefold.as_deref())?,
                 cwd,
             )?;
             objects.push(obj);
         }
-        let archive = self.shim_archive(project);
+        let archive = self.shim_archive(work);
         // `ar cr` updates in place, so a stale member from an earlier build would
         // survive a renamed source; the archive is rebuilt from scratch every time.
         if archive.exists() {

@@ -11,7 +11,8 @@
 //!    one that is (see `symbian-rs/rust-src/README.md`);
 //! 3. `symbian-rs/rust-src/overlay/library`, copied over the top.
 //!
-//! Cargo is then pointed at the copy with `__CARGO_TESTS_ONLY_SRC_ROOT`.
+//! The copy is the `rust-src` of the sysroot `symdev-rustc` hands rustc (`StdSysroot`,
+//! experiment 114 §1.4).
 //!
 //! # Why the overlay files carry a hash
 //!
@@ -41,36 +42,27 @@ pub struct StdSrc {
 }
 
 impl StdSrc {
-    /// The environment variable cargo reads the `build-std` source root from. It is
-    /// cargo's own test hook and the only supported way to build `std` from somewhere
-    /// other than the installed component; the toolchain is pinned in
-    /// `rust-toolchain.toml`, so the cargo that reads it is pinned too.
-    pub const SRC_ROOT_ENV: &'static str = "__CARGO_TESTS_ONLY_SRC_ROOT";
-
-    /// Where the copy goes, under the project's own `build/`.
-    ///
-    /// `SYMDEV_RUST_STD_SRC` moves it, for a host that would rather keep one copy for
-    /// every project than 82 MB in each.
-    pub fn dir_for(project_root: &Path) -> PathBuf {
-        match std::env::var_os("SYMDEV_RUST_STD_SRC") {
-            Some(v) if !v.is_empty() => PathBuf::from(v),
-            _ => project_root.join("build/rust-src"),
-        }
-    }
-
-    /// What cargo's `--target-dir` sibling needs: `<root>/library`.
+    /// `<root>/library`.
     pub fn src_root(&self) -> PathBuf {
         self.root.join("library")
     }
 
-    /// Builds the copy, replacing whatever was there.
+    /// Builds the copy into `root` (which receives `library/`), replacing whatever was
+    /// there: `StdSysroot` puts it at `<sysroot>/lib/rustlib/src/rust`, where rustc looks
+    /// for `rust-src`.
     ///
-    /// `rustc` is the compiler whose `rust-src` is copied — the pinned nightly, found
-    /// the same way `RustBuild` finds cargo.
-    pub fn materialise(sdk: &RustSdk, rustc: &Path, project_root: &Path) -> Result<Self> {
+    /// `rustc` is the compiler whose `rust-src` is copied — the pinned nightly, found the
+    /// same way `RustBuild` finds cargo.
+    pub fn materialise_into(
+        sdk: &RustSdk,
+        rustc: &Path,
+        project_root: &Path,
+        root: &Path,
+    ) -> Result<Self> {
         let library = Self::toolchain_library(rustc, project_root)?;
-        let root = Self::dir_for(project_root);
-        let this = Self { root };
+        let this = Self {
+            root: root.to_path_buf(),
+        };
         if this.root.exists() {
             std::fs::remove_dir_all(&this.root).map_err(io)?;
         }

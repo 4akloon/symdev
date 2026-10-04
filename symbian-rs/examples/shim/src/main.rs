@@ -15,6 +15,7 @@
 //! 3. The report is built with `Buf16::append`/`append_num`, euser's own `TDes16`
 //!    members, so this binary links none of `core::fmt`.
 #![no_std]
+#![no_main]
 
 use symbian_core::{Buf16, FileServer, Result, shim, user};
 

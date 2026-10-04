@@ -1,7 +1,5 @@
 use std::path::Path;
 
-use symdev_core::Project;
-
 use symdev_manifest::{Softkeys, UiApp, UiKind};
 
 use super::*;
@@ -44,39 +42,6 @@ pub(super) fn gui() -> RustBuild {
 }
 
 #[test]
-fn cargo_args_are_the_recorded_build_std_invocation() {
-    let b = rust();
-    let spec = b.sdk.target_spec();
-    assert_eq!(
-        b.cargo_args(),
-        s(&[
-            "/rustup/bin/cargo",
-            "build",
-            "--release",
-            "--target",
-            &spec.display().to_string(),
-            "-Zbuild-std=core,alloc",
-            "-Zbuild-std-features=optimize_for_size",
-            "-Zjson-target-spec",
-            "--target-dir",
-            "build/cargo",
-        ])
-    );
-}
-
-#[test]
-fn archive_is_under_build_cargo() {
-    let b = rust();
-    let project = Project {
-        root: PathBuf::from("/p"),
-    };
-    assert_eq!(
-        b.archive(&project),
-        PathBuf::from("/p/build/cargo/arm-symbian-e32/release/libhello.a")
-    );
-}
-
-#[test]
 fn link_args_add_e32main_gc_sections_and_the_helper_dsos_before_the_archive() {
     let b = rust();
     let (a, elf, map) = (
@@ -84,7 +49,7 @@ fn link_args_add_e32main_gc_sections_and_the_helper_dsos_before_the_archive() {
         Path::new("/p/build/hello.elf"),
         Path::new("/p/build/hello.exe.map"),
     );
-    let got = b.link_args(a, None, None, elf, map).unwrap();
+    let got = b.link_args(&[a.into()], None, None, elf, map).unwrap();
     let mut want = b.gcce.link_args("hello", a, elf, map, &[]).unwrap();
     let at = want.iter().position(|x| x == "_E32Startup").unwrap();
     assert_eq!(want[at - 1], "--entry");
@@ -147,14 +112,13 @@ fn shim_objects_follow_the_archive_and_keep_the_dso_ordering() {
         Path::new("/p/build/hello.elf"),
         Path::new("/p/build/hello.exe.map"),
     );
-    let project = Project {
-        root: PathBuf::from("/p"),
-    };
-    let shim = b.shim_archive(&project);
-    assert_eq!(shim, PathBuf::from("/p/build/shims/libsymrs.a"));
-    let got = b.link_args(a, Some(&shim), None, elf, map).unwrap();
+    let shim = b.shim_archive(Path::new("/p/w"));
+    assert_eq!(shim, PathBuf::from("/p/w/shims/libsymrs.a"));
+    let got = b
+        .link_args(&[a.into()], Some(&shim), None, elf, map)
+        .unwrap();
     let archive = got.iter().position(|x| x == &a.display().to_string());
-    let at = got.iter().position(|x| x == "/p/build/shims/libsymrs.a");
+    let at = got.iter().position(|x| x == "/p/w/shims/libsymrs.a");
     let euser = got.iter().position(|x| x == "-l:euser.dso");
     assert_eq!(at, archive.map(|i| i + 1));
     assert!(euser < archive);
@@ -163,10 +127,7 @@ fn shim_objects_follow_the_archive_and_keep_the_dso_ordering() {
 #[test]
 fn the_archiver_is_derived_from_the_linker() {
     let b = rust();
-    let project = Project {
-        root: PathBuf::from("/p"),
-    };
-    let shim = b.shim_archive(&project);
+    let shim = b.shim_archive(Path::new("/p/build"));
     let objects = [PathBuf::from("/p/build/shims/symrs_f32.o")];
     assert_eq!(
         b.ar_args(&shim, &objects).unwrap(),
@@ -187,11 +148,8 @@ fn the_sdk_owns_the_shim_sources_and_compiles_them_with_the_cpp_argv() {
         sources.iter().any(|s| s.ends_with("symrs_f32.cpp")),
         "{sources:?}"
     );
-    let project = Project {
-        root: PathBuf::from("/p"),
-    };
-    let obj = b.shim_object(&project, &sources[0]);
-    assert!(obj.starts_with("/p/build/shims"));
+    let obj = b.shim_object(Path::new("/p/w"), &sources[0]);
+    assert!(obj.starts_with("/p/w/shims"));
     assert_eq!(obj.extension().unwrap(), "o");
 
     // The same argv a C++ project's source gets, with the shim directory as the source
@@ -212,4 +170,45 @@ fn the_sdk_owns_the_shim_sources_and_compiles_them_with_the_cpp_argv() {
     assert_eq!(got, want);
     assert!(got.contains(&"-include".to_string()));
     assert!(got.iter().any(|x| x.ends_with("gcce/gcce.h")));
+}
+
+#[test]
+fn rustc_inputs_stand_where_the_archive_stood_in_order() {
+    let b = rust();
+    let (elf, map) = (Path::new("/p/w/hello.elf"), Path::new("/p/w/hello.exe.map"));
+    let obj = PathBuf::from("/p/out/hello.hello.9136cb57f297e5ab-cgu.0.rcgu.o");
+    let cb = PathBuf::from("/p/out/libcompiler_builtins-af926986b8385648.rlib");
+    let shim = PathBuf::from("/p/w/shims/libsymrs.a");
+    let lc = PathBuf::from("/p/build/cargo/arm-symbian-e32/libcalls/libsymbian_libcalls.rlib");
+    let got = b
+        .link_args(&[obj.clone(), cb.clone()], Some(&shim), Some(&lc), elf, map)
+        .unwrap();
+    let mut want = b
+        .link_args(std::slice::from_ref(&obj), Some(&shim), Some(&lc), elf, map)
+        .unwrap();
+    let at = want
+        .iter()
+        .position(|x| *x == obj.display().to_string())
+        .unwrap();
+    want.insert(at + 1, cb.display().to_string());
+    assert_eq!(got, want);
+    let pos = |p: &PathBuf| {
+        got.iter()
+            .position(|x| *x == p.display().to_string())
+            .unwrap()
+    };
+    let drt = got.iter().position(|x| x == "-l:drtaeabi.dso").unwrap();
+    assert!(
+        drt < pos(&obj) && pos(&obj) < pos(&cb) && pos(&cb) < pos(&shim) && pos(&shim) < pos(&lc)
+    );
+}
+
+#[test]
+fn a_link_with_no_rust_input_is_an_error() {
+    let (elf, map) = (Path::new("/p/w/hello.elf"), Path::new("/p/w/hello.exe.map"));
+    let e = rust()
+        .link_args(&[], None, None, elf, map)
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("no Rust object"), "{e}");
 }

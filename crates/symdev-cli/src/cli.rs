@@ -31,8 +31,16 @@ pub enum Commands {
     Build,
     Package,
     Deploy,
-    /// Install build/<name>.sisx into EKA2L1 and launch it (SYMDEV_EKA2L1).
-    Run,
+    /// Install and launch on a device until the app ends: with --exe, the image cargo
+    /// built (cargo's runner); without, the project's build/<name>.sisx.
+    Run {
+        /// The image symdev-ld linked; its <image>.sisx is installed.
+        #[arg(long)]
+        exe: Option<std::path::PathBuf>,
+        /// Arguments for the app: refused until observed (design spec §6.6).
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     /// Run the application in EKA2L1 and report what it wrote to
     /// `E:\symdev\results\<uid3>.json` (design spec §11).
     Test {
@@ -42,12 +50,33 @@ pub enum Commands {
     },
     /// Append the DLLs' new exports to their frozen .def files (eabi/<name>u.def).
     Freeze,
+    /// Make the `symdev-ld` and `symdev-rustc` links cargo starts (design spec §4).
+    SetupLinker {
+        /// Where to put them; default: beside this symdev.
+        #[arg(long)]
+        dir: Option<std::path::PathBuf>,
+    },
+    /// List the running emulators symdev started and the emulator profiles.
+    Devices,
+    /// Start or stop an emulator of symdev's own (design spec §5).
+    Emulator {
+        #[command(subcommand)]
+        action: EmulatorAction,
+    },
     /// Manage the toolchain packages (GCCE, platform SDK) under SYMDEV_HOME, from the
     /// sources listed in ~/.config/symdev/sources.toml.
     Sdk {
         #[command(subcommand)]
         action: SdkAction,
     },
+}
+
+#[derive(Subcommand)]
+pub enum EmulatorAction {
+    /// Start an EKA2L1 on a profile (e.g. rm-469); prints its id.
+    Start { profile: String },
+    /// Stop an emulator symdev started (e.g. emulator-1).
+    Stop { id: String },
 }
 
 #[derive(Subcommand)]

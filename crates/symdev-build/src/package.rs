@@ -62,8 +62,22 @@ impl SisPackage {
 }
 
 impl PackageBackend for SisPackage {
+    /// The password is asked for only where it protects something: a key the project
+    /// supplies (`[signing] key`) that is encrypted. The pair symdev generates has an
+    /// unencrypted key, and the original `makekeys` allows one too: answered `n` to "Do you
+    /// want to use a password", it writes an unencrypted `BEGIN DSA PRIVATE KEY`, and
+    /// `signsis` signs with it given no pass phrase (experiment 114 §1.7, decision D1 = A).
     fn package(&self, artifacts: &[Artifact]) -> Result<Package> {
-        self.validate_password()?;
+        if let Some((_, key)) = self.existing_signing_pair() {
+            let pem =
+                std::fs::read(&key).map_err(|e| Error::Other(format!("{}: {e}", key.display())))?;
+            let text = String::from_utf8_lossy(&pem);
+            if text.contains("Proc-Type: 4,ENCRYPTED")
+                || text.contains("BEGIN ENCRYPTED PRIVATE KEY")
+            {
+                self.validate_password()?;
+            }
+        }
         let artifact = match artifacts
             .iter()
             .filter(|a| a.dest.is_none())

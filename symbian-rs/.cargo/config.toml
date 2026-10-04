@@ -10,3 +10,10 @@ json-target-spec = true
 # `Display` without the 200-byte two-digit table, the small sort, the short padding
 # path. 600-1450 bytes of .text and 200 of .rodata off every example that formats.
 build-std-features = ["optimize_for_size"]
+# cargo test builds core twice without it (E0152, experiment 114 §1.1).
+panic-abort-tests = true
+
+# cargo links through symdev (signed .sisx beside the image) and runs on a device.
+[target.arm-symbian-e32]
+linker = "symdev-ld"
+runner = "symdev run --exe"

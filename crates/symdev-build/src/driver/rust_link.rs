@@ -2,7 +2,7 @@
 //! program is and whether a GUI one links at all.
 use std::path::{Path, PathBuf};
 
-use symdev_core::Result;
+use symdev_core::{Error, Result};
 
 use super::rust_build::APP_CREATE;
 use super::{E32MAIN, Linker, RustBuild, arg};
@@ -44,7 +44,7 @@ impl RustBuild {
     /// MMP's `LIBRARY` list would have put them.
     pub fn link_args(
         &self,
-        archive: &Path,
+        rust: &[PathBuf],
         shim: Option<&Path>,
         libcalls: Option<&Path>,
         elf: &Path,
@@ -52,20 +52,30 @@ impl RustBuild {
     ) -> Result<Vec<String>> {
         let linker = Linker::gnu(self.gcce.tools.gcce()?);
         let shims: Vec<PathBuf> = shim.map(Path::to_path_buf).into_iter().collect();
-        Ok(self.link_line(&linker, archive, &shims, libcalls, elf, map))
+        self.link_line(&linker, rust, &shims, libcalls, elf, map)
     }
 
     /// [`Self::link_args`]' line written for `linker`, with any number of shim archives in
     /// the order given: GNU ld's, or the one [`super::LldLine`] turns into rust-lld's.
+    ///
+    /// `rust` is rustc's objects and rlibs in rustc's order, or 0.3.0's one staticlib: the
+    /// first stands where the archive stood, the rest right behind it, before the shims and
+    /// libcalls (experiment 114 §1.2: all 19 `no_std` images byte-equal with this rule).
     pub(super) fn link_line(
         &self,
         linker: &Linker,
-        archive: &Path,
+        rust: &[PathBuf],
         shims: &[PathBuf],
         libcalls: Option<&Path>,
         elf: &Path,
         map: &Path,
-    ) -> Vec<String> {
+    ) -> Result<Vec<String>> {
+        let Some((first, rest)) = rust.split_first() else {
+            return Err(Error::Other(
+                "the link has no Rust object: rustc passed none, or cargo built nothing".into(),
+            ));
+        };
+        let archive = first.as_path();
         let ui_libraries: Vec<String> = match self.ui {
             Some(_) => RustSdk::UI_LIBRARIES.iter().map(|l| (*l).into()).collect(),
             None => Vec::new(),
@@ -107,13 +117,18 @@ impl RustBuild {
         {
             args.insert(at + i, flag);
         }
+        let at = args
+            .iter()
+            .position(|a| a == &arg(archive))
+            .map_or(args.len(), |i| i + 1);
+        args.splice(at..at, rest.iter().map(|p| arg(p)));
         // The archives follow the Rust archive in the order their references run:
         // the application refers to the shim, and both may refer to a compiler-runtime
         // routine, so the libcall archive is searched last. An archive is searched only
         // for what is still undefined where it appears.
         let after = args
             .iter()
-            .position(|a| a == &arg(archive))
+            .position(|a| rust.last().is_some_and(|l| a == &arg(l)))
             .map_or(args.len(), |i| i + 1);
         let extras: Vec<String> = shims
             .iter()
@@ -126,7 +141,7 @@ impl RustBuild {
             .position(|a| a == "-lsupc++")
             .unwrap_or(args.len());
         args.splice(at..at, Self::sdk_libraries());
-        args
+        Ok(args)
     }
 
     /// The DSOs the SDK's own crates and shim import, under `--as-needed` so that an
